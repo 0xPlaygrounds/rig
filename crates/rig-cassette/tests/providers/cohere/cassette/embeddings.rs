@@ -19,9 +19,10 @@ fn decode_image(encoded: &str) -> Vec<u8> {
 #[tokio::test]
 async fn embed_texts_smoke() {
     with_cohere_cassette("embeddings/embed_texts_smoke", |client| async move {
-        let model = rig_test_support::endpoint::map_wire(
-            client.embedding(cohere::EMBED_V4, None),
-            |wire| wire.with_input_type("search_document"),
+        let model = rig::model(
+            client
+                .embedding(cohere::EMBED_V4, None)
+                .with_input_type("search_document"),
         );
         assert_eq!(model.wire.capabilities().ndims, 1536);
 
@@ -45,9 +46,10 @@ async fn embed_texts_smoke() {
 #[tokio::test]
 async fn embed_search_query_smoke() {
     with_cohere_cassette("embeddings/embed_search_query_smoke", |client| async move {
-        let model = rig_test_support::endpoint::map_wire(
-            client.embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None),
-            |wire| wire.with_input_type("search_query"),
+        let model = rig::model(
+            client
+                .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
+                .with_input_type("search_query"),
         );
         assert_eq!(model.wire.capabilities().ndims, 384);
 
@@ -70,9 +72,10 @@ async fn embed_classification_smoke() {
     with_cohere_cassette(
         "embeddings/embed_classification_smoke",
         |client| async move {
-            let model = rig_test_support::endpoint::map_wire(
-                client.embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None),
-                |wire| wire.with_input_type("classification"),
+            let model = rig::model(
+                client
+                    .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
+                    .with_input_type("classification"),
             );
             assert_eq!(model.wire.capabilities().ndims, 384);
 
@@ -94,7 +97,7 @@ async fn embed_classification_smoke() {
 #[tokio::test]
 async fn embed_image_smoke() {
     with_cohere_cassette("embeddings/embed_image_smoke", |client| async move {
-        let model = client.model(|cohere| cohere.image_embedding());
+        let model = rig::model(client.image_embedding());
         assert_eq!(model.wire.capabilities().ndims, 1024);
         assert_eq!(model.wire.capabilities().max_documents, 1);
 
@@ -119,7 +122,7 @@ async fn embed_images_preserves_batch_order() {
     with_cohere_cassette(
         "embeddings/embed_images_preserves_batch_order",
         |client| async move {
-            let model = client.model(|cohere| cohere.image_embedding());
+            let model = rig::model(client.image_embedding());
             let response = model
                 .call(vec![decode_image(PNG_2X2), decode_image(GIF_2X2)], None)
                 .await

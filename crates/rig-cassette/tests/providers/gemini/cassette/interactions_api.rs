@@ -34,7 +34,7 @@ async fn basic_interaction_returns_id() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
-            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
+            let model = rig::model(client.interactions("gemini-3-flash-preview"));
             let params = AdditionalParameters {
                 store: Some(true),
                 ..Default::default()
@@ -77,7 +77,7 @@ async fn followup_with_previous_interaction_id() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/followup_with_previous_interaction_id",
         |client| async move {
-            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
+            let model = rig::model(client.interactions("gemini-3-flash-preview"));
             let initial = model
                 .call(
                     CompletionRequestBuilder::new("Give me one short fact about hummingbirds.")
@@ -129,7 +129,7 @@ async fn google_search_tool_interaction() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/google_search_tool_interaction",
         |client| async move {
-            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
+            let model = rig::model(client.interactions("gemini-3-flash-preview"));
             // The hosted-tool exchange log is provider-specific, so this
             // asserts against the interaction document `raw` carries and then
             // against the normalized view the decoder folded from the same
@@ -168,7 +168,7 @@ async fn tool_result_roundtrip() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/tool_result_roundtrip",
         |client| async move {
-            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
+            let model = rig::model(client.interactions("gemini-3-flash-preview"));
             let tool = rig::completion::ToolDefinition {
                 name: "add".to_string(),
                 description: "Add two numbers together".to_string(),
@@ -243,7 +243,7 @@ async fn streaming_interaction() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/streaming_interaction",
         |client| async move {
-            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
+            let model = rig::model(client.interactions("gemini-3-flash-preview"));
             let request =
                 CompletionRequestBuilder::new("Write a 3-line poem about rust and rivers.")
                     .temperature(0.4)
@@ -280,7 +280,7 @@ async fn streaming_final_metadata_exposes_model_version() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/streaming_final_metadata_exposes_model_version",
         |client| async move {
-            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
+            let model = rig::model(client.interactions("gemini-3-flash-preview"));
             let request =
                 CompletionRequestBuilder::new("Reply with exactly: interaction metadata ok")
                     .temperature(0.0)
@@ -342,7 +342,7 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
     super::super::support::with_gemini_interactions_cassette(
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
-            let model = client.model(|config| config.interactions("gemini-3-flash-preview"));
+            let model = rig::model(client.interactions("gemini-3-flash-preview"));
             let params = AdditionalParameters {
                 store: Some(true),
                 ..Default::default()

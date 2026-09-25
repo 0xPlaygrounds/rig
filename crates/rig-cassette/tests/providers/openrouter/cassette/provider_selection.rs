@@ -48,8 +48,7 @@ async fn provider_selection_scenarios() {
             ];
 
             for (prompt, params) in scenarios {
-                let agent = client
-                    .agent(DEEPSEEK_V3_2)
+                let agent = rig::AgentBuilder::new(rig::model(client.completion(DEEPSEEK_V3_2)))
                     .preamble("You are a helpful assistant.")
                     .additional_params(params)
                     .build();

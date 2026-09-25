@@ -31,7 +31,7 @@ async fn required_maps_to_any_and_forces_tool_use() {
     with_anthropic_cassette(
         "messages_tool_choice/required_maps_to_any_and_forces_tool_use",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = CompletionRequestBuilder::new("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .max_tokens(1024)
@@ -70,7 +70,7 @@ async fn none_suppresses_tool_use() {
     with_anthropic_cassette(
         "messages_tool_choice/none_suppresses_tool_use",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             // The question must not match the forbidden tool: asking arithmetic
             // with the add tool blocked makes Anthropic return an empty
             // end_turn message instead of answering in text.
@@ -118,7 +118,7 @@ async fn specific_tool_targets_named_tool() {
     with_anthropic_cassette(
         "messages_tool_choice/specific_tool_targets_named_tool",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = CompletionRequestBuilder::new("Compute 9 minus 4 using a tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .max_tokens(1024)

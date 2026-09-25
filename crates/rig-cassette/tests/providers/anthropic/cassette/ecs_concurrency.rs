@@ -25,7 +25,6 @@ use rig_ecs::{
     bus::{EffectOutcome, Policy, RigSchedule},
     systems::{RigSet, RunCommands},
 };
-use rig_test_support::endpoint::Endpoint;
 
 #[derive(Resource, Default)]
 struct Published(Vec<Vec<String>>);
@@ -85,9 +84,9 @@ fn observe_publication(
     }
 }
 
-async fn run(client: Endpoint<Anthropic>, serial: bool) -> EcsAgent {
+async fn run(client: Anthropic, serial: bool) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+        rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)),
         TWO_TOOL_STREAM_PREAMBLE,
         1,
     );

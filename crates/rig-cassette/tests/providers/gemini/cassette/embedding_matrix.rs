@@ -31,7 +31,7 @@ async fn normalized_response_is_complete() {
     with_gemini_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+            let model = rig::model(client.embedding(gemini::embedding::EMBEDDING_001, None));
             let response = model
                 .call(inputs(), None)
                 .await
@@ -45,7 +45,7 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_gemini_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+        let model = rig::model(client.embedding(gemini::embedding::EMBEDDING_001, None));
         let response = model
             .call(inputs(), None)
             .await
@@ -75,7 +75,7 @@ async fn raw_round_trips() {
 #[tokio::test]
 async fn raw_route_parity() {
     with_gemini_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+        let model = rig::model(client.embedding(gemini::embedding::EMBEDDING_001, None));
         let normalized = model
             .call(inputs(), None)
             .await
@@ -96,7 +96,7 @@ async fn single_text_convenience() {
     with_gemini_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+            let model = rig::model(client.embedding(gemini::embedding::EMBEDDING_001, None));
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()], None)
                 .await
@@ -114,7 +114,7 @@ async fn single_text_convenience() {
 #[tokio::test]
 async fn dimensions_request() {
     with_gemini_cassette("embedding_matrix/dimensions_request", |client| async move {
-        let model = client.embedding(gemini::embedding::EMBEDDING_001, Some(256));
+        let model = rig::model(client.embedding(gemini::embedding::EMBEDDING_001, Some(256)));
         let response = model
             .call(inputs(), None)
             .await
@@ -131,7 +131,7 @@ async fn error_preserves_provider_body() {
     with_gemini_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding("no-such-embedding-model", None);
+            let model = rig::model(client.embedding("no-such-embedding-model", None));
             let error = model
                 .call(inputs(), None)
                 .await

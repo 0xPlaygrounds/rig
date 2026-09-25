@@ -47,7 +47,6 @@
 //! `stop_reason`.
 
 use rig::message::AssistantContent;
-use rig_test_support::endpoint::Endpoint;
 
 use futures::StreamExt;
 use rig::completion::{FinishReason, ToolDefinition};
@@ -155,12 +154,12 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> Streamed 
 /// [`capture_terminal`]; these two assert on the non-terminal items too, so
 /// the drain stays local.
 async fn streamed_body(
-    client: Endpoint<Anthropic>,
+    client: Anthropic,
     model_name: &str,
     request: rig::completion::CompletionRequest,
     sink: Observed<Streamed>,
 ) {
-    let model = client.completion(model_name);
+    let model = rig::model(client.completion(model_name));
     let stream = model.stream(request, None).expect("stream should open");
     sink.put(drain_stream(stream).await);
 }
@@ -300,7 +299,7 @@ async fn terminal_raw_round_trips_into_provider_type() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
                     probe_request(),
                     sink,
                 )
@@ -403,7 +402,7 @@ async fn raw_exposes_stop_sequence() {
         let sink = sink.clone();
         move |client| async move {
             capture_terminal(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
                 CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
                     .max_tokens(32)
                     .additional_params(json!({ "stop_sequences": ["alpha"] }))
@@ -476,7 +475,7 @@ async fn normalized_terminal_matches_raw_renormalized() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
                     probe_request(),
                     sink,
                 )

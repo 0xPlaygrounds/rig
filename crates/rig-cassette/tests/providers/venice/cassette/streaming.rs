@@ -8,8 +8,7 @@ use crate::support::{
 #[tokio::test]
 async fn streaming_smoke() {
     with_venice_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(DEFAULT_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
             .preamble(STREAMING_PREAMBLE)
             .build();
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();

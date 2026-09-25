@@ -43,7 +43,8 @@ use crate::{
 fn scripted_model(
     chunks: Vec<Bytes>,
 ) -> Model<openai::wire::OpenAiWire, SequencedStreamingHttpClient> {
-    scripted_client(chunks).completion(GPT_4O)
+    let (client, http) = scripted_client(chunks);
+    Model::new(client.completion(GPT_4O), http)
 }
 
 /// The scripted cells' witness check, over this module's credential.
@@ -95,7 +96,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
                 "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
                 |client| async move {
                     let run = native_run(
-                        client.openai.completion(MISSING_MODEL),
+                        rig::model(client.openai.completion(MISSING_MODEL)),
                         "",
                         SETUP_PROMPT,
                         witness,
@@ -382,7 +383,7 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
         for witness in [true, false] {
             let runs = &mut runs;
             with_openai_cassette("streaming/streaming_smoke", |client| async move {
-                let model = client.openai.completion(GPT_4O);
+                let model = rig::model(client.openai.completion(GPT_4O));
                 let run = native_run_serving(
                     |label| crate::ecs_matrix::world::FirstDelta {
                         inner: rig::serve::adapters::ModelAdapter::new(label, model),

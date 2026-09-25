@@ -20,7 +20,6 @@ use rig_ecs::{
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::RunCommands,
 };
-use rig_test_support::endpoint::Endpoint;
 
 #[derive(Resource)]
 struct InvalidPolicy {
@@ -393,9 +392,9 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
 }, |log| rig_test_support::goldens::world_golden_effects("gemini_agent_run_streamed_streamed_hand_driven_multi_turn_run_completes", log)).await
 }
 
-fn setup(client: &Endpoint<Gemini>) -> EcsAgent {
+fn setup(client: &Gemini) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
         FORCE_TOOLS_PREAMBLE,
         1,
     );

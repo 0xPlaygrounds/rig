@@ -13,7 +13,7 @@ fn model(
     client: OpenAiCassette,
     cell: Cell,
 ) -> rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient> {
-    client.openai.chat(cell.model)
+    rig::model(client.openai.chat(cell.model))
 }
 
 const fn cell(source: Source) -> Cell {

@@ -103,9 +103,13 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(CASSETTE_MODEL), request(), sink)
-                .await
-                .expect("stream should open");
+            capture_text_and_sole_terminal(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should open");
         },
     )
     .await;
@@ -155,9 +159,13 @@ async fn raw_exposes_terminal_only_fields() {
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(CASSETTE_MODEL), request(), sink)
-                .await
-                .expect("stream should open");
+            capture_text_and_sole_terminal(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should open");
         },
     )
     .await;

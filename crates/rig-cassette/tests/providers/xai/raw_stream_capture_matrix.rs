@@ -130,7 +130,13 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_text_and_terminal(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -180,7 +186,13 @@ async fn stream_raw_exposes_terminal_status() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
-        |client| capture_terminal(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_terminal(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_status should replay from its cassette");

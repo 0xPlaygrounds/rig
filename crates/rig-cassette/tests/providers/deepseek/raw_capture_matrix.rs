@@ -142,7 +142,13 @@ async fn raw_round_trips_deepseek_type() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_round_trips_deepseek_type",
-        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_round_trips_deepseek_type should replay from its cassette");
@@ -176,7 +182,13 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens",
-        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_exposes_prompt_cache_miss_tokens should replay from its cassette");
@@ -221,7 +233,13 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
@@ -260,7 +278,13 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content",
-        |client| capture_completion(client.completion(MODEL), reasoning_request(), sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                reasoning_request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect(

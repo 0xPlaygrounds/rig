@@ -47,8 +47,6 @@
 //! raw syntax — `<tool_call>{"name": …}</tool_call>` for Qwen — as ordinary
 //! assistant text. Rig surfaces exactly what the server sent, which is right;
 //! the cell records the shape so nobody mistakes it for a rig defect later.
-
-use rig_test_support::endpoint::Endpoint;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -133,7 +131,7 @@ fn recorded_tool_names(scenario: &str) -> Vec<String> {
 #[tokio::test]
 async fn a_zero_argument_tool_is_called_with_an_empty_object() {
     with_llamacpp_competent_cassette("tool_matrix/zero_argument_tool", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Ping the service."))
@@ -224,8 +222,7 @@ async fn a_one_argument_tool_round_trips_its_value() {
     let observed = Arc::clone(&seen);
 
     with_llamacpp_competent_cassette("tool_matrix/one_argument_tool", move |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble("Use the population tool to answer. Report the number it returns verbatim.")
             .tool(Population { seen: observed })
             .max_tokens(512)
@@ -258,7 +255,7 @@ async fn a_one_argument_tool_round_trips_its_value() {
 #[tokio::test]
 async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
     with_llamacpp_competent_cassette("tool_matrix/three_tools", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
@@ -305,7 +302,7 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
 #[tokio::test]
 async fn two_independent_calls_arrive_in_one_turn() {
     with_llamacpp_competent_cassette("tool_matrix/parallel_calls", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!(
@@ -392,8 +389,7 @@ async fn a_tool_that_errors_reports_the_error_back_to_the_model() {
     let calls = Arc::clone(&vault.calls);
 
     with_llamacpp_competent_cassette("tool_matrix/tool_that_errors", move |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble(
                 "Use the open_vault tool when asked to open the vault. If it fails, \
                  tell the user it failed and why.",
@@ -438,7 +434,7 @@ async fn a_tool_that_errors_reports_the_error_back_to_the_model() {
 #[tokio::test]
 async fn tool_choice_auto_lets_the_model_decide() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_auto", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
@@ -479,7 +475,7 @@ async fn tool_choice_auto_lets_the_model_decide() {
 #[tokio::test]
 async fn tool_choice_none_suppresses_the_parsed_call() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_none", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
@@ -560,7 +556,7 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
 #[tokio::test]
 async fn tool_choice_required_forces_a_call() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_required", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Hello there."))
@@ -612,11 +608,12 @@ async fn tool_choice_required_forces_a_call() {
 #[tokio::test]
 async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
-    let model = Endpoint::new(
-        OpenAI::with_key(&LLAMACPP, "").with_base_url("http://127.0.0.1:1/v1"),
+    let model = rig::Model::new(
+        OpenAI::with_key(&LLAMACPP, "")
+            .with_base_url("http://127.0.0.1:1/v1")
+            .completion(CASSETTE_MODEL),
         rig::http_client::ReqwestClient::default(),
-    )
-    .completion(CASSETTE_MODEL);
+    );
 
     let error = model
         .call(
@@ -665,11 +662,12 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 /// that a checked fact rather than a reading.
 #[tokio::test]
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
-    let model = Endpoint::new(
-        OpenAI::with_key(&LLAMACPP, "").with_base_url("http://127.0.0.1:1/v1"),
+    let model = rig::Model::new(
+        OpenAI::with_key(&LLAMACPP, "")
+            .with_base_url("http://127.0.0.1:1/v1")
+            .completion(CASSETTE_MODEL),
         rig::http_client::ReqwestClient::default(),
-    )
-    .completion(CASSETTE_MODEL);
+    );
 
     let error = model
         .stream(
@@ -702,7 +700,7 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
 #[tokio::test]
 async fn a_tool_result_carrying_text_reaches_the_model() {
     with_llamacpp_competent_cassette("tool_matrix/tool_result_text", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(Message::User {
@@ -764,7 +762,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
 #[tokio::test]
 async fn a_tool_result_carrying_json_reaches_the_model() {
     with_llamacpp_competent_cassette("tool_matrix/tool_result_json", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(Message::User {

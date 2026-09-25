@@ -397,8 +397,7 @@ async fn messages_document_file_id_roundtrip_live() {
             let base_url = parts.base_url;
             let api_key = parts.api_key;
             with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
-                let agent = client
-                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                let agent = rig::AgentBuilder::new(rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
                     .preamble(DOCUMENT_PREAMBLE)
                     .build();
                 let mut history = Vec::new();
@@ -459,10 +458,11 @@ async fn streaming_document_file_id_roundtrip_live() {
             let base_url = parts.base_url;
             let api_key = parts.api_key;
             with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
-                let agent = client
-                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .preamble(DOCUMENT_PREAMBLE)
-                    .build();
+                let agent = rig::AgentBuilder::new(rig::model(
+                    client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                ))
+                .preamble(DOCUMENT_PREAMBLE)
+                .build();
 
                 let stream_prompt = direct_file_id_document_question(&file_id, 2);
                 assert_no_verifier_leaked_into_prompt(&stream_prompt);
@@ -495,8 +495,7 @@ async fn file_id_chain() {
             let base_url = parts.base_url;
             let api_key = parts.api_key;
             with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
-                let agent = client
-                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                let agent = rig::AgentBuilder::new(rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
                     .preamble(DOCUMENT_PREAMBLE)
                     .build();
                 let mut history = Vec::new();

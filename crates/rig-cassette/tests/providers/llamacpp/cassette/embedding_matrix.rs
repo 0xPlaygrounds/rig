@@ -61,7 +61,7 @@ fn recorded_widths(scenario: &str) -> Vec<usize> {
 #[tokio::test]
 async fn the_native_width_comes_back_when_none_is_declared() {
     with_llamacpp_embeddings_cassette("embedding_matrix/native_width", |client| async move {
-        let model = client.embedding(CASSETTE_EMBEDDING_MODEL, None);
+        let model = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, None));
         let embeddings = model
             .call(vec!["hello".to_string()], None)
             .await
@@ -89,7 +89,7 @@ async fn a_declared_width_that_matches_is_accepted() {
     with_llamacpp_embeddings_cassette(
         "embedding_matrix/declared_width_matches",
         |client| async move {
-            let model = client.embedding(CASSETTE_EMBEDDING_MODEL, Some(NATIVE_WIDTH));
+            let model = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, Some(NATIVE_WIDTH)));
             assert_eq!(model.wire.capabilities().ndims, NATIVE_WIDTH);
 
             let embeddings = model
@@ -119,7 +119,7 @@ async fn a_declared_width_llamacpp_cannot_honour_is_refused() {
     with_llamacpp_embeddings_cassette(
         "embedding_matrix/declared_width_mismatches",
         |client| async move {
-            let model = client.embedding(CASSETTE_EMBEDDING_MODEL, Some(128));
+            let model = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, Some(128)));
             let error = model
                 .call(vec!["hello".to_string()], None)
                 .await
@@ -163,7 +163,7 @@ async fn a_declared_width_llamacpp_cannot_honour_is_refused() {
 #[tokio::test]
 async fn several_inputs_come_back_in_order_at_one_width() {
     with_llamacpp_embeddings_cassette("embedding_matrix/batch", |client| async move {
-        let model = client.embedding(CASSETTE_EMBEDDING_MODEL, None);
+        let model = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, None));
         let inputs = [
             "alpha".to_string(),
             "bravo".to_string(),

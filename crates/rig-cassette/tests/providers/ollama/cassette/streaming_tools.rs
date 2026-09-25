@@ -16,8 +16,7 @@ async fn streaming_tools_smoke() {
     with_ollama_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)

@@ -8,18 +8,17 @@
 
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn wire(
-    client: &Endpoint<Anthropic>,
+    client: &Anthropic,
 ) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>>
 {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client.completion(CLAUDE_SONNET_4_6),
+        model: rig::model(client.completion(CLAUDE_SONNET_4_6)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

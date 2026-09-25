@@ -17,7 +17,6 @@ use rig_ecs::{
     agent::{Grant, PolicyVersion, Temperature},
     bus::{EffectOutcome, Handlers, PendingEffect, Policy},
 };
-use rig_test_support::endpoint::Endpoint;
 // Reuse the existing native graph-producing systems, not recorded leaf handlers.
 // Here their model child is served by the real provider adapter through cassettes.
 // The matrix's corpus (`crate::ecs_matrix::corpus`) includes the same file
@@ -29,12 +28,9 @@ struct Host {
     serial: bool,
     streamed: bool,
 }
-async fn over_host(
-    client: Endpoint<Anthropic>,
-    host: Host,
-) -> rig::cassette::effect_log::EffectLog {
+async fn over_host(client: Anthropic, host: Host) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        client.completion(CLAUDE_SONNET_4_6),
+        rig::model(client.completion(CLAUDE_SONNET_4_6)),
         TOOLS_PREAMBLE,
         host.streamed,
     );

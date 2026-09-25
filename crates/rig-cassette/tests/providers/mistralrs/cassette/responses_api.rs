@@ -18,10 +18,9 @@ async fn responses_api_no_think_returns_text() {
         |client| async move {
             // mistral.rs does not accept top-level `instructions`, so the
             // placement is a wire option rather than a client setting.
-            let model = rig_test_support::endpoint::map_wire(
+            let model = rig::model(Responses::with_system_instructions_as_messages(
                 client.responses(model_name()),
-                Responses::with_system_instructions_as_messages,
-            );
+            ));
             let agent = AgentBuilder::new(model)
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
@@ -44,8 +43,7 @@ async fn responses_api_reasoning_plus_answer_completes() {
     with_mistralrs_cassette(
         "responses_api/responses_api_reasoning_plus_answer_completes",
         |client| async move {
-            let model = rig_test_support::endpoint::map_wire(client
-                .responses(model_name()), Responses::with_system_instructions_as_messages);
+            let model = rig::model(Responses::with_system_instructions_as_messages(client.responses(model_name())));
             let request = CompletionRequestBuilder::new(
                     "Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.",
                 )
@@ -90,10 +88,9 @@ async fn responses_api_multi_turn_replays_history() {
     with_mistralrs_cassette(
         "responses_api/responses_api_multi_turn_replays_history",
         |client| async move {
-            let model = rig_test_support::endpoint::map_wire(
+            let model = rig::model(Responses::with_system_instructions_as_messages(
                 client.responses(model_name()),
-                Responses::with_system_instructions_as_messages,
-            );
+            ));
             let agent = AgentBuilder::new(model)
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(256)

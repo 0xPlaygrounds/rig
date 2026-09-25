@@ -103,7 +103,7 @@ async fn raw_is_the_reply_document() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            capture_completion(client.chat(model_name()), request(), sink)
+            capture_completion(rig::model(client.chat(model_name())), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -145,7 +145,7 @@ async fn raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_exposes_envelope_fields",
         |client| async move {
-            capture_completion(client.chat(model_name()), request(), sink)
+            capture_completion(rig::model(client.chat(model_name())), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -194,7 +194,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.chat(model_name()), request(), sink)
+            capture_completion(rig::model(client.chat(model_name())), request(), sink)
                 .await
                 .expect("completion should succeed");
         },

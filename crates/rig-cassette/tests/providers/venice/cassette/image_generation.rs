@@ -15,7 +15,7 @@ async fn image_generation_smoke() {
     with_venice_cassette(
         "image_generation/image_generation_smoke",
         |client| async move {
-            let model = client.image_generation(venice::VENICE_SD35);
+            let model = rig::model(client.image_generation(venice::VENICE_SD35));
             let response = model
                 .call(
                     ImageGenerationRequestBuilder::new(

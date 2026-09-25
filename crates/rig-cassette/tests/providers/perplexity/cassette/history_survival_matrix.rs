@@ -7,18 +7,19 @@
 
 use rig::providers::perplexity;
 
-use super::super::support::{BoundPerplexity, with_perplexity_cassette};
+use super::super::support::with_perplexity_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
 fn model(
-    client: BoundPerplexity,
+    client: OpenAI,
     cell: Cell,
 ) -> rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient> {
-    client.completion(cell.model)
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

@@ -8,8 +8,7 @@ use crate::zai::anthropic_client;
 #[tokio::test]
 #[ignore = "requires ZAI_API_KEY"]
 async fn anthropic_compatible_completion_smoke() {
-    let response = anthropic_client()
-        .agent(zai::GLM_4_6)
+    let response = rig::AgentBuilder::new(rig::model(anthropic_client().completion(zai::GLM_4_6)))
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

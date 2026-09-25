@@ -23,13 +23,14 @@ async fn add_tool_between_turns_appears_in_next_request() {
         "tool_server/add_tool_between_turns_appears_in_next_request",
         |client| async move {
             let handle = ToolServer::new().tool(add).run();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool_server_handle(handle.clone())
-                .default_max_turns(3)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool_server_handle(handle.clone())
+            .default_max_turns(3)
+            .build();
 
             let mut history = Vec::<Message>::new();
             let first = agent
@@ -71,8 +72,7 @@ async fn remove_tool_between_turns_drops_definition() {
         "tool_server/remove_tool_between_turns_drops_definition",
         |client| async move {
             let handle = ToolServer::new().tool(add).tool(subtract).run();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool_server_handle(handle.clone())
@@ -121,20 +121,22 @@ async fn shared_tool_server_handle_updates_all_agents() {
         "tool_server/shared_tool_server_handle_updates_all_agents",
         |client| async move {
             let handle = ToolServer::new().tool(add).run();
-            let first_agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool_server_handle(handle.clone())
-                .default_max_turns(3)
-                .build();
-            let second_agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool_server_handle(handle.clone())
-                .default_max_turns(3)
-                .build();
+            let first_agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool_server_handle(handle.clone())
+            .default_max_turns(3)
+            .build();
+            let second_agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .temperature(0.0)
+            .tool_server_handle(handle.clone())
+            .default_max_turns(3)
+            .build();
 
             let mut history = Vec::<Message>::new();
             let first = first_agent

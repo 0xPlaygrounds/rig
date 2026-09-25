@@ -8,16 +8,17 @@
 
 use rig::providers::doubleword::{QWEN3_5_9B, QWEN3_5_397B_A17B};
 
-use super::super::support::{BoundDoubleword, with_doubleword_cassette};
+use super::super::support::with_doubleword_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
+use rig::providers::openai::OpenAI;
 
 fn wire(
-    client: &BoundDoubleword,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
-        route: Some(client.completion(QWEN3_5_9B)),
+        model: rig::model(client.completion(QWEN3_5_397B_A17B)),
+        route: Some(rig::model(client.completion(QWEN3_5_9B))),
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
     }
@@ -215,11 +216,11 @@ crate::matrix::native_matrix! {
 
 // Reasoning matrix: the named thinking model, with the shared knob.
 fn reasoning_wire(
-    client: &BoundDoubleword,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::Doubleword,
-        model: client.completion("Qwen/Qwen3.5-397B-A17B-FP8"),
+        model: rig::model(client.completion("Qwen/Qwen3.5-397B-A17B-FP8")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

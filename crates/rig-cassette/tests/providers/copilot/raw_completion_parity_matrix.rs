@@ -98,7 +98,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     with_copilot_cassette_result(
         "raw_completion_parity_matrix/chat_raw_with_request_id_reproduces_completion",
         |client| async move {
-            let model = client.completion(CHAT_MODEL);
+            let model = rig::model(client.completion(CHAT_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
@@ -154,7 +154,7 @@ async fn responses_raw_completion_carries_request_id() {
     with_copilot_cassette_result(
         "raw_completion_parity_matrix/responses_raw_completion_carries_request_id",
         |client| async move {
-            let model = client.completion(RESPONSES_MODEL);
+            let model = rig::model(client.completion(RESPONSES_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: a codex model routes through /responses"

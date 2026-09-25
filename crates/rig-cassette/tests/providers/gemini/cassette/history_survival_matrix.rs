@@ -1,8 +1,9 @@
 //! Gemini history survival: thought signatures and function-call ids across
 //! three prompts, plus an image tool result.
 
-use super::super::support::{BoundGemini, with_gemini_cassette};
+use super::super::support::with_gemini_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::providers::gemini::Gemini;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({
@@ -13,13 +14,13 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(
-    client: BoundGemini,
+    client: Gemini,
     cell: Cell,
 ) -> rig::Model<
     rig::providers::gemini::completion::GenerateContent,
     rig::http_client::BoxedHttpClient,
 > {
-    client.completion(cell.model)
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

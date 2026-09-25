@@ -121,7 +121,7 @@ async fn thinking_multi_block_turn_keeps_discrete_parts() {
     with_anthropic_cassette(
         "streaming_grammar/thinking_multi_block_turn",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = CompletionRequestBuilder::new(
                 "How many positive integers n < 300 are divisible by 8 but not by 12? \
                      Think it through, then answer with just the number.",
@@ -182,7 +182,7 @@ async fn thinking_multi_block_turn_keeps_discrete_parts() {
 #[tokio::test]
 async fn parallel_tool_use_stays_distinct() {
     with_anthropic_cassette("streaming_grammar/parallel_tool_use", |client| async move {
-        let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+        let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
         let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
             .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))

@@ -15,11 +15,12 @@ use crate::support::{
 #[tokio::test]
 async fn image_prompt_from_fixture() {
     with_anthropic_cassette("image/image_prompt_from_fixture", |client| async move {
-        let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble("You are an image describer.")
-            .temperature(0.5)
-            .build();
+        let agent = rig::AgentBuilder::new(rig::model(
+            client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+        ))
+        .preamble("You are an image describer.")
+        .temperature(0.5)
+        .build();
 
         let image_bytes = fs::read(IMAGE_FIXTURE_PATH)
             .await

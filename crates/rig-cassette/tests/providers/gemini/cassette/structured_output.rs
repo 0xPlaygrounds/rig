@@ -4,7 +4,6 @@ use rig::agent::OutputMode;
 use rig::providers::gemini::{self, Gemini};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_agent::test_utils::decode_structured_output;
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::{
@@ -64,11 +63,11 @@ async fn structured_output_smoke() {
     with_gemini_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = client
-                .agent("gemini-3-flash-preview")
-                .output_schema::<SmokeStructuredOutput>()
-                .output_mode(OutputMode::Native)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.completion("gemini-3-flash-preview")))
+                    .output_schema::<SmokeStructuredOutput>()
+                    .output_mode(OutputMode::Native)
+                    .build();
 
             let response = agent
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
@@ -90,13 +89,15 @@ async fn classic_invalid_output_recovers_through_gemini_generate_content() {
         MockHttpResponse::success(text_response("not valid JSON", "gemini-runtime-invalid")),
         MockHttpResponse::success(output_tool_response("final_result")),
     ]);
-    let client = Endpoint::new(Gemini::new("test-key"), http.clone());
-    let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
-        .output_schema::<SmokeStructuredOutput>()
-        .output_mode(OutputMode::Tool)
-        .default_max_turns(2)
-        .build();
+    let client = Gemini::new("test-key");
+    let agent = rig::AgentBuilder::new(rig::Model::new(
+        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+        http.clone(),
+    ))
+    .output_schema::<SmokeStructuredOutput>()
+    .output_mode(OutputMode::Tool)
+    .default_max_turns(2)
+    .build();
 
     let response = agent
         .prompt(STRUCTURED_OUTPUT_PROMPT)

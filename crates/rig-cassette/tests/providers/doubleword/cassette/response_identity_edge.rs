@@ -30,7 +30,7 @@ async fn blocking_identity_contract_vs_reality() {
     with_doubleword_cassette(
         "response_identity_edge/blocking_identity_contract_vs_reality",
         |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
+            let model = rig::model(client.completion(DEFAULT_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Reply with exactly: identity probe")
@@ -58,7 +58,7 @@ async fn streaming_identity_contract_vs_reality() {
     with_doubleword_cassette(
         "response_identity_edge/streaming_identity_contract_vs_reality",
         |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
+            let model = rig::model(client.completion(DEFAULT_MODEL));
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")

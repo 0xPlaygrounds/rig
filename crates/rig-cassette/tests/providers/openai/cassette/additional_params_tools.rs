@@ -21,7 +21,7 @@ async fn builder_tools_survive_additional_params_tools() {
     with_openai_completions_cassette(
         "additional_params_tools/builder_tools_survive_additional_params_tools",
         |client| async move {
-            let model = client.chat("gpt-4o-mini");
+            let model = rig::model(client.chat("gpt-4o-mini"));
             let request = CompletionRequestBuilder::new(
                     "Call the lookup_alpha tool now. Do not call any other tool.",
                 )

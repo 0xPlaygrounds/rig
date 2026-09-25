@@ -6,15 +6,16 @@
 
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 
-use super::super::support::{BoundVenice, with_venice_cassette};
+use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
+use rig::providers::openai::OpenAI;
 
 fn wire(
-    client: &BoundVenice,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion(MISTRAL_SMALL_3_2_24B),
+        model: rig::model(client.completion(MISTRAL_SMALL_3_2_24B)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -23,11 +24,11 @@ fn wire(
 
 /// The wire over the model it refuses: the setup cells' request.
 fn missing(
-    client: &BoundVenice,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion("venice-nonexistent-rig-test"),
+        model: rig::model(client.completion("venice-nonexistent-rig-test")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

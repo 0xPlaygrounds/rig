@@ -37,7 +37,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "default",
-                    client.completion(CLAUDE_SONNET_4_6),
+                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
                 )),
             )
             .expect("a fresh key");
@@ -94,8 +94,7 @@ async fn stop_after_turn_two_effect_log_is_the_golden_fixture() {
         "corpus_oracle/stop_after_turn_two",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)

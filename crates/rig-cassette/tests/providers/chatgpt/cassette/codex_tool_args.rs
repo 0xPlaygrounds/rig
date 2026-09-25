@@ -158,7 +158,7 @@ async fn zero_argument_tool_call_streaming() {
     with_chatgpt_cassette(
         "codex_tool_args/zero_argument_tool_call_streaming",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = rig::model(client.completion(chatgpt::GPT_5_4));
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
                 .tool(zero_arg_tool_definition("ping"))
@@ -179,7 +179,7 @@ async fn zero_argument_tool_call_nonstreaming() {
     with_chatgpt_cassette(
         "codex_tool_args/zero_argument_tool_call_nonstreaming",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = rig::model(client.completion(chatgpt::GPT_5_4));
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
                 .tool(zero_arg_tool_definition("ping"))
@@ -214,8 +214,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
     with_chatgpt_cassette(
         "codex_tool_args/nested_arguments_roundtrip_nonstreaming",
         |client| async move {
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
                 .preamble(NESTED_ARGS_PREAMBLE)
                 .tool(PlanTrip)
                 .default_max_turns(4)
@@ -259,7 +258,7 @@ async fn nested_arguments_streaming() {
     with_chatgpt_cassette(
         "codex_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = rig::model(client.completion(chatgpt::GPT_5_4));
             let request = CompletionRequestBuilder::new(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&PlanTrip))
@@ -293,7 +292,7 @@ async fn unicode_arguments_streaming() {
     with_chatgpt_cassette(
         "codex_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = rig::model(client.completion(chatgpt::GPT_5_4));
             let request = CompletionRequestBuilder::new(
                 "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",

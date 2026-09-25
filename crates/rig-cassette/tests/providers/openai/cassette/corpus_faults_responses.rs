@@ -14,7 +14,7 @@ fn wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_5_MINI),
+        model: rig::model(client.openai.completion(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,
@@ -27,7 +27,7 @@ fn missing(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion("gpt-4o-mini-nonexistent-rig-test"),
+        model: rig::model(client.openai.completion("gpt-4o-mini-nonexistent-rig-test")),
         route: None,
         temperature: None,
         additional_params: None,

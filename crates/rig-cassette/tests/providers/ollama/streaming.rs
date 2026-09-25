@@ -1,18 +1,17 @@
 //! Migrated from `examples/ollama_streaming.rs`.
 
 use rig::providers::ollama::wire::Ollama;
-use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn example_streaming_prompt() {
-    let agent = Endpoint::new(
-        Ollama::from_env().expect("config should build from env"),
-        rig::rig_reqwest::shared(),
-    )
-    .agent("llama3.2")
+    let agent = rig::AgentBuilder::new(rig::model(
+        Ollama::from_env()
+            .expect("config should build from env")
+            .completion("llama3.2"),
+    ))
     .preamble("Be precise and concise.")
     .temperature(0.5)
     .build();

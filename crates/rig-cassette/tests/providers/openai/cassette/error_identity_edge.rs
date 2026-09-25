@@ -20,7 +20,7 @@ async fn auth_rejection_carries_identity() {
     with_openai_cassette_bogus_key(
         "error_identity_edge/auth_rejection_carries_identity",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = rig::model(client.openai.completion(openai::GPT_4O));
             let error = model
                 .call(
                     CompletionRequestBuilder::new("Never authenticated").build(),
@@ -49,7 +49,7 @@ async fn nonexistent_previous_response_reference_carries_identity() {
     with_openai_cassette(
         "error_identity_edge/nonexistent_previous_response_reference_carries_identity",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = rig::model(client.openai.completion(openai::GPT_4O));
             let error = model
                 .call(CompletionRequestBuilder::new("Continue the conversation")
                 .additional_params(serde_json::json!({
@@ -79,7 +79,7 @@ async fn chat_completions_validation_error_carries_identity() {
     with_openai_completions_cassette(
         "error_identity_edge/chat_completions_validation_error_carries_identity",
         |client| async move {
-            let model = client.chat(openai::GPT_4O);
+            let model = rig::model(client.chat(openai::GPT_4O));
             let error = model
                 .call(
                     CompletionRequestBuilder::new("Never validated")
@@ -109,9 +109,11 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
     with_openai_cassette(
         "error_identity_edge/streaming_connect_4xx_matches_blocking_richness",
         |client| async move {
-            let model = client
-                .openai
-                .completion("gpt-nonexistent-model-for-error-edge");
+            let model = rig::model(
+                client
+                    .openai
+                    .completion("gpt-nonexistent-model-for-error-edge"),
+            );
             let result = model.stream(
                 CompletionRequestBuilder::new("Never streamed").build(),
                 None,
@@ -146,9 +148,11 @@ async fn embeddings_error_preserves_status_and_body() {
     with_openai_cassette(
         "error_identity_edge/embeddings_error_preserves_status_and_body",
         |client| async move {
-            let model = client
-                .openai
-                .embedding("text-embedding-nonexistent-model", None);
+            let model = rig::model(
+                client
+                    .openai
+                    .embedding("text-embedding-nonexistent-model", None),
+            );
             let error = model
                 .embed_text("never embedded")
                 .await
@@ -175,9 +179,7 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
     with_openai_cassette_bogus_key(
         "error_identity_edge/model_listing_auth_failure_keeps_api_error_context",
         |client| async move {
-            let error = client
-                .openai
-                .models()
+            let error = rig::model(client.openai.models())
                 .call((), None)
                 .await
                 .expect_err("a bogus key must fail the listing");
@@ -203,9 +205,7 @@ async fn verify_reports_invalid_authentication() {
     with_openai_cassette_bogus_key(
         "error_identity_edge/verify_reports_invalid_authentication",
         |client| async move {
-            let error = client
-                .openai
-                .verify()
+            let error = rig::model(client.openai.verify())
                 .verify()
                 .await
                 .expect_err("a bogus key must fail verification");
@@ -235,11 +235,11 @@ async fn extractor_failure_surfaces_provider_error_context() {
     with_openai_cassette(
         "error_identity_edge/extractor_failure_surfaces_provider_error_context",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Probe>::new(
+            let extractor = rig::extractor::ExtractorBuilder::<Probe>::new(rig::model(
                 client
                     .openai
                     .completion("gpt-nonexistent-model-for-error-edge"),
-            )
+            ))
             .build();
             let error = extractor
                 .extract("never extracted")

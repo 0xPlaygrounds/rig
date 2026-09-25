@@ -12,7 +12,7 @@ $crate::goldens::world_golden_test(async {
                 let probe = TurnTerminationProbe::default();
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                    let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), CONCISE_PREAMBLE, 1);
                     ecs.app
                         .world_mut()
                         .entity_mut(ecs.agent)
@@ -53,7 +53,7 @@ $crate::goldens::world_golden_test(async {
                 let probe = TurnTerminationProbe::default();
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                    let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), CONCISE_PREAMBLE, 1);
                     ecs.app
                         .world_mut()
                         .entity_mut(ecs.agent)
@@ -84,7 +84,7 @@ $crate::goldens::world_golden_test(async {
                 let probe = TurnTerminationProbe::default();
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                    let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), CONCISE_PREAMBLE, 1);
                     ecs.app
                         .world_mut()
                         .entity_mut(ecs.agent)
@@ -115,7 +115,7 @@ $crate::goldens::world_golden_test(async {
                 let probe = TurnTerminationProbe::default();
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                    let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), CONCISE_PREAMBLE, 1);
                     ecs.app
                         .world_mut()
                         .entity_mut(ecs.agent)
@@ -140,7 +140,7 @@ $crate::goldens::world_golden_test(async {
                 let probe = TurnTerminationProbe::default();
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), TOOL_PREAMBLE, 1);
+                    let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), TOOL_PREAMBLE, 1);
                     ecs.app
                         .world_mut()
                         .entity_mut(ecs.agent)
@@ -176,7 +176,7 @@ $crate::goldens::world_golden_test(async {
                 let probe = TurnTerminationProbe::default();
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), TOOL_PREAMBLE, 1);
+                    let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), TOOL_PREAMBLE, 1);
                     ecs.app
                         .world_mut()
                         .entity_mut(ecs.agent)
@@ -208,7 +208,7 @@ $crate::goldens::world_golden_test(async {
                 let observed = probe.clone();
                 let escalations = escalate.clone();
                 $wrapper($scenario, |client| async move {
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                    let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), CONCISE_PREAMBLE, 1);
                     ecs.app
                         .world_mut()
                         .entity_mut(ecs.agent)
@@ -248,7 +248,7 @@ $crate::goldens::world_golden_test(async {
                 let observed = probe.clone();
                 let escalations = escalate.clone();
                 $wrapper($scenario, |client| async move {
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                    let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), CONCISE_PREAMBLE, 1);
                     ecs.app
                         .world_mut()
                         .entity_mut(ecs.agent)

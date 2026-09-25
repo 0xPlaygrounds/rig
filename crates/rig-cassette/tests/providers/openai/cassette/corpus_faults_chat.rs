@@ -14,7 +14,7 @@ fn wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat(GPT_5_MINI),
+        model: rig::model(client.openai.chat(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,
@@ -27,7 +27,7 @@ fn missing(
 ) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat("gpt-5-mini-nonexistent-rig-test"),
+        model: rig::model(client.openai.chat("gpt-5-mini-nonexistent-rig-test")),
         route: None,
         temperature: None,
         additional_params: None,

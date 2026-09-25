@@ -464,8 +464,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(SESSION_MODEL)))
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -524,7 +523,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion(SESSION_MODEL);
+            let model = rig::model(client.completion(SESSION_MODEL));
             let tool = InspectManifest { log };
             let request = CompletionRequestBuilder::new(
                     "Call inspect_manifest exactly once for project rig-xai with critical=true, retries=2, \
@@ -563,7 +562,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = rig::model(client.completion(SESSION_MODEL));
             let request = CompletionRequestBuilder::new(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
                      and which release lane did I choose? Do not call any tools.",
@@ -618,7 +617,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = rig::model(client.completion(SESSION_MODEL));
 
             let required = model
                 .call(CompletionRequestBuilder::new(
@@ -688,7 +687,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
     with_xai_cassette_result(
         "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
         |client| async move {
-            let model = client.completion(REASONING_MODEL);
+            let model = rig::model(client.completion(REASONING_MODEL));
             let request = CompletionRequestBuilder::new(
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
                 )
@@ -744,7 +743,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
         |client| async move {
-            let model = client.completion(SESSION_MODEL);
+            let model = rig::model(client.completion(SESSION_MODEL));
             let request = CompletionRequestBuilder::new(
                     "Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.",
                 )
@@ -825,8 +824,7 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/multimodal_image_input_mixed_text_ordering",
         |client| async move {
-            let agent = client
-                .agent(VISION_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
                 .preamble("You answer image questions concisely and directly.")
                 .build();
 

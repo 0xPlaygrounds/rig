@@ -16,8 +16,8 @@ use rig::audio_generation::AudioGenerationRequestBuilder;
 async fn audio_generation_smoke() {
     with_venice_direct_cassette(
         "audio_generation/audio_generation_smoke",
-        |client| async move {
-            let model = client.audio_generation(venice::TTS_KOKORO);
+        |client, http| async move {
+            let model = rig::Model::new(client.audio_generation(venice::TTS_KOKORO), http.clone());
             let response = model
                 .call(
                     AudioGenerationRequestBuilder::new("Rig speaks.", "af_sky")

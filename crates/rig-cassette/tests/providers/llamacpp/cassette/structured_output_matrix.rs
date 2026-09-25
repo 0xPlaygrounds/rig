@@ -81,7 +81,7 @@ async fn json_object_response_format_is_enforced_as_an_object() {
     with_llamacpp_cassette(
         "structured_output_matrix/json_object_is_enforced",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(format!(
@@ -131,7 +131,7 @@ async fn json_schema_response_format_is_enforced_by_the_server() {
     with_llamacpp_competent_cassette(
         "structured_output_matrix/json_schema_is_enforced",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(format!(
@@ -185,7 +185,7 @@ async fn a_gbnf_grammar_through_additional_params_is_enforced() {
     with_llamacpp_cassette(
         "structured_output_matrix/gbnf_grammar_is_enforced",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(format!(
@@ -233,7 +233,7 @@ async fn a_schema_and_a_grammar_together_are_rejected() {
     with_llamacpp_cassette(
         "structured_output_matrix/schema_and_grammar_conflict",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let error = model
                 .call(
                     CompletionRequestBuilder::new(format!("{NO_THINK}Give a fact about Paris."))
@@ -293,7 +293,7 @@ async fn response_format_and_a_grammar_silently_let_the_schema_win() {
     with_llamacpp_competent_cassette(
         "structured_output_matrix/response_format_beats_grammar_silently",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(format!(
@@ -351,7 +351,7 @@ async fn a_schema_the_smoke_tier_cannot_hold_is_still_held_by_the_server() {
     with_llamacpp_cassette(
         "structured_output_matrix/smoke_tier_cannot_escape_the_grammar",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(
@@ -407,7 +407,7 @@ async fn a_schema_alongside_tools_is_deferred_so_the_tool_stays_reachable() {
     with_llamacpp_competent_cassette(
         "structured_output_matrix/schema_alongside_tools",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(format!("{NO_THINK}Look up Paris."))

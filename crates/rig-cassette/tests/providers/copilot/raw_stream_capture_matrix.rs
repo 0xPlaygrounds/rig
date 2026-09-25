@@ -142,7 +142,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(CHAT_MODEL);
+            let model = rig::model(client.completion(CHAT_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
@@ -181,7 +181,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage",
         |client| async move {
-            capture_sole_terminal(client.completion(CHAT_MODEL), request(), sink).await
+            capture_sole_terminal(rig::model(client.completion(CHAT_MODEL)), request(), sink).await
         },
     )
     .await
@@ -253,7 +253,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(RESPONSES_MODEL);
+            let model = rig::model(client.completion(RESPONSES_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
@@ -290,7 +290,12 @@ async fn responses_stream_raw_exposes_terminal_status() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status",
         |client| async move {
-            capture_sole_terminal(client.completion(RESPONSES_MODEL), request(), sink).await
+            capture_sole_terminal(
+                rig::model(client.completion(RESPONSES_MODEL)),
+                request(),
+                sink,
+            )
+            .await
         },
     )
     .await

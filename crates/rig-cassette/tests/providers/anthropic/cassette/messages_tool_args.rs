@@ -158,7 +158,7 @@ async fn zero_argument_tool_use_streaming() {
     with_anthropic_cassette(
         "messages_tool_args/zero_argument_tool_use_streaming",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
                 .max_tokens(1024)
@@ -180,7 +180,7 @@ async fn zero_argument_tool_use_nonstreaming() {
     with_anthropic_cassette(
         "messages_tool_args/zero_argument_tool_use_nonstreaming",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
                 .max_tokens(1024)
@@ -216,13 +216,14 @@ async fn nested_arguments_roundtrip_nonstreaming() {
     with_anthropic_cassette(
         "messages_tool_args/nested_arguments_roundtrip_nonstreaming",
         |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble(NESTED_ARGS_PREAMBLE)
-                .max_tokens(2048)
-                .tool(PlanTrip)
-                .default_max_turns(4)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+            ))
+            .preamble(NESTED_ARGS_PREAMBLE)
+            .max_tokens(2048)
+            .tool(PlanTrip)
+            .default_max_turns(4)
+            .build();
             let mut history = Vec::<Message>::new();
 
             let result = agent
@@ -263,7 +264,7 @@ async fn nested_arguments_streaming() {
     with_anthropic_cassette(
         "messages_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = CompletionRequestBuilder::new(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .max_tokens(2048)
@@ -298,7 +299,7 @@ async fn unicode_arguments_streaming() {
     with_anthropic_cassette(
         "messages_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let request = CompletionRequestBuilder::new(
                 "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",

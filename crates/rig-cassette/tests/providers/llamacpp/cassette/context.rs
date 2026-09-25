@@ -9,9 +9,10 @@ async fn context_smoke() {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(CASSETTE_MODEL), |builder, doc| {
-                builder.context(doc)
-            })
+            .fold(
+                rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL))),
+                |builder, doc| builder.context(doc),
+            )
             .build();
 
         let response = agent

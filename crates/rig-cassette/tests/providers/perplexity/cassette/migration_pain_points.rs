@@ -16,7 +16,7 @@ async fn text_only_content_parts_are_flattened() {
     with_perplexity_cassette(
         "migration_pain_points/text_only_content_parts_are_flattened",
         |client| async move {
-            let model = client.completion(perplexity::SONAR);
+            let model = rig::model(client.completion(perplexity::SONAR));
             let prompt = Message::User {
                 content: vec![
                     UserContent::text("First text part: amber."),
@@ -49,7 +49,7 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
     with_perplexity_cassette(
         "migration_pain_points/tool_exchange_history_is_stripped_and_remerged",
         |client| async move {
-            let model = client.completion(perplexity::SONAR);
+            let model = rig::model(client.completion(perplexity::SONAR));
             let tool_call = ToolCall::from_wire(
                 "call_amber",
                 ToolFunction::new("lookup_code_word".to_string(), json!({})),
@@ -95,7 +95,7 @@ async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
     with_perplexity_cassette(
         "migration_pain_points/unsupported_tools_and_multi_name_tool_choice_are_dropped",
         |client| async move {
-            let model = client.completion(perplexity::SONAR);
+            let model = rig::model(client.completion(perplexity::SONAR));
             let response = model
                 .call(CompletionRequestBuilder::new("Reply with exactly: tools dropped ok")
                 .preamble("Follow the user's requested exact reply.".to_string())
@@ -124,7 +124,7 @@ async fn output_schema_is_dropped_instead_of_sent_as_response_format() {
     with_perplexity_cassette(
         "migration_pain_points/output_schema_is_dropped_instead_of_sent_as_response_format",
         |client| async move {
-            let model = client.completion(perplexity::SONAR);
+            let model = rig::model(client.completion(perplexity::SONAR));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(

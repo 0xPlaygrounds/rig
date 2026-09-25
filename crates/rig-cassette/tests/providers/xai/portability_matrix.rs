@@ -2,7 +2,6 @@
 //! Anthropic-signed and Gemini-signed reasoning beside a tool exchange.
 
 use rig::providers::xai;
-use rig_test_support::endpoint::Endpoint;
 
 use super::support::with_xai_cassette;
 use crate::history_survival::portability::{Cell, Source};
@@ -12,10 +11,10 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(
-    client: Endpoint<rig::providers::openai::OpenAI>,
+    client: rig::providers::openai::OpenAI,
     cell: Cell,
 ) -> rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient> {
-    client.completion(cell.model)
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(source: Source) -> Cell {

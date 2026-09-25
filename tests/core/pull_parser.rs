@@ -12,7 +12,6 @@ use rig_core::{
     streaming::{StreamEvent, StreamEvents},
     wasm_compat::WasmCompatSend,
 };
-use rig_test_support::endpoint::Endpoint;
 use std::{
     pin::Pin,
     task::{Context, Poll, Waker},
@@ -135,23 +134,30 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
     match provider {
         "openai" => {
             adapted(
-                Endpoint::new(OpenAI::with_key(&OPENAI, "test-not-a-key"), http).chat("gpt-4o"),
+                rig::Model::new(
+                    OpenAI::with_key(&OPENAI, "test-not-a-key").chat("gpt-4o"),
+                    http,
+                ),
                 direct,
             )
             .await
         }
         "deepseek" => {
             adapted(
-                Endpoint::new(OpenAI::with_key(&DEEPSEEK, "test-not-a-key"), http)
-                    .completion("deepseek-reasoner"),
+                rig::Model::new(
+                    OpenAI::with_key(&DEEPSEEK, "test-not-a-key").completion("deepseek-reasoner"),
+                    http,
+                ),
                 direct,
             )
             .await
         }
         "anthropic" => {
             adapted(
-                Endpoint::new(Anthropic::new("test-not-a-key"), http)
-                    .completion("claude-sonnet-4-5"),
+                rig::Model::new(
+                    Anthropic::new("test-not-a-key").completion("claude-sonnet-4-5"),
+                    http,
+                ),
                 direct,
             )
             .await

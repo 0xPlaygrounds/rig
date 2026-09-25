@@ -7,7 +7,6 @@ use rig::providers::openai;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
-use rig_test_support::endpoint::Endpoint;
 
 use crate::support::assert_nonempty_response;
 use rig::completion::CompletionRequestBuilder;
@@ -26,11 +25,8 @@ fn extract_text(choice: &[AssistantContent]) -> String {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn websocket_session_roundtrip() -> Result<()> {
-    let client = Endpoint::new(
-        OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::shared(),
-    );
-    let model = client.responses(openai::GPT_4O_MINI);
+    let client = OpenAI::from_env().expect("config should build from env");
+    let model = rig::model(client.responses(openai::GPT_4O_MINI));
     let mut session = model.responses_websocket().await?;
 
     let warmup_request =

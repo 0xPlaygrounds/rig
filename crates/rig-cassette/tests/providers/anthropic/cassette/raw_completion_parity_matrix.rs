@@ -49,7 +49,6 @@ use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::streaming::StreamFinal;
 use rig::tool::Tool;
-use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 
 use super::super::support::{
@@ -319,11 +318,11 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
 /// shared counterpart, so the two drains stay here — each through the shared
 /// [`collect_required_terminal`].
 async fn capture_terminal_pair(
-    client: Endpoint<Anthropic>,
+    client: Anthropic,
     request: rig::completion::CompletionRequest,
     sink: Observed<(StreamFinal, StreamFinal)>,
 ) {
-    let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
+    let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
 
     let normalized = collect_required_terminal(
         model
@@ -380,7 +379,7 @@ async fn text_turn_parity() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion_pair(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
                 text_request(),
                 sink,
             )
@@ -404,7 +403,7 @@ async fn tool_call_turn_parity() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion_pair(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
                 tool_request(),
                 sink,
             )

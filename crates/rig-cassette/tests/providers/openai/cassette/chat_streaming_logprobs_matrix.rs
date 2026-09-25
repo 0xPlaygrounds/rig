@@ -129,7 +129,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = rig::model(client.openai.chat(model_name(cell.model)));
     let request = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell))

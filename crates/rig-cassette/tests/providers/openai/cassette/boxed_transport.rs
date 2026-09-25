@@ -8,7 +8,7 @@
 
 use rig::providers::openai;
 
-use super::super::support::with_openai_boxed_cassette;
+use super::super::support::with_openai_cassette;
 use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response,
     collect_stream_final_response_and_provider_final,
@@ -16,10 +16,8 @@ use crate::support::{
 
 #[tokio::test]
 async fn completion_smoke_through_boxed_transport() {
-    with_openai_boxed_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+    with_openai_cassette("agent/completion_smoke", |client| async move {
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .preamble(BASIC_PREAMBLE)
             .build();
 
@@ -36,10 +34,8 @@ async fn completion_smoke_through_boxed_transport() {
 
 #[tokio::test]
 async fn streaming_smoke_through_boxed_transport() {
-    with_openai_boxed_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+    with_openai_cassette("streaming/streaming_smoke", |client| async move {
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .preamble(STREAMING_PREAMBLE)
             .build();
 

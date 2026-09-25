@@ -149,7 +149,7 @@ async fn rest_raw_try_into_matches_completion() {
     with_gemini_cassette(
         "raw_completion_parity_matrix/rest_raw_try_into_matches_completion",
         |client| async move {
-            capture_completion_pair(client.completion(REST_MODEL), request(), sink)
+            capture_completion_pair(rig::model(client.completion(REST_MODEL)), request(), sink)
                 .await
                 .expect("both turns of the same request should succeed");
         },
@@ -210,7 +210,7 @@ async fn interactions_raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/interactions_raw_try_into_matches_completion",
         |client| async move {
             capture_completion_pair(
-                client.model(|config| config.interactions(INTERACTIONS_MODEL)),
+                rig::model(client.interactions(INTERACTIONS_MODEL)),
                 request(),
                 sink,
             )

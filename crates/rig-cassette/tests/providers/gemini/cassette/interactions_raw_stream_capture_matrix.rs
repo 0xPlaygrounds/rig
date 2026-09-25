@@ -137,7 +137,7 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_gemini_interactions_cassette(
         "interactions_raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            let model = client.model(|config| config.interactions(MODEL));
+            let model = rig::model(client.interactions(MODEL));
             let terminal = stream_to_terminal(&model, request()).await;
 
             let raw = &terminal.raw;
@@ -194,7 +194,7 @@ async fn raw_exposes_terminal_only_fields() {
     with_gemini_interactions_cassette(
         "interactions_raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            let model = client.model(|config| config.interactions(MODEL));
+            let model = rig::model(client.interactions(MODEL));
             let terminal = stream_to_terminal(&model, request()).await;
 
             let raw = &terminal.raw;

@@ -44,22 +44,21 @@ async fn rejected_response_is_retried_with_feedback() {
     with_openai_cassette(
         "response_retry/rejected_response_is_retried_with_feedback",
         |client| async move {
-            let response = client
-                .openai
-                .agent(openai::GPT_4O_MINI)
-                .preamble(
-                    "Follow this protocol exactly. For the initial request, reply exactly \
+            let response =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O_MINI)))
+                    .preamble(
+                        "Follow this protocol exactly. For the initial request, reply exactly \
                  `RETRY: incomplete draft`. If the latest user message asks you to \
                  replace the rejected response, reply exactly `ACCEPTED`.",
-                )
-                .temperature(0.0)
-                .build()
-                .prompt("Begin the retry-hook demonstration.")
-                .max_turns(2)
-                .add_hook(RetryOnceOnMarker)
-                .run()
-                .await
-                .expect("the feedback retry should recover");
+                    )
+                    .temperature(0.0)
+                    .build()
+                    .prompt("Begin the retry-hook demonstration.")
+                    .max_turns(2)
+                    .add_hook(RetryOnceOnMarker)
+                    .run()
+                    .await
+                    .expect("the feedback retry should recover");
 
             assert_eq!(response.output.trim(), "ACCEPTED");
             assert_eq!(response.completion_calls.len(), 2);

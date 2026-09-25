@@ -17,7 +17,6 @@ use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
 use rig::tool::RegisteredTool;
 use rig_cassette::agent::AgentReplayExt;
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_anthropic_corpus_causal_cassette;
 use crate::goldens::{Lookup, NestedChild, Nesting, families, parent_positions};
@@ -41,10 +40,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-async fn over_host(
-    client: Endpoint<Anthropic>,
-    host: Host,
-) -> rig::cassette::effect_log::EffectLog {
+async fn over_host(client: Anthropic, host: Host) -> rig::cassette::effect_log::EffectLog {
     let config = ServingPolicy {
         serial_per_handler: host.serial,
         ..ServingPolicy::default()
@@ -56,7 +52,7 @@ async fn over_host(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
-                client.completion(CLAUDE_SONNET_4_6),
+                rig::model(client.completion(CLAUDE_SONNET_4_6)),
             )),
         )
         .expect("a fresh key");

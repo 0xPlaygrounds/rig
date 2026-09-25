@@ -16,8 +16,8 @@ fn wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_5_MINI),
-        route: Some(client.openai.completion(GPT_5_NANO)),
+        model: rig::model(client.openai.completion(GPT_5_MINI)),
+        route: Some(rig::model(client.openai.completion(GPT_5_NANO))),
         temperature: None,
         additional_params: None,
     }
@@ -30,7 +30,7 @@ fn legacy(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_4O),
+        model: rig::model(client.openai.completion(GPT_4O)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -327,7 +327,7 @@ fn reasoning_wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(rig::providers::openai::GPT_5_MINI),
+        model: rig::model(client.openai.completion(rig::providers::openai::GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,

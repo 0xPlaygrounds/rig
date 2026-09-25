@@ -98,17 +98,18 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
             "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
             |client| async move {
                 {
-                    client
-                        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(TINY_CAP)
-                        .add_hook(probe)
-                        .build()
-                        .prompt(TRUNCATING_PROMPT)
-                        .run()
-                        .await
-                        .expect("a partially truncated turn still carries an answer");
+                    rig::AgentBuilder::new(rig::model(
+                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    ))
+                    .preamble(CONCISE_PREAMBLE)
+                    .temperature(0.0)
+                    .max_tokens(TINY_CAP)
+                    .add_hook(probe)
+                    .build()
+                    .prompt(TRUNCATING_PROMPT)
+                    .run()
+                    .await
+                    .expect("a partially truncated turn still carries an answer");
                 }
             },
         )
@@ -147,12 +148,13 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
             "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
             |client| async move {
                 {
-                    let agent = client
-                        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(TINY_CAP)
-                        .build();
+                    let agent = rig::AgentBuilder::new(rig::model(
+                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    ))
+                    .preamble(CONCISE_PREAMBLE)
+                    .temperature(0.0)
+                    .max_tokens(TINY_CAP)
+                    .build();
 
                     let mut stream = agent.prompt(TRUNCATING_PROMPT).add_hook(probe).stream();
                     let _ = collect_stream_final_response(&mut stream).await;
@@ -188,17 +190,18 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
             "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
             |client| async move {
                 {
-                    client
-                        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .add_hook(probe)
-                        .build()
-                        .prompt(SHORT_PROMPT)
-                        .run()
-                        .await
-                        .expect("a short answer under a roomy cap");
+                    rig::AgentBuilder::new(rig::model(
+                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    ))
+                    .preamble(CONCISE_PREAMBLE)
+                    .temperature(0.0)
+                    .max_tokens(ROOMY_CAP)
+                    .add_hook(probe)
+                    .build()
+                    .prompt(SHORT_PROMPT)
+                    .run()
+                    .await
+                    .expect("a short answer under a roomy cap");
                 }
             },
         )
@@ -228,12 +231,13 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
             "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
             |client| async move {
                 {
-                    let agent = client
-                        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .build();
+                    let agent = rig::AgentBuilder::new(rig::model(
+                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    ))
+                    .preamble(CONCISE_PREAMBLE)
+                    .temperature(0.0)
+                    .max_tokens(ROOMY_CAP)
+                    .build();
 
                     let mut stream = agent.prompt(SHORT_PROMPT).add_hook(probe).stream();
                     let _ = collect_stream_final_response(&mut stream).await;
@@ -265,19 +269,20 @@ async fn blocking_tool_turn_reports_tool_calls() {
             "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
             |client| async move {
                 {
-                    client
-                        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                        .preamble(TOOL_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .tool(Adder)
-                        .add_hook(probe)
-                        .build()
-                        .prompt(TOOL_PROMPT)
-                        .max_turns(3)
-                        .run()
-                        .await
-                        .expect("the tool turn should complete the run");
+                    rig::AgentBuilder::new(rig::model(
+                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    ))
+                    .preamble(TOOL_PREAMBLE)
+                    .temperature(0.0)
+                    .max_tokens(ROOMY_CAP)
+                    .tool(Adder)
+                    .add_hook(probe)
+                    .build()
+                    .prompt(TOOL_PROMPT)
+                    .max_turns(3)
+                    .run()
+                    .await
+                    .expect("the tool turn should complete the run");
                 }
             },
         )
@@ -310,13 +315,14 @@ async fn streaming_tool_turn_reports_tool_calls() {
             "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
             |client| async move {
                 {
-                    let agent = client
-                        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                        .preamble(TOOL_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .tool(Adder)
-                        .build();
+                    let agent = rig::AgentBuilder::new(rig::model(
+                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    ))
+                    .preamble(TOOL_PREAMBLE)
+                    .temperature(0.0)
+                    .max_tokens(ROOMY_CAP)
+                    .tool(Adder)
+                    .build();
 
                     let mut stream = agent
                         .prompt(TOOL_PROMPT)
@@ -358,23 +364,24 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
             "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
                 {
-                    client
-                        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        // The agent baseline. Neither attempt should report it: the
-                        // hook's patch replaces it on every prepared request.
-                        .max_tokens(64)
-                        // Observers first: a hook returning a non-continue action
-                        // short-circuits every hook registered behind it.
-                        .add_hook(probe)
-                        .add_hook(escalate)
-                        .build()
-                        .prompt(RETRY_PROMPT)
-                        .max_turns(2)
-                        .run()
-                        .await
-                        .expect("the retried attempt should answer");
+                    rig::AgentBuilder::new(rig::model(
+                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    ))
+                    .preamble(CONCISE_PREAMBLE)
+                    .temperature(0.0)
+                    // The agent baseline. Neither attempt should report it: the
+                    // hook's patch replaces it on every prepared request.
+                    .max_tokens(64)
+                    // Observers first: a hook returning a non-continue action
+                    // short-circuits every hook registered behind it.
+                    .add_hook(probe)
+                    .add_hook(escalate)
+                    .build()
+                    .prompt(RETRY_PROMPT)
+                    .max_turns(2)
+                    .run()
+                    .await
+                    .expect("the retried attempt should answer");
                 }
             },
         )
@@ -415,14 +422,15 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
             "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
                 {
-                    let agent = client
-                        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        // The agent baseline. Neither attempt should report it: the
-                        // hook's patch replaces it on every prepared request.
-                        .max_tokens(64)
-                        .build();
+                    let agent = rig::AgentBuilder::new(rig::model(
+                        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    ))
+                    .preamble(CONCISE_PREAMBLE)
+                    .temperature(0.0)
+                    // The agent baseline. Neither attempt should report it: the
+                    // hook's patch replaces it on every prepared request.
+                    .max_tokens(64)
+                    .build();
 
                     let mut stream = agent
                         .prompt(RETRY_PROMPT)

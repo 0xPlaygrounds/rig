@@ -2,7 +2,6 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::with_anthropic_cassette;
-use rig_test_support::endpoint::Endpoint;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -18,16 +17,16 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: Endpoint<rig::providers::anthropic::wire::Anthropic>,
+    client: rig::providers::anthropic::wire::Anthropic,
 ) -> (
     rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
     rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
     rig::Model<rig::providers::anthropic::wire::Messages, rig::http_client::BoxedHttpClient>,
 ) {
     (
-        client.completion("claude-haiku-4-5"),
-        client.completion("claude-haiku-4-5"),
-        client.completion("claude-sonnet-4-6"),
+        rig::model(client.completion("claude-haiku-4-5")),
+        rig::model(client.completion("claude-haiku-4-5")),
+        rig::model(client.completion("claude-sonnet-4-6")),
     )
 }
 

@@ -11,8 +11,7 @@ async fn streaming_tools_smoke() {
     with_doubleword_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = client
-                .agent(TOOL_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)

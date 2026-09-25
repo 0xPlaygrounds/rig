@@ -1,7 +1,6 @@
 //! Migrated from `examples/ollama_structured_output.rs`.
 
 use rig::providers::ollama::wire::Ollama;
-use rig_test_support::endpoint::Endpoint;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -18,12 +17,8 @@ struct Character {
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn structured_output_prompt() {
-    let ollama = Endpoint::new(
-        Ollama::from_env().expect("config should build from env"),
-        rig::rig_reqwest::shared(),
-    );
-    let agent = ollama
-        .agent("qwen3:4b")
+    let ollama = Ollama::from_env().expect("config should build from env");
+    let agent = rig::AgentBuilder::new(rig::model(ollama.completion("qwen3:4b")))
         .preamble("You are a creative fiction writer. Create detailed characters.")
         .output_schema::<Character>()
         .build();

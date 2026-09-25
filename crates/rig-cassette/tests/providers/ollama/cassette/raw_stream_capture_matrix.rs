@@ -118,7 +118,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -166,7 +166,7 @@ async fn stream_raw_exposes_terminal_durations() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("stream should start");
         },

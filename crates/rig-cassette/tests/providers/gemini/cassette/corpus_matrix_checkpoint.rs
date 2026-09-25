@@ -4,10 +4,9 @@
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig::providers::gemini::Gemini;
-use rig_test_support::endpoint::Endpoint;
 
 fn wire(
-    client: &Endpoint<Gemini>,
+    client: &Gemini,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -16,7 +15,7 @@ fn wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion("gemini-2.5-flash-lite"),
+        model: rig::model(client.completion("gemini-2.5-flash-lite")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -154,7 +154,7 @@ async fn chat_raw_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_raw_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(CHAT_MODEL);
+            let model = rig::model(client.completion(CHAT_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
@@ -203,7 +203,7 @@ async fn chat_raw_exposes_system_fingerprint() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_raw_exposes_system_fingerprint",
         |client| async move {
-            capture_completion(client.completion(CHAT_MODEL), request(), sink).await
+            capture_completion(rig::model(client.completion(CHAT_MODEL)), request(), sink).await
         },
     )
     .await
@@ -240,7 +240,7 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(CHAT_MODEL), request(), sink).await
+            capture_completion(rig::model(client.completion(CHAT_MODEL)), request(), sink).await
         },
     )
     .await
@@ -284,7 +284,7 @@ async fn responses_raw_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_capture_matrix/responses_raw_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(RESPONSES_MODEL);
+            let model = rig::model(client.completion(RESPONSES_MODEL));
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
@@ -326,7 +326,12 @@ async fn responses_raw_exposes_envelope() {
     with_copilot_cassette_result(
         "raw_capture_matrix/responses_raw_exposes_envelope",
         |client| async move {
-            capture_completion(client.completion(RESPONSES_MODEL), request(), sink).await
+            capture_completion(
+                rig::model(client.completion(RESPONSES_MODEL)),
+                request(),
+                sink,
+            )
+            .await
         },
     )
     .await
@@ -362,7 +367,12 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
     with_copilot_cassette_result(
         "raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(RESPONSES_MODEL), request(), sink).await
+            capture_completion(
+                rig::model(client.completion(RESPONSES_MODEL)),
+                request(),
+                sink,
+            )
+            .await
         },
     )
     .await

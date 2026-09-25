@@ -10,7 +10,6 @@ use rig_ecs::{
     bus::{BusSet, EffectOutcome, RigSchedule, Seq, Streamed},
     systems::RigSet,
 };
-use rig_test_support::endpoint::Endpoint;
 use serde_json::Value;
 
 use super::{
@@ -88,9 +87,9 @@ fn observe_turn(
     }
 }
 
-fn setup(client: &Endpoint<Anthropic>) -> EcsAgent {
+fn setup(client: &Anthropic) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+        rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
         "",
         1,
     );
@@ -223,7 +222,7 @@ fn attempt_raws(world: &mut World) -> Vec<Value> {
 
 type Attempts = (Vec<Value>, Seen, Vec<Value>);
 
-async fn run_two_attempts(client: Endpoint<Anthropic>, streamed: bool, retry: bool) -> Attempts {
+async fn run_two_attempts(client: Anthropic, streamed: bool, retry: bool) -> Attempts {
     let mut ecs = setup(&client);
     ecs.app
         .world_mut()

@@ -10,8 +10,7 @@ use super::super::support::with_perplexity_cassette;
 #[tokio::test]
 async fn chat_history_smoke() {
     with_perplexity_cassette("chat/chat_history_smoke", |client| async move {
-        let agent = client
-            .agent(perplexity::SONAR)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(perplexity::SONAR)))
             .preamble("You are a memory test assistant. Keep answers short.")
             .max_tokens(48)
             .additional_params(serde_json::json!({"search_context_size": "low"}))

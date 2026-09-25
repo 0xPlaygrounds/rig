@@ -62,9 +62,13 @@ async fn raw_try_into_matches_completion() {
     with_cohere_cassette(
         "raw_completion_parity_matrix/raw_try_into_matches_completion",
         |client| async move {
-            capture_completion_pair(client.completion(CASSETTE_MODEL), request(), sink)
-                .await
-                .expect("the same request should succeed twice");
+            capture_completion_pair(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink,
+            )
+            .await
+            .expect("the same request should succeed twice");
         },
     )
     .await;

@@ -16,7 +16,6 @@ use rig_ecs::{
     bus::{EffectOutcome, Policy},
     systems::RunCommands,
 };
-use rig_test_support::endpoint::Endpoint;
 #[path = "ecs_memory/runtime.rs"]
 mod runtime;
 use runtime::*;
@@ -219,7 +218,7 @@ async fn host_bus_memory_effect_log() {
             "corpus_memory/host_bus_memory",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -308,10 +307,7 @@ async fn serial_two_tools_effect_log() {
 
 /// An `Append` that fails: the record holds the error and the run ends
 /// in its answer regardless.
-async fn append_fails(
-    client: Endpoint<Anthropic>,
-    streamed: bool,
-) -> rig::cassette::effect_log::EffectLog {
+async fn append_fails(client: Anthropic, streamed: bool) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = agent(
         &client,
         FailingMemory::append_fails(),

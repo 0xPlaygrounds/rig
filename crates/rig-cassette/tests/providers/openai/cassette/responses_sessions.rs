@@ -98,14 +98,13 @@ async fn sequential_tool_calls_nonstreaming() {
     with_openai_cassette(
         "responses_sessions/sequential_tool_calls_nonstreaming",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .default_max_turns(6)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
+                    .tool(Adder)
+                    .tool(Subtract)
+                    .default_max_turns(6)
+                    .build();
             let mut history = Vec::<Message>::new();
 
             let result = agent
@@ -172,13 +171,12 @@ async fn sequential_tool_calls_streaming() {
     with_openai_cassette(
         "responses_sessions/sequential_tool_calls_streaming",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
+                    .tool(Adder)
+                    .tool(Subtract)
+                    .build();
 
             let mut stream = agent
                 .prompt(SEQUENTIAL_TOOLS_PROMPT)
@@ -220,14 +218,13 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
     with_openai_cassette(
         "responses_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .default_max_turns(5)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                    .tool(AlphaSignal)
+                    .tool(BetaSignal)
+                    .default_max_turns(5)
+                    .build();
             let mut history = Vec::<Message>::new();
 
             let result = agent
@@ -283,13 +280,12 @@ async fn parallel_tool_calls_single_turn_streaming() {
     with_openai_cassette(
         "responses_sessions/parallel_tool_calls_single_turn_streaming",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                    .tool(AlphaSignal)
+                    .tool(BetaSignal)
+                    .build();
 
             let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
             let observation = collect_stream_observation(&mut stream).await;
@@ -309,7 +305,7 @@ async fn long_history_replay_nonstreaming() {
     with_openai_cassette(
         "responses_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
+            let model = rig::model(client.openai.completion(openai::GPT_4O));
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool call so the follow-up can echo
@@ -408,16 +404,15 @@ async fn reasoning_session_two_tool_calls_streaming() {
         "responses_sessions/reasoning_session_two_tool_calls_streaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .openai
-                .agent(openai::GPT_5_2)
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(6000)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "reasoning": { "effort": "low" }
-                }))
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_5_2)))
+                    .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                    .max_tokens(6000)
+                    .tool(WeatherTool::new(call_count.clone()))
+                    .additional_params(serde_json::json!({
+                        "reasoning": { "effort": "low" }
+                    }))
+                    .build();
 
             let stream = agent
                 .prompt(
@@ -480,12 +475,11 @@ async fn usage_accumulates_across_streaming_multi_turn() {
     with_openai_cassette(
         "responses_sessions/usage_accumulates_across_streaming_multi_turn",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                    .tool(AlphaSignal)
+                    .build();
 
             let mut stream = agent
                 .prompt(ORDERED_TOOL_STREAM_PROMPT)

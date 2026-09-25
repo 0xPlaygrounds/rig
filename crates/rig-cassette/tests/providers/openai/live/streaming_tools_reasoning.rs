@@ -2,15 +2,13 @@ use futures::StreamExt;
 use rig::completion::Message;
 use rig::providers::openai::OpenAI;
 use rig_agent::test_utils::MockExampleTool;
-use rig_test_support::endpoint::Endpoint;
 
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY environment variable"]
 async fn test_openai_streaming_tools_reasoning() {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY env var should exist");
-    let client = Endpoint::new(OpenAI::new(api_key), rig::rig_reqwest::shared());
-    let agent = client
-        .agent("gpt-5.2")
+    let client = OpenAI::new(api_key);
+    let agent = rig::AgentBuilder::new(rig::model(client.completion("gpt-5.2")))
         .max_tokens(8192)
         .tool(MockExampleTool)
         .additional_params(serde_json::json!({

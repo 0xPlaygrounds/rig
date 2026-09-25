@@ -46,8 +46,7 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
     with_deepseek_cassette(
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = client
-                .completion(deepseek::DEEPSEEK_V4_FLASH)
+            let response = rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH))
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
                         .message(Message::system(SYSTEM_INSTRUCTION))

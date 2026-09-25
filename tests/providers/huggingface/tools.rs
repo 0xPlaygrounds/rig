@@ -1,7 +1,6 @@
 //! Hugging Face tools smoke test.
 
 use rig::providers::openai::wire::{HUGGINGFACE, OpenAI};
-use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{
     Adder, Subtract, TOOLS_PREAMBLE, TOOLS_PROMPT, assert_mentions_expected_number,
@@ -10,16 +9,14 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn tools_smoke() {
-    let provider = Endpoint::new(
-        OpenAI::from_env_with(&HUGGINGFACE).expect("config should build from env"),
-        rig::rig_reqwest::shared(),
-    );
-    let agent = provider
-        .agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
-        .preamble(TOOLS_PREAMBLE)
-        .tool(Adder)
-        .tool(Subtract)
-        .build();
+    let provider = OpenAI::from_env_with(&HUGGINGFACE).expect("config should build from env");
+    let agent = rig::AgentBuilder::new(rig::model(
+        provider.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
+    ))
+    .preamble(TOOLS_PREAMBLE)
+    .tool(Adder)
+    .tool(Subtract)
+    .build();
 
     let response = agent
         .prompt(TOOLS_PROMPT)

@@ -13,7 +13,6 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ErasedHandler;
 use rig_cassette::agent::AgentReplayExt;
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::{
     with_anthropic_corpus_hooks_cassette, with_anthropic_corpus_layers_cassette,
@@ -52,15 +51,14 @@ pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) ->
 /// The program of the hooks cells with `layers` around `add` instead of
 /// a hook stack, on the agent's own bus.
 async fn own_bus(
-    client: Endpoint<Anthropic>,
+    client: Anthropic,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
     hooks: impl FnOnce(
         AgentBuilder<rig::agent::WithToolServerHandle>,
     ) -> AgentBuilder<rig::agent::WithToolServerHandle>,
 ) -> rig::cassette::effect_log::EffectLog {
     let server = add_tool_under(layers);
-    let builder = client
-        .agent(CLAUDE_SONNET_4_6)
+    let builder = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
         .temperature(0.0)
@@ -153,7 +151,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "default",
-                    client.completion(CLAUDE_SONNET_4_6),
+                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
                 )),
             )
             .expect("a fresh key");
@@ -218,8 +216,7 @@ async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
             ))
             .layered(ReplaceLoadLayer);
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)

@@ -18,7 +18,7 @@ use super::support::{with_groq_cassette_bogus_key_result, with_groq_cassette_res
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
     with_groq_cassette_result("models/list_models_smoke", |client| async move {
-        let models = client.models().call((), None).await?;
+        let models = rig::model(client.models()).call((), None).await?;
 
         anyhow::ensure!(
             !models.data.is_empty(),
@@ -69,8 +69,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
     with_groq_cassette_bogus_key_result(
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
-            let error = client
-                .models()
+            let error = rig::model(client.models())
                 .call((), None)
                 .await
                 .expect_err("a bogus key must not list models");

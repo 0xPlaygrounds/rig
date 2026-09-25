@@ -277,8 +277,7 @@ async fn think_tool_with_other_tools() -> Result<()> {
 
     super::super::support::with_anthropic_cassette_result("think_tool_with_other_tools/think_tool_with_other_tools", |client| async move {
 
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let agent = rig::AgentBuilder::new(rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
         .name("Customer Service Agent")
         .preamble(
             "You are a customer service agent for an online store.

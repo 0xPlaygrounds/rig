@@ -14,8 +14,7 @@ async fn streaming_tool_call_roundtrip() {
     with_cohere_cassette(
         "streaming_tools/streaming_tool_call_roundtrip",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(IntegerAdder)
                 .tool(IntegerSubtract)

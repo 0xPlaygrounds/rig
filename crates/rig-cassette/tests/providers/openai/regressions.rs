@@ -2,7 +2,6 @@
 
 use rig::providers::openai::OpenAI;
 use rig_core::test_utils::RecordingHttpClient;
-use rig_test_support::endpoint::Endpoint;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -57,18 +56,17 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
         }]
     });
     let http_client = RecordingHttpClient::new(response.to_string());
-    let client = Endpoint::new(
-        OpenAI::new("test-key").with_base_url("http://localhost:8000/v1"),
-        http_client.clone(),
-    );
+    let client = OpenAI::new("test-key").with_base_url("http://localhost:8000/v1");
 
-    let extracted = client
-        .extractor::<KeywordPayload>("gpt-oss-120b")
-        .build()
-        .extract("What fruit is mentioned in the database?")
-        .await
-        .expect("nullable strict should not prevent extraction")
-        .output;
+    let extracted = rig::extractor::ExtractorBuilder::<KeywordPayload>::new(rig::Model::new(
+        client.completion("gpt-oss-120b"),
+        http_client.clone(),
+    ))
+    .build()
+    .extract("What fruit is mentioned in the database?")
+    .await
+    .expect("nullable strict should not prevent extraction")
+    .output;
 
     assert_eq!(
         extracted,

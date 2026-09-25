@@ -15,8 +15,7 @@ async fn structured_output_smoke() {
     with_ollama_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
                 .output_schema::<SmokeStructuredOutput>()
                 .additional_params(serde_json::json!({ "think": false }))
                 .build();

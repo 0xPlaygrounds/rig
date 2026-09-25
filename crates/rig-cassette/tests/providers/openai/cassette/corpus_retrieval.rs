@@ -51,11 +51,10 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
         "corpus_retrieval/dynamic_context_one",
         |client| async move {
-            let index = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+            let index =
+                facts_index(rig::model(client.openai.embedding(EMBEDDING, None)), &FACTS).await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .openai
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(MODEL)))
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
@@ -81,11 +80,10 @@ async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
         "corpus_retrieval/dynamic_context_one_streamed",
         |client| async move {
-            let index = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+            let index =
+                facts_index(rig::model(client.openai.embedding(EMBEDDING, None)), &FACTS).await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .openai
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(MODEL)))
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
@@ -114,11 +112,13 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/retrieved_tools_one",
         |client| async move {
             let toolset = retrievable_toolset();
-            let index = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let index = tool_index(
+                rig::model(client.openai.embedding(EMBEDDING, None)),
+                &toolset,
+            )
+            .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .openai
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(MODEL)))
                 .name("golden")
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -155,11 +155,13 @@ async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/retrieved_tools_one_streamed",
         |client| async move {
             let toolset = retrievable_toolset();
-            let index = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let index = tool_index(
+                rig::model(client.openai.embedding(EMBEDDING, None)),
+                &toolset,
+            )
+            .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .openai
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(MODEL)))
                 .name("golden")
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -193,13 +195,16 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
     with_openai_corpus_retrieval_cassette(
         "corpus_retrieval/context_and_tools",
         |client| async move {
-            let facts = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+            let facts =
+                facts_index(rig::model(client.openai.embedding(EMBEDDING, None)), &FACTS).await;
             let toolset = retrievable_toolset();
-            let tools = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let tools = tool_index(
+                rig::model(client.openai.embedding(EMBEDDING, None)),
+                &toolset,
+            )
+            .await;
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .openai
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(MODEL)))
                 .name("golden")
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)
                 .temperature(0.0)

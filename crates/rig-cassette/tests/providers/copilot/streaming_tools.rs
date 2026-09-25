@@ -19,8 +19,7 @@ async fn streaming_tools_smoke() {
     with_copilot_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = client
-                .agent(LIVE_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -41,8 +40,7 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 async fn example_streaming_with_tools() {
     with_copilot_cassette("streaming_tools/example_streaming_with_tools", |client| async move {
-        let agent = client
-            .agent(LIVE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \
                  Use the tools provided to answer the user's question and answer in a full sentence.",
@@ -68,7 +66,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_copilot_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion(LIVE_MODEL);
+            let model = rig::model(client.completion(LIVE_MODEL));
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
@@ -86,7 +84,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_copilot_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion(LIVE_MODEL);
+            let model = rig::model(client.completion(LIVE_MODEL));
             let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -114,8 +112,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     with_copilot_cassette(
         "streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
         |client| async move {
-            let agent = client
-                .agent(LIVE_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -137,7 +134,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_copilot_cassette("streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls", |client| async move {
-        let model = client.completion(LIVE_MODEL);
+        let model = rig::model(client.completion(LIVE_MODEL));
         let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
             .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal)).build();

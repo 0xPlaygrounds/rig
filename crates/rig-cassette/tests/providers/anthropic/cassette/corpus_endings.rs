@@ -15,7 +15,6 @@ use rig::error::ErrorKind;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig_cassette::agent::AgentReplayExt;
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_endings_cassette};
 use crate::goldens::{
@@ -73,7 +72,7 @@ fn assert_settled_error(settled: &RecordSettled) {
 /// A unary tool program under `hook`, expected to end cancelled with
 /// `reason`; the log's families are `shape`.
 async fn unary_tool_run(
-    client: Endpoint<Anthropic>,
+    client: Anthropic,
     hook: impl AgentHook + 'static,
     reason: &str,
     shape: &[EffectFamily],
@@ -81,8 +80,7 @@ async fn unary_tool_run(
 ) -> rig::cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
     let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-    let mut builder = client
-        .agent(CLAUDE_SONNET_4_6)
+    let mut builder = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
@@ -127,14 +125,15 @@ enum Streamed {
 }
 
 async fn streamed_run(
-    client: Endpoint<Anthropic>,
+    client: Anthropic,
     hook: impl AgentHook + 'static,
     reason: &str,
     program: Streamed,
 ) -> rig::cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let mut base = client.agent(CLAUDE_SONNET_4_6).name("golden");
+    let mut base =
+        rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6))).name("golden");
     base = base.temperature(0.0);
     let agent = match program {
         Streamed::Tools => base
@@ -236,8 +235,7 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
         |client| async move {
             let settled = RecordSettled::default();
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)

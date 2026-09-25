@@ -52,7 +52,6 @@
 
 use rig::error::ProviderError;
 use rig::providers::gemini::{self, Gemini};
-use rig_test_support::endpoint::Endpoint;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -61,9 +60,7 @@ use crate::cache_conformance::{
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
-use super::super::support::{
-    BoundGemini, always_deleting_cached_contents, with_gemini_prompt_caching_cassette,
-};
+use super::super::support::{always_deleting_cached_contents, with_gemini_prompt_caching_cassette};
 
 /// Gemini 2.5 Flash: implicit caching, and the cheapest model that has it.
 pub(super) const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
@@ -108,7 +105,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_gemini_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = rig::model(client.completion(CACHE_MODEL));
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "blocking probe");
     })
@@ -123,7 +120,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_gemini_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = rig::model(client.completion(CACHE_MODEL));
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "streaming probe");
     })
@@ -138,8 +135,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
     const SCENARIO: &str = "prompt_caching/agent_loop";
 
     with_gemini_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
-        let response = client
-            .agent(CACHE_MODEL)
+        let response = rig::AgentBuilder::new(rig::model(client.completion(CACHE_MODEL)))
             .preamble(&probe().preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)
@@ -168,11 +164,8 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = Endpoint::new(
-        Gemini::from_env().expect("GEMINI_API_KEY"),
-        rig::rig_reqwest::shared(),
-    );
-    let model = client.completion(CACHE_MODEL);
+    let client = Gemini::from_env().expect("GEMINI_API_KEY");
+    let model = rig::model(client.completion(CACHE_MODEL));
 
     // Two passes, asserting on the second — the same procedure the module docs
     // prescribe for re-recording. Gemini's implicit cache only serves a prefix
@@ -219,11 +212,10 @@ fn cached_corpus() -> String {
 }
 
 async fn create_probe_cache(
-    client: &BoundGemini,
+    client: &Gemini,
     display_name: &str,
 ) -> rig::providers::gemini::cached_content::CachedContent {
-    client
-        .cached_contents()
+    rig::model(client.cached_contents())
         .create(
             NewCachedContent::new(CACHE_MODEL)
                 .system_instruction(format!(
@@ -248,7 +240,7 @@ async fn explicit_cache_lifecycle() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/explicit_cache_lifecycle",
         |client| async move {
-            let caches = client.cached_contents();
+            let caches = rig::model(client.cached_contents());
             let created = create_probe_cache(&client, "rig-lifecycle").await;
 
             let handles = [created.name.clone()];
@@ -308,10 +300,11 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let model =
-                    rig_test_support::endpoint::map_wire(client.completion(CACHE_MODEL), |wire| {
-                        wire.with_cached_content(cache.name.clone())
-                    });
+                let model = rig::model(
+                    client
+                        .completion(CACHE_MODEL)
+                        .with_cached_content(cache.name.clone()),
+                );
 
                 // `bare()`: the cache owns the system instruction and tools, and a
                 // request that also sends its own is rejected — by rig, before it
@@ -360,10 +353,11 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let model =
-                    rig_test_support::endpoint::map_wire(client.completion(CACHE_MODEL), |wire| {
-                        wire.with_cached_content(cache.name.clone())
-                    });
+                let model = rig::model(
+                    client
+                        .completion(CACHE_MODEL)
+                        .with_cached_content(cache.name.clone()),
+                );
 
                 let mut reads = Vec::new();
                 for prompt in [
@@ -517,7 +511,7 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/below_minimum_does_not_cache",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
+            let model = rig::model(client.completion(CACHE_MODEL));
             let small = crate::cache_conformance::cache_padding(8);
             let request = || {
                 mutation_request(
@@ -568,7 +562,7 @@ async fn changing_temperature_still_hits() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/temperature_change_still_hits",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
+            let model = rig::model(client.completion(CACHE_MODEL));
             let preamble = probe().preamble;
             let history = vec![user("Reply with exactly: temp")];
 
@@ -616,7 +610,7 @@ async fn changing_the_system_instruction_misses() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/changed_system_instruction_miss",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
+            let model = rig::model(client.completion(CACHE_MODEL));
             let base = probe().preamble;
             let history = vec![user("Reply with exactly: sysinstr")];
 
@@ -668,7 +662,7 @@ async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/explicit_cache_expired",
         |client| async move {
-            let caches = client.cached_contents();
+            let caches = rig::model(client.cached_contents());
             let cache = create_probe_cache(&client, "rig-expired").await;
             caches
                 .delete(&cache.name)

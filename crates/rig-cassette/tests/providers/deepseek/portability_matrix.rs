@@ -3,18 +3,19 @@
 
 use rig::providers::deepseek;
 
-use super::support::{BoundDeepSeek, with_deepseek_cassette};
+use super::support::with_deepseek_cassette;
 use crate::history_survival::portability::{Cell, Source};
+use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
 fn model(
-    client: BoundDeepSeek,
+    client: OpenAI,
     cell: Cell,
 ) -> rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient> {
-    client.completion(cell.model)
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(source: Source) -> Cell {

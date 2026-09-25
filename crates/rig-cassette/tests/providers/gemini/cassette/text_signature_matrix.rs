@@ -15,8 +15,9 @@ use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
 use serde_json::{Value, json};
 
-use super::super::support::{BoundGemini, with_gemini_cassette};
+use super::super::support::with_gemini_cassette;
 use crate::history_survival::{Dialect, lost_tokens};
+use rig::providers::gemini::Gemini;
 
 const QUESTION: &str = "What is 17 squared? Answer with the number only.";
 const FOLLOW_UP: &str = "Add one to that number. Answer with the number only.";
@@ -217,12 +218,10 @@ fn assert_recorded(cell: Cell, scenario: &str) {
     }
 }
 
-async fn run(client: BoundGemini, cell: Cell) {
+async fn run(client: Gemini, cell: Cell) {
     match cell.api {
-        Api::GenerateContent => conversation(client.completion(cell.model), cell).await,
-        Api::Interactions => {
-            conversation(client.model(|config| config.interactions(cell.model)), cell).await
-        }
+        Api::GenerateContent => conversation(rig::model(client.completion(cell.model)), cell).await,
+        Api::Interactions => conversation(rig::model(client.interactions(cell.model)), cell).await,
     }
 }
 

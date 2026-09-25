@@ -15,7 +15,7 @@ fn model(
     rig::providers::openai::responses_api::wire::Responses,
     rig::http_client::BoxedHttpClient,
 > {
-    client.openai.responses(cell.model)
+    rig::model(client.openai.responses(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

@@ -44,7 +44,6 @@ use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::{
     CompletionResponse as ProviderResponse, InputItem, Output,
 };
-use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -95,8 +94,8 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 }
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: Endpoint<OpenAI>) -> (ProviderResponse, ProviderResponse) {
-    let model = client.completion(openai::GPT_5_6_SOL);
+async fn two_turn_conversation(client: OpenAI) -> (ProviderResponse, ProviderResponse) {
+    let model = rig::model(client.completion(openai::GPT_5_6_SOL));
     let first = model
         .call(CompletionRequestBuilder::new(TURN_ONE).build(), None)
         .await
@@ -168,7 +167,7 @@ async fn compaction_item_decodes_on_the_response() {
     with_openai_cassette(
         "stateless_replay_matrix/compaction_item_decodes_on_the_response",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6_SOL);
+            let model = rig::model(client.openai.completion(openai::GPT_5_6_SOL));
             let response = model
                 .call(CompletionRequestBuilder::new(TURN_ONE).build(), None)
                 .await

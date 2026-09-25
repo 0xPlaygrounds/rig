@@ -8,7 +8,7 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 #[tokio::test]
 async fn embeddings_smoke() {
     with_doubleword_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
+        let model = rig::model(client.embedding(doubleword::QWEN3_EMBEDDING_8B, None));
         let embeddings = model
             .call(
                 EMBEDDING_INPUTS

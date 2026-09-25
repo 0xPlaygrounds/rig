@@ -4,7 +4,6 @@ use anyhow::{Result, anyhow};
 use rig::TypedPromptResponse;
 use rig::message::Message;
 use rig::providers::openai::wire::{GROQ, OpenAI};
-use rig_test_support::endpoint::Endpoint;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -46,13 +45,11 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let groq = Endpoint::new(
-        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::shared(),
-    );
-    let extractor = groq
-        .extractor::<Person>(EXTRACTOR_USAGE_BACKWARD_MODEL)
-        .build();
+    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+        groq.completion(EXTRACTOR_USAGE_BACKWARD_MODEL),
+    ))
+    .build();
 
     let person = extractor
         .extract("John Doe is a 30 year old software engineer.")
@@ -69,13 +66,11 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let groq = Endpoint::new(
-        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::shared(),
-    );
-    let extractor = groq
-        .extractor::<Person>(EXTRACTOR_USAGE_WITH_USAGE_MODEL)
-        .build();
+    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+        groq.completion(EXTRACTOR_USAGE_WITH_USAGE_MODEL),
+    ))
+    .build();
 
     let response: TypedPromptResponse<Person> = extractor
         .extract("Jane Smith is a 45 year old data scientist.")
@@ -94,13 +89,11 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
-    let groq = Endpoint::new(
-        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::shared(),
-    );
-    let extractor = groq
-        .extractor::<Address>(EXTRACTOR_USAGE_CHAT_HISTORY_MODEL)
-        .build();
+    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
+        groq.completion(EXTRACTOR_USAGE_CHAT_HISTORY_MODEL),
+    ))
+    .build();
 
     let chat_history = vec![Message::user(
         "I'm looking at a property that might be interesting.",
@@ -124,13 +117,11 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let groq = Endpoint::new(
-        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::shared(),
-    );
-    let extractor = groq
-        .extractor::<Person>(EXTRACTOR_USAGE_SAME_DATA_MODEL)
-        .build();
+    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+        groq.completion(EXTRACTOR_USAGE_SAME_DATA_MODEL),
+    ))
+    .build();
 
     let text = "Bob Johnson is a 55 year old retired teacher.";
     let person = extractor.extract(text).await?.output;
@@ -153,22 +144,21 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    let groq = Endpoint::new(
-        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::shared(),
-    );
+    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
 
-    let person_extractor = groq
-        .extractor::<Person>(EXTRACTOR_USAGE_TRACKING_MODEL)
-        .build();
+    let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+        groq.completion(EXTRACTOR_USAGE_TRACKING_MODEL),
+    ))
+    .build();
     let person_response = person_extractor
         .extract("Alice is a 25 year old developer.")
         .await?;
     anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
 
-    let address_extractor = groq
-        .extractor::<Address>(EXTRACTOR_USAGE_TRACKING_MODEL)
-        .build();
+    let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
+        groq.completion(EXTRACTOR_USAGE_TRACKING_MODEL),
+    ))
+    .build();
     let address_response = address_extractor
         .extract("456 Oak Avenue, Cambridge, MA 02139")
         .await?;

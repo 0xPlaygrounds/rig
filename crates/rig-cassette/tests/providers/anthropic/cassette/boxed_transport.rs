@@ -8,7 +8,7 @@
 
 use rig::providers::anthropic;
 
-use super::super::support::with_anthropic_boxed_cassette;
+use super::super::support::with_anthropic_cassette;
 use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response,
     collect_stream_final_response_and_provider_final,
@@ -16,11 +16,12 @@ use crate::support::{
 
 #[tokio::test]
 async fn completion_smoke_through_boxed_transport() {
-    with_anthropic_boxed_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(BASIC_PREAMBLE)
-            .build();
+    with_anthropic_cassette("agent/completion_smoke", |client| async move {
+        let agent = rig::AgentBuilder::new(rig::model(
+            client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+        ))
+        .preamble(BASIC_PREAMBLE)
+        .build();
 
         let response = agent
             .prompt(BASIC_PROMPT)
@@ -35,11 +36,12 @@ async fn completion_smoke_through_boxed_transport() {
 
 #[tokio::test]
 async fn streaming_smoke_through_boxed_transport() {
-    with_anthropic_boxed_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(STREAMING_PREAMBLE)
-            .build();
+    with_anthropic_cassette("streaming/streaming_smoke", |client| async move {
+        let agent = rig::AgentBuilder::new(rig::model(
+            client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+        ))
+        .preamble(STREAMING_PREAMBLE)
+        .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let (response, provider_final): (_, rig::streaming::StreamFinal) =

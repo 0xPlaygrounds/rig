@@ -8,9 +8,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn streaming_smoke() {
-    let agent = live_client()
-        .await
-        .agent(LIVE_MODEL)
+    let agent = rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_MODEL)))
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -25,9 +23,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn example_streaming_prompt() {
-    let agent = live_client()
-        .await
-        .agent(LIVE_MODEL)
+    let agent = rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_MODEL)))
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

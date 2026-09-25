@@ -9,8 +9,7 @@ use super::super::cassette_support::*;
 #[tokio::test]
 async fn streaming_smoke() {
     with_llamacpp_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -27,8 +26,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 async fn example_streaming_prompt() {
     with_llamacpp_cassette("streaming/example_streaming_prompt", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble("Be precise and concise.")
             .temperature(0.5)
             .build();

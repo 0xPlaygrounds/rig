@@ -311,8 +311,7 @@ async fn hooks_observe_raw_blocking() {
     with_ollama_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
                 .max_tokens(64)
                 .additional_params(json!({ "think": false }))
                 .add_hook(hook)
@@ -358,8 +357,7 @@ async fn hooks_observe_raw_streamed() {
     with_ollama_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
                 .max_tokens(64)
                 .additional_params(json!({ "think": false }))
                 .add_hook(hook)
@@ -415,8 +413,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     with_ollama_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
                 .preamble(TOOLS_PREAMBLE)
                 .additional_params(json!({ "think": false }))
                 .tool(Adder)
@@ -486,8 +483,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     with_ollama_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
                 .preamble(TOOLS_PREAMBLE)
                 .additional_params(json!({ "think": false }))
                 .tool(Adder)

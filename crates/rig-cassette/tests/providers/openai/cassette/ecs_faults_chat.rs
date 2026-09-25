@@ -12,7 +12,6 @@
 use rig::providers::openai::GPT_5_MINI;
 use rig::providers::openai::wire::OpenAI;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{
@@ -32,7 +31,7 @@ fn wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat(GPT_5_MINI),
+        model: rig::model(client.openai.chat(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,
@@ -45,7 +44,7 @@ fn missing(
 ) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat("gpt-5-mini-nonexistent-rig-test"),
+        model: rig::model(client.openai.chat("gpt-5-mini-nonexistent-rig-test")),
         route: None,
         temperature: None,
         additional_params: None,
@@ -98,13 +97,11 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 fn scripted_stream(
     frames: &[String],
 ) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
-    let client = Endpoint::new(
-        OpenAI::new(SCRIPTED_KEY),
-        rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)])),
-    );
+    let client = OpenAI::new(SCRIPTED_KEY);
+    let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.chat(GPT_5_MINI),
+        model: rig::Model::new(client.chat(GPT_5_MINI), http.clone()),
         route: None,
         temperature: None,
         additional_params: None,
@@ -116,10 +113,11 @@ fn scripted_stream(
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
 ) -> Wire<rig::Model<rig::providers::openai::wire::Chat, SequencedHttpClient>> {
-    let client = Endpoint::new(OpenAI::new(SCRIPTED_KEY), SequencedHttpClient::new(replies));
+    let client = OpenAI::new(SCRIPTED_KEY);
+    let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.chat(GPT_5_MINI),
+        model: rig::Model::new(client.chat(GPT_5_MINI), http.clone()),
         route: None,
         temperature: None,
         additional_params: None,

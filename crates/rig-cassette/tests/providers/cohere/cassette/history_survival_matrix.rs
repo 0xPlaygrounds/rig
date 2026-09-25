@@ -1,17 +1,18 @@
 //! Cohere v2 history survival: tool-call ids across three prompts.
 
-use super::super::support::{BoundCohere, with_cohere_cassette};
+use super::super::support::with_cohere_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::providers::cohere::wire::Cohere;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
 fn model(
-    client: BoundCohere,
+    client: Cohere,
     cell: Cell,
 ) -> rig::Model<rig::providers::cohere::Chat, rig::http_client::BoxedHttpClient> {
-    client.completion(cell.model)
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

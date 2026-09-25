@@ -10,7 +10,7 @@ use super::super::support::with_openrouter_cassette;
 #[tokio::test]
 async fn transcription_smoke() {
     with_openrouter_cassette("transcription/transcription_smoke", |client| async move {
-        let model = client.transcription(openrouter::WHISPER_1);
+        let model = rig::model(client.transcription(openrouter::WHISPER_1));
         let response = model
             .call(
                 TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)

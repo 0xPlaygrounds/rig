@@ -35,17 +35,17 @@ async fn batch_multi_extract_chain() -> Result<()> {
         |cassette| async move {
             let client = cassette.openai;
             let names_extractor =
-                client.extractor::<Names>(openai::GPT_4O_MINI)
+                rig::extractor::ExtractorBuilder::<Names>::new(rig::model(client.completion(openai::GPT_4O_MINI)))
                     .append_preamble("Extract names from the given text.")
                     .retries(2)
                     .build();
             let topics_extractor =
-                client.extractor::<Topics>(openai::GPT_4O_MINI)
+                rig::extractor::ExtractorBuilder::<Topics>::new(rig::model(client.completion(openai::GPT_4O_MINI)))
                     .append_preamble("Extract topics from the given text.")
                     .retries(2)
                     .build();
             let sentiment_extractor =
-                client.extractor::<Sentiment>(openai::GPT_4O_MINI)
+                rig::extractor::ExtractorBuilder::<Sentiment>::new(rig::model(client.completion(openai::GPT_4O_MINI)))
                     .append_preamble("Extract sentiment and confidence from the given text.")
                     .retries(2)
                     .build();

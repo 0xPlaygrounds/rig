@@ -23,10 +23,11 @@ use rig::providers::gemini::interactions_api::AdditionalParameters;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    BoundGemini, always_deleting_cached_contents, with_gemini_interactions_cassette,
+    always_deleting_cached_contents, with_gemini_interactions_cassette,
     with_gemini_prompt_caching_cassette,
 };
 use rig::completion::CompletionRequestBuilder;
+use rig::providers::gemini::Gemini;
 
 const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
@@ -102,8 +103,8 @@ async fn cached_content_lifecycle_chain() {
     const SCENARIO: &str = "stateful_chain_matrix/cached_content_lifecycle_chain";
     with_gemini_prompt_caching_cassette(
         "stateful_chain_matrix/cached_content_lifecycle_chain",
-        |client: BoundGemini| async move {
-            let caches = client.cached_contents();
+        |client: Gemini| async move {
+            let caches = rig::model(client.cached_contents());
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -137,9 +138,11 @@ async fn cached_content_lifecycle_chain() {
                 if let Err(error) = &sibling {
                     panic!("creating the sibling cache: {error}");
                 }
-                let model = rig_test_support::endpoint::map_wire(
-                    generator.clone().completion(CACHE_MODEL),
-                    |wire| wire.with_cached_content(name.clone()),
+                let model = rig::model(
+                    generator
+                        .clone()
+                        .completion(CACHE_MODEL)
+                        .with_cached_content(name.clone()),
                 );
                 let reply = model
                     .call(
@@ -154,9 +157,10 @@ async fn cached_content_lifecycle_chain() {
                     .update_expiry(&name, CacheExpiry::ttl(Duration::from_secs(240)))
                     .await
                     .expect("extend the TTL");
-                let listed = rig_test_support::endpoint::map_wire(caches.clone(), |wire| {
-                    wire.with_page_size(1)
-                })
+                let listed = rig::Model::new(
+                    caches.clone().wire.with_page_size(1),
+                    caches.clone().transport,
+                )
                 .list()
                 .await
                 .expect("paged list");
@@ -167,12 +171,13 @@ async fn cached_content_lifecycle_chain() {
             })
             .await;
 
-            let refused =
-                rig_test_support::endpoint::map_wire(client.completion(CACHE_MODEL), |wire| {
-                    wire.with_cached_content(created.name.clone())
-                })
-                .call(ask("What is the code of record alpha?"), None)
-                .await;
+            let refused = rig::model(
+                client
+                    .completion(CACHE_MODEL)
+                    .with_cached_content(created.name.clone()),
+            )
+            .call(ask("What is the code of record alpha?"), None)
+            .await;
             let refused = refused.expect_err("a deleted cache handle must be refused");
             let report = rig::error::ErrorReport::from(&refused);
             assert!(
@@ -285,7 +290,7 @@ fn only_call(choice: &[AssistantContent]) -> ToolCall {
 /// session, whether it passed or panicked. Every delete is attempted;
 /// failures are reported after the body's own panic, which is never hidden.
 async fn deleting_interactions<F: Future<Output = ()>>(
-    client: &BoundGemini,
+    client: &Gemini,
     stored: &Arc<Mutex<Vec<String>>>,
     body: F,
 ) {
@@ -301,9 +306,9 @@ async fn deleting_interactions<F: Future<Output = ()>>(
         let sent = http
             .delete(format!(
                 "{}/v1beta/interactions/{id}",
-                client.wire.base_url.trim_end_matches('/')
+                client.base_url.trim_end_matches('/')
             ))
-            .header("x-goog-api-key", client.wire.api_key.expose())
+            .header("x-goog-api-key", client.api_key.expose())
             .send()
             .await;
         match sent {
@@ -342,9 +347,7 @@ async fn interactions_chain_with_tool_call() {
                     .push(id.to_owned());
             };
             deleting_interactions(&client, &stored, async {
-                let model = client
-                    .clone()
-                    .model(|config| config.interactions(INTERACTIONS_MODEL));
+                let model = rig::model(client.clone().interactions(INTERACTIONS_MODEL));
                 let params = |previous: Option<String>| {
                     serde_json::to_value(AdditionalParameters {
                         store: Some(true),
@@ -448,8 +451,8 @@ async fn file_uri_chain() {
     with_gemini_interactions_cassette(
         "stateful_chain_matrix/file_uri_chain",
         |client| async move {
-            let base = client.wire.base_url.trim_end_matches('/').to_owned();
-            let key = client.wire.api_key.expose().to_owned();
+            let base = client.base_url.trim_end_matches('/').to_owned();
+            let key = client.api_key.expose().to_owned();
             let http = reqwest::Client::new();
             let uploaded: Value = http
                 .post(format!("{base}/upload/v1beta/files?uploadType=media"))
@@ -484,7 +487,7 @@ async fn file_uri_chain() {
                         ),
                     ],
                 };
-                let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+                let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
                 let first = model
                     .call(ask_with(vec![document.clone()]), None)
                     .await

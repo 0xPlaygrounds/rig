@@ -30,10 +30,11 @@ use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::support::{
-    BoundDeepSeek, recorded_request, recorded_response, recorded_stream_chunks,
+    recorded_request, recorded_response, recorded_stream_chunks,
     with_deepseek_stream_logprobs_cassette_result,
 };
 use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -120,8 +121,8 @@ fn max_tokens(cell: Cell) -> u64 {
     }
 }
 
-async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(MODEL);
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = rig::model(client.completion(MODEL));
     let request = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell))

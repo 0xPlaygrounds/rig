@@ -52,11 +52,10 @@
 use rig::error::ProviderError;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, Gemini};
-use rig_test_support::endpoint::Endpoint;
 use std::time::Duration;
 
 use super::super::support::{
-    BoundGemini, always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
+    always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
     assert_recorded_response_contains, with_gemini_prompt_caching_cassette,
 };
 
@@ -141,17 +140,15 @@ fn build(cell: Cell) -> NewCachedContent {
 ///
 /// The delete runs on the failure path too: a matrix this size would leak a lot
 /// of billed caches if one assertion took the test down with it.
-async fn run_cell(client: BoundGemini, cell: Cell) {
-    let created: CachedContent = client
-        .cached_contents()
+async fn run_cell(client: Gemini, cell: Cell) {
+    let created: CachedContent = rig::model(client.cached_contents())
         .create(build(cell))
         .await
         .expect("creating a cached content should succeed");
 
     let outcome = check(&created, cell);
 
-    client
-        .cached_contents()
+    rig::model(client.cached_contents())
         .delete(&created.name)
         .await
         .expect("delete should succeed — storage bills until it lands");
@@ -338,14 +335,12 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 
     use super::super::tools_support::CountingPing;
 
-    let client = Endpoint::new(
-        Gemini::new("not-a-real-key").with_base_url("http://127.0.0.1:1"),
-        rig::rig_reqwest::shared(),
-    );
+    let client = Gemini::new("not-a-real-key").with_base_url("http://127.0.0.1:1");
 
-    let agent = AgentBuilder::new(rig_test_support::endpoint::map_wire(
-        client.completion(CACHE_MODEL),
-        |wire| wire.with_cached_content("cachedContents/agent-guard"),
+    let agent = AgentBuilder::new(rig::model(
+        client
+            .completion(CACHE_MODEL)
+            .with_cached_content("cachedContents/agent-guard"),
     ))
     .tool(CountingPing::default())
     .build();
@@ -387,8 +382,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_cached_code_execution",
         |client| async move {
-            let cache = client
-                .cached_contents()
+            let cache = rig::model(client.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
@@ -404,9 +398,10 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let agent = AgentBuilder::new(rig_test_support::endpoint::map_wire(
-                    client.completion(CACHE_MODEL),
-                    |wire| wire.with_cached_content(cache.name.clone()),
+                let agent = AgentBuilder::new(rig::model(
+                    client
+                        .completion(CACHE_MODEL)
+                        .with_cached_content(cache.name.clone()),
                 ))
                 .build();
 
@@ -467,8 +462,7 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_agent_active_tools_suppressed",
         |client| async move {
-            let cache = client
-                .cached_contents()
+            let cache = rig::model(client.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
@@ -480,9 +474,10 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let agent = AgentBuilder::new(rig_test_support::endpoint::map_wire(
-                    client.completion(CACHE_MODEL),
-                    |wire| wire.with_cached_content(cache.name.clone()),
+                let agent = AgentBuilder::new(rig::model(
+                    client
+                        .completion(CACHE_MODEL)
+                        .with_cached_content(cache.name.clone()),
                 ))
                 .tool(CountingPing::default())
                 .build();
@@ -699,8 +694,7 @@ async fn a_cache_below_the_minimum_is_refused_by_the_provider() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_below_minimum",
         |client| async move {
-            let refusal = client
-                .cached_contents()
+            let refusal = rig::model(client.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(crate::cache_conformance::cache_padding(4))
@@ -714,7 +708,9 @@ async fn a_cache_below_the_minimum_is_refused_by_the_provider() {
             let error = match refusal {
                 Err(error) => error,
                 Ok(created) => {
-                    let _ = client.cached_contents().delete(&created.name).await;
+                    let _ = rig::model(client.cached_contents())
+                        .delete(&created.name)
+                        .await;
                     panic!("a cache under the minimum should be refused");
                 }
             };
@@ -741,8 +737,7 @@ async fn an_expiry_in_the_past_is_accepted_by_the_provider() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_expiry_in_the_past",
         |client| async move {
-            let created = client
-                .cached_contents()
+            let created = rig::model(client.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
@@ -762,7 +757,9 @@ async fn an_expiry_in_the_past_is_accepted_by_the_provider() {
 
             // Delete before asserting: a failed assertion in record mode would
             // otherwise leave a billed cache behind.
-            let _ = client.cached_contents().delete(&created.name).await;
+            let _ = rig::model(client.cached_contents())
+                .delete(&created.name)
+                .await;
             outcome.unwrap_or_else(|failure| panic!("{failure}"));
         },
     )
@@ -775,8 +772,7 @@ async fn omitting_expiry_defaults_to_one_hour() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_default_expiry_is_one_hour",
         |client| async move {
-            let created = client
-                .cached_contents()
+            let created = rig::model(client.cached_contents())
                 .create(NewCachedContent::new(CACHE_MODEL).system_instruction(pad()))
                 .await
                 .expect("a cache with no expiry should be created");
@@ -815,7 +811,7 @@ async fn list_follows_the_cursor_across_pages() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_list_pagination",
         |client| async move {
-            let caches = client.cached_contents();
+            let caches = rig::model(client.cached_contents());
             // The creates are collected rather than unwrapped: a second cache
             // that fails to create still has to delete the first, or the very
             // failure leaks three times the storage a passing run does.
@@ -847,9 +843,10 @@ async fn list_follows_the_cursor_across_pages() {
                 // Page size 1 with three caches means three pages and a cursor
                 // followed twice — the loop runs for real instead of returning
                 // everything in one response as pageSize=1000 does.
-                let listed = rig_test_support::endpoint::map_wire(caches.clone(), |wire| {
-                    wire.with_page_size(1)
-                })
+                let listed = rig::Model::new(
+                    caches.clone().wire.with_page_size(1),
+                    caches.clone().transport,
+                )
                 .list()
                 .await
                 .expect("paginated list should succeed");
@@ -874,7 +871,7 @@ async fn deleting_twice_reports_the_second_as_expired() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_double_delete",
         |client| async move {
-            let caches = client.cached_contents();
+            let caches = rig::model(client.cached_contents());
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -913,7 +910,7 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_update_expiry_absolute",
         |client| async move {
-            let caches = client.cached_contents();
+            let caches = rig::model(client.cached_contents());
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -952,8 +949,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/use_streaming",
         |client| async move {
-            let cache = client
-                .cached_contents()
+            let cache = rig::model(client.cached_contents())
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
@@ -964,10 +960,11 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
 
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
-                let model =
-                    rig_test_support::endpoint::map_wire(client.completion(CACHE_MODEL), |wire| {
-                        wire.with_cached_content(cache.name.clone())
-                    });
+                let model = rig::model(
+                    client
+                        .completion(CACHE_MODEL)
+                        .with_cached_content(cache.name.clone()),
+                );
 
                 let request = rig::completion::CompletionRequest {
                     chat_history: vec![rig::message::Message::User {

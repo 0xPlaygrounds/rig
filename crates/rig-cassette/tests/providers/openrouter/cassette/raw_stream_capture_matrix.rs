@@ -64,7 +64,11 @@ async fn stream_raw_reads_back_as_terminal_type() {
     with_openrouter_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| {
-            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
+            capture_text_and_terminal(
+                rig::model(client.completion(DEFAULT_MODEL)),
+                request(),
+                sink.clone(),
+            )
         },
     )
     .await
@@ -102,7 +106,11 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
     with_openrouter_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider",
         |client| {
-            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
+            capture_text_and_terminal(
+                rig::model(client.completion(DEFAULT_MODEL)),
+                request(),
+                sink.clone(),
+            )
         },
     )
     .await

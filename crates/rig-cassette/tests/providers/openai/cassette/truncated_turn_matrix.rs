@@ -114,7 +114,7 @@ async fn chat_blocking_reasoning_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_reasoning_budget_exhausted",
         |client| async move {
-            let model = client.openai.chat("gpt-5-nano");
+            let model = rig::model(client.openai.chat("gpt-5-nano"));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -140,7 +140,7 @@ async fn chat_blocking_o4_mini_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_o4_mini_budget_exhausted",
         |client| async move {
-            let model = client.openai.chat("o4-mini");
+            let model = rig::model(client.openai.chat("o4-mini"));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -162,7 +162,7 @@ async fn chat_blocking_gpt_5_1_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_gpt_5_1_budget_exhausted",
         |client| async move {
-            let model = client.openai.chat("gpt-5.1");
+            let model = rig::model(client.openai.chat("gpt-5.1"));
             // gpt-5.1 reasons only as much as it judges necessary; at its
             // default effort this prompt yields partial *text* under the same
             // cap (cell 8's shape). Asking for high effort makes the reasoning
@@ -191,7 +191,7 @@ async fn chat_blocking_usage_survives_the_empty_turn() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_usage_survives_the_empty_turn",
         |client| async move {
-            let model = client.openai.chat("gpt-5-nano");
+            let model = rig::model(client.openai.chat("gpt-5-nano"));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -219,7 +219,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_raw_and_normalized_agree",
         |client| async move {
-            let model = client.openai.chat("gpt-5-nano");
+            let model = rig::model(client.openai.chat("gpt-5-nano"));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -256,7 +256,7 @@ async fn chat_blocking_tools_present_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_tools_present_budget_exhausted",
         |client| async move {
-            let model = client.openai.chat("gpt-5-nano");
+            let model = rig::model(client.openai.chat("gpt-5-nano"));
             let request = CompletionRequestBuilder::new("What is 3 + 4? Use the add tool.")
                 .max_tokens(TINY_CAP)
                 .tool(rig::tool::tool_definition(&Adder))
@@ -282,7 +282,9 @@ async fn chat_blocking_agent_reports_the_truncation() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_agent_reports_the_truncation",
         |client| async move {
-            let agent = client.chat.agent("gpt-5-nano").max_tokens(TINY_CAP).build();
+            let agent = rig::AgentBuilder::new(rig::model(client.chat.completion("gpt-5-nano")))
+                .max_tokens(TINY_CAP)
+                .build();
 
             // rig-agent already has a purpose-built message for this state;
             // before the fix it was unreachable, because the provider layer
@@ -318,7 +320,7 @@ async fn chat_blocking_partial_text_truncation() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_partial_text_truncation",
         |client| async move {
-            let model = client.openai.chat(openai::GPT_4O_MINI);
+            let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -348,7 +350,7 @@ async fn chat_streaming_reasoning_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_streaming_reasoning_budget_exhausted",
         |client| async move {
-            let model = client.openai.chat("gpt-5-nano");
+            let model = rig::model(client.openai.chat("gpt-5-nano"));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -375,7 +377,7 @@ async fn chat_streaming_partial_text_truncation() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_streaming_partial_text_truncation",
         |client| async move {
-            let model = client.openai.chat(openai::GPT_4O_MINI);
+            let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -404,7 +406,7 @@ async fn chat_transports_agree_on_truncation() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_transports_agree_on_truncation",
         |client| async move {
-            let model = client.openai.chat("gpt-5-nano");
+            let model = rig::model(client.openai.chat("gpt-5-nano"));
 
             let blocking = model
                 .call(
@@ -450,7 +452,7 @@ async fn chat_blocking_completed_turn_is_unaffected() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_completed_turn_is_unaffected",
         |client| async move {
-            let model = client.openai.chat(openai::GPT_4O_MINI);
+            let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
             let request = CompletionRequestBuilder::new("Reply with the word OK.").build();
 
             let response = model.call(request, None).await.expect("completed turn");
@@ -475,7 +477,7 @@ async fn responses_blocking_reasoning_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/responses_blocking_reasoning_budget_exhausted",
         |client| async move {
-            let model = client.openai.completion("gpt-5-nano");
+            let model = rig::model(client.openai.completion("gpt-5-nano"));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -497,7 +499,7 @@ async fn responses_streaming_reasoning_budget_exhausted() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/responses_streaming_reasoning_budget_exhausted",
         |client| async move {
-            let model = client.openai.completion("gpt-5-nano");
+            let model = rig::model(client.openai.completion("gpt-5-nano"));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -523,7 +525,7 @@ async fn responses_blocking_partial_text_truncation() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/responses_blocking_partial_text_truncation",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O_MINI);
+            let model = rig::model(client.openai.completion(openai::GPT_4O_MINI));
             let request = CompletionRequestBuilder::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
                 .build();
@@ -551,7 +553,7 @@ async fn cross_surface_truncation_parity() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/cross_surface_truncation_parity",
         |client| async move {
-            let responses_model = client.openai.completion("gpt-5-nano");
+            let responses_model = rig::model(client.openai.completion("gpt-5-nano"));
             let responses = responses_model
                 .call(
                     CompletionRequestBuilder::new(LONG_PROMPT)
@@ -562,7 +564,7 @@ async fn cross_surface_truncation_parity() {
                 .await
                 .expect("responses truncated turn");
 
-            let chat_model = client.openai.chat("gpt-5-nano");
+            let chat_model = rig::model(client.openai.chat("gpt-5-nano"));
             let chat = chat_model
                 .call(
                     CompletionRequestBuilder::new(LONG_PROMPT)

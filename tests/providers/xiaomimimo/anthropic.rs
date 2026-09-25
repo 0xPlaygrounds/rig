@@ -2,19 +2,17 @@
 
 use rig::providers::anthropic::wire::{self as anthropic_wire, Anthropic};
 use rig::providers::xiaomimimo;
-use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
 #[ignore = "requires XIAOMIMIMO_API_KEY"]
 async fn anthropic_compatible_completion_smoke() {
-    let response = Endpoint::new(
+    let response = rig::AgentBuilder::new(rig::model(
         Anthropic::from_env_with(&anthropic_wire::XIAOMIMIMO)
-            .expect("XIAOMIMIMO_API_KEY should be set"),
-        rig::rig_reqwest::shared(),
-    )
-    .agent(xiaomimimo::MIMO_V2_5_PRO)
+            .expect("XIAOMIMIMO_API_KEY should be set")
+            .completion(xiaomimimo::MIMO_V2_5_PRO),
+    ))
     .preamble(BASIC_PREAMBLE)
     .build()
     .prompt(BASIC_PROMPT)

@@ -23,13 +23,14 @@ async fn extractor_smoke() {
         AdditionalParameters::default().with_config(GenerationConfig::default());
 
     super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = client
-            .extractor::<SmokePerson>(gemini::completion::GEMINI_2_5_FLASH)
-            .additional_params(
-                serde_json::to_value(additional_params)
-                    .expect("Gemini additional params should serialize"),
-            )
-            .build();
+        let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(rig::model(
+            client.completion(gemini::completion::GEMINI_2_5_FLASH),
+        ))
+        .additional_params(
+            serde_json::to_value(additional_params)
+                .expect("Gemini additional params should serialize"),
+        )
+        .build();
 
         let response = extractor
             .extract(EXTRACTOR_TEXT)
@@ -74,10 +75,11 @@ async fn extractor_with_additional_params() {
     super::super::support::with_gemini_cassette(
         "extractor/extractor_with_additional_params",
         |client| async move {
-            let extractor = client
-                .extractor::<Person>(gemini::completion::GEMINI_2_5_FLASH)
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .additional_params(serde_json::to_value(params).expect("params should serialize"))
+            .build();
 
             let person = extractor
                 .extract("Hello my name is John Doe! I am a software engineer.")

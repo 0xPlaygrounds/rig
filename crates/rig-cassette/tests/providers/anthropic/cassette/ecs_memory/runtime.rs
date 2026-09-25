@@ -17,7 +17,6 @@ use rig_ecs::{
     bus::{Bound, EffectOutcome, Handlers, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
-use rig_test_support::endpoint::Endpoint;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -46,13 +45,13 @@ pub(super) fn register_memory(
     .expect("memory key")
 }
 pub(super) fn agent(
-    client: &Endpoint<Anthropic>,
+    client: &Anthropic,
     memory: impl ConversationMemory + 'static,
     preamble: &str,
     streamed: bool,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden_with_setup(
-        client.completion(CLAUDE_SONNET_4_6),
+        rig::model(client.completion(CLAUDE_SONNET_4_6)),
         preamble,
         streamed,
         |world| {
@@ -198,7 +197,7 @@ pub(super) async fn run_prompts(
     outputs
 }
 pub(super) async fn remembers(
-    client: Endpoint<Anthropic>,
+    client: Anthropic,
     clears: Clears,
     prompts: &[&str],
     streamed: bool,

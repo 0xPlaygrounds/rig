@@ -1,7 +1,6 @@
 //! Groq live coverage for combining `prompt_typed()` with tool calling.
 
 use anyhow::Result;
-use rig_test_support::endpoint::Endpoint;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -73,12 +72,9 @@ impl Tool for WeatherTool {
 #[ignore = "requires GROQ_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let groq = Endpoint::new(
-        OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set"),
-        rig::rig_reqwest::shared(),
-    );
-    let agent = groq
-        .agent(TYPED_PROMPT_TOOLS_MODEL)
+    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let agent = rig::AgentBuilder::new(rig::model(groq
+        .completion(TYPED_PROMPT_TOOLS_MODEL)))
         .preamble(
             "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
              The only valid tool name is `weather`; never invent or call any other tool. \

@@ -40,21 +40,24 @@ async fn batch_multi_extract_chain() -> Result<()> {
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
         |client| async move {
             let model = CASSETTE_MODEL;
-            let names_extractor = client
-                .extractor::<Names>(model)
-                .append_preamble("Extract names from the given text.")
-                .retries(2)
-                .build();
-            let topics_extractor = client
-                .extractor::<Topics>(model)
-                .append_preamble("Extract topics from the given text.")
-                .retries(2)
-                .build();
-            let sentiment_extractor = client
-                .extractor::<Sentiment>(model)
-                .append_preamble("Extract sentiment and confidence from the given text.")
-                .retries(2)
-                .build();
+            let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(rig::model(
+                client.completion(model),
+            ))
+            .append_preamble("Extract names from the given text.")
+            .retries(2)
+            .build();
+            let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(rig::model(
+                client.completion(model),
+            ))
+            .append_preamble("Extract topics from the given text.")
+            .retries(2)
+            .build();
+            let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(
+                rig::model(client.completion(model)),
+            )
+            .append_preamble("Extract sentiment and confidence from the given text.")
+            .retries(2)
+            .build();
 
             let inputs = vec![
                 "Screw you Putin!",

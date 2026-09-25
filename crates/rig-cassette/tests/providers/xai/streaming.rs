@@ -10,8 +10,7 @@ use crate::support::{
 #[tokio::test]
 async fn streaming_smoke() {
     with_xai_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(xai::GROK_3_MINI)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_3_MINI)))
             .preamble(STREAMING_PREAMBLE)
             .build();
 

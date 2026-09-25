@@ -112,7 +112,7 @@ async fn raw_round_trips_mistral_type() {
         "raw_capture_matrix/raw_round_trips_mistral_type",
         |client| {
             capture_completion(
-                client.completion(DEFAULT_MODEL),
+                rig::model(client.completion(DEFAULT_MODEL)),
                 request(),
                 observed.clone(),
             )
@@ -155,7 +155,7 @@ async fn raw_exposes_object_and_service_tier() {
         "raw_capture_matrix/raw_exposes_object_and_service_tier",
         |client| {
             capture_completion(
-                client.completion(DEFAULT_MODEL),
+                rig::model(client.completion(DEFAULT_MODEL)),
                 request(),
                 observed.clone(),
             )
@@ -196,7 +196,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                client.completion(DEFAULT_MODEL),
+                rig::model(client.completion(DEFAULT_MODEL)),
                 request(),
                 observed.clone(),
             )
@@ -274,7 +274,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
         "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call",
         |client| {
             capture_completion(
-                client.completion(DEFAULT_MODEL),
+                rig::model(client.completion(DEFAULT_MODEL)),
                 tool_request(),
                 observed.clone(),
             )

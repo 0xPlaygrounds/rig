@@ -16,7 +16,7 @@ async fn nonexistent_model_error_preserves_status_and_body() {
     with_venice_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion("venice-nonexistent-rig-test");
+            let model = rig::model(client.completion("venice-nonexistent-rig-test"));
             let request = CompletionRequestBuilder::new("Say hi.")
                 .max_tokens(16)
                 .build();
@@ -52,7 +52,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_venice_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion("venice-nonexistent-rig-test");
+            let model = rig::model(client.completion("venice-nonexistent-rig-test"));
             let request = CompletionRequestBuilder::new("Say hi.")
                 .max_tokens(16)
                 .build();

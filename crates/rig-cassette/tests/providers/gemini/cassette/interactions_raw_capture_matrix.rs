@@ -94,7 +94,7 @@ async fn raw_roundtrips_interaction() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_roundtrips_interaction",
         |client| async move {
-            let model = client.model(|config| config.interactions(MODEL));
+            let model = rig::model(client.interactions(MODEL));
             let response = model
                 .call(request(), None)
                 .await
@@ -150,7 +150,7 @@ async fn raw_exposes_lifecycle_fields() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields",
         |client| async move {
-            let model = client.model(|config| config.interactions(MODEL));
+            let model = rig::model(client.interactions(MODEL));
             let response = model
                 .call(request(), None)
                 .await

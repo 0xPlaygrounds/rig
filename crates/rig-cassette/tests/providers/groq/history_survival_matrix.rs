@@ -7,18 +7,19 @@
 //! request; whether Groq would accept it back under `reasoning` is
 //! unverified.
 
-use super::support::{BoundGroq, with_groq_cassette_result};
+use super::support::with_groq_cassette_result;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "reasoning_format": "parsed" }))
 }
 
 fn model(
-    client: BoundGroq,
+    client: OpenAI,
     cell: Cell,
 ) -> rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient> {
-    client.completion(cell.model)
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

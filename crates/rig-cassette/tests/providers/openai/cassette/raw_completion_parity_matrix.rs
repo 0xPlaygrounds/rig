@@ -360,7 +360,11 @@ async fn chat_text_turn_parity() {
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_text_turn_parity",
         |client| {
-            capture_completion_pair(client.openai.chat(MODEL), text_request(), observed.clone())
+            capture_completion_pair(
+                rig::model(client.openai.chat(MODEL)),
+                text_request(),
+                observed.clone(),
+            )
         },
     )
     .await
@@ -375,7 +379,11 @@ async fn chat_tool_turn_parity() {
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_tool_turn_parity",
         |client| {
-            capture_completion_pair(client.openai.chat(MODEL), tool_request(), observed.clone())
+            capture_completion_pair(
+                rig::model(client.openai.chat(MODEL)),
+                tool_request(),
+                observed.clone(),
+            )
         },
     )
     .await
@@ -395,7 +403,11 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
         |client| {
-            capture_completion_pair(client.openai.chat(MODEL), text_request(), observed.clone())
+            capture_completion_pair(
+                rig::model(client.openai.chat(MODEL)),
+                text_request(),
+                observed.clone(),
+            )
         },
     )
     .await
@@ -572,7 +584,7 @@ async fn responses_text_turn_parity() {
         "raw_completion_parity_matrix/responses_text_turn_parity",
         |client| {
             capture_completion_pair(
-                client.openai.completion(MODEL),
+                rig::model(client.openai.completion(MODEL)),
                 text_request(),
                 observed.clone(),
             )
@@ -595,7 +607,7 @@ async fn responses_tool_turn_parity() {
         "raw_completion_parity_matrix/responses_tool_turn_parity",
         |client| {
             capture_completion_pair(
-                client.openai.completion(MODEL),
+                rig::model(client.openai.completion(MODEL)),
                 tool_request(),
                 observed.clone(),
             )

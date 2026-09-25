@@ -77,7 +77,7 @@ async fn a_tool_result_image_is_read_by_the_model() {
     with_llamacpp_vision_cassette(
         "image_tool_result/a_tool_result_image_is_read_by_the_model",
         |client| async move {
-            let model = client.completion(VISION_MODEL);
+            let model = rig::model(client.completion(VISION_MODEL));
             let request = CompletionRequestBuilder::new(
                 "Call view_file, then reply with ONLY the dominant colour name.",
             )
@@ -116,7 +116,7 @@ async fn the_same_image_in_a_user_message_is_read_too() {
     with_llamacpp_vision_cassette(
         "image_tool_result/the_same_image_in_a_user_message_is_read_too",
         |client| async move {
-            let model = client.completion(VISION_MODEL);
+            let model = rig::model(client.completion(VISION_MODEL));
             let request = CompletionRequestBuilder::new(rig::message::Message::User {
                 content: vec![
                     rig::message::UserContent::text("Reply with ONLY the dominant colour name."),

@@ -11,13 +11,12 @@
 
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW};
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(
-    client: &Endpoint<Gemini>,
+    client: &Gemini,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -26,8 +25,8 @@ fn wire(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_3_FLASH_PREVIEW),
-        route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
+        model: rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
+        route: Some(rig::model(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW))),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -254,7 +253,7 @@ crate::matrix::case_matrix! {
 
 // Reasoning matrix: the named thinking model, with the shared knob.
 fn reasoning_wire(
-    client: &Endpoint<Gemini>,
+    client: &Gemini,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -263,7 +262,7 @@ fn reasoning_wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion("gemini-3-flash-preview"),
+        model: rig::model(client.completion("gemini-3-flash-preview")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -148,7 +148,13 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_text_and_terminal(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -175,7 +181,13 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens",
-        |client| capture_terminal(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_terminal(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_cache_miss_tokens should replay from its cassette");
@@ -233,7 +245,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = rig::model(client.completion(MODEL));
             let stream = model.stream(reasoning_request(), None)?;
             sink.put(collect_reasoning_text_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())

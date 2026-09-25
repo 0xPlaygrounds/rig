@@ -130,7 +130,7 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_reasoning_tokens_reach_normalized_usage",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
@@ -168,7 +168,7 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/streaming_reasoning_tokens_reach_the_terminal_record",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
@@ -206,8 +206,7 @@ async fn blocking_agent_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_agent_reports_reasoning_tokens",
         |client| async move {
-            let agent = client
-                .agent(O4_MINI)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(O4_MINI)))
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
                 .build();
@@ -246,8 +245,7 @@ async fn streaming_agent_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/streaming_agent_reports_reasoning_tokens",
         |client| async move {
-            let agent = client
-                .agent(O4_MINI)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(O4_MINI)))
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
                 .build();
@@ -282,7 +280,7 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_high_effort_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("high"))
@@ -314,7 +312,7 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_gpt_5_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion(GPT_5);
+            let model = rig::model(client.completion(GPT_5));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
@@ -346,7 +344,7 @@ async fn streaming_gpt_5_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/streaming_gpt_5_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion(GPT_5);
+            let model = rig::model(client.completion(GPT_5));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
@@ -386,7 +384,7 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_anthropic_routed_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion(CLAUDE_HAIKU);
+            let model = rig::model(client.completion(CLAUDE_HAIKU));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(json!({
@@ -422,7 +420,7 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/streaming_anthropic_routed_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion(CLAUDE_HAIKU);
+            let model = rig::model(client.completion(CLAUDE_HAIKU));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(json!({
@@ -461,7 +459,7 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion(DEEPSEEK_R1);
+            let model = rig::model(client.completion(DEEPSEEK_R1));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(pinned("DeepInfra"))
@@ -503,7 +501,7 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_excluded_reasoning_still_counts_tokens",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(json!({
@@ -543,7 +541,7 @@ async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_reasoning_tokens_stay_within_completion_tokens",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
@@ -579,7 +577,7 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_reasoning_tokens_with_tools_in_request",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
@@ -615,7 +613,7 @@ async fn transports_agree_on_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/transports_agree_on_reasoning_tokens",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
 
             let blocking = model
                 .call(
@@ -681,7 +679,7 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_raw_usage_and_normalized_usage_agree",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
@@ -723,7 +721,7 @@ async fn blocking_cost_and_cache_details_still_map() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_cost_and_cache_details_still_map",
         |client| async move {
-            let model = client.completion(O4_MINI);
+            let model = rig::model(client.completion(O4_MINI));
             let request = CompletionRequestBuilder::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
@@ -778,7 +776,7 @@ async fn control_non_reasoning_model_reports_zero_blocking() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_blocking",
         |client| async move {
-            let model = client.completion(PLAIN_MODEL);
+            let model = rig::model(client.completion(PLAIN_MODEL));
             let request = CompletionRequestBuilder::new(PLAIN_PROMPT)
                 .max_tokens(32)
                 .additional_params(pinned("OpenAI"))
@@ -803,7 +801,7 @@ async fn control_non_reasoning_model_reports_zero_streaming() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_streaming",
         |client| async move {
-            let model = client.completion(PLAIN_MODEL);
+            let model = rig::model(client.completion(PLAIN_MODEL));
             let request = CompletionRequestBuilder::new(PLAIN_PROMPT)
                 .max_tokens(32)
                 .additional_params(pinned("OpenAI"))

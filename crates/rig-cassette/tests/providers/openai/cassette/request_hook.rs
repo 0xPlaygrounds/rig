@@ -74,11 +74,12 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
     with_openai_cassette_result(
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble("You are a comedian here to entertain the user using humour and jokes.")
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble(
+                        "You are a comedian here to entertain the user using humour and jokes.",
+                    )
+                    .build();
 
             let hook = SessionIdHook {
                 session_id: "abc123",

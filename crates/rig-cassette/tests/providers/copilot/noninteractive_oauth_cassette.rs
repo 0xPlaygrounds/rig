@@ -14,8 +14,7 @@ async fn cached_oauth_allows_noninteractive_completion() {
             // false`, so a credential that needed a device flow would have
             // failed there rather than prompting.
 
-            let response = client
-                .agent(LIVE_MODEL)
+            let response = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
                 .preamble(BASIC_PREAMBLE)
                 .build()
                 .prompt(BASIC_PROMPT)

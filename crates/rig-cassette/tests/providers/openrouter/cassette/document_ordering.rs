@@ -45,8 +45,7 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
     with_openrouter_cassette(
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = client
-                .completion(DEFAULT_MODEL)
+            let response = rig::model(client.completion(DEFAULT_MODEL))
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
                         .message(Message::system(SYSTEM_INSTRUCTION))

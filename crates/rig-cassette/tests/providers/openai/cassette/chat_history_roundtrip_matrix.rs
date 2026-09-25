@@ -207,7 +207,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = rig::model(client.openai.chat(model_name(cell.model)));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The raw surface is the same reply: the native chat-completions

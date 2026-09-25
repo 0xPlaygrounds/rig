@@ -26,8 +26,7 @@ async fn streaming_chat_with_tools() {
     with_deepseek_cassette(
         "streaming_tools/streaming_chat_with_tools",
         |client| async move {
-            let agent = client
-                .agent(DEEPSEEK_V4_FLASH)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(DEEPSEEK_V4_FLASH)))
                 .preamble(
                     "You are a calculator here to help the user perform arithmetic operations.",
                 )
@@ -55,7 +54,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_deepseek_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion(DEEPSEEK_V4_FLASH);
+            let model = rig::model(client.completion(DEEPSEEK_V4_FLASH));
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
@@ -74,7 +73,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_deepseek_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion(DEEPSEEK_V4_FLASH);
+            let model = rig::model(client.completion(DEEPSEEK_V4_FLASH));
             let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -110,7 +109,7 @@ async fn raw_stream_tool_call_arguments_are_objects() {
     with_deepseek_cassette(
         "streaming_tools/raw_stream_tool_call_arguments_are_objects",
         |client| async move {
-            let model = client.completion(DEEPSEEK_V4_FLASH);
+            let model = rig::model(client.completion(DEEPSEEK_V4_FLASH));
             let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -139,8 +138,7 @@ async fn streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer() {
     with_deepseek_cassette(
         "streaming_tools/streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer",
         |client| async move {
-            let agent = client
-                .agent(DEEPSEEK_V4_FLASH)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(DEEPSEEK_V4_FLASH)))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -170,8 +168,7 @@ async fn streaming_chat_emits_tool_call_before_later_text() {
     with_deepseek_cassette(
         "streaming_tools/streaming_chat_emits_tool_call_before_later_text",
         |client| async move {
-            let agent = client
-                .agent(DEEPSEEK_V4_FLASH)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(DEEPSEEK_V4_FLASH)))
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .additional_params(non_thinking_params())
@@ -200,7 +197,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_deepseek_cassette(
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let model = client.completion(DEEPSEEK_V4_FLASH);
+            let model = rig::model(client.completion(DEEPSEEK_V4_FLASH));
             let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))

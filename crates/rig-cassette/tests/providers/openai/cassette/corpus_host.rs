@@ -37,7 +37,7 @@ async fn embeds_over_host(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
-                client.openai.completion(openai::GPT_4O),
+                rig::model(client.openai.completion(openai::GPT_4O)),
             )),
         )
         .expect("a fresh key");
@@ -46,9 +46,11 @@ async fn embeds_over_host(
             HandlerKey::from(EMBED_KEY),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "host",
-                client
-                    .openai
-                    .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+                rig::model(
+                    client
+                        .openai
+                        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+                ),
             )),
         )
         .expect("a fresh key");

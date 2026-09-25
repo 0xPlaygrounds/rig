@@ -14,7 +14,7 @@ fn wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::Chat, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat(GPT_5_MINI),
+        model: rig::model(client.openai.chat(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,

@@ -2,16 +2,12 @@
 
 use rig::operation::RerankRequest;
 use rig::providers::voyageai::{self, wire::VoyageAi};
-use rig_test_support::endpoint::Endpoint;
 
 #[tokio::test]
 #[ignore = "requires VOYAGE_API_KEY"]
 async fn rerank_smoke() {
-    let provider = Endpoint::new(
-        VoyageAi::from_env().expect("config should build from VOYAGE_API_KEY env var"),
-        rig::rig_reqwest::shared(),
-    );
-    let model = provider.rerank(voyageai::RERANK_2_5);
+    let provider = VoyageAi::from_env().expect("config should build from VOYAGE_API_KEY env var");
+    let model = rig::model(provider.rerank(voyageai::RERANK_2_5));
 
     let response = model
         .call(

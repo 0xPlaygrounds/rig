@@ -15,8 +15,7 @@ use rig::completion::CompletionRequestBuilder;
 #[tokio::test]
 async fn completion_smoke() {
     with_cohere_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble(BASIC_PREAMBLE)
             .temperature(0.2)
             .build();
@@ -36,7 +35,7 @@ async fn usage_is_reported_from_token_counts() {
     with_cohere_cassette(
         "agent/usage_is_reported_from_token_counts",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request = CompletionRequestBuilder::new(BASIC_PROMPT)
                 .preamble(BASIC_PREAMBLE.to_string()).build();
 
@@ -97,7 +96,7 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
     with_cohere_cassette(
         "agent/max_tokens_sets_max_tokens_finish_reason",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request = CompletionRequestBuilder::new(
                 "Write a detailed fifty-word description of the ocean.",
             )
@@ -120,7 +119,7 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
 #[tokio::test]
 async fn multiturn_history_is_accepted() {
     with_cohere_cassette("agent/multiturn_history_is_accepted", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let request = CompletionRequestBuilder::new("What code word did I ask you to remember?")
             .message(Message::user(
                 "Remember the code word cobalt-orchid for my next question.",
@@ -152,7 +151,7 @@ async fn multiturn_history_is_accepted() {
 #[tokio::test]
 async fn stop_sequences_are_forwarded() {
     with_cohere_cassette("agent/stop_sequences_are_forwarded", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let request =
             CompletionRequestBuilder::new("Output exactly this sequence: alpha<END>omega")
                 .temperature(0.0)
@@ -180,7 +179,7 @@ async fn sampling_parameters_are_forwarded() {
     with_cohere_cassette(
         "agent/sampling_parameters_are_forwarded",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request =
                 CompletionRequestBuilder::new("Reply with one short sentence about rain.")
                     .temperature(0.2)

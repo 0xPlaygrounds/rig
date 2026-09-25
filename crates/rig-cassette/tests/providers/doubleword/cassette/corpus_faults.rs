@@ -6,15 +6,16 @@
 
 use rig::providers::doubleword::QWEN3_5_397B_A17B;
 
-use super::super::support::{BoundDoubleword, with_doubleword_cassette};
+use super::super::support::with_doubleword_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells, faults};
+use rig::providers::openai::OpenAI;
 
 fn wire(
-    client: &BoundDoubleword,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
+        model: rig::model(client.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -23,11 +24,11 @@ fn wire(
 
 /// The wire over the model it refuses: the setup cells' request.
 fn missing(
-    client: &BoundDoubleword,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion("rig/definitely-not-a-doubleword-model"),
+        model: rig::model(client.completion("rig/definitely-not-a-doubleword-model")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

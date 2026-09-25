@@ -1,8 +1,6 @@
 use futures::FutureExt;
-use rig::http_client::BoxedHttpClient;
 use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice;
-use rig_test_support::endpoint::Endpoint;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -16,21 +14,12 @@ use crate::cassettes::DirectRecordingHttpClient;
 
 const VENICE_BASE_URL: &str = venice::VENICE_API_BASE_URL;
 
-/// The Venice dialect of the OpenAI config bound to the bundled transport —
-/// what a cassette test builds its models from, now that a model is a bound
-/// wire.
-pub(super) type BoundVenice = Endpoint<OpenAI, BoxedHttpClient>;
-
-/// The same config on the direct-recording transport, for the suites whose
-/// response bodies are binary.
-pub(super) type DirectVenice = Endpoint<OpenAI, DirectRecordingHttpClient>;
-
 /// The Venice config pointed at `cassette`.
 fn venice_config(cassette: &ProviderCassette) -> OpenAI {
     OpenAI::with_key(&VENICE, cassette.api_key("VENICE_API_KEY")).with_base_url(cassette.base_url())
 }
 
-async fn venice_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundVenice) {
+async fn venice_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "venice",
@@ -38,14 +27,14 @@ async fn venice_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
         VENICE_BASE_URL,
     )
     .await;
-    let venice = Endpoint::new(venice_config(&cassette), rig::rig_reqwest::shared());
+    let venice = venice_config(&cassette);
 
     (cassette, venice)
 }
 
 pub(super) async fn with_venice_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(BoundVenice) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
@@ -59,7 +48,7 @@ where
 /// [`DirectRecordingHttpClient`].
 pub(super) async fn with_venice_direct_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(DirectVenice) -> Fut,
+    F: FnOnce(OpenAI, DirectRecordingHttpClient) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start_via(
@@ -70,12 +59,12 @@ where
         VENICE_BASE_URL,
     )
     .await;
-    let client = Endpoint::new(
-        venice_config(&cassette),
-        DirectRecordingHttpClient::new(cassette.direct_recorder()),
-    );
+    let provider = venice_config(&cassette);
+    let http = DirectRecordingHttpClient::new(cassette.direct_recorder());
 
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(provider, http))
+        .catch_unwind()
+        .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -84,7 +73,7 @@ pub(super) async fn with_venice_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundVenice) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = venice_cassette(spec).await;
@@ -103,7 +92,7 @@ pub(super) async fn with_venice_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(BoundVenice) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_venice_cassette(spec, test_body).await;

@@ -31,14 +31,15 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
     with_gemini_cassette(
         "hook_stress_context/hook_context_identity_stable_and_turn_advances_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .tool(subtract)
+            .build();
 
             let response = agent
                 .prompt(
@@ -80,12 +81,13 @@ async fn agent_name_absent_when_unconfigured_blocking() {
         "hook_stress_context/agent_name_absent_when_unconfigured_blocking",
         |client| async move {
             // No `.name(..)` on the builder.
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .build();
 
             let response = agent
                 .prompt("Use the add tool to add 3 and 4, then report the result.")
@@ -123,8 +125,7 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
     with_gemini_cassette(
         "hook_stress_context/scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
                 .name("stress-agent")
                 .preamble(CHAIN_PREAMBLE)
                 .temperature(0.0)
@@ -189,14 +190,15 @@ async fn block_id_correlates_tool_call_and_result_blocking() {
     with_gemini_cassette(
         "hook_stress_context/block_id_correlates_tool_call_and_result_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .tool(subtract)
+            .build();
 
             let response = agent
                 .prompt(
@@ -240,13 +242,14 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
     with_gemini_cassette(
         "hook_stress_context/two_observe_only_hooks_both_observe_the_run_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .build();
 
             let response = agent
                 .prompt("Use the add tool to add 8 and 8, then report the result.")
@@ -289,14 +292,15 @@ async fn add_hook_appends_across_builder_and_request_blocking() {
         |client| async move {
             // One hook on the agent builder, one on the request: both must fire
             // (the request-level add_hook appends to the agent-default stack).
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .add_hook(builder_hook)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .add_hook(builder_hook)
+            .build();
 
             let response = agent
                 .prompt("Use the add tool to add 5 and 6, then report the result.")
@@ -331,15 +335,16 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
     with_gemini_cassette(
         "hook_stress_context/completion_call_patches_accumulate_from_two_hooks_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a helpful assistant. Consult the provided context for any facts you \
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(
+                "You are a helpful assistant. Consult the provided context for any facts you \
                      are asked about; use a tool for arithmetic.",
-                )
-                .tool(add)
-                .build();
+            )
+            .tool(add)
+            .build();
 
             // Two independent hooks each inject a different fact via extra_context.
             // Patches must accumulate (append), so BOTH facts reach the model.
@@ -384,17 +389,18 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
     with_gemini_cassette(
         "hook_stress_context/two_hooks_narrow_active_tools_to_intersection_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a calculator assistant. Use a provided tool for any arithmetic you \
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(
+                "You are a calculator assistant. Use a provided tool for any arithmetic you \
                      can. If a needed tool is unavailable, say so and move on.",
-                )
-                .tool(add)
-                .tool(subtract)
-                .tool(multiply)
-                .build();
+            )
+            .tool(add)
+            .tool(subtract)
+            .tool(multiply)
+            .build();
 
             // Two narrowing hooks: {add, subtract} ∩ {add, multiply} == {add}.
             let response = agent

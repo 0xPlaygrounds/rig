@@ -29,7 +29,6 @@ mod streaming_tools;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
-use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -84,9 +83,9 @@ async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
     provider
 }
 
-pub(crate) async fn live_client() -> Endpoint<OpenAI> {
+pub(crate) async fn live_client() -> OpenAI {
     let http = rig::rig_reqwest::shared();
-    Endpoint::new(live_provider(&http).await, http)
+    live_provider(&http).await
 }
 
 fn has_usable_oauth_cache() -> bool {

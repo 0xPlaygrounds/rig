@@ -1,8 +1,6 @@
 use futures::FutureExt;
-use rig::http_client::BoxedHttpClient;
 use rig::providers::cohere::wire::Cohere;
 use rig::tool::Tool;
-use rig_test_support::endpoint::Endpoint;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -12,11 +10,7 @@ use crate::support::{MathError, OperationArgs};
 
 const COHERE_BASE_URL: &str = "https://api.cohere.ai";
 
-/// The Cohere config bound to the bundled transport — what a cassette test
-/// builds its models from, now that a model is a bound wire.
-pub(super) type BoundCohere = Endpoint<Cohere, BoxedHttpClient>;
-
-async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundCohere) {
+async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Cohere) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "cohere",
@@ -24,17 +18,14 @@ async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
         COHERE_BASE_URL,
     )
     .await;
-    let cohere = Endpoint::new(
-        Cohere::new(cassette.api_key("COHERE_API_KEY")).with_base_url(cassette.base_url()),
-        rig::rig_reqwest::shared(),
-    );
+    let cohere = Cohere::new(cassette.api_key("COHERE_API_KEY")).with_base_url(cassette.base_url());
 
     (cassette, cohere)
 }
 
 pub(super) async fn with_cohere_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(BoundCohere) -> Fut,
+    F: FnOnce(Cohere) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
@@ -126,7 +117,7 @@ pub(super) async fn with_cohere_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(BoundCohere) -> Fut,
+    F: FnOnce(Cohere) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_cohere_cassette(spec, test_body).await;

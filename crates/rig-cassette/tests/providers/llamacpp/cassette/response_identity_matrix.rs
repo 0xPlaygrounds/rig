@@ -69,7 +69,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
     with_llamacpp_cassette(
         "response_identity_matrix/blocking_identity",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(PROBE).max_tokens(256).build(),
@@ -91,7 +91,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
     with_llamacpp_cassette(
         "response_identity_matrix/streaming_identity",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new(PROBE).max_tokens(256).build(),
@@ -155,7 +155,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
     with_llamacpp_cassette(
         "response_identity_matrix/blocking_response_id",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(PROBE).max_tokens(256).build(),
@@ -178,7 +178,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
     with_llamacpp_cassette(
         "response_identity_matrix/streaming_response_id",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new(PROBE).max_tokens(256).build(),
@@ -262,7 +262,7 @@ async fn the_typed_route_reproduces_the_normalized_one() {
     with_llamacpp_cassette(
         "response_identity_matrix/typed_route_parity",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request = || CompletionRequestBuilder::new(PROBE).max_tokens(256).build();
 
             let first = model

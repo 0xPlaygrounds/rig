@@ -42,8 +42,9 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::{BoundOpenRouter, with_openrouter_tool_lifecycle_cassette_result};
+use super::super::support::with_openrouter_tool_lifecycle_cassette_result;
 use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
@@ -257,8 +258,8 @@ impl_matrix_tool!(RecordPayload, "record_payload", PayloadArgs);
 impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
-async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
-    let model = client.completion(model_name(cell.model));
+async fn run_model(client: OpenAI, cell: Cell) -> Observation {
+    let model = rig::model(client.completion(model_name(cell.model)));
     match cell.transport {
         Transport::Blocking => match model.call(request(cell), None).await {
             Ok(response) => {
@@ -310,10 +311,9 @@ async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
     }
 }
 
-async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
+async fn run_agent(client: OpenAI, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
-    let builder = client
-        .agent(model_name(cell.model))
+    let builder = rig::AgentBuilder::new(rig::model(client.completion(model_name(cell.model))))
         .preamble(PREAMBLE)
         .additional_params(json!({
             "tool_choice": "required",
@@ -367,7 +367,7 @@ async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
     }
 }
 
-async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
         Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,

@@ -11,8 +11,7 @@ async fn streaming_smoke() {
     with_cohere_cassette("streaming/streaming_smoke", |client| async move {
         // Capped so the recorded SSE body stays reviewable; uncapped, the model can
         // run to its 8k output limit and the fixture balloons past 800 KB.
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble(STREAMING_PREAMBLE)
             .max_tokens(64)
             .build();

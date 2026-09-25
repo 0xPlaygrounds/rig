@@ -10,7 +10,7 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
     with_mistralrs_completions_cassette(
         "usage/chat_completion_usage_without_output_tokens_details_deserializes",
         |client| async move {
-            let model = client.chat(model_name());
+            let model = rig::model(client.chat(model_name()));
             let request = CompletionRequestBuilder::new(
                 "/no_think Explain usage accounting in one sentence.",
             )

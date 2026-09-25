@@ -8,7 +8,7 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 #[tokio::test]
 async fn embeddings_smoke() {
     with_venice_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+        let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None));
         let embeddings = model
             .call(
                 EMBEDDING_INPUTS
@@ -30,7 +30,7 @@ async fn embeddings_smoke() {
 #[tokio::test]
 async fn embeddings_honor_requested_dimensions() {
     with_venice_cassette("embeddings/requested_dimensions", |client| async move {
-        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, Some(256));
+        let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, Some(256)));
         let embeddings = model
             .call(vec!["dimensioned input".to_string()], None)
             .await

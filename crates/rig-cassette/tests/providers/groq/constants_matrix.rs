@@ -30,9 +30,10 @@
 use anyhow::Result;
 use rig::providers::groq;
 
-use super::support::{BoundGroq, with_groq_cassette_result};
+use super::support::with_groq_cassette_result;
 use crate::support::{assert_nonempty_response, assistant_text_response};
 use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const PROMPT: &str = "Reply with the single word OK.";
 
@@ -51,7 +52,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
     with_groq_cassette_result(
         "constants_matrix/catalog_lists_current_constants",
         |client| async move {
-            let models = client.models().call((), None).await?;
+            let models = rig::model(client.models()).call((), None).await?;
             let served: Vec<&str> = models.data.iter().map(|model| model.id.as_str()).collect();
             let missing: Vec<&str> = PUBLIC_CONSTANTS
                 .iter()
@@ -68,8 +69,8 @@ async fn catalog_lists_current_constants() -> Result<()> {
     .await
 }
 
-async fn assert_completion_smoke(client: BoundGroq, model_id: &str) -> Result<()> {
-    let model = client.completion(model_id);
+async fn assert_completion_smoke(client: OpenAI, model_id: &str) -> Result<()> {
+    let model = rig::model(client.completion(model_id));
     let request = CompletionRequestBuilder::new(PROMPT).max_tokens(64).build();
     let response = model.call(request, None).await?;
     let text = assistant_text_response(&response.choice)

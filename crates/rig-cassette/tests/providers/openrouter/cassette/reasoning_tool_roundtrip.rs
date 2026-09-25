@@ -13,8 +13,7 @@ use super::super::support::with_openrouter_cassette;
 async fn streaming() {
     with_openrouter_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = client
-            .agent("openai/gpt-5.2")
+        let agent = rig::AgentBuilder::new(rig::model(client.completion("openai/gpt-5.2")))
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))
@@ -42,8 +41,7 @@ async fn nonstreaming() {
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent("openai/gpt-5.2")
+            let agent = rig::AgentBuilder::new(rig::model(client.completion("openai/gpt-5.2")))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))

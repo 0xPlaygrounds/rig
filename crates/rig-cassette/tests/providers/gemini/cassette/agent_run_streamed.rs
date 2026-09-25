@@ -183,7 +183,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             );
 
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -269,7 +269,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
         "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -328,7 +328,7 @@ async fn streamed_repair_continues_the_same_stream() {
         "agent_run_streamed/streamed_repair_continues_the_same_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "sum"],
                 None,
@@ -400,7 +400,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
         "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,
@@ -498,12 +498,13 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
     with_gemini_cassette(
         "agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .tool(Add)
+            .tool_choice(ToolChoice::Required)
+            .build();
 
             let mut stream = agent
                 .prompt("What is 21 + 21? Use the add tool.")
@@ -571,12 +572,13 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
     with_gemini_cassette(
         "agent_run_streamed/builtin_streaming_cancellation_history_includes_assistant_turn",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .tool(Add)
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .tool(Add)
+            .tool_choice(ToolChoice::Required)
+            .build();
 
             let mut stream = agent
                 .prompt("What is 21 + 21? Use the add tool.")

@@ -2,7 +2,6 @@
 
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::CompletionResponse as ProviderResponse;
-use rig_test_support::endpoint::Endpoint;
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -13,7 +12,7 @@ use rig::completion::CompletionRequestBuilder;
 
 async fn with_openai_vllm_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(Endpoint<OpenAI>) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     let base_url =
@@ -25,10 +24,7 @@ where
         &base_url,
     )
     .await;
-    let client = Endpoint::new(
-        OpenAI::new("dummy-vllm-key").with_base_url(cassette.base_url()),
-        rig::rig_reqwest::shared(),
-    );
+    let client = OpenAI::new("dummy-vllm-key").with_base_url(cassette.base_url());
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -39,7 +35,7 @@ async fn responses_api_accepts_null_metadata() {
     with_openai_vllm_cassette(
         "vllm/responses_api_accepts_null_metadata",
         |client| async move {
-            let model = client.completion("Qwen/Qwen3-0.6B");
+            let model = rig::model(client.completion("Qwen/Qwen3-0.6B"));
             let request = CompletionRequestBuilder::new("Reply with a short acknowledgement.")
                 .max_tokens(8).build();
 

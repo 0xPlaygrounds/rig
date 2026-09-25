@@ -31,7 +31,7 @@ async fn normalized_response_is_complete() {
     with_mistral_embedding_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
             let response = model
                 .call(inputs(), None)
                 .await
@@ -48,7 +48,7 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_mistral_embedding_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+        let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
         let response = model
             .call(inputs(), None)
             .await
@@ -74,7 +74,7 @@ async fn raw_round_trips() {
 #[tokio::test]
 async fn raw_route_parity() {
     with_mistral_embedding_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+        let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
         let normalized = model
             .call(inputs(), None)
             .await
@@ -100,7 +100,7 @@ async fn single_text_convenience() {
     with_mistral_embedding_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()], None)
                 .await
@@ -128,7 +128,7 @@ async fn dimensions_request() {
         // `mistral-embed` is fixed-width; `output_dimension` is a
         // codestral-embed capability, so the cell exercises that model.
         let ndims = 64;
-        let model = client.embedding(mistral::embedding::CODESTRAL_EMBED, Some(ndims));
+        let model = rig::model(client.embedding(mistral::embedding::CODESTRAL_EMBED, Some(ndims)));
         let response = model
             .call(inputs(), None)
             .await
@@ -146,7 +146,7 @@ async fn error_preserves_provider_body() {
     with_mistral_embedding_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding("no-such-embedding-model", None);
+            let model = rig::model(client.embedding("no-such-embedding-model", None));
             let error = model
                 .call(inputs(), None)
                 .await
@@ -179,7 +179,7 @@ async fn bug_mistral_request_id_dropped() {
     with_mistral_embedding_cassette(
         "embedding_matrix/bug_mistral_request_id_dropped",
         |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+            let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
             let response = model
                 .call(inputs(), None)
                 .await

@@ -86,8 +86,7 @@ impl Tool for Subtract {
 #[tokio::test]
 async fn tools_smoke() {
     with_xai_cassette("tools/tools_smoke", |client| async move {
-        let agent = client
-            .agent(xai::GROK_3_MINI)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_3_MINI)))
             .preamble(TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)

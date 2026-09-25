@@ -12,7 +12,6 @@
 use rig::providers::doubleword::QWEN3_5_397B_A17B;
 use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_doubleword_cassette;
 use crate::ecs_matrix::{
@@ -26,11 +25,11 @@ use crate::ecs_matrix::{
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
 fn wire(
-    client: &Endpoint<OpenAI>,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
+        model: rig::model(client.completion(QWEN3_5_397B_A17B)),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -39,11 +38,11 @@ fn wire(
 
 /// The wire over the model it refuses: the setup cells' request.
 fn missing(
-    client: &Endpoint<OpenAI>,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion("rig/definitely-not-a-doubleword-model"),
+        model: rig::model(client.completion("rig/definitely-not-a-doubleword-model")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -101,13 +100,11 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 fn scripted_stream(
     frames: &[String],
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
-    let client = Endpoint::new(
-        OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY),
-        rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)])),
-    );
+    let client = OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY);
+    let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
+        model: rig::Model::new(client.completion(QWEN3_5_397B_A17B), http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -119,13 +116,11 @@ fn scripted_stream(
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, SequencedHttpClient>> {
-    let client = Endpoint::new(
-        OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY),
-        SequencedHttpClient::new(replies),
-    );
+    let client = OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY);
+    let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion(QWEN3_5_397B_A17B),
+        model: rig::Model::new(client.completion(QWEN3_5_397B_A17B), http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),

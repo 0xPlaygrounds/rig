@@ -9,7 +9,11 @@ async fn completion_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_xai_cassette("agent/completion_smoke", |client| async move {
-                let mut ecs = EcsAgent::new(client.completion(xai::GROK_3_MINI), BASIC_PREAMBLE, 1);
+                let mut ecs = EcsAgent::new(
+                    rig::model(client.completion(xai::GROK_3_MINI)),
+                    BASIC_PREAMBLE,
+                    1,
+                );
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)

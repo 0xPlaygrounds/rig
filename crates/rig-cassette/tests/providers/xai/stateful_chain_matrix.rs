@@ -45,8 +45,8 @@ fn text(choice: &[AssistantContent]) -> String {
 async fn file_id_chain() {
     const SCENARIO: &str = "stateful_chain_matrix/file_id_chain";
     with_xai_cassette("stateful_chain_matrix/file_id_chain", |client| async move {
-        let base = client.wire.base_url.trim_end_matches('/').to_owned();
-        let key = client.wire.api_key.expose().to_owned();
+        let base = client.base_url.trim_end_matches('/').to_owned();
+        let key = client.api_key.expose().to_owned();
         let http = reqwest::Client::new();
         let bytes = std::fs::read(crate::support::PDF_FIXTURE_PATH).expect("fixture PDF");
         let form = reqwest::multipart::Form::new()
@@ -84,7 +84,7 @@ async fn file_id_chain() {
                     UserContent::text("How many pages does this PDF have? Answer with a number."),
                 ],
             };
-            let model = client.completion(xai::GROK_4);
+            let model = rig::model(client.completion(xai::GROK_4));
             let first = model
                 .call(request(vec![document.clone()]), None)
                 .await

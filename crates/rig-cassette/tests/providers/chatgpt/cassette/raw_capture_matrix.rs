@@ -111,7 +111,7 @@ async fn raw_round_trips_provider_type() {
     with_chatgpt_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            capture_completion(client.completion(MODEL), request(), sink)
+            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -161,7 +161,7 @@ async fn raw_exposes_response_envelope() {
     with_chatgpt_cassette(
         "raw_capture_matrix/raw_exposes_response_envelope",
         |client| async move {
-            capture_completion(client.completion(MODEL), request(), sink)
+            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("completion should succeed");
         },
@@ -211,7 +211,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_chatgpt_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(client.completion(MODEL), request(), sink)
+            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("completion should succeed");
         },

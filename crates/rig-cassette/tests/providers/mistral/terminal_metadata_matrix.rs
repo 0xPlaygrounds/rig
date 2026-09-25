@@ -43,9 +43,10 @@ use futures::StreamExt as _;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::support::{BoundMistral, with_mistral_terminal_metadata_cassette_result};
+use super::support::with_mistral_terminal_metadata_cassette_result;
 use crate::support::assert_matches_recorded_document;
 use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -120,8 +121,8 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = rig::model(client.completion(model_name(cell.model)));
     let mut builder = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));

@@ -40,7 +40,6 @@ use rig::providers::anthropic::completion::{
     CLAUDE_FABLE_5_1, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5,
 };
 use rig::providers::anthropic::wire::Anthropic;
-use rig_test_support::endpoint::Endpoint;
 use serde_json::Value;
 
 use super::super::support::with_anthropic_cassette;
@@ -129,8 +128,8 @@ fn assert_recorded_system_role_hoisted(scenario: &str) {
     );
 }
 
-async fn assert_uncapped_turn(client: Endpoint<Anthropic>, model_id: &str) {
-    let model = client.completion(model_id);
+async fn assert_uncapped_turn(client: Anthropic, model_id: &str) {
+    let model = rig::model(client.completion(model_id));
     let request = CompletionRequestBuilder::new(PROMPT).build();
     let response = model
         .call(request, None)
@@ -140,8 +139,8 @@ async fn assert_uncapped_turn(client: Endpoint<Anthropic>, model_id: &str) {
     assert_contains_any_case_insensitive(&text, &["ok"]);
 }
 
-async fn assert_mid_conversation_system_turn(client: Endpoint<Anthropic>, model_id: &str) {
-    let model = client.completion(model_id);
+async fn assert_mid_conversation_system_turn(client: Anthropic, model_id: &str) {
+    let model = rig::model(client.completion(model_id));
     let request = CompletionRequestBuilder::new(SKY_PROMPT)
         .messages([
             Message::user("Start a short language compliance check."),

@@ -256,7 +256,7 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = rig::model(client.openai.chat(model_name(cell.model)));
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
@@ -312,11 +312,15 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
-    let builder = client.chat.agent(model_name(cell.model))
-        .preamble(PREAMBLE)
-        .additional_params(json!({ "tool_choice": "required", "parallel_tool_calls": cell.shape == Shape::Parallel }))
-        .max_tokens(128)
-        .default_max_turns(1);
+    let builder = rig::AgentBuilder::new(rig::model(
+        client.chat.completion(model_name(cell.model)),
+    ))
+    .preamble(PREAMBLE)
+    .additional_params(
+        json!({ "tool_choice": "required", "parallel_tool_calls": cell.shape == Shape::Parallel }),
+    )
+    .max_tokens(128)
+    .default_max_turns(1);
     let agent = match cell.shape {
         Shape::Zero => builder
             .tool(Ping {

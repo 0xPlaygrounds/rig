@@ -207,8 +207,7 @@ async fn document_file_data_roundtrip_live() {
     with_openrouter_cassette(
         "document_file_data/document_file_data_roundtrip_live",
         |client| async move {
-            let agent = client
-                .agent(DOCUMENT_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(DOCUMENT_MODEL)))
                 .preamble(DOCUMENT_PREAMBLE)
                 .build();
             let mut history = Vec::new();
@@ -252,8 +251,7 @@ async fn streaming_document_file_data_roundtrip_live() {
     with_openrouter_cassette(
         "document_file_data/streaming_document_file_data_roundtrip_live",
         |client| async move {
-            let agent = client
-                .agent(DOCUMENT_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(DOCUMENT_MODEL)))
                 .preamble(DOCUMENT_PREAMBLE)
                 .build();
 

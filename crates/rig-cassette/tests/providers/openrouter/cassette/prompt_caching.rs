@@ -20,8 +20,6 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig_test_support::endpoint::Endpoint;
-
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_agent_growth_still_hits, assert_cache_conformance, assert_prefix_stable,
@@ -56,7 +54,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_openrouter_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
+        let model = rig::model(client.completion(CACHE_MODEL));
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_conformance(&observation, &OPENROUTER_CACHE_SUPPORT, "blocking probe");
     })
@@ -72,7 +70,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     with_openrouter_prompt_caching_cassette(
         "prompt_caching/streaming_probe",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
+            let model = rig::model(client.completion(CACHE_MODEL));
             let observation = run_cache_probe_streaming(&model, &probe()).await;
             assert_cache_conformance(&observation, &OPENROUTER_CACHE_SUPPORT, "streaming probe");
         },
@@ -92,14 +90,13 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let model = Endpoint::new(
+    let model = rig::model(
         rig::providers::openai::wire::OpenAI::from_env_with(
             &rig::providers::openai::wire::OPENROUTER,
         )
-        .expect("OPENROUTER_API_KEY"),
-        rig::rig_reqwest::shared(),
-    )
-    .completion(CACHE_MODEL);
+        .expect("OPENROUTER_API_KEY")
+        .completion(CACHE_MODEL),
+    );
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(
         &observation,
@@ -121,8 +118,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
     const SCENARIO: &str = "prompt_caching/agent_loop";
 
     with_openrouter_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
-        let response = client
-            .agent(CACHE_MODEL)
+        let response = rig::AgentBuilder::new(rig::model(client.completion(CACHE_MODEL)))
             .preamble(&probe().preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)

@@ -28,7 +28,7 @@
 //! * **`POST /v1/messages`** — llama.cpp also speaks the *Anthropic* Messages
 //!   wire, converting it to chat completions internally. Rig has an Anthropic
 //!   wire, so this is reachable today with
-//!   `Endpoint::new(anthropic::wire::Anthropic::new(key).with_base_url(url), rig::rig_reqwest::shared())`. It is
+//!   `anthropic::wire::Anthropic::new(key).with_base_url(url)`. It is
 //!   excluded from *this* provider because a
 //!   provider that spoke two wires would have to pick one for every capability,
 //!   and the OpenAI wire is the one llama.cpp's own documentation leads with.
@@ -69,8 +69,7 @@ use rig::completion::CompletionRequestBuilder;
 #[tokio::test]
 async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
-        let models = client
-            .models()
+        let models = rig::model(client.models())
             .call((), None)
             .await
             .expect("listing llama.cpp models should succeed");
@@ -151,8 +150,7 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
         // `verify()` *is* the `/props` request; there is no separate typed
         // accessor, which is itself part of the exclude decision for the
         // operational routes.
-        client
-            .verify()
+        rig::model(client.verify())
             .verify()
             .await
             .expect("an unkeyed server verifies successfully");
@@ -211,7 +209,7 @@ async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
         // The wrapper hands out the plain OpenAI configuration; the Responses
         // surface is a *different* wire over the same socket and the same
         // base URL, which is the whole shape of the exclusion.
-        let model = client.responses(CASSETTE_MODEL);
+        let model = rig::model(client.responses(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new("/no_think Reply with the single word: ok")

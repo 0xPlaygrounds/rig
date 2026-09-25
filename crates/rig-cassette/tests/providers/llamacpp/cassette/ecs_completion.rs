@@ -13,7 +13,11 @@ async fn completion_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_llamacpp_cassette("agent/completion_smoke", |client| async move {
-                let mut ecs = EcsAgent::new(client.completion(CASSETTE_MODEL), BASIC_PREAMBLE, 1);
+                let mut ecs = EcsAgent::new(
+                    rig::model(client.completion(CASSETTE_MODEL)),
+                    BASIC_PREAMBLE,
+                    1,
+                );
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)

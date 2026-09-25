@@ -12,8 +12,7 @@ use rig::completion::CompletionRequestBuilder;
 #[tokio::test]
 async fn tool_call_roundtrip() {
     with_cohere_cassette("tools/tool_call_roundtrip", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble(TOOLS_PREAMBLE)
             .tool(IntegerAdder)
             .tool(IntegerSubtract)
@@ -38,7 +37,7 @@ async fn required_tool_choice_is_accepted() {
     with_cohere_cassette(
         "tools/required_tool_choice_is_accepted",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request = CompletionRequestBuilder::new(TOOLS_PROMPT)
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(ToolDefinition {
@@ -90,7 +89,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
     with_cohere_cassette(
         "tools/required_tool_choice_selects_from_multiple_tools",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request = CompletionRequestBuilder::new("Use the correct tool to calculate 9 - 4.")
                 .tool(rig::tool::tool_definition(&IntegerAdder))
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
@@ -128,7 +127,7 @@ async fn none_tool_choice_with_tools_returns_text() {
     with_cohere_cassette(
         "tools/none_tool_choice_with_tools_returns_text",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request = CompletionRequestBuilder::new("Calculate 9 - 4. Answer directly without calling a tool.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::None)
@@ -164,7 +163,7 @@ async fn none_tool_choice_without_tools_returns_text() {
     with_cohere_cassette(
         "tools/none_tool_choice_without_tools_returns_text",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request = CompletionRequestBuilder::new("Reply with the single word ready.")
                 .tool_choice(ToolChoice::None)
                 .max_tokens(16).build();
@@ -192,7 +191,7 @@ async fn strict_required_tool_choice_is_accepted() {
     with_cohere_cassette(
         "tools/strict_required_tool_choice_is_accepted",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let request =
                 CompletionRequestBuilder::new("Use the subtract tool to calculate 11 - 6.")
                     .tool(rig::tool::tool_definition(&IntegerSubtract))

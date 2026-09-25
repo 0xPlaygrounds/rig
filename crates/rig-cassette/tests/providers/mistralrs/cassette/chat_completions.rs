@@ -10,7 +10,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
     with_mistralrs_completions_cassette(
         "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
         |client| async move {
-            let model = client.chat(model_name());
+            let model = rig::model(client.chat(model_name()));
             let request = CompletionRequestBuilder::new(
                 "Think briefly, then answer in one sentence why token usage should be reported.",
             )
@@ -61,7 +61,7 @@ async fn chat_completions_agent_prompt_completes() {
     with_mistralrs_completions_cassette(
         "chat_completions/chat_completions_agent_prompt_completes",
         |client| async move {
-            let agent = client.agent(model_name())
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(model_name())))
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
                 .build();

@@ -1,16 +1,14 @@
 //! Migrated from `examples/agent_with_ollama.rs`.
 
 use rig::providers::ollama::wire::Ollama;
-use rig_test_support::endpoint::Endpoint;
 
 use crate::support::assert_nonempty_response;
 
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn completion_smoke() {
-    let ollama = Endpoint::new(Ollama::new(), rig::rig_reqwest::shared());
-    let agent = ollama
-        .agent("qwen3:4b")
+    let ollama = Ollama::new();
+    let agent = rig::AgentBuilder::new(rig::model(ollama.completion("qwen3:4b")))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

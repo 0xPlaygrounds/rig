@@ -192,7 +192,7 @@ impl Tool for FileReport {
 }
 
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = rig::model(client.openai.chat(model_name(cell.model)));
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
@@ -241,9 +241,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
-    let agent = client
-        .chat
-        .agent(model_name(cell.model))
+    let agent = rig::AgentBuilder::new(rig::model(client.chat.completion(model_name(cell.model))))
         .preamble(PREAMBLE)
         .tool(FileReport {
             invocations: Arc::clone(&invocations),

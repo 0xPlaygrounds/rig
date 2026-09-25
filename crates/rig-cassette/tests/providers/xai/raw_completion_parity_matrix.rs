@@ -83,7 +83,13 @@ async fn raw_normalize_reproduces_completion() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
-        |client| capture_completion_pair(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_completion_pair(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_normalize_reproduces_completion should replay from its cassette");
@@ -133,7 +139,13 @@ async fn raw_completion_carries_request_id_on_the_type() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type",
-        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_completion_carries_request_id_on_the_type should replay from its cassette");

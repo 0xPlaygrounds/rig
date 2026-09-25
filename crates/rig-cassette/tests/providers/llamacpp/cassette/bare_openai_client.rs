@@ -26,7 +26,6 @@
 //! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M, `llama-server` b10964-b29c606e2).
 
 use rig::providers::openai::wire::{LLAMACPP, OpenAI};
-use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{
     Adder, RAW_TEXT_RESPONSE_PREAMBLE, RAW_TEXT_RESPONSE_PROMPT, STREAMING_TOOLS_PREAMBLE,
@@ -53,8 +52,7 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/caller_supplies_the_v1_prefix",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
                 .preamble("You are a concise assistant.")
                 .max_tokens(256)
                 .build();
@@ -106,9 +104,8 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let bare = Endpoint::new(OpenAI::new("llamacpp-local"), recorder.clone());
-        let _ = bare
-            .embedding("m", Some(1))
+        let bare = OpenAI::new("llamacpp-local");
+        let _ = rig::Model::new(bare.embedding("m", Some(1)), recorder.clone())
             .call(vec!["probe".to_string()], None)
             .await
             .map(|response| response.embeddings);
@@ -125,9 +122,8 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let provider = Endpoint::new(OpenAI::with_key(&LLAMACPP, ""), recorder.clone());
-        let _ = provider
-            .embedding("m", Some(1))
+        let provider = OpenAI::with_key(&LLAMACPP, "");
+        let _ = rig::Model::new(provider.embedding("m", Some(1)), recorder.clone())
             .call(vec!["probe".to_string()], None)
             .await
             .map(|response| response.embeddings);
@@ -145,7 +141,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/authorization_header_is_always_sent",
         |client| async move {
-            let model = client.chat(CASSETTE_MODEL);
+            let model = rig::model(client.chat(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Reply with the single word: ok")
@@ -204,8 +200,7 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -262,8 +257,7 @@ async fn agent_prompt_through_completions_api() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/agent_prompt_through_completions_api",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
                 .preamble("You are a helpful assistant.")
                 .build();
 
@@ -285,7 +279,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let model = client.chat(CASSETTE_MODEL);
+            let model = rig::model(client.chat(CASSETTE_MODEL));
             let request = CompletionRequestBuilder::new(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .build();

@@ -1,7 +1,6 @@
 //! Mistral agent completion smoke test.
 
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
-use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -10,11 +9,10 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn completion_smoke() {
-    let client = Endpoint::new(
-        OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set"),
-        rig::rig_reqwest::shared(),
-    );
-    let agent = client.agent(DEFAULT_MODEL).preamble(BASIC_PREAMBLE).build();
+    let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let agent = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
+        .preamble(BASIC_PREAMBLE)
+        .build();
 
     let response = agent
         .prompt(BASIC_PROMPT)

@@ -2,7 +2,6 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::support::with_xai_cassette;
-use rig_test_support::endpoint::Endpoint;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -18,16 +17,16 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: Endpoint<rig::providers::openai::OpenAI>,
+    client: rig::providers::openai::OpenAI,
 ) -> (
     rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
     rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
     rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
 ) {
     (
-        client.completion("grok-3-mini"),
-        client.completion("grok-3-mini"),
-        client.completion("grok-3-mini-fast"),
+        rig::model(client.completion("grok-3-mini")),
+        rig::model(client.completion("grok-3-mini")),
+        rig::model(client.completion("grok-3-mini-fast")),
     )
 }
 

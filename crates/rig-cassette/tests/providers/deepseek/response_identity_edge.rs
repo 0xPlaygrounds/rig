@@ -11,7 +11,7 @@ async fn blocking_contract_captures_none() {
     with_deepseek_cassette(
         "response_identity_edge/blocking_contract_captures_none",
         |client| async move {
-            let model = client.completion(deepseek::DEEPSEEK_V4_FLASH);
+            let model = rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH));
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),

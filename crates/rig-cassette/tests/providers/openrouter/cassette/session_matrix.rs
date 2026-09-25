@@ -1,9 +1,10 @@
 //! Reasoning across a session boundary on OpenRouter: see
 //! `rig_test_support::history_survival::sessions`.
 
-use super::super::support::{BoundOpenRouter, with_openrouter_cassette};
+use super::super::support::with_openrouter_cassette;
 
 use crate::history_survival::sessions::{self, Cell};
+use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "reasoning": { "max_tokens": 1024 }, "include_reasoning": true }))
@@ -17,16 +18,16 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: BoundOpenRouter,
+    client: OpenAI,
 ) -> (
     rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
     rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
     rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>,
 ) {
     (
-        client.completion("anthropic/claude-haiku-4.5"),
-        client.completion("anthropic/claude-haiku-4.5"),
-        client.completion("anthropic/claude-sonnet-4.6"),
+        rig::model(client.completion("anthropic/claude-haiku-4.5")),
+        rig::model(client.completion("anthropic/claude-haiku-4.5")),
+        rig::model(client.completion("anthropic/claude-sonnet-4.6")),
     )
 }
 

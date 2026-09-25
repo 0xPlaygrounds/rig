@@ -63,7 +63,7 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
     with_llamacpp_cassette(
         "content_matrix/empty_answer_with_stop",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let error = model
                 .call(
                     CompletionRequestBuilder::new(
@@ -137,7 +137,7 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
     with_llamacpp_cassette(
         "content_matrix/consecutive_same_role",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(format!(
@@ -188,8 +188,7 @@ async fn unicode_split_across_stream_chunks_reassembles() {
     with_llamacpp_cassette(
         "content_matrix/unicode_across_chunks",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
                 .preamble(
                     "Reply with exactly the text you are asked for and nothing else. \
                  No explanation, no quotes.",
@@ -271,7 +270,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
     with_llamacpp_cassette(
         "content_matrix/long_tool_output",
         move |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
                 .call(
                     CompletionRequestBuilder::new(Message::User {
@@ -331,7 +330,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
 #[tokio::test]
 async fn a_system_message_plus_history_keeps_its_order() {
     with_llamacpp_cassette("content_matrix/system_plus_history", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
+        let model = rig::model(client.completion(CASSETTE_MODEL));
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}And what was the first one?"))

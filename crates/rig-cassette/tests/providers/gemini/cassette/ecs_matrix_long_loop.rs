@@ -10,7 +10,6 @@ use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::providers::gemini::Gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
-use rig_test_support::endpoint::Endpoint;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::Gemini;
 
@@ -18,7 +17,7 @@ const THINKING: cells::ThinkingWire = cells::ThinkingWire::Gemini;
 // `list_files` functionResponse with an empty candidate (no parts,
 // finishReason STOP) on both endpoints, 3 attempts, first recording round.
 fn wire(
-    client: &Endpoint<Gemini>,
+    client: &Gemini,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -27,7 +26,7 @@ fn wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion("gemini-2.5-flash"),
+        model: rig::model(client.completion("gemini-2.5-flash")),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -35,7 +34,7 @@ fn wire(
 }
 
 fn task_wire(
-    client: &Endpoint<Gemini>,
+    client: &Gemini,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -43,7 +42,7 @@ fn task_wire(
     >,
 > {
     Wire {
-        model: client.completion("gemini-3.8-flash"),
+        model: rig::model(client.completion("gemini-3.8-flash")),
         thinking: THINKING,
         route: None,
         temperature: Some(0.0),
@@ -84,10 +83,11 @@ const SCRIPTED_KEY: &str = "scripted-fault-key-7f3a9c";
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
 ) -> Wire<rig::Model<rig::providers::gemini::completion::GenerateContent, SequencedHttpClient>> {
-    let client = Endpoint::new(Gemini::new(SCRIPTED_KEY), SequencedHttpClient::new(replies));
+    let client = Gemini::new(SCRIPTED_KEY);
+    let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,
-        model: client.completion("gemini-2.5-flash"),
+        model: rig::Model::new(client.completion("gemini-2.5-flash"), http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

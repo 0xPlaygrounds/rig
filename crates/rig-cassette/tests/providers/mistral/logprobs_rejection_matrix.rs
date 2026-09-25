@@ -30,8 +30,9 @@ use anyhow::{Context, Result, bail};
 use futures::StreamExt as _;
 use serde_json::{Value, json};
 
-use super::support::{BoundMistral, with_mistral_logprobs_rejection_cassette_result};
+use super::support::with_mistral_logprobs_rejection_cassette_result;
 use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -60,8 +61,8 @@ fn model_name(model: Model) -> &'static str {
     }
 }
 
-async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedError) -> Result<()> {
+    let model = rig::model(client.completion(model_name(cell.model)));
     let request = CompletionRequestBuilder::new("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
         .max_tokens(8)

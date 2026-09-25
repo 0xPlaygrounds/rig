@@ -7,8 +7,7 @@ use super::super::cassette_support::*;
 #[tokio::test]
 async fn completion_smoke() {
     with_llamacpp_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble(BASIC_PREAMBLE)
             .build();
 

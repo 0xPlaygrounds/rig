@@ -4,15 +4,16 @@
 //! `tests/common/ecs_matrix/long_loop.rs`'s; this file holds the scenario
 //! literals and the wire's model.
 
-use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
+use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop};
+use rig::providers::openai::OpenAI;
 
 fn wire(
-    client: &BoundDeepSeek,
+    client: &OpenAI,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, rig::http_client::BoxedHttpClient>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
-        model: client.completion("deepseek-flash"),
+        model: rig::model(client.completion("deepseek-flash")),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),

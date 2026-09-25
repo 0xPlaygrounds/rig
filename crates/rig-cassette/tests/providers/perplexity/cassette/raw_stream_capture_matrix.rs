@@ -90,7 +90,7 @@ async fn stream_raw_round_trips_terminal_type() {
     with_perplexity_cassette(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
-            capture_text_and_terminal(client.completion(MODEL), request(), sink)
+            capture_text_and_terminal(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("the stream should open");
         },
@@ -124,7 +124,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     with_perplexity_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object",
         |client| async move {
-            capture_terminal(client.completion(MODEL), request(), sink)
+            capture_terminal(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("the stream should open");
         },

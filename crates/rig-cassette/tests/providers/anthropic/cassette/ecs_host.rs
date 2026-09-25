@@ -18,7 +18,6 @@ use rig_ecs::{
     bus::{EffectOutcome, Handlers, PendingEffect, Policy, RigSchedule},
     systems::{RigSet, RunCommands},
 };
-use rig_test_support::endpoint::Endpoint;
 use std::sync::Arc;
 #[path = "ecs_host/policies.rs"]
 mod policies;
@@ -172,11 +171,15 @@ async fn run_prompt(ecs: &mut EcsAgent, host: &Host) -> String {
     output
 }
 async fn over_host(
-    client: Endpoint<Anthropic>,
+    client: Anthropic,
     host: Host,
     hooks: Hooks,
 ) -> rig::cassette::effect_log::EffectLog {
-    let mut ecs = agent(client.completion(CLAUDE_SONNET_4_6), &host, hooks);
+    let mut ecs = agent(
+        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        &host,
+        hooks,
+    );
     let output = run_prompt(&mut ecs, &host).await;
     if host.with_tool {
         assert!(output.contains("42"), "{output}");

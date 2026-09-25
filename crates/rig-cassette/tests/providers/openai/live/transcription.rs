@@ -2,18 +2,14 @@
 
 use rig::providers::openai::{self, wire::OpenAI};
 use rig::transcription::TranscriptionRequestBuilder;
-use rig_test_support::endpoint::Endpoint;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn transcription_smoke() {
-    let client = Endpoint::new(
-        OpenAI::from_env().expect("config should build from env"),
-        rig::rig_reqwest::shared(),
-    );
-    let model = client.transcription(openai::WHISPER_1);
+    let client = OpenAI::from_env().expect("config should build from env");
+    let model = rig::model(client.transcription(openai::WHISPER_1));
     let response = model
         .call(
             TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)

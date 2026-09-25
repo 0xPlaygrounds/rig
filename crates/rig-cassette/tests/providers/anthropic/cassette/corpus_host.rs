@@ -15,7 +15,6 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
 use rig_cassette::agent::AgentReplayExt;
-use rig_test_support::endpoint::Endpoint;
 
 use super::super::support::with_anthropic_corpus_host_cassette;
 use crate::goldens::{
@@ -83,7 +82,7 @@ fn with_hooks<S>(builder: AgentBuilder<S>, hooks: Hooks) -> AgentBuilder<S> {
 
 /// The program over the host's bus, with `hooks` registered on the agent.
 async fn over_host(
-    client: Endpoint<Anthropic>,
+    client: Anthropic,
     host: Host,
     hooks: Hooks,
 ) -> rig::cassette::effect_log::EffectLog {
@@ -98,7 +97,7 @@ async fn over_host(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
-                client.completion(CLAUDE_SONNET_4_6),
+                rig::model(client.completion(CLAUDE_SONNET_4_6)),
             )),
         )
         .expect("a fresh key");

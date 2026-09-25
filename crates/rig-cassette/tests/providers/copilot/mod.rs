@@ -26,11 +26,9 @@ mod structured_output;
 mod typed_prompt_tools;
 
 use assert_fs::TempDir;
-use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::providers::copilot;
 use rig::providers::copilot::auth::{AuthError, AuthSource, Authenticator, DeviceCodeHandler};
 use rig::providers::copilot::wire::Copilot;
-use rig_test_support::endpoint::Endpoint;
 use std::borrow::Cow;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -78,12 +76,6 @@ fn cassette_base_url() -> String {
     env_base_url().unwrap_or_else(|| "https://api.githubcopilot.com".to_string())
 }
 
-/// The bundled transport, erased: the socket every cell here speaks over,
-/// and the one the credential exchange runs on.
-fn transport() -> BoxedHttpClient {
-    ReqwestClient::default().boxed()
-}
-
 /// Resolve a Copilot credential and hold it in a provider configuration.
 ///
 /// The exchange is a conversation — a device flow, a refresh, a shared file
@@ -114,7 +106,7 @@ pub(crate) async fn authorize(
         DeviceCodeHandler::default(),
         allow_device_flow,
     )
-    .auth_context(&transport())
+    .auth_context(&rig::rig_reqwest::shared())
     .await?;
     let provider = Copilot::from_auth(&context);
 
@@ -136,16 +128,13 @@ pub(crate) fn live_source() -> AuthSource {
     }
 }
 
-pub(crate) async fn live_client() -> Endpoint<Copilot> {
-    Endpoint::new(
-        authorize(live_source(), None, true)
-            .await
-            .expect("Copilot credential should resolve"),
-        transport(),
-    )
+pub(crate) async fn live_client() -> Copilot {
+    authorize(live_source(), None, true)
+        .await
+        .expect("Copilot credential should resolve")
 }
 
-async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Endpoint<Copilot>) {
+async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Copilot) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -154,17 +143,15 @@ async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, E
         &cassette_base_url,
     )
     .await;
-    let bound = Endpoint::new(
-        Copilot::new(cassette.api_key("GITHUB_COPILOT_API_KEY")).with_base_url(cassette.base_url()),
-        transport(),
-    );
+    let bound =
+        Copilot::new(cassette.api_key("GITHUB_COPILOT_API_KEY")).with_base_url(cassette.base_url());
 
     (cassette, bound)
 }
 
 async fn copilot_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, Endpoint<Copilot>, TempDir) {
+) -> (ProviderCassette, Copilot, TempDir) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -184,20 +171,17 @@ async fn copilot_noninteractive_oauth_cassette(
     )
     .expect("api key record should be written");
 
-    let bound = Endpoint::new(
-        authorize(AuthSource::OAuth, Some(temp.path()), false)
-            .await
-            .expect("the cached Copilot API key should resolve without a device flow")
-            .with_base_url(cassette.base_url()),
-        transport(),
-    );
+    let bound = authorize(AuthSource::OAuth, Some(temp.path()), false)
+        .await
+        .expect("the cached Copilot API key should resolve without a device flow")
+        .with_base_url(cassette.base_url());
 
     (cassette, bound, temp)
 }
 
 pub(crate) async fn with_copilot_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Endpoint<Copilot>) -> Fut,
+    F: FnOnce(Copilot) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = copilot_cassette(spec).await;
@@ -210,7 +194,7 @@ pub(crate) async fn with_copilot_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(Endpoint<Copilot>) -> Fut,
+    F: FnOnce(Copilot) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = copilot_cassette(spec).await;
@@ -222,7 +206,7 @@ pub(crate) async fn with_copilot_noninteractive_oauth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Endpoint<Copilot>) -> Fut,
+    F: FnOnce(Copilot) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client, _temp) = copilot_noninteractive_oauth_cassette(spec).await;

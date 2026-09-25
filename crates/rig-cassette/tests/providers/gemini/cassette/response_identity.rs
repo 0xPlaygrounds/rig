@@ -16,7 +16,7 @@ async fn nonstreaming_request_id_is_none_by_design() {
     with_gemini_cassette(
         "response_identity/nonstreaming_request_id_is_none_by_design",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Reply with exactly: identity probe").build(),
@@ -39,7 +39,7 @@ async fn streaming_request_id_is_none_by_design() {
     with_gemini_cassette(
         "response_identity/streaming_request_id_is_none_by_design",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
@@ -76,11 +76,12 @@ async fn agent_run_reports_none_identity() {
         "response_identity/agent_run_reports_none_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble("You are a terse assistant.")
-                .add_hook(probe.clone())
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble("You are a terse assistant.")
+            .add_hook(probe.clone())
+            .build();
 
             let response = agent
                 .prompt("Reply with exactly: identity probe")
@@ -108,11 +109,12 @@ async fn streamed_agent_run_reports_none_identity() {
         "response_identity/streamed_agent_run_reports_none_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble("You are a terse assistant.")
-                .add_hook(probe.clone())
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble("You are a terse assistant.")
+            .add_hook(probe.clone())
+            .build();
 
             let mut stream = agent
                 .prompt(rig::completion::Message::user(
@@ -139,7 +141,7 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
     with_gemini_cassette(
         "response_identity/provider_error_keeps_transport_shape_and_none_id",
         |client| async move {
-            let model = client.completion("gemini-nonexistent-model-for-identity-edge");
+            let model = rig::model(client.completion("gemini-nonexistent-model-for-identity-edge"));
             let error = model
                 .call(
                     CompletionRequestBuilder::new("Never answered").build(),
@@ -166,7 +168,7 @@ async fn auth_rejection_keeps_transport_shape() {
     with_gemini_cassette_bogus_key(
         "response_identity/auth_rejection_keeps_transport_shape",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
             let error = model
                 .call(
                     CompletionRequestBuilder::new("Never authenticated").build(),

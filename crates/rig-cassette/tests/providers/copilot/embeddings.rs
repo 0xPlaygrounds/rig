@@ -6,7 +6,7 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 #[tokio::test]
 async fn embeddings_smoke() {
     with_copilot_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client.embedding(live_embedding_model(), None);
+        let model = rig::model(client.embedding(live_embedding_model(), None));
 
         let embeddings = model
             .call(

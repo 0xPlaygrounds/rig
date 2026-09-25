@@ -16,7 +16,7 @@ async fn embeddings_smoke() {
     super::super::support::with_gemini_cassette(
         "embeddings/embeddings_smoke",
         |client| async move {
-            let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
+            let model = rig::model(client.embedding(gemini::embedding::EMBEDDING_001, None));
 
             let response = model
                 .call(
@@ -48,19 +48,20 @@ async fn derive_document_embeddings() {
     super::super::support::with_gemini_cassette(
         "embeddings/derive_document_embeddings",
         |client| async move {
-            let embeddings = client
-                .embeddings(gemini::embedding::EMBEDDING_001)
-                .document(Greetings {
-                    message: "Hello, world!".to_string(),
-                })
-                .expect("first document should build")
-                .document(Greetings {
-                    message: "Goodbye, world!".to_string(),
-                })
-                .expect("second document should build")
-                .build()
-                .await
-                .expect("embedding request should succeed");
+            let embeddings = rig::embeddings::EmbeddingsBuilder::new(rig::model(
+                client.embedding(gemini::embedding::EMBEDDING_001, None),
+            ))
+            .document(Greetings {
+                message: "Hello, world!".to_string(),
+            })
+            .expect("first document should build")
+            .document(Greetings {
+                message: "Goodbye, world!".to_string(),
+            })
+            .expect("second document should build")
+            .build()
+            .await
+            .expect("embedding request should succeed");
 
             assert_eq!(embeddings.len(), 2);
             for (_document, embeddings_for_document) in embeddings {

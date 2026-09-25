@@ -340,7 +340,10 @@ async fn hooks_observe_raw_blocking() {
     with_gemini_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
-            let agent = client.agent(MODEL).temperature(0.0).add_hook(hook).build();
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                .temperature(0.0)
+                .add_hook(hook)
+                .build();
             agent
                 .prompt(TEXT_PROMPT)
                 .await
@@ -386,7 +389,10 @@ async fn hooks_observe_raw_streamed() {
     with_gemini_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
-            let agent = client.agent(MODEL).temperature(0.0).add_hook(hook).build();
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                .temperature(0.0)
+                .add_hook(hook)
+                .build();
             let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
             assert!(run.output.is_some(), "the run finished");
             assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
@@ -445,8 +451,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     with_gemini_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(Adder)
@@ -519,8 +524,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     with_gemini_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
         move |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(Adder)
