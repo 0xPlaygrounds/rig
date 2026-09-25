@@ -40,7 +40,7 @@ mod func;
 mod http_transport;
 
 pub use boxed::BoxedModel;
-pub use func::{FnDecoder, FnFrame, FnTransport, FnWire};
+pub use func::{EMBEDDING_BATCH, FnDecoder, FnFrame, FnTransport, FnWire};
 
 /// An endpoint of one provider: a wire bound to a transport.
 ///
