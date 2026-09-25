@@ -41,7 +41,7 @@ pub(crate) trait ErasedModel<Op: Operation>: WasmCompatSend + WasmCompatSync {
         &self,
         request: Op::Request,
         observation: Option<AdapterContext>,
-    ) -> WasmBoxedFuture<'static, Result<Op::Response, ProviderError>>;
+    ) -> WasmBoxedFuture<'_, Result<Op::Response, ProviderError>>;
 
     fn steps(
         &self,
@@ -82,7 +82,7 @@ where
         &self,
         request: <W::Op as Operation>::Request,
         observation: Option<AdapterContext>,
-    ) -> WasmBoxedFuture<'static, Result<<W::Op as Operation>::Response, ProviderError>> {
+    ) -> WasmBoxedFuture<'_, Result<<W::Op as Operation>::Response, ProviderError>> {
         Box::pin(self.unary(request, observation))
     }
 
@@ -173,7 +173,7 @@ impl<Op: Operation> DynModel<Op> {
     pub fn call(
         &self,
         request: Op::Request,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + '_ {
         self.inner.call(request, None)
     }
 
@@ -182,7 +182,7 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: Op::Request,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + '_ {
         self.inner.call(request, Some(observation))
     }
 }

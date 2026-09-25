@@ -170,12 +170,10 @@ where
 {
     /// Send `request` and fold the whole reply into the operation's
     /// response. A paged operation follows every page the reply names.
-    /// The future owns a clone of the model, so it outlives the borrow.
     pub fn call(
         &self,
         request: Request<W>,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static + use<W, T>
-    {
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
         self.unary(request, None)
     }
 
@@ -184,31 +182,26 @@ where
         &self,
         request: Request<W>,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static + use<W, T>
-    {
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
         self.unary(request, Some(observation))
     }
 
-    /// The unary driver's future, owning a clone of the model. Returned as
-    /// is by `call` and boxed by [`DynModel`]: another `async fn` around
-    /// it would put a second copy of the driver's state on the stack.
-    pub(crate) fn unary(
+    /// The unary driver's future, returned as is by `call` and boxed by
+    /// [`DynModel`]: another `async fn` around it would put a second copy
+    /// of the driver's state on the stack.
+    pub(crate) async fn unary(
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static + use<W, T>
-    {
-        let model = self.clone();
-        async move {
-            let span = model.span(&request, false);
-            let result = model.fold(request, observation, &span).await;
-            if let Err(error) = &result {
-                record_request_id(&span, error.provider_request_id());
-            }
-            let response = result?;
-            <W::Op as Operation>::accept(&model.wire.capabilities(), model.wire.name(), &response)?;
-            Ok(response)
+    ) -> Result<Response<W>, ProviderError> {
+        let span = self.span(&request, false);
+        let result = self.fold(request, observation, &span).await;
+        if let Err(error) = &result {
+            record_request_id(&span, error.provider_request_id());
         }
+        let response = result?;
+        <W::Op as Operation>::accept(&self.wire.capabilities(), self.wire.name(), &response)?;
+        Ok(response)
     }
 
     /// The driver's steps for `request` in `mode`, with the span they run
