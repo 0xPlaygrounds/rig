@@ -152,11 +152,10 @@ impl AgentRunner {
     /// Register `model` on the agent's bus under a generated label and use
     /// it as this run's default. The registration is scoped to this runner
     /// and the run it produces: it leaves the bus when they drop.
-    pub fn using_model_value<W, T>(mut self, model: rig_core::driver::Model<W, T>) -> Self
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    {
+    pub fn using_model_value(
+        mut self,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> Self {
         let anonymous = self.config.bus.register_anonymous_model(model);
         self.config.model_key = anonymous.key().clone();
         self.config.anonymous_model = Some(anonymous);

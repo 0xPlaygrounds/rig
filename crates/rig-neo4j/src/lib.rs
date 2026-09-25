@@ -292,15 +292,12 @@ impl Neo4jClient {
     /// `model` must be the model whose embeddings populated the index; a
     /// dimension mismatch is only warned about. Errors when the index does not
     /// exist or defines no property.
-    pub async fn get_index<W, Tr>(
+    pub async fn get_index(
         &self,
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         index_name: &str,
-    ) -> Result<Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>, VectorStoreError>
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-        Tr: rig_core::driver::Transport<W>,
-    {
+    ) -> Result<Neo4jVectorIndex, VectorStoreError> {
+        let model: rig_core::BoxedModel<rig_core::operation::Embedding> = model.into();
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IndexInfo {
@@ -333,13 +330,11 @@ impl Neo4jClient {
         .await?;
 
         let index_config = if let Some(index) = index_info.first() {
-            if index.options.index_config.vector_dimensions
-                != model.wire.capabilities().ndims as i64
-            {
+            if index.options.index_config.vector_dimensions != model.capabilities().ndims as i64 {
                 tracing::warn!(
                     "The embedding vector dimensions of the existing Neo4j DB index ({}) do not match the provided model dimensions ({}). This may affect search performance.",
                     index.options.index_config.vector_dimensions,
-                    model.wire.capabilities().ndims
+                    model.capabilities().ndims
                 );
             }
             let embedding_property = index.properties.first().ok_or_else(|| {
@@ -383,16 +378,13 @@ impl Neo4jClient {
     /// `node_label` and the configured embedding property are spliced into the
     /// Cypher statement verbatim. Waiting for the index to come online is
     /// best effort: a timeout is logged as a warning rather than returned.
-    pub async fn create_vector_index<W, Tr>(
+    pub async fn create_vector_index(
         &self,
         index_config: IndexConfig,
         node_label: &str,
-        model: &rig_core::driver::Model<W, Tr>,
-    ) -> Result<(), VectorStoreError>
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-        Tr: rig_core::driver::Transport<W>,
-    {
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+    ) -> Result<(), VectorStoreError> {
+        let model: rig_core::BoxedModel<rig_core::operation::Embedding> = model.into();
         tracing::info!("Creating vector index {} ...", index_config.index_name);
 
         let create_vector_index_query = format!(
@@ -417,7 +409,7 @@ impl Neo4jClient {
                         "similarity_function",
                         index_config.similarity_function.clone().to_bolt_type(),
                     )
-                    .param("dimensions", model.wire.capabilities().ndims as i64),
+                    .param("dimensions", model.capabilities().ndims as i64),
             )
             .await
             .map_err(VectorStoreError::datastore)?;

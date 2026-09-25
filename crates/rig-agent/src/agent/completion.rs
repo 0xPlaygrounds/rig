@@ -407,15 +407,11 @@ impl Agent {
 
     /// Register `model` on this agent's bus under `label` and return the
     /// label a run selects it by.
-    pub fn register_model<W, T>(
+    pub fn register_model(
         &self,
         label: impl Into<ModelRef>,
-        model: rig_core::driver::Model<W, T>,
-    ) -> ModelRef
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    {
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> ModelRef {
         let label = label.into();
         self.config.bus.register_model(&label, model);
         label
@@ -432,11 +428,10 @@ impl Agent {
     /// value's default. The registration is scoped to the values that
     /// select it (this agent, its clones, the runners it produces): it
     /// leaves the bus when the last of them drops or selects another model.
-    pub fn set_model<W, T>(&mut self, model: rig_core::driver::Model<W, T>)
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    {
+    pub fn set_model(
+        &mut self,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) {
         let anonymous = self.config.bus.register_anonymous_model(model);
         self.config.model_key = anonymous.key().clone();
         self.config.anonymous_model = Some(anonymous);
@@ -457,11 +452,10 @@ impl Agent {
     }
 
     /// [`Agent::set_model`] by value.
-    pub fn with_model<W, T>(mut self, model: rig_core::driver::Model<W, T>) -> Self
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    {
+    pub fn with_model(
+        mut self,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    ) -> Self {
         self.set_model(model);
         self
     }

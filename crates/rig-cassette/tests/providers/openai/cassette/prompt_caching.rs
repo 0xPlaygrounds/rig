@@ -104,7 +104,7 @@ async fn responses_blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
         "prompt_caching/responses_blocking_probe",
         |client| async move {
             let model = rig::model(client.openai.completion(CACHE_MODEL));
-            let observation: CacheObservation = run_cache_probe(&model, &keyed_probe()).await;
+            let observation: CacheObservation = run_cache_probe(model, &keyed_probe()).await;
             assert_cache_conformance(
                 &observation,
                 &OPENAI_RESPONSES_KEYED_SUPPORT,
@@ -144,7 +144,7 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
 
     with_openai_prompt_caching_cassette("prompt_caching/responses_unkeyed_probe", |client| async move {
         let model = rig::model(client.openai.completion(CACHE_MODEL));
-        let observation = run_cache_probe(&model, &probe()).await;
+        let observation = run_cache_probe(model, &probe()).await;
 
         // Not `assert_cache_conformance`: turn 2 legitimately misses here, and
         // pretending otherwise would either fail forever or force the floor
@@ -186,7 +186,7 @@ async fn chat_completions_blocking_probe_hits_and_keeps_hitting_as_the_prefix_gr
         "prompt_caching/chat_completions_blocking_probe",
         |client| async move {
             let model = rig::model(client.chat(CACHE_MODEL));
-            let observation = run_cache_probe(&model, &probe()).await;
+            let observation = run_cache_probe(model, &probe()).await;
             assert_cache_conformance(
                 &observation,
                 &OPENAI_CACHE_SUPPORT,
@@ -208,7 +208,7 @@ async fn responses_streaming_probe_survives_the_streaming_accumulator() {
         "prompt_caching/responses_streaming_probe",
         |client| async move {
             let model = rig::model(client.openai.completion(CACHE_MODEL));
-            let observation = run_cache_probe_streaming(&model, &keyed_probe()).await;
+            let observation = run_cache_probe_streaming(model, &keyed_probe()).await;
             assert_cache_conformance(
                 &observation,
                 &OPENAI_RESPONSES_KEYED_SUPPORT,
@@ -230,7 +230,7 @@ async fn chat_completions_streaming_probe_survives_the_streaming_accumulator() {
         "prompt_caching/chat_completions_streaming_probe",
         |client| async move {
             let model = rig::model(client.chat(CACHE_MODEL));
-            let observation = run_cache_probe_streaming(&model, &probe()).await;
+            let observation = run_cache_probe_streaming(model, &probe()).await;
             assert_cache_conformance(
                 &observation,
                 &OPENAI_CACHE_SUPPORT,
@@ -334,7 +334,7 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
 async fn live_cache_economics() {
     let client = OpenAI::from_env().expect("OPENAI_API_KEY");
     let model = rig::model(client.completion(CACHE_MODEL));
-    let observation = run_cache_probe(&model, &keyed_probe()).await;
+    let observation = run_cache_probe(model, &keyed_probe()).await;
     report_and_assert_live(
         &observation,
         &OPENAI_RESPONSES_KEYED_SUPPORT,

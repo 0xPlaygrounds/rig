@@ -25,8 +25,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 ///
 /// Queries are embedded with the same model `M` that populated the collection,
 /// so results are meaningless under another model.
-pub struct MilvusVectorStore<M> {
-    model: M,
+pub struct MilvusVectorStore {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     base_url: String,
     client: reqwest::Client,
     database_name: String,
@@ -88,22 +88,18 @@ struct SearchResultDataOnlyId {
     distance: f64,
 }
 
-impl<W, Tr> MilvusVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl MilvusVectorStore {
     /// Creates a store over a collection reached at `base_url`, which is the
     /// Milvus instance or Zilliz cluster endpoint. Requests are unauthenticated
     /// until [`MilvusVectorStore::auth`] supplies credentials.
     pub fn new(
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         base_url: String,
         database_name: String,
         collection_name: String,
     ) -> Self {
         Self {
-            model,
+            model: model.into(),
             base_url,
             client: reqwest::Client::new(),
             database_name,
@@ -203,11 +199,7 @@ where
     }
 }
 
-impl<W, Tr> InsertDocuments for MilvusVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl InsertDocuments for MilvusVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -248,11 +240,7 @@ where
     }
 }
 
-impl<W, Tr> VectorStoreIndex for MilvusVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorStoreIndex for MilvusVectorStore {
     type Filter = Filter;
 
     /// Returns matches as `(distance, id, document)` in the order Milvus reports.

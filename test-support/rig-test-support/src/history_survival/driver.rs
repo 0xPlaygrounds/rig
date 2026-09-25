@@ -301,11 +301,11 @@ fn prompts(with_image: bool) -> [String; 3] {
 }
 
 /// Drive the three-prompt run and return what happened.
-pub async fn run<W, T>(model: rig_core::driver::Model<W, T>, cell: Cell) -> Observation
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+pub async fn run(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    cell: Cell,
+) -> Observation {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let journal = Arc::new(Mutex::new(Journal::default()));
     let mut builder = AgentBuilder::new(model)
         .preamble(PREAMBLE)

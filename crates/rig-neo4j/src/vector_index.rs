@@ -19,9 +19,9 @@ use crate::{Neo4jClient, Neo4jSearchFilter, ToBoltType};
 ///
 /// Queries are embedded with the same model `M` that populated the index, so
 /// results are meaningless under another model.
-pub struct Neo4jVectorIndex<M> {
+pub struct Neo4jVectorIndex {
     graph: Graph,
-    embedding_model: M,
+    embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     index_config: IndexConfig,
 }
 
@@ -115,19 +115,15 @@ const BASE_VECTOR_SEARCH_QUERY: &str = "
     YIELD node, score
 ";
 
-impl<W, Tr> Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl Neo4jVectorIndex {
     pub fn new(
         graph: Graph,
-        embedding_model: rig_core::driver::Model<W, Tr>,
+        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         index_config: IndexConfig,
     ) -> Self {
         Self {
             graph,
-            embedding_model,
+            embedding_model: embedding_model.into(),
             index_config,
         }
     }
@@ -205,11 +201,7 @@ struct RowResult {
     element_id: i64,
 }
 
-impl<W, Tr> VectorStoreIndex for Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorStoreIndex for Neo4jVectorIndex {
     type Filter = Neo4jSearchFilter;
 
     /// Returns matches as `(score, node id, node)`. The node is deserialized as
@@ -249,11 +241,7 @@ fn insert_documents_query(node_label: &str) -> String {
     format!("UNWIND $items AS item CREATE (n:{node_label}) SET n = item")
 }
 
-impl<W, Tr> InsertDocuments for Neo4jVectorIndex<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl InsertDocuments for Neo4jVectorIndex {
     /// Inserts one node per embedding, flattening the document's JSON fields
     /// onto the node alongside the embedding (`embedding_property`) and its
     /// source text (`embedded_text`). Nodes are written under the index's

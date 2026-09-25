@@ -66,16 +66,13 @@ fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
 /// Record the first turn on `first`, persist and reload its history, answer
 /// the call, and continue on `second` (the same model, or another model of
 /// the same provider).
-pub async fn run<W, T, Wm, Tr>(
-    first: rig_core::driver::Model<W, T>,
-    second: rig_core::driver::Model<Wm, Tr>,
+pub async fn run(
+    first: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    second: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     cell: Cell,
-) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-    Wm: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    Tr: rig_core::driver::Transport<Wm>,
-{
+) {
+    let first: rig_core::BoxedModel<rig_core::operation::Completion> = first.into();
+    let second: rig_core::BoxedModel<rig_core::operation::Completion> = second.into();
     let loaded = turn_one(&first, cell).await;
     let answer = second
         .call(request(cell, loaded))
@@ -92,16 +89,13 @@ pub async fn run<W, T, Wm, Tr>(
 /// Record the first turn on `first`, then checkpoint a world holding the
 /// continuation, restore it into a fresh world whose model handler is
 /// `second`, and let the restored world send it.
-pub async fn run_checkpoint<W, T, Wm, Tr>(
-    first: rig_core::driver::Model<W, T>,
-    second: rig_core::driver::Model<Wm, Tr>,
+pub async fn run_checkpoint(
+    first: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    second: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     cell: Cell,
-) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-    Wm: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    Tr: rig_core::driver::Transport<Wm>,
-{
+) {
+    let first: rig_core::BoxedModel<rig_core::operation::Completion> = first.into();
+    let second: rig_core::BoxedModel<rig_core::operation::Completion> = second.into();
     use bevy_app::App;
     use rig_core::effect::{EffectKind, Outcome};
     use rig_core::serve::{ErasedHandler, adapters::ModelAdapter};
@@ -116,7 +110,7 @@ pub async fn run_checkpoint<W, T, Wm, Tr>(
         app.cleanup();
         app
     }
-    let handler = |model: rig_core::driver::Model<Wm, Tr>| {
+    let handler = |model: rig_core::BoxedModel<rig_core::operation::Completion>| {
         ErasedHandler::new(crate::ecs_agent::RuntimeHandler {
             inner: std::sync::Arc::new(ModelAdapter::new("session", model)),
             runtime: crate::ecs_agent::io_runtime(),
@@ -175,11 +169,10 @@ pub async fn run_checkpoint<W, T, Wm, Tr>(
 
 /// Run turn one and return its history (prompt, reply, tool result) after a
 /// JSON persistence round trip that must preserve it exactly.
-async fn turn_one<W, T>(first: &rig_core::driver::Model<W, T>, cell: Cell) -> Vec<Message>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+async fn turn_one(
+    first: &rig_core::BoxedModel<rig_core::operation::Completion>,
+    cell: Cell,
+) -> Vec<Message> {
     let prompt = Message::user(
         "Think it through, then call lookup_code for record alpha. Do not guess the code.",
     );
@@ -288,11 +281,12 @@ fn assert_answer(cell: Cell, choice: &[AssistantContent]) {
 /// An agent with conversation memory answers a tool-using prompt, then a
 /// second prompt in the same conversation, streamed or not. The second
 /// prompt's request is built from what the agent wrote to memory.
-pub async fn run_memory<W, T>(model: rig_core::driver::Model<W, T>, cell: Cell, streamed: bool)
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+pub async fn run_memory(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+    cell: Cell,
+    streamed: bool,
+) {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     use futures::StreamExt;
     use rig_agent::agent::{AgentBuilder, MultiTurnStreamItem};
 

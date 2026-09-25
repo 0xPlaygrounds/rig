@@ -23,8 +23,8 @@ use uuid::Uuid;
 
 /// Vector store over a Postgres table. Queries are embedded with the same model
 /// `M` that populated the table, so results are meaningless under another model.
-pub struct PostgresVectorStore<M> {
-    model: M,
+pub struct PostgresVectorStore {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     pg_pool: PgPool,
     documents_table: String,
     distance_function: PgVectorDistanceFunction,
@@ -221,26 +221,25 @@ impl SearchResult {
     }
 }
 
-impl<W, Tr> PostgresVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl PostgresVectorStore {
     pub fn new(
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         pg_pool: PgPool,
         documents_table: Option<String>,
         distance_function: PgVectorDistanceFunction,
     ) -> Self {
         Self {
-            model,
+            model: model.into(),
             pg_pool,
             documents_table: documents_table.unwrap_or_else(|| String::from("documents")),
             distance_function,
         }
     }
 
-    pub fn with_defaults(model: rig_core::driver::Model<W, Tr>, pg_pool: PgPool) -> Self {
+    pub fn with_defaults(
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        pg_pool: PgPool,
+    ) -> Self {
         Self::new(model, pg_pool, None, PgVectorDistanceFunction::Cosine)
     }
 
@@ -361,11 +360,7 @@ fn render_search_query(
     (query, params)
 }
 
-impl<W, Tr> InsertDocuments for PostgresVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl InsertDocuments for PostgresVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -396,11 +391,7 @@ where
     }
 }
 
-impl<W, Tr> VectorStoreIndex for PostgresVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorStoreIndex for PostgresVectorStore {
     type Filter = PgSearchFilter;
 
     /// Returns up to `samples` documents as `(distance, id, document)` ordered by

@@ -451,7 +451,7 @@ where
     W: Wire<Op = Completion>,
     BoxedHttpClient: Transport<W>,
 {
-    ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http)))
+    ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http).boxed()))
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a

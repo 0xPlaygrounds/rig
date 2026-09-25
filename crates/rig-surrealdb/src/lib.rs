@@ -29,11 +29,11 @@ pub use surrealdb::engine::remote::ws::{Ws, Wss};
 ///
 /// Queries are embedded with the same model `M` that populated the table, so
 /// results are meaningless under another model.
-pub struct SurrealVectorStore<C, M>
+pub struct SurrealVectorStore<C>
 where
     C: Connection,
 {
-    model: M,
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     surreal: Surreal<C>,
     documents_table: String,
     distance_function: SurrealDistanceFunction,
@@ -103,10 +103,8 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
     }
 }
 
-impl<C, W, Tr> InsertDocuments for SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
+impl<C> InsertDocuments for SurrealVectorStore<C>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
@@ -258,20 +256,18 @@ impl SurrealSearchFilter {
     }
 }
 
-impl<C, W, Tr> SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
+impl<C> SurrealVectorStore<C>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {
     pub fn new(
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         surreal: Surreal<C>,
         documents_table: Option<String>,
         distance_function: SurrealDistanceFunction,
     ) -> Self {
         Self {
-            model,
+            model: model.into(),
             surreal,
             documents_table: documents_table.unwrap_or_else(|| String::from("documents")),
             distance_function,
@@ -282,7 +278,10 @@ where
         &self.surreal
     }
 
-    pub fn with_defaults(model: rig_core::driver::Model<W, Tr>, surreal: Surreal<C>) -> Self {
+    pub fn with_defaults(
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        surreal: Surreal<C>,
+    ) -> Self {
         Self::new(model, surreal, None, SurrealDistanceFunction::Cosine)
     }
 
@@ -331,10 +330,8 @@ where
     }
 }
 
-impl<C, W, Tr> VectorStoreIndex for SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
+impl<C> VectorStoreIndex for SurrealVectorStore<C>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {
     type Filter = SurrealSearchFilter;

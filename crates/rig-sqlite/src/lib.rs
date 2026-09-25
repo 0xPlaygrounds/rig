@@ -410,14 +410,10 @@ where
     T: SqliteVectorStoreTable + 'static,
 {
     /// Creates a SQLite vector store using cosine similarity.
-    pub async fn new<W, Tr>(
+    pub async fn new(
         conn: Connection,
-        embedding_model: &rig_core::driver::Model<W, Tr>,
-    ) -> Result<Self, VectorStoreError>
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-        Tr: rig_core::driver::Transport<W>,
-    {
+        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+    ) -> Result<Self, VectorStoreError> {
         Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
     }
 
@@ -426,16 +422,14 @@ where
     /// The metric is written into the sqlite-vec virtual table definition so
     /// candidate search uses the same metric as thresholding, ordering, and the
     /// returned score values.
-    pub async fn with_distance_metric<W, Tr>(
+    pub async fn with_distance_metric(
         conn: Connection,
-        embedding_model: &rig_core::driver::Model<W, Tr>,
+        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         distance_metric: SqliteDistanceMetric,
-    ) -> Result<Self, VectorStoreError>
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-        Tr: rig_core::driver::Transport<W>,
-    {
-        let dims = embedding_model.wire.capabilities().ndims;
+    ) -> Result<Self, VectorStoreError> {
+        let embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding> =
+            embedding_model.into();
+        let dims = embedding_model.capabilities().ndims;
         let table_name = T::name();
         let embeddings_table_name = format!("{table_name}_embeddings");
         let embeddings_table_name_for_sql = embeddings_table_name.clone();
@@ -555,14 +549,10 @@ where
         })
     }
 
-    pub fn index<W, Tr>(
+    pub fn index(
         self,
-        model: rig_core::driver::Model<W, Tr>,
-    ) -> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
-    where
-        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-        Tr: rig_core::driver::Transport<W>,
-    {
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+    ) -> SqliteVectorIndex<T> {
         SqliteVectorIndex::new(model, self)
     }
 
@@ -1550,32 +1540,28 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 ///
 /// `M` must be the model whose embeddings populated the store; results are
 /// meaningless under another model.
-pub struct SqliteVectorIndex<T, M> {
+pub struct SqliteVectorIndex<T> {
     store: SqliteVectorStore<T>,
-    embedding_model: M,
+    embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding>,
 }
 
-impl<T, W, Tr> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
+impl<T> SqliteVectorIndex<T>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
     T: SqliteVectorStoreTable,
 {
     pub fn new(
-        embedding_model: rig_core::driver::Model<W, Tr>,
+        embedding_model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         store: SqliteVectorStore<T>,
     ) -> Self {
         Self {
             store,
-            embedding_model,
+            embedding_model: embedding_model.into(),
         }
     }
 }
 
-impl<T, W, Tr> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
+impl<T> SqliteVectorIndex<T>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
     T: SqliteVectorStoreTable,
 {
     /// Runs the shared candidate search for `top_n`/`top_n_ids`.
@@ -1937,12 +1923,7 @@ fn sqlite_id_value_to_string(index: usize, value: ValueRef<'_>) -> rusqlite::Res
     }
 }
 
-impl<T: SqliteVectorStoreTable, W, Tr> VectorStoreIndex
-    for SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     type Filter = SqliteSearchFilter;
 
     async fn top_n<D>(

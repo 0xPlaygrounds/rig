@@ -34,8 +34,8 @@ use uuid::Uuid;
 /// Queries are embedded with the same model `M` that populated the table, so
 /// results are meaningless under another model. Every search reads the matching
 /// rows and ranks them client-side.
-pub struct ScyllaDbVectorStore<M> {
-    model: M,
+pub struct ScyllaDbVectorStore {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     pub session: Arc<Session>,
     keyspace: String,
     table: String,
@@ -178,11 +178,7 @@ impl DynamicSearchFilter for ScyllaSearchFilter {
     }
 }
 
-impl<W, Tr> ScyllaDbVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl ScyllaDbVectorStore {
     /// Creates a store, creating the keyspace and table when absent and
     /// preparing the fixed statements.
     ///
@@ -190,7 +186,7 @@ where
     /// `keyspace` and `table` are spliced into every statement verbatim.
     /// `dimensions` is the vector width insertion enforces.
     pub async fn new(
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         session: Session,
         keyspace: &str,
         table: &str,
@@ -245,7 +241,7 @@ where
             .map_err(VectorStoreError::datastore)?;
 
         Ok(Self {
-            model,
+            model: model.into(),
             session,
             keyspace: keyspace.to_string(),
             table: table.to_string(),
@@ -418,11 +414,7 @@ where
     }
 }
 
-impl<W, Tr> InsertDocuments for ScyllaDbVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl InsertDocuments for ScyllaDbVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -458,11 +450,7 @@ where
     }
 }
 
-impl<W, Tr> VectorStoreIndex for ScyllaDbVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorStoreIndex for ScyllaDbVectorStore {
     type Filter = ScyllaSearchFilter;
 
     /// Returns matches as `(cosine similarity, row id, document)`. Scoring reads

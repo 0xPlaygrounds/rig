@@ -8,7 +8,6 @@
 //! turns.
 
 use rig::completion::Message;
-use rig::driver::Model;
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::gemini::{self, Gemini};
 use rig::tool::ToolSet;
@@ -25,10 +24,7 @@ use crate::support::assert_mentions_expected_number;
 async fn build_tool_index(
     client: &Gemini,
     toolset: &ToolSet,
-) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<
-    rig::embeddings::ToolSchema,
-    Model<gemini::embedding::Embeddings>,
-> {
+) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<rig::embeddings::ToolSchema> {
     let embedding_model = rig::model(client.embedding(gemini::embedding::EMBEDDING_001, None));
     // ToolSet::schemas() returns registration order, so the recorded
     // embedding batch replays deterministically.

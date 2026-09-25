@@ -91,14 +91,12 @@ fn assistant(reply: &CompletionResponse) -> Message {
 
 /// Two completed lookups that both used the call id `id`, then a question
 /// only the correctly paired results answer.
-pub async fn colliding_ids<W, T>(
-    model: &rig_core::driver::Model<W, T>,
+pub async fn colliding_ids(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     id: &str,
     params: Option<Value>,
-) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let mut history = vec![Message::user("Look up record alpha.")];
     for (index, (record, _)) in CODES.iter().enumerate() {
         if index > 0 {
@@ -162,13 +160,11 @@ pub fn assert_colliding_recorded(provider: &str, scenario: &str) {
 
 /// Ask for both lookups in one turn, answer them in reverse order, and
 /// check the model attributes each code to its record.
-pub async fn out_of_order_results<W, T>(
-    model: &rig_core::driver::Model<W, T>,
+pub async fn out_of_order_results(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     params: Option<Value>,
-) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let prompt = Message::user(
         "Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.",
     );
@@ -238,15 +234,11 @@ pub fn assert_carried(provider: &str, scenario: &str, kind: &str, min_len: usize
     );
 }
 
-async fn complete<W, T>(
-    model: &rig_core::driver::Model<W, T>,
+async fn complete(
+    model: &rig_core::BoxedModel<rig_core::operation::Completion>,
     request: CompletionRequest,
     streamed: bool,
-) -> Result<CompletionResponse, rig_core::error::ProviderError>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) -> Result<CompletionResponse, rig_core::error::ProviderError> {
     if !streamed {
         return model.call(request).await;
     }
@@ -263,20 +255,17 @@ where
 /// A reasoning turn with a tool call, streamed or not, answered and
 /// continued. Returns the first reply so a cell can check the shape of what
 /// was delivered.
-pub async fn reasoning_round_trip<W, T>(
-    model: &rig_core::driver::Model<W, T>,
+pub async fn reasoning_round_trip(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     prompt: &str,
     params: Option<Value>,
     max_tokens: u64,
     streamed: bool,
-) -> CompletionResponse
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) -> CompletionResponse {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let prompt = Message::user(prompt);
     let first = complete(
-        model,
+        &model,
         request(vec![prompt.clone()], params.clone(), max_tokens),
         streamed,
     )
@@ -300,7 +289,7 @@ where
             content: vec![result(call.id.clone(), call.provider.clone(), record)],
         },
     ];
-    let reply = complete(model, request(history, params, max_tokens), streamed)
+    let reply = complete(&model, request(history, params, max_tokens), streamed)
         .await
         .expect("the provider accepts the replayed reasoning");
     assert!(
@@ -394,14 +383,12 @@ impl Hop {
 }
 
 /// Send one hop of the round trip.
-pub async fn round_trip_hop<W, T>(
-    model: &rig_core::driver::Model<W, T>,
+pub async fn round_trip_hop(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     hop: Hop,
     params: Option<Value>,
-) where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let reply = model
         .call(request(hop.history(), params, 4096))
         .await

@@ -52,36 +52,28 @@ impl From<VectorizeError> for VectorStoreError {
 /// Queries are embedded with the same model `M` that populated the index, so
 /// results are meaningless under another model.
 #[derive(Debug, Clone)]
-pub struct VectorizeVectorStore<M> {
-    model: M,
+pub struct VectorizeVectorStore {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     client: VectorizeClient,
 }
 
-impl<W, Tr> VectorizeVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorizeVectorStore {
     /// Creates a store over the named index, authenticating with a Cloudflare API
     /// token. Inserting documents additionally requires write permission.
     pub fn new(
-        model: rig_core::driver::Model<W, Tr>,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         account_id: impl Into<String>,
         index_name: impl Into<String>,
         api_token: impl Into<String>,
     ) -> Self {
         Self {
-            model,
+            model: model.into(),
             client: VectorizeClient::new(account_id, index_name, api_token),
         }
     }
 }
 
-impl<W, Tr> VectorizeVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorizeVectorStore {
     /// Embeds the query and returns matches at or above any request threshold.
     /// Errors before querying when the filter uses an unsupported operation.
     async fn query_matches(
@@ -113,11 +105,7 @@ where
     }
 }
 
-impl<W, Tr> VectorStoreIndex for VectorizeVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl VectorStoreIndex for VectorizeVectorStore {
     type Filter = VectorizeFilter;
 
     /// Returns matches as `(score, vector id, metadata)`. A match without
@@ -151,11 +139,7 @@ where
     }
 }
 
-impl<W, Tr> InsertDocuments for VectorizeVectorStore<rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl InsertDocuments for VectorizeVectorStore {
     /// Upserts one vector per embedding, storing the document as metadata under a
     /// fresh identifier, in batches of a thousand vectors.
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(

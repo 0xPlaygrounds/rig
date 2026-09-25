@@ -111,40 +111,34 @@ pub struct EcsAgent {
 
 impl EcsAgent {
     /// Create a native agent with the supplied model, preamble, and turn budget.
-    pub fn new<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    >(
-        model: rig_core::driver::Model<W, T>,
+    pub fn new(
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
         preamble: &str,
         turns: usize,
     ) -> Self {
+        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self::configured(model, preamble, turns, false, true, |_| {})
     }
 
     /// Create a one-turn parity agent, optionally retaining recorded stream events.
-    pub fn for_golden<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    >(
-        model: rig_core::driver::Model<W, T>,
+    pub fn for_golden(
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
         preamble: &str,
         keep_events: bool,
     ) -> Self {
+        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self::for_golden_with_setup(model, preamble, keep_events, |_| {})
     }
 
     /// Register application-owned handlers before the model, preserving the
     /// producer's handler registration order in the complete recorder header.
-    pub fn for_golden_with_setup<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    >(
-        model: rig_core::driver::Model<W, T>,
+    pub fn for_golden_with_setup(
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
         preamble: &str,
         keep_events: bool,
         setup: impl FnOnce(&mut World),
     ) -> Self {
+        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self::configured(model, preamble, 1, true, keep_events, setup)
     }
 
@@ -168,17 +162,15 @@ impl EcsAgent {
         Self::served(serve, preamble, 1, true, keep_events, |_| {})
     }
 
-    fn configured<
-        W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-        T: rig_core::driver::Transport<W>,
-    >(
-        model: rig_core::driver::Model<W, T>,
+    fn configured(
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
         preamble: &str,
         turns: usize,
         golden_identity: bool,
         keep_events: bool,
         setup: impl FnOnce(&mut World),
     ) -> Self {
+        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self::served(
             |label| ModelAdapter::new(label, model),
             preamble,

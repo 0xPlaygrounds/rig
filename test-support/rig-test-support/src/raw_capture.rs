@@ -41,15 +41,12 @@ use crate::support::{
 ///
 /// `request` is built at the call site, so the prompt and every parameter
 /// stay visible there.
-pub async fn capture_completion<W, T>(
-    model: rig_core::driver::Model<W, T>,
+pub async fn capture_completion(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<CompletionResponse>,
-) -> Result<(), ProviderError>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) -> Result<(), ProviderError> {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     sink.put(model.call(request).await?);
     Ok(())
 }
@@ -61,15 +58,12 @@ where
 /// request bytes went out twice" from "one reply agreed with itself"; the
 /// harness replays a scenario's interactions in order, so the pair is
 /// compared with interaction 0 and interaction 1 respectively.
-pub async fn capture_completion_pair<W, T>(
-    model: rig_core::driver::Model<W, T>,
+pub async fn capture_completion_pair(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(CompletionResponse, CompletionResponse)>,
-) -> Result<(), ProviderError>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) -> Result<(), ProviderError> {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let first = model.call(request.clone()).await?;
     let second = model.call(request).await?;
     sink.put((first, second));
@@ -78,15 +72,12 @@ where
 
 /// Stream one recorded turn and park the visible text beside the terminal
 /// record the stream must have ended with.
-pub async fn capture_text_and_terminal<W, T>(
-    model: rig_core::driver::Model<W, T>,
+pub async fn capture_text_and_terminal(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
-) -> Result<(), ProviderError>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) -> Result<(), ProviderError> {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let (text, terminal) = collect_text_and_terminal(model.stream(request)?).await;
     sink.put((
         text,
@@ -101,30 +92,24 @@ where
 /// Keeps the last terminal record, so a dialect that repeats its accounting
 /// across closing frames is fine here; a dialect whose contract is *one*
 /// terminal record uses [`capture_sole_terminal`] instead.
-pub async fn capture_terminal<W, T>(
-    model: rig_core::driver::Model<W, T>,
+pub async fn capture_terminal(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<StreamFinal>,
-) -> Result<(), ProviderError>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) -> Result<(), ProviderError> {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_required_terminal(model.stream(request)?).await);
     Ok(())
 }
 
 /// Stream one recorded turn and park its one terminal record, failing when
 /// the stream emitted none or more than one.
-pub async fn capture_sole_terminal<W, T>(
-    model: rig_core::driver::Model<W, T>,
+pub async fn capture_sole_terminal(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<StreamFinal>,
-) -> Result<(), ProviderError>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) -> Result<(), ProviderError> {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_sole_terminal(model.stream(request)?).await);
     Ok(())
 }
@@ -136,15 +121,12 @@ where
 /// cells are about what the stream said — [`capture_text_and_terminal`]
 /// keeps the last of several records, [`capture_sole_terminal`] drops the
 /// text.
-pub async fn capture_text_and_sole_terminal<W, T>(
-    model: rig_core::driver::Model<W, T>,
+pub async fn capture_text_and_sole_terminal(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
-) -> Result<(), ProviderError>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
-{
+) -> Result<(), ProviderError> {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_text_and_sole_terminal(model.stream(request)?).await);
     Ok(())
 }

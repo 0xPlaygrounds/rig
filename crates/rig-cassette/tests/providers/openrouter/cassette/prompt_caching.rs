@@ -55,7 +55,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 
     with_openrouter_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = rig::model(client.completion(CACHE_MODEL));
-        let observation = run_cache_probe(&model, &probe()).await;
+        let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &OPENROUTER_CACHE_SUPPORT, "blocking probe");
     })
     .await;
@@ -71,7 +71,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
         "prompt_caching/streaming_probe",
         |client| async move {
             let model = rig::model(client.completion(CACHE_MODEL));
-            let observation = run_cache_probe_streaming(&model, &probe()).await;
+            let observation = run_cache_probe_streaming(model, &probe()).await;
             assert_cache_conformance(&observation, &OPENROUTER_CACHE_SUPPORT, "streaming probe");
         },
     )
@@ -97,7 +97,7 @@ async fn live_cache_economics() {
         .expect("OPENROUTER_API_KEY")
         .completion(CACHE_MODEL),
     );
-    let observation = run_cache_probe(&model, &probe()).await;
+    let observation = run_cache_probe(model, &probe()).await;
     report_and_assert_live(
         &observation,
         &OPENROUTER_CACHE_SUPPORT,

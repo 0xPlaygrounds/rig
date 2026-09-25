@@ -132,9 +132,9 @@ impl HelixDBClient for HelixDB {
 /// # Ok(())
 /// # }
 /// ```
-pub struct HelixDBVectorStore<C, M> {
+pub struct HelixDBVectorStore<C> {
     client: C,
-    model: M,
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
 }
 
 pub type HelixDBFilter = Filter<serde_json::Value>;
@@ -172,14 +172,16 @@ struct VecResult {
     vec_docs: Vec<QueryResult>,
 }
 
-impl<C, W, Tr> HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
-where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
-{
+impl<C> HelixDBVectorStore<C> {
     /// Creates a new HelixDB vector store.
-    pub fn new(client: C, model: rig_core::driver::Model<W, Tr>) -> Self {
-        Self { client, model }
+    pub fn new(
+        client: C,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+    ) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 
     /// Returns the underlying HelixDB client.
@@ -188,10 +190,8 @@ where
     }
 }
 
-impl<C, W, Tr> HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
+impl<C> HelixDBVectorStore<C>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {
@@ -216,10 +216,8 @@ where
     }
 }
 
-impl<C, W, Tr> InsertDocuments for HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
+impl<C> InsertDocuments for HelixDBVectorStore<C>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {
@@ -258,10 +256,8 @@ where
     }
 }
 
-impl<C, W, Tr> VectorStoreIndex for HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
+impl<C> VectorStoreIndex for HelixDBVectorStore<C>
 where
-    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding>,
-    Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {

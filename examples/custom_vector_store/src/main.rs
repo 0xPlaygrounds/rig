@@ -12,34 +12,29 @@ use rig::{
     prelude::*,
     providers::openai::{self, wire::OpenAI},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
-    wire::Wire,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 // This is the struct representing our vector store backend, over any
-// embedding model.
-struct RedisVectorStore<W, Tr> {
+// embedding model: the model is erased once at construction.
+struct RedisVectorStore {
     conn: MultiplexedConnection,
     key: String,
-    embedding_model: Model<W, Tr>,
+    embedding_model: BoxedModel<Embedding>,
 }
 
-impl<W, Tr> RedisVectorStore<W, Tr>
-where
-    W: Wire<Op = Embedding>,
-    Tr: Transport<W>,
-{
+impl RedisVectorStore {
     async fn new(
         redis_url: &str,
         key: &str,
-        embedding_model: Model<W, Tr>,
+        embedding_model: impl Into<BoxedModel<Embedding>>,
     ) -> Result<Self, redis::RedisError> {
         let client = Client::open(redis_url)?;
 
         Ok(Self {
             conn: client.get_multiplexed_async_connection().await?,
             key: key.to_string(),
-            embedding_model,
+            embedding_model: embedding_model.into(),
         })
     }
 
@@ -79,11 +74,7 @@ where
     }
 }
 
-impl<W, Tr> VectorStoreIndex for RedisVectorStore<W, Tr>
-where
-    W: Wire<Op = Embedding>,
-    Tr: Transport<W>,
-{
+impl VectorStoreIndex for RedisVectorStore {
     // Irrelevant for our program, but if we wanted to filter out query results
     // creating a simple 'RedisSearchFilter' would be the easiest way.
     // Alternatively, you can use vector_store::request::Filter as your filter DSL.

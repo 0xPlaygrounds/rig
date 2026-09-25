@@ -693,16 +693,14 @@ impl NativeRun {
 /// Drive one streamed native run of `prompt` on a fresh world over `model`
 /// with an agent-level budget of two turns; `configure` shapes the agent
 /// before the run is spawned.
-pub async fn native_run<
-    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
-    T: rig_core::driver::Transport<W>,
->(
-    model: rig_core::driver::Model<W, T>,
+pub async fn native_run(
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     preamble: &str,
     prompt: &str,
     witness: bool,
     configure: impl FnOnce(&mut EcsAgent),
 ) -> NativeRun {
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     native_run_serving(
         |label| rig_core::serve::adapters::ModelAdapter::new(label, model),
         preamble,
