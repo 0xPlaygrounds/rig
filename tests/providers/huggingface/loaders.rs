@@ -2,6 +2,7 @@
 
 use rig::loaders::FileLoader;
 use rig::providers::openai::wire::{HUGGINGFACE, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
 
@@ -17,9 +18,11 @@ async fn loaders_smoke() {
 
     let agent = examples
         .fold(
-            rig::AgentBuilder::new(rig::model(
-                provider.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
-            )),
+            rig::AgentBuilder::new(
+                provider
+                    .completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+                    .on(rig::transport()),
+            ),
             |builder, (path, content)| {
                 builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
             },

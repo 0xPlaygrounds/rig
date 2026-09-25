@@ -14,9 +14,9 @@
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
-use rig_core::Model;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_core::wire::Wire as _;
 use rig_neo4j::Neo4jClient;
 
 use std::env;
@@ -56,10 +56,9 @@ async fn main() -> Result<(), anyhow::Error> {
     .await?;
 
     // // Select the embedding model and generate our embeddings
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http);
 
     // Define the properties that will be retrieved from querying the graph nodes
     #[derive(Debug, Deserialize, Serialize)]

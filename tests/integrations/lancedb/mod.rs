@@ -104,7 +104,9 @@ async fn vector_search_test() {
     let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
 
     // Select an embedding model.
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     // Initialize LanceDB locally.
     let store = assert_fs::TempDir::new().unwrap();
@@ -316,7 +318,9 @@ async fn agent_with_dynamic_context_test() {
         .with_route(openai::Route::Chat);
 
     // Select an embedding model.
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     // Initialize LanceDB locally.
     let store = assert_fs::TempDir::new().unwrap();
@@ -379,9 +383,13 @@ async fn agent_with_dynamic_context_test() {
         .unwrap();
 
     // Build RAG agent with dynamic context.
-    let agent = AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4O)))
-        .dynamic_context(top_k, vector_store_index)
-        .build();
+    let agent = AgentBuilder::new(
+        openai_client
+            .completion(openai::GPT_4O)
+            .on(rig::transport()),
+    )
+    .dynamic_context(top_k, vector_store_index)
+    .build();
 
     let query = "My boss says I zindle too much, what does that mean?";
 

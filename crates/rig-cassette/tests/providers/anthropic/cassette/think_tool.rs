@@ -2,6 +2,7 @@
 
 use rig::providers::anthropic;
 use rig::tool::builtin::ThinkTool;
+use rig::wire::Wire as _;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
@@ -9,9 +10,11 @@ use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_respo
 #[tokio::test]
 async fn think_tool_menu_planning() {
     with_anthropic_cassette("think_tool/think_tool_menu_planning", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(
-            client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-        ))
+        let agent = rig::AgentBuilder::new(
+            client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .on(rig::transport()),
+        )
         .name("Anthropic Thinker")
         .preamble(
             "You are a helpful assistant that can solve complex problems. \

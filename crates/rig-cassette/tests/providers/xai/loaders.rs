@@ -2,6 +2,7 @@
 
 use rig::loaders::FileLoader;
 use rig::providers::xai;
+use rig::wire::Wire as _;
 
 use super::support::with_xai_cassette;
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
@@ -16,7 +17,7 @@ async fn loaders_smoke() {
             .into_iter();
 
         let agent = examples
-            .fold(rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_4))), |builder, (path, content)| {
+            .fold(rig::AgentBuilder::new(client.completion(xai::GROK_4).on(rig::transport())), |builder, (path, content)| {
                 let file_name = path
                     .file_name()
                     .and_then(|name| name.to_str())

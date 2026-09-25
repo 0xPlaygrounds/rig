@@ -6,6 +6,7 @@ use mongodb::{
 };
 use rig::mongodb::{MongoDbVectorIndex, SearchParams};
 use rig::vector_store::request::VectorSearchRequest;
+use rig::wire::Wire as _;
 use rig::{
     Embed,
     driver::Model,
@@ -142,7 +143,9 @@ async fn vector_search_test() {
     let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
 
     // Select the embedding model and generate our embeddings
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
     let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
@@ -275,7 +278,9 @@ async fn insert_documents_test() {
     // Initialize OpenAI client
     let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
 
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     // Setup MongoDB container
     let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)

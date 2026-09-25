@@ -1,6 +1,7 @@
 //! Perplexity non-streaming completion cassette coverage.
 
 use rig::providers::perplexity;
+use rig::wire::Wire as _;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -9,10 +10,11 @@ use super::super::support::with_perplexity_cassette;
 #[tokio::test]
 async fn completion_smoke() {
     with_perplexity_cassette("agent/completion_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(perplexity::SONAR)))
-            .preamble(BASIC_PREAMBLE)
-            .temperature(0.2)
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(perplexity::SONAR).on(rig::transport()))
+                .preamble(BASIC_PREAMBLE)
+                .temperature(0.2)
+                .build();
 
         let response = agent
             .prompt(BASIC_PROMPT)
@@ -30,13 +32,14 @@ async fn completion_with_perplexity_options() {
     with_perplexity_cassette(
         "agent/completion_with_perplexity_options",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(perplexity::SONAR)))
-                .preamble("Answer briefly and include the date or time context if relevant.")
-                .additional_params(serde_json::json!({
-                    "return_related_questions": true,
-                    "search_context_size": "low"
-                }))
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(perplexity::SONAR).on(rig::transport()))
+                    .preamble("Answer briefly and include the date or time context if relevant.")
+                    .additional_params(serde_json::json!({
+                        "return_related_questions": true,
+                        "search_context_size": "low"
+                    }))
+                    .build();
 
             let response = agent
                 .prompt("Name one notable recent development in Rust programming language tooling.")

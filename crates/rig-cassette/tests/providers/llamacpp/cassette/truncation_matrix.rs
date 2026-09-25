@@ -31,6 +31,7 @@
 
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_sse_json_frames, recorded_statuses_and_bodies};
@@ -82,7 +83,7 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
     with_llamacpp_competent_cassette(
         "truncation_matrix/tool_call_cut_mid_arguments",
         |client| async move {
-            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(NOTE_PROMPT)
@@ -146,7 +147,7 @@ async fn the_streaming_path_drops_the_same_cut_call() {
     with_llamacpp_competent_cassette(
         "truncation_matrix/streaming_tool_call_cut_mid_arguments",
         |client| async move {
-            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new(NOTE_PROMPT)
@@ -218,7 +219,7 @@ async fn a_complete_call_under_the_same_cap_survives() {
     with_llamacpp_competent_cassette(
         "truncation_matrix/complete_call_control",
         |client| async move {
-            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(NOTE_PROMPT)

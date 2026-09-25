@@ -1,7 +1,8 @@
 use super::*;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::wire::Wire as _;
 
 /// Answers every request with one scripted SDK reply.
 #[derive(Clone)]
@@ -37,10 +38,8 @@ pub(crate) trait Complete {
 
 impl Complete for vertexai::model::GenerateContentResponse {
     fn complete(self) -> Result<CompletionResponse, ProviderError> {
-        let model = Model::new(
-            crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH),
-            Reply(self),
-        );
+        let model = crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH)
+            .on(Reply(self));
         futures::executor::block_on(model.call(CompletionRequestBuilder::new("hello").build()))
     }
 }

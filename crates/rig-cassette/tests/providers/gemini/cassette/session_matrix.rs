@@ -2,6 +2,7 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::with_gemini_cassette;
+use rig::wire::Wire as _;
 
 use crate::history_survival::sessions::{self, Cell};
 use rig::providers::gemini::Gemini;
@@ -36,9 +37,11 @@ fn models(
     >,
 ) {
     (
-        rig::model(client.completion("gemini-2.5-flash")),
-        rig::model(client.completion("gemini-2.5-flash")),
-        rig::model(client.completion("gemini-3-flash-preview")),
+        client.completion("gemini-2.5-flash").on(rig::transport()),
+        client.completion("gemini-2.5-flash").on(rig::transport()),
+        client
+            .completion("gemini-3-flash-preview")
+            .on(rig::transport()),
     )
 }
 

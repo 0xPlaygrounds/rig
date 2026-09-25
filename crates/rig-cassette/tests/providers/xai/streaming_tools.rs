@@ -3,6 +3,7 @@ use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::providers::xai;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -64,7 +65,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_xai_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(xai::GROK_4));
+            let model = client.completion(xai::GROK_4).on(rig::transport());
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
@@ -82,7 +83,7 @@ async fn responses_stream_preserves_tool_result_flow() {
     with_xai_cassette(
         "streaming_tools/responses_stream_preserves_tool_result_flow",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_4)))
+            let agent = rig::AgentBuilder::new(client.completion(xai::GROK_4).on(rig::transport()))
                 .preamble(XAI_STATUS_TOOL_PREAMBLE)
                 .tool(StatusWordTool)
                 .build();
@@ -105,7 +106,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_xai_cassette(
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
-            let model = rig::model(client.completion(xai::GROK_4));
+            let model = client.completion(xai::GROK_4).on(rig::transport());
             let request = CompletionRequestBuilder::new(XAI_STATUS_TOOL_PROMPT)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&StatusWordTool))

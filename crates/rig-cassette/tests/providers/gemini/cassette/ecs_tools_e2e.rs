@@ -1,6 +1,7 @@
 //! Native counterparts of the original agent-tool conformance cases.
 //! Real tools and provider adapters execute through native ECS systems.
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 #[path = "ecs_tools_e2e/conformance.rs"]
 mod conformance;
 #[path = "ecs_tools_e2e/runtime.rs"]
@@ -25,7 +26,9 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
                 "agent_tools/nonstreaming_multi_turn_executes_tools_and_reports_usage",
                 |client| async move {
                     let mut ecs = configured(
-                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         FORCE_TOOLS_PREAMBLE,
                         None,
                     );
@@ -80,7 +83,9 @@ async fn streaming_multi_turn_executes_tools_via_builtin_driver() {
                 "agent_tools/streaming_multi_turn_executes_tools_via_builtin_driver",
                 |client| async move {
                     let mut ecs = configured(
-                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         FORCE_TOOLS_PREAMBLE,
                         None,
                     );
@@ -143,7 +148,9 @@ async fn parallel_tool_calls_land_in_one_tool_result_message() {
                 "agent_tools/parallel_tool_calls_land_in_one_tool_result_message",
                 |client| async move {
                     let report = parallel_tools(
-                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         None,
                     )
                     .await
@@ -170,7 +177,9 @@ async fn tool_concurrency_one_preserves_parallel_call_contract() {
                 "agent_tools/tool_concurrency_one_preserves_parallel_call_contract",
                 |client| async move {
                     let report = parallel_tools(
-                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         Some(1),
                     )
                     .await
@@ -196,9 +205,11 @@ async fn zero_arg_tool_call_round_trips() {
             with_gemini_cassette(
                 "agent_tools/zero_arg_tool_call_round_trips",
                 |client| async move {
-                    let report = zero_argument_tool(rig::model(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    ))
+                    let report = zero_argument_tool(
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
+                    )
                     .await
                     .expect("zero-argument conformance scenario should succeed");
                     eprintln!("[gemini] {report:?}");
@@ -222,9 +233,11 @@ async fn string_output_sent_verbatim_and_struct_output_serialized_as_json() {
             with_gemini_cassette(
                 "agent_tools/string_output_verbatim_struct_output_json",
                 |client| async move {
-                    let report = tool_output_serialization(rig::model(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    ))
+                    let report = tool_output_serialization(
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
+                    )
                     .await
                     .expect("tool-output serialization conformance scenario should succeed");
                     eprintln!("[gemini] {report:?}");

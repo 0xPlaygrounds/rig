@@ -3,6 +3,7 @@ use crate::ecs_agent::EcsAgent;
 use crate::openrouter::DEFAULT_MODEL;
 use crate::openrouter::support::with_openrouter_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
+use rig::wire::Wire as _;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {
@@ -10,7 +11,7 @@ async fn completion_smoke() {
         async {
             with_openrouter_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    rig::model(client.completion(DEFAULT_MODEL)),
+                    client.completion(DEFAULT_MODEL).on(rig::transport()),
                     BASIC_PREAMBLE,
                     1,
                 );

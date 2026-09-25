@@ -12,6 +12,7 @@
 //! that the only route to them.
 
 use rig::providers::venice::{self, VeniceParameters, WebSearchMode};
+use rig::wire::Wire as _;
 use serde::Deserialize as _;
 
 use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
@@ -25,7 +26,7 @@ fn venice_reply(raw: &serde_json::Value) -> venice::CompletionResponse {
 #[tokio::test]
 async fn web_search_on_returns_citations() {
     with_venice_cassette("venice_parameters/web_search_on", |client| async move {
-        let model = rig::model(client.completion(DEFAULT_MODEL));
+        let model = client.completion(DEFAULT_MODEL).on(rig::transport());
         let request = CompletionRequestBuilder::new(
             "In one sentence, what is the Rust programming language?",
         )
@@ -71,7 +72,7 @@ async fn web_search_on_returns_citations() {
 #[tokio::test]
 async fn web_search_auto_is_echoed() {
     with_venice_cassette("venice_parameters/web_search_auto", |client| async move {
-        let model = rig::model(client.completion(DEFAULT_MODEL));
+        let model = client.completion(DEFAULT_MODEL).on(rig::transport());
         let request = CompletionRequestBuilder::new("What is 2 + 2? Answer with the number only.")
             .max_tokens(16)
             .additional_params(
@@ -104,7 +105,7 @@ async fn web_search_auto_is_echoed() {
 #[tokio::test]
 async fn disable_thinking_is_applied() {
     with_venice_cassette("venice_parameters/disable_thinking", |client| async move {
-        let model = rig::model(client.completion(DEFAULT_MODEL));
+        let model = client.completion(DEFAULT_MODEL).on(rig::transport());
         let request =
             CompletionRequestBuilder::new("Name one primary color. Answer with one word.")
                 .max_tokens(16)
@@ -138,7 +139,7 @@ async fn venice_system_prompt_can_be_disabled() {
     with_venice_cassette(
         "venice_parameters/include_venice_system_prompt_false",
         |client| async move {
-            let model = rig::model(client.completion(DEFAULT_MODEL));
+            let model = client.completion(DEFAULT_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new("Say hi in three words.")
                 .max_tokens(24)
                 .additional_params(
@@ -177,7 +178,7 @@ async fn venice_system_prompt_can_be_disabled() {
 #[tokio::test]
 async fn character_slug_selects_a_persona() {
     with_venice_cassette("venice_parameters/character_slug", |client| async move {
-        let model = rig::model(client.completion(DEFAULT_MODEL));
+        let model = client.completion(DEFAULT_MODEL).on(rig::transport());
         let request = CompletionRequestBuilder::new("Introduce yourself in one sentence.")
             .max_tokens(64)
             .additional_params(

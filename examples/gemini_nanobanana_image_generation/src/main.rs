@@ -1,11 +1,14 @@
 use anyhow::Result;
 use rig::image_generation::ImageGenerationRequestBuilder;
 use rig::providers::gemini::{self, Gemini};
+use rig::wire::Wire as _;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = Gemini::from_env()?;
-    let model = rig::model(client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE));
+    let model = client
+        .image_generation(gemini::GEMINI_2_5_FLASH_IMAGE)
+        .on(rig::transport());
 
     let response = model
         .call(

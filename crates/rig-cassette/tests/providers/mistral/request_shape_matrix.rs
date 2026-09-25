@@ -30,6 +30,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{plain,json}_{auto,any,none}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -147,7 +148,9 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = rig::model(client.completion(model_name(cell.model)));
+    let model = client
+        .completion(model_name(cell.model))
+        .on(rig::transport());
     let observation = match cell.transport {
         Transport::Blocking => {
             let response = model.call(request(cell)).await?;

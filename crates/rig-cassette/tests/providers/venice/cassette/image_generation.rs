@@ -6,6 +6,7 @@
 //! `/images/generations` body would fail as a mock miss.
 
 use rig::providers::venice;
+use rig::wire::Wire as _;
 
 use super::super::support::with_venice_cassette;
 use rig::image_generation::ImageGenerationRequestBuilder;
@@ -15,7 +16,9 @@ async fn image_generation_smoke() {
     with_venice_cassette(
         "image_generation/image_generation_smoke",
         |client| async move {
-            let model = rig::model(client.image_generation(venice::VENICE_SD35));
+            let model = client
+                .image_generation(venice::VENICE_SD35)
+                .on(rig::transport());
             let response = model
                 .call(
                     ImageGenerationRequestBuilder::new(

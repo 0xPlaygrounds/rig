@@ -5,6 +5,7 @@
 
 use rig::effect::EffectFamily;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_cassette;
@@ -22,14 +23,19 @@ const CHAIN_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 
 async fn two_turns_concurrency_two_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/tool_call_turns", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-            .name("golden")
-            .preamble(CHAIN_PREAMBLE)
-            .temperature(0.0)
-            .tool(Adder)
-            .tool(Subtract)
-            .record_to(recorder.clone())
-            .build();
+        let agent = rig::AgentBuilder::new(
+            client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport()),
+        )
+        .name("golden")
+        .preamble(CHAIN_PREAMBLE)
+        .temperature(0.0)
+        .tool(Adder)
+        .tool(Subtract)
+        .record_to(recorder.clone())
+        .build();
         let response = agent
             .prompt(CHAIN_PROMPT)
             .max_turns(6)

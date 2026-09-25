@@ -7,6 +7,7 @@ use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::wire::Wire as _;
 
 use super::super::{
     CASSETTE_MODEL,
@@ -85,7 +86,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
 #[tokio::test]
 async fn thinking_stream_keeps_reasoning_and_text_discrete() {
     with_cohere_cassette("streaming_grammar/thinking_stream", |client| async move {
-        let model = rig::model(client.completion(REASONING_MODEL));
+        let model = client.completion(REASONING_MODEL).on(rig::transport());
         let request = CompletionRequestBuilder::new(
             "How many positive integers n < 100 are divisible by 6? \
                  Think it through, then answer with just the number.",
@@ -165,7 +166,7 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
     with_cohere_cassette(
         "streaming_grammar/reasoning_then_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(REASONING_MODEL));
+            let model = client.completion(REASONING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Think it through, then call the subtract tool to compute 2 - 5. \
                      Do not answer with normal text before the tool call.",
@@ -227,7 +228,7 @@ async fn required_tool_choice_streams_tool_call() {
     with_cohere_cassette(
         "streaming_grammar/required_tool_choice_streams_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Use the subtract tool to calculate 8 - 3.")
                     .tool(rig::tool::tool_definition(&IntegerSubtract))
@@ -259,7 +260,7 @@ async fn none_tool_choice_streams_text() {
     with_cohere_cassette(
         "streaming_grammar/none_tool_choice_streams_text",
         |client| async move {
-            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Calculate 8 - 3. Answer directly without calling a tool.",
             )

@@ -84,7 +84,7 @@ fn recorded_finish_reason(scenario: &str) -> String {
 #[tokio::test]
 async fn temperature_zero_and_nonzero_both_reach_the_wire() {
     with_llamacpp_cassette("sampling_matrix/temperature_zero", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
@@ -98,7 +98,7 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
     .await;
 
     with_llamacpp_cassette("sampling_matrix/temperature_nonzero", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
@@ -129,7 +129,7 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
 #[tokio::test]
 async fn a_one_token_cap_truncates_with_finish_reason_length() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_one", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
             .call(
                 CompletionRequestBuilder::new("Count from one to ten.")
@@ -166,7 +166,7 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
 #[tokio::test]
 async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_normal", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Reply with the single word: ok"))
@@ -212,7 +212,7 @@ fn a_cap_past_the_context_is_clamped() {
 #[tokio::test]
 async fn a_single_stop_sequence_truncates_the_answer() {
     with_llamacpp_cassette("sampling_matrix/stop_single", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!(
@@ -256,7 +256,7 @@ async fn a_single_stop_sequence_truncates_the_answer() {
 #[tokio::test]
 async fn several_stop_sequences_fire_on_whichever_comes_first() {
     with_llamacpp_cassette("sampling_matrix/stop_multiple", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!(
@@ -293,7 +293,7 @@ async fn several_stop_sequences_fire_on_whichever_comes_first() {
 #[tokio::test]
 async fn a_stop_sequence_that_never_matches_changes_nothing() {
     with_llamacpp_cassette("sampling_matrix/stop_never_fires", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!(
@@ -327,7 +327,7 @@ async fn a_stop_sequence_that_never_matches_changes_nothing() {
 #[tokio::test]
 async fn stop_matching_is_case_sensitive() {
     with_llamacpp_cassette("sampling_matrix/stop_case_sensitive", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         let response = model
             .call(
                 CompletionRequestBuilder::new(format!(
@@ -371,7 +371,7 @@ async fn stop_matching_is_case_sensitive() {
 #[tokio::test]
 async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     with_llamacpp_cassette("sampling_matrix/seed_fixed", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
@@ -385,7 +385,7 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     .await;
 
     with_llamacpp_cassette("sampling_matrix/seed_absent", |client| async move {
-        let model = rig::model(client.completion(CASSETTE_MODEL));
+        let model = client.completion(CASSETTE_MODEL).on(rig::transport());
         model
             .call(
                 CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))

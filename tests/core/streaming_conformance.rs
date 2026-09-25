@@ -9,6 +9,7 @@
 //! `cargo test -p rig --test core core::streaming_conformance`
 
 use rig::completion::CompletionRequestBuilder;
+use rig::wire::Wire as _;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance,
     fixtures::{
@@ -51,14 +52,12 @@ mod xai {
     fn driver() -> conformance::WireDriver {
         conformance::WireDriver::new("xai", |chunks| {
             Box::pin(async move {
-                let model = rig::Model::new(
-                    rig_core::providers::openai::OpenAI::with_key(
-                        &rig_core::providers::xai::DIALECT,
-                        "test-key",
-                    )
-                    .completion(rig_core::providers::xai::GROK_4),
-                    SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
-                );
+                let model = rig_core::providers::openai::OpenAI::with_key(
+                    &rig_core::providers::xai::DIALECT,
+                    "test-key",
+                )
+                .completion(rig_core::providers::xai::GROK_4)
+                .on(SequencedStreamingHttpClient::new(byte_chunks(chunks)?));
                 let request = CompletionRequestBuilder::new("hello").build();
                 let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
@@ -89,11 +88,9 @@ mod copilot {
                 // (`copilot::wire::routes_through_responses`), so naming the
                 // same two model ids keeps each fixture on the route it was
                 // recorded against.
-                let model = rig::Model::new(
-                    rig_core::providers::copilot::wire::Copilot::new("copilot-token")
-                        .completion(model_name),
-                    SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
-                );
+                let model = rig_core::providers::copilot::wire::Copilot::new("copilot-token")
+                    .completion(model_name)
+                    .on(SequencedStreamingHttpClient::new(byte_chunks(chunks)?));
                 let request = CompletionRequestBuilder::new("hello").build();
                 let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
@@ -130,15 +127,13 @@ mod chatgpt {
     fn driver() -> conformance::WireDriver {
         conformance::WireDriver::new("chatgpt", |chunks| {
             Box::pin(async move {
-                let model = rig::Model::new(
-                    rig_core::providers::openai::OpenAI::with_key(
-                        &rig_core::providers::chatgpt::DIALECT,
-                        "test-token",
-                    )
-                    .with_account_id("account-id")
-                    .completion("gpt-5.4"),
-                    SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
-                );
+                let model = rig_core::providers::openai::OpenAI::with_key(
+                    &rig_core::providers::chatgpt::DIALECT,
+                    "test-token",
+                )
+                .with_account_id("account-id")
+                .completion("gpt-5.4")
+                .on(SequencedStreamingHttpClient::new(byte_chunks(chunks)?));
                 let request = CompletionRequestBuilder::new("hello").build();
                 let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)

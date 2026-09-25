@@ -3,13 +3,14 @@
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
+use rig::wire::Wire as _;
 
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 
 #[tokio::test]
 async fn streaming_smoke() {
     with_openrouter_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(DEFAULT_MODEL).on(rig::transport()))
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -26,7 +27,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 async fn example_streaming_prompt() {
     with_openrouter_cassette("streaming/example_streaming_prompt", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(DEFAULT_MODEL).on(rig::transport()))
             .preamble("Be precise and concise.")
             .temperature(0.5)
             .build();

@@ -2,6 +2,7 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::with_openrouter_cassette;
+use rig::wire::Wire as _;
 
 use crate::history_survival::sessions::{self, Cell};
 use rig::providers::openai::OpenAI;
@@ -25,9 +26,15 @@ fn models(
     rig::Model<rig::providers::openai::wire::OpenAiWire>,
 ) {
     (
-        rig::model(client.completion("anthropic/claude-haiku-4.5")),
-        rig::model(client.completion("anthropic/claude-haiku-4.5")),
-        rig::model(client.completion("anthropic/claude-sonnet-4.6")),
+        client
+            .completion("anthropic/claude-haiku-4.5")
+            .on(rig::transport()),
+        client
+            .completion("anthropic/claude-haiku-4.5")
+            .on(rig::transport()),
+        client
+            .completion("anthropic/claude-sonnet-4.6")
+            .on(rig::transport()),
     )
 }
 

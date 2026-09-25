@@ -7,6 +7,7 @@
 //! blocked turn normalizes to `FinishReason::ContentFilter` and nothing else;
 //! only the trace says which policy fired and on what text.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
@@ -14,7 +15,7 @@ use rig::bedrock;
 use rig::bedrock::client::BedrockRuntime;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig::bedrock::types::converse_output::InternalConverseOutput;
-use rig::driver::{Model, Observation, Opened, Transport};
+use rig::driver::{Observation, Opened, Transport};
 use rig::error::ProviderError;
 use rig::wire::Mode;
 
@@ -88,14 +89,13 @@ async fn guardrail_trace_survives_into_the_converse_frame() {
         "raw_provider_data/guardrail_trace_survives_into_raw_completion",
         |client| async move {
             let keep = Keep::new(client.0);
-            let model = Model::new(
-                Converse::new(bedrock::completion::AMAZON_NOVA_LITE).with_guardrail(
+            let model = Converse::new(bedrock::completion::AMAZON_NOVA_LITE)
+                .with_guardrail(
                     GUARDRAIL_ID,
                     GUARDRAIL_VERSION,
                     aws_sdk_bedrockruntime::types::GuardrailTrace::Enabled,
-                ),
-                keep.clone(),
-            );
+                )
+                .on(keep.clone());
 
             let request = CompletionRequestBuilder::new(
                 "Explain a gravitational singularity in one sentence.",
@@ -189,10 +189,7 @@ async fn request_id_survives_into_the_converse_frame() {
         "raw_provider_data/request_id_survives_into_raw_completion",
         |client| async move {
             let keep = Keep::new(client.0);
-            let model = Model::new(
-                Converse::new(bedrock::completion::AMAZON_NOVA_LITE),
-                keep.clone(),
-            );
+            let model = Converse::new(bedrock::completion::AMAZON_NOVA_LITE).on(keep.clone());
             let request = CompletionRequestBuilder::new("Reply with the single word: ready.")
                 .max_tokens(16)
                 .build();

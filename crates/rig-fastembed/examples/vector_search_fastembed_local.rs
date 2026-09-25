@@ -3,7 +3,7 @@ use fastembed::{
     EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
     TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
 };
-use rig_core::Model;
+use rig_core::wire::Wire as _;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -53,10 +53,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let user_defined_model =
         UserDefinedEmbeddingModel::new(onnx_file, tokenizer_files).with_pooling(Pooling::Mean);
 
-    let embedding_model = Model::new(
-        TextEmbeddings::new(test_model_info.model.clone(), 384),
-        Fastembed::from_user_defined(user_defined_model)?,
-    );
+    let embedding_model = TextEmbeddings::new(test_model_info.model.clone(), 384)
+        .on(Fastembed::from_user_defined(user_defined_model)?);
 
     // Create documents
     let documents = vec![

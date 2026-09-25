@@ -33,7 +33,9 @@ fn follow_up_prompt(category: &str) -> Result<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let gpt4 = rig::model(OpenAI::from_env()?.completion(openai::GPT_4));
+    let gpt4 = OpenAI::from_env()?
+        .completion(openai::GPT_4)
+        .on(rig::transport());
     let category = build_router_agent(gpt4.clone())
         .prompt(INPUT_PROMPT)
         .await?

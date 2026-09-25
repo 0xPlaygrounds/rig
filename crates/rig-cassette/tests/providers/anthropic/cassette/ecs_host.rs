@@ -10,6 +10,7 @@ use crate::{
 };
 use bevy_ecs::{prelude::*, system::RunSystemOnce};
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig::{
     effect::EffectFamily, providers::anthropic::completion::CLAUDE_SONNET_4_6, serve::ServingPolicy,
 };
@@ -176,7 +177,7 @@ async fn over_host(
     hooks: Hooks,
 ) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = agent(
-        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
         &host,
         hooks,
     );

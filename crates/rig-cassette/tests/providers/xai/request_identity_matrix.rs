@@ -1,6 +1,7 @@
 //! Request ids on xAI: see `common/request_identity.rs`.
 
 use rig::providers::xai;
+use rig::wire::Wire as _;
 
 use super::support::with_xai_cassette;
 use crate::request_identity;
@@ -13,8 +14,8 @@ async fn responses() {
     with_xai_cassette("request_identity_matrix/responses", |client| async move {
         request_identity::run(
             cell,
-            rig::model(client.completion(xai::GROK_3_MINI)),
-            rig::model(client.completion(xai::GROK_3_MINI)),
+            client.completion(xai::GROK_3_MINI).on(rig::transport()),
+            client.completion(xai::GROK_3_MINI).on(rig::transport()),
             None,
             // xAI's unknown-model error quotes the account's team id.
             |request| request.temperature(7.0),

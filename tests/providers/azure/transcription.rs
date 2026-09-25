@@ -2,6 +2,7 @@
 
 use rig::providers::openai::wire::{AZURE, OpenAI};
 use rig::transcription::TranscriptionRequestBuilder;
+use rig::wire::Wire as _;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 
@@ -9,7 +10,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[ignore = "requires AZURE_API_KEY or AZURE_TOKEN, plus AZURE_API_VERSION and AZURE_ENDPOINT"]
 async fn transcription_smoke() {
     let azure = OpenAI::from_env_with(&AZURE).expect("config should build from env");
-    let model = rig::model(azure.transcription("whisper"));
+    let model = azure.transcription("whisper").on(rig::transport());
     let response = model
         .call(
             TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)

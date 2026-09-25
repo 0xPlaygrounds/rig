@@ -47,6 +47,7 @@ use rig::message::{AssistantContent, ToolCall, ToolChoice};
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
 use rig::streaming::{StreamEvent, StreamFinal};
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -209,9 +210,13 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            capture_text_and_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("stream should open");
+            capture_text_and_sole_terminal(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should open");
         },
     )
     .await;
@@ -258,9 +263,13 @@ async fn raw_exposes_terminal_only_fields() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            capture_text_and_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("stream should open");
+            capture_text_and_sole_terminal(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should open");
         },
     )
     .await;
@@ -312,7 +321,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             sink.put(drain_stream(&model, forced_tool_request()).await);
         },
     )

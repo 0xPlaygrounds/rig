@@ -36,6 +36,7 @@
 //! |---|---|
 //! | all 24 replacement cells | `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
@@ -122,7 +123,9 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = rig::model(client.completion(model_name(cell.model)));
+    let model = client
+        .completion(model_name(cell.model))
+        .on(rig::transport());
     let mut builder = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));

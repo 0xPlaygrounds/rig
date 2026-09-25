@@ -1,6 +1,7 @@
 //! xAI context smoke test.
 
 use rig::providers::xai;
+use rig::wire::Wire as _;
 
 use super::support::with_xai_cassette;
 use crate::support::assert_contains_any_case_insensitive;
@@ -18,7 +19,7 @@ async fn context_smoke() {
             .iter()
             .copied()
             .fold(
-                rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_4))),
+                rig::AgentBuilder::new(client.completion(xai::GROK_4).on(rig::transport())),
                 |builder, doc| builder.context(doc),
             )
             .preamble(

@@ -51,6 +51,7 @@ use rig::providers::copilot;
 use rig::providers::openai;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -154,7 +155,7 @@ async fn chat_raw_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_raw_round_trips_provider_type",
         |client| async move {
-            let model = rig::model(client.completion(CHAT_MODEL));
+            let model = client.completion(CHAT_MODEL).on(rig::transport());
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
@@ -203,7 +204,12 @@ async fn chat_raw_exposes_system_fingerprint() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_raw_exposes_system_fingerprint",
         |client| async move {
-            capture_completion(rig::model(client.completion(CHAT_MODEL)), request(), sink).await
+            capture_completion(
+                client.completion(CHAT_MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
         },
     )
     .await
@@ -240,7 +246,12 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
     with_copilot_cassette_result(
         "raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(rig::model(client.completion(CHAT_MODEL)), request(), sink).await
+            capture_completion(
+                client.completion(CHAT_MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
         },
     )
     .await
@@ -284,7 +295,7 @@ async fn responses_raw_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_capture_matrix/responses_raw_round_trips_provider_type",
         |client| async move {
-            let model = rig::model(client.completion(RESPONSES_MODEL));
+            let model = client.completion(RESPONSES_MODEL).on(rig::transport());
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
@@ -327,7 +338,7 @@ async fn responses_raw_exposes_envelope() {
         "raw_capture_matrix/responses_raw_exposes_envelope",
         |client| async move {
             capture_completion(
-                rig::model(client.completion(RESPONSES_MODEL)),
+                client.completion(RESPONSES_MODEL).on(rig::transport()),
                 request(),
                 sink,
             )
@@ -368,7 +379,7 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
         "raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized",
         |client| async move {
             capture_completion(
-                rig::model(client.completion(RESPONSES_MODEL)),
+                client.completion(RESPONSES_MODEL).on(rig::transport()),
                 request(),
                 sink,
             )

@@ -78,6 +78,7 @@
 
 use rig::error::ProviderError;
 use rig::prelude::DefaultWebSocketClient as _;
+use rig::wire::Wire as _;
 
 use super::super::support::with_openai_websocket_cassette;
 use rig::completion::CompletionRequestBuilder;
@@ -101,7 +102,10 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
     with_openai_websocket_cassette(
         "websocket_error_identity_matrix/handshake_rejection_carries_status_body_and_request_id",
         |client| async move {
-            let error = rig::model(client.openai.responses("gpt-4o-mini"))
+            let error = client
+                .openai
+                .responses("gpt-4o-mini")
+                .on(rig::transport())
                 .responses_websocket()
                 .await
                 .err()
@@ -141,7 +145,7 @@ async fn handshake_rejection_matches_the_http_twin() {
     with_openai_websocket_cassette(
         "websocket_error_identity_matrix/handshake_rejection_matches_the_http_twin",
         |client| async move {
-            let model = rig::model(client.openai.responses("gpt-4o-mini"));
+            let model = client.openai.responses("gpt-4o-mini").on(rig::transport());
             let websocket_error = model
                 .responses_websocket()
                 .await

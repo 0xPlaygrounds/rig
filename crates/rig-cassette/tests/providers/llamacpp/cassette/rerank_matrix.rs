@@ -35,6 +35,7 @@
 //! corrects the doc comment; [`scores_are_raw_logits_and_may_be_negative`]
 //! is what keeps the corrected wording honest.
 
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use crate::cassettes::{
@@ -75,7 +76,9 @@ fn recorded_results(scenario: &str) -> Vec<Value> {
 #[tokio::test]
 async fn multiple_documents_come_back_ranked() {
     with_llamacpp_rerank_cassette("rerank_matrix/multiple_documents", |client| async move {
-        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL))
+        let reranked = client
+            .rerank(CASSETTE_RERANK_MODEL)
+            .on(rig::transport())
             .call(RerankRequest {
                 query: QUERY.to_owned(),
                 documents: documents(),
@@ -144,7 +147,9 @@ async fn multiple_documents_come_back_ranked() {
 #[tokio::test]
 async fn scores_are_raw_logits_and_may_be_negative() {
     with_llamacpp_rerank_cassette("rerank_matrix/negative_scores", |client| async move {
-        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL))
+        let reranked = client
+            .rerank(CASSETTE_RERANK_MODEL)
+            .on(rig::transport())
             .call(RerankRequest {
                 query: QUERY.to_owned(),
                 documents: documents(),
@@ -185,7 +190,9 @@ async fn scores_are_raw_logits_and_may_be_negative() {
 #[tokio::test]
 async fn a_single_document_is_still_a_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/single_document", |client| async move {
-        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL))
+        let reranked = client
+            .rerank(CASSETTE_RERANK_MODEL)
+            .on(rig::transport())
             .call(RerankRequest {
                 query: QUERY.to_owned(),
                 documents: vec!["it is a bear".to_string()],
@@ -210,7 +217,10 @@ async fn a_single_document_is_still_a_ranking() {
 #[tokio::test]
 async fn top_n_beyond_the_document_count_is_clamped() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_beyond_count", |client| async move {
-        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL).with_top_n(99))
+        let reranked = client
+            .rerank(CASSETTE_RERANK_MODEL)
+            .with_top_n(99)
+            .on(rig::transport())
             .call(RerankRequest {
                 query: QUERY.to_owned(),
                 documents: documents(),
@@ -244,7 +254,10 @@ async fn top_n_beyond_the_document_count_is_clamped() {
 #[tokio::test]
 async fn top_n_below_the_document_count_truncates() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_truncates", |client| async move {
-        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL).with_top_n(1))
+        let reranked = client
+            .rerank(CASSETTE_RERANK_MODEL)
+            .with_top_n(1)
+            .on(rig::transport())
             .call(RerankRequest {
                 query: QUERY.to_owned(),
                 documents: documents(),
@@ -279,7 +292,10 @@ async fn top_n_below_the_document_count_truncates() {
 #[tokio::test]
 async fn top_n_zero_returns_an_empty_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_zero", |client| async move {
-        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL).with_top_n(0))
+        let reranked = client
+            .rerank(CASSETTE_RERANK_MODEL)
+            .with_top_n(0)
+            .on(rig::transport())
             .call(RerankRequest {
                 query: QUERY.to_owned(),
                 documents: documents(),

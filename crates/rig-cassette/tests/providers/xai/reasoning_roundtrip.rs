@@ -4,6 +4,7 @@
 //! `cargo test -p rig --test xai xai::reasoning_roundtrip::streaming -- --ignored --nocapture`
 
 use rig::providers::xai;
+use rig::wire::Wire as _;
 
 use super::support::with_xai_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};
@@ -12,7 +13,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 async fn streaming() {
     with_xai_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            rig::model(client.completion(xai::GROK_3_MINI)),
+            client.completion(xai::GROK_3_MINI).on(rig::transport()),
             None,
         ))
         .await;
@@ -24,7 +25,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_xai_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            rig::model(client.completion(xai::GROK_3_MINI)),
+            client.completion(xai::GROK_3_MINI).on(rig::transport()),
             None,
         ))
         .await;

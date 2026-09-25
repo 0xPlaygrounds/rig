@@ -3,6 +3,7 @@
 use rig::providers::groq;
 use rig::providers::openai::wire::{GROQ, OpenAI};
 use rig::transcription::TranscriptionRequestBuilder;
+use rig::wire::Wire as _;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 
@@ -10,7 +11,9 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[ignore = "requires GROQ_API_KEY"]
 async fn transcription_smoke() {
     let bound = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let model = rig::model(bound.transcription(groq::WHISPER_LARGE_V3));
+    let model = bound
+        .transcription(groq::WHISPER_LARGE_V3)
+        .on(rig::transport());
     let response = model
         .call(
             TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)

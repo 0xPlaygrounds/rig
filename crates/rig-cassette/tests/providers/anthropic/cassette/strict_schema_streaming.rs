@@ -6,6 +6,7 @@ use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_anthropic_cassette;
@@ -20,11 +21,10 @@ async fn assert_streaming_strict_tool_call(
     tool_choice: ToolChoice,
     expected_arguments: Value,
 ) {
-    let model = rig::model(
-        client
-            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            .with_strict_tools(),
-    );
+    let model = client
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .with_strict_tools()
+        .on(rig::transport());
     assert_model_streaming_tool_call(
         model,
         tool_name,
@@ -211,11 +211,10 @@ async fn structured_output_and_strict_tool_use_stream_together() {
     with_anthropic_cassette(
         "strict_schema_streaming/structured_output_and_strict_tool_use_stream_together",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let output_schema = serde_json::from_value(json!({
                 "type": "object",
                 "properties": { "summary": { "type": "string" } },
@@ -246,12 +245,11 @@ async fn manual_prompt_caching_and_strict_tools_stream_together() {
     with_anthropic_cassette(
         "strict_schema_streaming/manual_prompt_caching_and_strict_tools_stream_together",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching()
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .with_strict_tools()
+                .on(rig::transport());
             assert_model_streaming_tool_call(
                 model,
                 "stream_cached",
@@ -276,12 +274,11 @@ async fn automatic_prompt_caching_and_strict_tools_stream_together() {
     with_anthropic_cassette(
         "strict_schema_streaming/automatic_prompt_caching_and_strict_tools_stream_together",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_automatic_caching()
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_automatic_caching()
+                .with_strict_tools()
+                .on(rig::transport());
             assert_model_streaming_tool_call(
                 model,
                 "stream_cached",

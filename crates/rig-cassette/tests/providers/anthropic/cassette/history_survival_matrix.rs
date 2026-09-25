@@ -7,6 +7,7 @@
 //! signatures in the existing Anthropic recordings.
 
 use rig::providers::anthropic::completion::CLAUDE_HAIKU_4_5;
+use rig::wire::Wire as _;
 
 use super::super::support::with_anthropic_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
@@ -19,7 +20,7 @@ fn model(
     client: rig::providers::anthropic::wire::Anthropic,
     cell: Cell,
 ) -> rig::Model<rig::providers::anthropic::wire::Messages> {
-    rig::model(client.completion(cell.model))
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

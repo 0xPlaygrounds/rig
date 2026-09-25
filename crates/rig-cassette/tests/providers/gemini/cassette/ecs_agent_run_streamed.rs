@@ -8,6 +8,7 @@ use super::super::{
 };
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
+use rig::wire::Wire as _;
 use rig::{
     effect::EffectKind,
     message::{Message, ToolChoice},
@@ -394,7 +395,9 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
 
 fn setup(client: &Gemini) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+        client
+            .completion(gemini::completion::GEMINI_2_5_FLASH)
+            .on(rig::transport()),
         FORCE_TOOLS_PREAMBLE,
         1,
     );

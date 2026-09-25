@@ -59,6 +59,7 @@
 //! the whole vocabulary can be enumerated without a live call.
 
 use rig::completion::FinishReason;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -97,7 +98,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
             "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
             |client| async move {
                 {
-                    rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                    rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
@@ -146,12 +147,13 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
             "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
             |client| async move {
                 {
-                    let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
-                        .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(TINY_CAP)
-                        .build();
+                    let agent =
+                        rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
+                            .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
+                            .preamble(CONCISE_PREAMBLE)
+                            .temperature(0.0)
+                            .max_tokens(TINY_CAP)
+                            .build();
 
                     let mut stream = agent.prompt(TRUNCATING_PROMPT).add_hook(probe).stream();
                     let _ = collect_stream_final_response(&mut stream).await;
@@ -187,7 +189,7 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
             "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
             |client| async move {
                 {
-                    rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                    rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
@@ -227,12 +229,13 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
             "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
             |client| async move {
                 {
-                    let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
-                        .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .build();
+                    let agent =
+                        rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
+                            .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
+                            .preamble(CONCISE_PREAMBLE)
+                            .temperature(0.0)
+                            .max_tokens(ROOMY_CAP)
+                            .build();
 
                     let mut stream = agent.prompt(SHORT_PROMPT).add_hook(probe).stream();
                     let _ = collect_stream_final_response(&mut stream).await;
@@ -264,7 +267,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
             "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
             |client| async move {
                 {
-                    rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                    rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(TOOL_PREAMBLE)
                         .temperature(0.0)
@@ -309,13 +312,14 @@ async fn streaming_tool_turn_reports_tool_calls() {
             "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
             |client| async move {
                 {
-                    let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
-                        .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
-                        .preamble(TOOL_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .tool(Adder)
-                        .build();
+                    let agent =
+                        rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
+                            .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
+                            .preamble(TOOL_PREAMBLE)
+                            .temperature(0.0)
+                            .max_tokens(ROOMY_CAP)
+                            .tool(Adder)
+                            .build();
 
                     let mut stream = agent
                         .prompt(TOOL_PROMPT)
@@ -357,7 +361,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
             "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
                 {
-                    rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                    rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                         .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
@@ -414,14 +418,15 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
             "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
                 {
-                    let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
-                        .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        // The agent baseline. Neither attempt should report it: the
-                        // hook's patch replaces it on every prepared request.
-                        .max_tokens(64)
-                        .build();
+                    let agent =
+                        rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
+                            .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
+                            .preamble(CONCISE_PREAMBLE)
+                            .temperature(0.0)
+                            // The agent baseline. Neither attempt should report it: the
+                            // hook's patch replaces it on every prepared request.
+                            .max_tokens(64)
+                            .build();
 
                     let mut stream = agent
                         .prompt(RETRY_PROMPT)

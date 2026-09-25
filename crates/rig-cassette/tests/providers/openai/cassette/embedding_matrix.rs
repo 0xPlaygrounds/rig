@@ -11,6 +11,7 @@
 use super::super::support::with_openai_cassette;
 use rig::embeddings::EmbeddingResponse;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use crate::support::{
     EMBEDDING_INPUTS, EmbeddingMatrixExpectations, assert_normalized_embedding_response,
@@ -56,11 +57,10 @@ async fn normalized_response_is_complete() {
     with_openai_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = rig::model(
-                client
-                    .openai
-                    .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-            );
+            let model = client
+                .openai
+                .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+                .on(rig::transport());
             let response = model
                 .call(inputs())
                 .await
@@ -77,11 +77,10 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_openai_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = rig::model(
-            client
-                .openai
-                .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-        );
+        let model = client
+            .openai
+            .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+            .on(rig::transport());
         let response = model
             .call(inputs())
             .await
@@ -98,11 +97,10 @@ async fn raw_round_trips() {
 #[tokio::test]
 async fn raw_route_parity() {
     with_openai_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = rig::model(
-            client
-                .openai
-                .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-        );
+        let model = client
+            .openai
+            .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+            .on(rig::transport());
         let first = model
             .call(inputs())
             .await
@@ -126,12 +124,11 @@ async fn single_text_convenience() {
     with_openai_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = rig::model(
-                client
-                    .openai
-                    .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-            )
-            .boxed();
+            let model = client
+                .openai
+                .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+                .on(rig::transport())
+                .boxed();
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
@@ -157,11 +154,10 @@ async fn single_text_convenience() {
 async fn dimensions_request() {
     with_openai_cassette("embedding_matrix/dimensions_request", |client| async move {
         let ndims = 512;
-        let model = rig::model(
-            client
-                .openai
-                .embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(ndims)),
-        );
+        let model = client
+            .openai
+            .embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(ndims))
+            .on(rig::transport());
         let response = model
             .call(inputs())
             .await
@@ -179,7 +175,10 @@ async fn error_preserves_provider_body() {
     with_openai_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = rig::model(client.openai.embedding("no-such-embedding-model", None));
+            let model = client
+                .openai
+                .embedding("no-such-embedding-model", None)
+                .on(rig::transport());
             let error = model
                 .call(inputs())
                 .await

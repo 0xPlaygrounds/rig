@@ -13,6 +13,7 @@ use rig::message::{Document, DocumentSourceKind, Message, UserContent};
 use rig::providers::anthropic::completion::{
     self as anthropic_completion, CLAUDE_SONNET_4_6, Citation,
 };
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -54,7 +55,7 @@ async fn pdf_document_citations_decode_as_page_locations() {
     with_anthropic_cassette(
         "pdf_citations/pdf_document_citations_decode_as_page_locations",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(Message::User {

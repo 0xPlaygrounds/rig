@@ -3,6 +3,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -16,16 +17,17 @@ async fn streaming() {
     super::super::support::with_gemini_cassette(
         "reasoning_tool_roundtrip/streaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion("gemini-2.5-flash")))
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(4096)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
-                    }
-                }))
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion("gemini-2.5-flash").on(rig::transport()))
+                    .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                    .max_tokens(4096)
+                    .tool(WeatherTool::new(call_count.clone()))
+                    .additional_params(serde_json::json!({
+                        "generationConfig": {
+                            "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
+                        }
+                    }))
+                    .build();
 
             let stream = agent
                 .prompt(reasoning::TOOL_USER_PROMPT)
@@ -46,17 +48,18 @@ async fn nonstreaming() {
     super::super::support::with_gemini_cassette(
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion("gemini-2.5-flash")))
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(4096)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
-                    }
-                }))
-                .default_max_turns(2)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion("gemini-2.5-flash").on(rig::transport()))
+                    .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                    .max_tokens(4096)
+                    .tool(WeatherTool::new(call_count.clone()))
+                    .additional_params(serde_json::json!({
+                        "generationConfig": {
+                            "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
+                        }
+                    }))
+                    .default_max_turns(2)
+                    .build();
 
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())

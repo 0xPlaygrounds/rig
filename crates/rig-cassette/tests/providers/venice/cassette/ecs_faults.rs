@@ -12,6 +12,7 @@
 use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{
@@ -27,7 +28,9 @@ use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, s
 fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client
+            .completion(MISTRAL_SMALL_3_2_24B)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -38,7 +41,9 @@ fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAi
 fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion("venice-nonexistent-rig-test")),
+        model: client
+            .completion("venice-nonexistent-rig-test")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -95,7 +100,7 @@ fn scripted_stream(
     let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::Model::new(client.completion(MISTRAL_SMALL_3_2_24B), http.clone()),
+        model: client.completion(MISTRAL_SMALL_3_2_24B).on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -111,7 +116,7 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::Model::new(client.completion(MISTRAL_SMALL_3_2_24B), http.clone()),
+        model: client.completion(MISTRAL_SMALL_3_2_24B).on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

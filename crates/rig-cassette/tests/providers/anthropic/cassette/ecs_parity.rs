@@ -2,6 +2,7 @@
 //! fixtures. The original tests remain independent baseline executions.
 
 use rig::providers::anthropic;
+use rig::wire::Wire as _;
 use rig_ecs::bus::Streamed;
 
 use super::super::support::with_anthropic_cassette;
@@ -20,7 +21,9 @@ async fn completion_smoke() {
         async {
             with_anthropic_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)),
+                    client
+                        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                        .on(rig::transport()),
                     BASIC_PREAMBLE,
                     1,
                 );
@@ -44,7 +47,9 @@ async fn streaming_smoke() {
         async {
             with_anthropic_cassette("streaming/streaming_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)),
+                    client
+                        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                        .on(rig::transport()),
                     STREAMING_PREAMBLE,
                     1,
                 );
@@ -82,7 +87,9 @@ async fn streaming_tools_smoke() {
                 "streaming_tools/streaming_tools_smoke",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)),
+                        client
+                            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                            .on(rig::transport()),
                         STREAMING_TOOLS_PREAMBLE,
                         2,
                     );

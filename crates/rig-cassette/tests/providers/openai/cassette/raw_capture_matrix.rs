@@ -62,6 +62,7 @@ use rig::completion::{
 };
 use rig::message::ToolChoice;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::Deserialize as _;
 use serde_json::{Value, json};
@@ -260,7 +261,7 @@ async fn chat_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result("raw_capture_matrix/chat_raw_round_trips_typed", |client| {
         capture_completion(
-            rig::model(client.openai.chat(MODEL)),
+            client.openai.chat(MODEL).on(rig::transport()),
             request(),
             observed.clone(),
         )
@@ -312,7 +313,7 @@ async fn chat_raw_exposes_service_tier() {
         "raw_capture_matrix/chat_raw_exposes_service_tier",
         |client| {
             capture_completion(
-                rig::model(client.openai.chat(MODEL)),
+                client.openai.chat(MODEL).on(rig::transport()),
                 request(),
                 observed.clone(),
             )
@@ -361,7 +362,7 @@ async fn responses_raw_round_trips_typed() {
         "raw_capture_matrix/responses_raw_round_trips_typed",
         |client| {
             capture_completion(
-                rig::model(client.openai.completion(MODEL)),
+                client.openai.completion(MODEL).on(rig::transport()),
                 request(),
                 observed.clone(),
             )
@@ -412,7 +413,7 @@ async fn responses_raw_exposes_service_tier_and_store() {
         "raw_capture_matrix/responses_raw_exposes_service_tier_and_store",
         |client| {
             capture_completion(
-                rig::model(client.openai.completion(MODEL)),
+                client.openai.completion(MODEL).on(rig::transport()),
                 request(),
                 observed.clone(),
             )
@@ -488,7 +489,10 @@ async fn responses_reasoning_raw_round_trips_typed() {
         "raw_capture_matrix/responses_reasoning_raw_round_trips_typed",
         |client| {
             capture_completion(
-                rig::model(client.openai.completion(REASONING_MODEL)),
+                client
+                    .openai
+                    .completion(REASONING_MODEL)
+                    .on(rig::transport()),
                 reasoning_request(),
                 observed.clone(),
             )
@@ -589,7 +593,7 @@ async fn chat_tool_call_raw_round_trips_typed() {
         "raw_capture_matrix/chat_tool_call_raw_round_trips_typed",
         |client| {
             capture_completion(
-                rig::model(client.openai.chat(MODEL)),
+                client.openai.chat(MODEL).on(rig::transport()),
                 tool_request(),
                 observed.clone(),
             )
@@ -700,7 +704,7 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
         "raw_capture_matrix/chat_structured_output_raw_exposes_system_fingerprint",
         |client| {
             capture_completion(
-                rig::model(client.openai.chat(MODEL)),
+                client.openai.chat(MODEL).on(rig::transport()),
                 structured_request(),
                 observed.clone(),
             )

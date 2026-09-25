@@ -2,6 +2,7 @@ use rig::postgres::{PgSearchFilter, PostgresVectorStore};
 use rig::providers::openai;
 use rig::vector_store::request::SearchFilter;
 use rig::vector_store::request::VectorSearchRequest;
+use rig::wire::Wire as _;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -67,7 +68,9 @@ async fn vector_search_test() {
     let openai_mock = create_openai_mock_service().await;
     let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(openai_mock.base_url());
 
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None));
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+        .on(rig::transport());
 
     // create test documents with mocked embeddings
     let words = vec![

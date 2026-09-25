@@ -16,7 +16,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 /// The Gemini GenerateContent wire bound to the bundled cassette transport —
-/// what `rig::model(client.completion(model))` hands back, and the model this harness
+/// what `client.completion(model).on(rig::transport())` hands back, and the model this harness
 /// drives.
 pub(crate) type BoundGenerateContent = Model<gemini::completion::GenerateContent>;
 

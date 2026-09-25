@@ -19,6 +19,7 @@ use base64::Engine as _;
 use rig::completion::Message;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, UserContent};
 use rig::providers::mistral;
+use rig::wire::Wire as _;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response, collect_stream_final_response};
 
@@ -176,7 +177,7 @@ async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_sends_a_base64_image",
         |client| async move {
-            let model = rig::model(client.completion(VISION_MODEL));
+            let model = client.completion(VISION_MODEL).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(user_message(vec![
@@ -212,9 +213,10 @@ async fn streaming_raw_model_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_raw_model_sends_a_base64_image",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .temperature(0.0)
+                    .build();
             let mut stream = agent
                 .prompt(user_message(vec![
                     UserContent::text(COLOUR_PROMPT),
@@ -240,10 +242,11 @@ async fn blocking_agent_prompt_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_agent_prompt_sends_a_base64_image",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer with a single word.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer with a single word.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text(COLOUR_PROMPT),
@@ -268,10 +271,11 @@ async fn blocking_image_only_message_carries_no_text_part() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_image_only_message_carries_no_text_part",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Name the dominant colour of any image you are shown, in one word.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Name the dominant colour of any image you are shown, in one word.")
+                    .temperature(0.0)
+                    .build();
             let response = agent.prompt(user_message(vec![red_png()])).await?;
             assert_mentions(&response.output, "red");
             Ok::<_, anyhow::Error>(())
@@ -297,10 +301,11 @@ async fn blocking_two_images_in_one_message() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_two_images_in_one_message",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer in one short sentence.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer in one short sentence.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text("How many images did I attach, and what colour are they?"),
@@ -329,10 +334,11 @@ async fn blocking_image_url_reference_is_sent() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_image_url_reference_is_sent",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer in one short sentence.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer in one short sentence.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text("Describe this image in one short sentence."),
@@ -364,10 +370,11 @@ async fn blocking_image_on_a_second_model_family() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_image_on_a_second_model_family",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(SECOND_VISION_MODEL)))
-                .preamble("Answer with a single word.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(SECOND_VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer with a single word.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text(COLOUR_PROMPT),
@@ -392,10 +399,11 @@ async fn blocking_image_survives_a_replayed_history() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_image_survives_a_replayed_history",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer in one short sentence.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer in one short sentence.")
+                    .temperature(0.0)
+                    .build();
             let mut history = vec![
                 user_message(vec![UserContent::text(COLOUR_PROMPT), red_png()]),
                 Message::assistant("Red."),
@@ -423,10 +431,11 @@ async fn streaming_image_survives_a_replayed_history() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_image_survives_a_replayed_history",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer in one short sentence.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer in one short sentence.")
+                    .temperature(0.0)
+                    .build();
             let history = vec![
                 user_message(vec![UserContent::text(COLOUR_PROMPT), red_png()]),
                 Message::assistant("Red."),
@@ -454,10 +463,11 @@ async fn blocking_unicode_text_beside_an_image() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_unicode_text_beside_an_image",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer with a single word.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer with a single word.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text("☃ — 何色ですか? What colour fills this image? One word."),
@@ -489,7 +499,7 @@ async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_reads_an_attached_pdf",
         |client| async move {
-            let model = rig::model(client.completion(VISION_MODEL));
+            let model = client.completion(VISION_MODEL).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(user_message(vec![
@@ -524,9 +534,10 @@ async fn streaming_agent_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_agent_reads_an_attached_pdf",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .temperature(0.0)
+                    .build();
             let mut stream = agent
                 .prompt(user_message(vec![
                     UserContent::text(DOCUMENT_PROMPT),
@@ -552,10 +563,11 @@ async fn blocking_agent_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_agent_reads_an_attached_pdf",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer with just the word.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer with just the word.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text(DOCUMENT_PROMPT),
@@ -585,10 +597,11 @@ async fn blocking_document_only_message_carries_no_text_part() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_document_only_message_carries_no_text_part",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Reply with the single code word found in any attached document.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Reply with the single code word found in any attached document.")
+                    .temperature(0.0)
+                    .build();
             let response = agent.prompt(user_message(vec![pdf_document()])).await?;
             assert_mentions(&response.output, PDF_TOKEN);
             Ok::<_, anyhow::Error>(())
@@ -608,10 +621,11 @@ async fn blocking_document_and_image_in_one_message() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_document_and_image_in_one_message",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer in one short sentence.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer in one short sentence.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text(
@@ -641,10 +655,11 @@ async fn blocking_document_on_a_second_model_family() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_document_on_a_second_model_family",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(SECOND_VISION_MODEL)))
-                .preamble("Answer with just the word.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(SECOND_VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer with just the word.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text(DOCUMENT_PROMPT),
@@ -673,7 +688,7 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_sends_audio",
         |client| async move {
-            let model = rig::model(client.completion(AUDIO_MODEL));
+            let model = client.completion(AUDIO_MODEL).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(user_message(vec![
@@ -709,7 +724,7 @@ async fn streaming_agent_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_agent_sends_audio",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(AUDIO_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(AUDIO_MODEL).on(rig::transport()))
                 .temperature(0.0)
                 .build();
             let mut stream = agent
@@ -737,7 +752,7 @@ async fn blocking_agent_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_agent_sends_audio",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(AUDIO_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(AUDIO_MODEL).on(rig::transport()))
                 .temperature(0.0)
                 .build();
             let response = agent
@@ -775,10 +790,11 @@ async fn blocking_text_only_content_still_flattens_to_a_string() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_text_only_content_still_flattens_to_a_string",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer in one short sentence.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer in one short sentence.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text("Name the capital of France."),
@@ -807,10 +823,11 @@ async fn streaming_text_only_content_still_flattens_to_a_string() -> Result<()> 
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_text_only_content_still_flattens_to_a_string",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer in one short sentence.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer in one short sentence.")
+                    .temperature(0.0)
+                    .build();
             let mut stream = agent
                 .prompt(user_message(vec![
                     UserContent::text("Name the capital of France."),
@@ -837,10 +854,11 @@ async fn blocking_text_document_still_flattens_into_the_prompt() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_text_document_still_flattens_into_the_prompt",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Answer with just the word.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Answer with just the word.")
+                    .temperature(0.0)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text("What code word is in these notes?"),
@@ -918,12 +936,13 @@ async fn blocking_image_with_a_tool_configured() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_image_with_a_tool_configured",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Call record_colour with the dominant colour of the attached image.")
-                .tool(RecordColour)
-                .temperature(0.0)
-                .default_max_turns(3)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Call record_colour with the dominant colour of the attached image.")
+                    .tool(RecordColour)
+                    .temperature(0.0)
+                    .default_max_turns(3)
+                    .build();
             let response = agent
                 .prompt(user_message(vec![
                     UserContent::text("Record this image's colour."),
@@ -953,12 +972,13 @@ async fn streaming_image_with_a_tool_configured() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/streaming_image_with_a_tool_configured",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
-                .preamble("Call record_colour with the dominant colour of the attached image.")
-                .tool(RecordColour)
-                .temperature(0.0)
-                .default_max_turns(3)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
+                    .preamble("Call record_colour with the dominant colour of the attached image.")
+                    .tool(RecordColour)
+                    .temperature(0.0)
+                    .default_max_turns(3)
+                    .build();
             let mut stream = agent
                 .prompt(user_message(vec![
                     UserContent::text("Record this image's colour."),

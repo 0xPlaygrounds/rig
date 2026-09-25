@@ -2,6 +2,7 @@
 
 use rig::providers::openai::wire::{OpenAI, TOGETHER};
 use rig::providers::together;
+use rig::wire::Wire as _;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -9,9 +10,11 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn completion_smoke() {
     let provider = OpenAI::from_env_with(&TOGETHER).expect("config should build from env");
-    let agent = rig::AgentBuilder::new(rig::model(
-        provider.completion(together::MIXTRAL_8X7B_INSTRUCT_V0_1),
-    ))
+    let agent = rig::AgentBuilder::new(
+        provider
+            .completion(together::MIXTRAL_8X7B_INSTRUCT_V0_1)
+            .on(rig::transport()),
+    )
     .preamble(BASIC_PREAMBLE)
     .build();
 

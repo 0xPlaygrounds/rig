@@ -35,6 +35,7 @@
 use rig::completion::CompletionRequest;
 use rig::providers::openai::responses_api;
 use rig::providers::xai;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -72,7 +73,7 @@ async fn raw_round_trips_responses_type() {
         "raw_capture_matrix/raw_round_trips_responses_type",
         |client| {
             capture_completion(
-                rig::model(client.completion(MODEL)),
+                client.completion(MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -114,7 +115,7 @@ async fn raw_exposes_status_and_service_tier() {
         "raw_capture_matrix/raw_exposes_status_and_service_tier",
         |client| {
             capture_completion(
-                rig::model(client.completion(MODEL)),
+                client.completion(MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -163,7 +164,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                rig::model(client.completion(MODEL)),
+                client.completion(MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )

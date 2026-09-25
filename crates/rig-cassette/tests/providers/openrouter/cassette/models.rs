@@ -1,11 +1,12 @@
 //! Cassette-backed OpenRouter model listing smoke test.
 
 use super::super::support::with_openrouter_cassette;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_openrouter_cassette("models/list_models_smoke", |client| async move {
-        let models = match rig::model(client.models()).call(()).await {
+        let models = match client.models().on(rig::transport()).call(()).await {
             Ok(models) => models,
             Err(error) => {
                 panic!(
@@ -34,7 +35,7 @@ async fn list_models_preserves_context_and_output_limits() -> anyhow::Result<()>
     super::super::support::with_openrouter_cassette_result(
         "models/list_models_smoke",
         |client| async move {
-            let models = rig::model(client.models()).call(()).await?;
+            let models = client.models().on(rig::transport()).call(()).await?;
 
             anyhow::ensure!(
                 models
@@ -67,7 +68,9 @@ async fn list_models_is_public_and_ignores_a_rejected_key() -> anyhow::Result<()
     super::super::support::with_openrouter_cassette_bogus_key_result(
         "models/list_models_is_public_and_ignores_a_rejected_key",
         |client| async move {
-            let models = rig::model(client.models())
+            let models = client
+                .models()
+                .on(rig::transport())
                 .call(())
                 .await
                 .expect("OpenRouter lists models without a valid key");

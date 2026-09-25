@@ -2,6 +2,7 @@
 
 use rig::providers::moonshot;
 use rig::providers::openai::wire::{self as openai_wire, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
@@ -14,7 +15,7 @@ async fn context_smoke() {
         .iter()
         .copied()
         .fold(
-            rig::AgentBuilder::new(rig::model(client.completion(moonshot::KIMI_K3))),
+            rig::AgentBuilder::new(client.completion(moonshot::KIMI_K3).on(rig::transport())),
             |builder, doc| builder.context(doc),
         )
         .build();

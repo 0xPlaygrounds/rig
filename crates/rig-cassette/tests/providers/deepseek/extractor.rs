@@ -1,6 +1,7 @@
 //! DeepSeek extractor smoke test.
 
 use rig::providers::deepseek;
+use rig::wire::Wire as _;
 
 use super::support::with_deepseek_cassette;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
@@ -8,9 +9,11 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 #[tokio::test]
 async fn extractor_smoke() {
     with_deepseek_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(rig::model(
-            client.completion(deepseek::DEEPSEEK_V4_FLASH),
-        ))
+        let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(
+            client
+                .completion(deepseek::DEEPSEEK_V4_FLASH)
+                .on(rig::transport()),
+        )
         .build();
 
         let person = extractor

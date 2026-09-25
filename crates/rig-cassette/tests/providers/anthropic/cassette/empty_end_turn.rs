@@ -3,6 +3,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::wire::Wire as _;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -141,7 +142,7 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
 
             let first_turn = model
                 .call(
@@ -204,11 +205,12 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/prompt_loop_accepts_empty_terminal_turn_after_tool_result",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble(TERMINAL_NOTIFY_PREAMBLE)
-                .max_tokens(1024)
-                .tool(Notify::new(call_count.clone()))
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble(TERMINAL_NOTIFY_PREAMBLE)
+                    .max_tokens(1024)
+                    .tool(Notify::new(call_count.clone()))
+                    .build();
 
             let response = agent
                 .prompt(TERMINAL_NOTIFY_PROMPT)
@@ -250,7 +252,7 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
 async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
     let call_count = Arc::new(AtomicUsize::new(0));
     super::super::support::with_anthropic_cassette("empty_end_turn/prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty", |client| async move {
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+    let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
         .preamble(TERMINAL_NOTIFY_WITH_ACK_PREAMBLE)
         .max_tokens(1024)
         .tool(Notify::new(call_count.clone()))

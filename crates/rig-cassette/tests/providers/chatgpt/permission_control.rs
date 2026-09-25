@@ -5,6 +5,7 @@ use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
 };
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -153,11 +154,16 @@ impl AgentHook for PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_MODEL)))
-        .preamble("You are a helpful assistant that can read files using different methods.")
-        .tool(ReadFileHead)
-        .tool(ReadFileTail)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .preamble("You are a helpful assistant that can read files using different methods.")
+    .tool(ReadFileHead)
+    .tool(ReadFileTail)
+    .build();
 
     let call_count = Arc::new(AtomicUsize::new(0));
     let last_result = Arc::new(Mutex::new(None));
@@ -186,11 +192,16 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_MODEL)))
-        .preamble("You are a helpful assistant that can read files using different methods.")
-        .tool(ReadFileHead)
-        .tool(ReadFileTail)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .preamble("You are a helpful assistant that can read files using different methods.")
+    .tool(ReadFileHead)
+    .tool(ReadFileTail)
+    .build();
 
     let call_count = Arc::new(AtomicUsize::new(0));
     let last_result = Arc::new(Mutex::new(None));

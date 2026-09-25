@@ -11,6 +11,7 @@ use rig::providers::anthropic::completion::CacheTtl;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
 use rig::streaming::{Delta, StreamEvent};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -36,11 +37,10 @@ async fn manual_prompt_caching_reuses_tool_cache() {
     with_anthropic_cassette(
         "prompt_caching/manual_prompt_caching_reuses_tool_cache",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .on(rig::transport());
             let tools = cache_probe_tools();
 
             let first = send_cache_probe(
@@ -71,11 +71,10 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
     with_anthropic_cassette(
         "prompt_caching/streaming_prompt_caching_reuses_tool_cache",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .on(rig::transport());
             let tools = cache_probe_tools_for("streaming prompt caching");
 
             let first = send_streaming_cache_probe(
@@ -111,12 +110,11 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
     with_anthropic_cassette(
         "prompt_caching/prompt_and_automatic_caching_reuses_tool_cache",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching()
-                    .with_automatic_caching(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .with_automatic_caching()
+                .on(rig::transport());
             let tools = cache_probe_tools_for("manual plus automatic prompt caching");
 
             let first = send_cache_probe(
@@ -179,16 +177,18 @@ fn matrix_model(
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
 ) -> Model<Messages> {
-    let mut model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+    let mut model = client
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .on(rig::transport());
     if mode.manual() {
-        model = rig::Model::new(model.wire.with_prompt_caching(), model.transport);
+        model = model.wire.with_prompt_caching().on(model.transport);
     }
     model = match mode {
         CachingMode::Automatic | CachingMode::ManualAutomatic => {
-            rig::Model::new(model.wire.with_automatic_caching(), model.transport)
+            model.wire.with_automatic_caching().on(model.transport)
         }
         CachingMode::Automatic1h | CachingMode::ManualAutomatic1h => {
-            rig::Model::new(model.wire.with_automatic_caching_1h(), model.transport)
+            model.wire.with_automatic_caching_1h().on(model.transport)
         }
         CachingMode::Manual => model,
     };
@@ -1621,11 +1621,10 @@ async fn conformance_blocking_probe_serves_most_of_the_prefix_from_cache() {
     with_anthropic_cassette(
         "prompt_caching/conformance_blocking_probe",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .on(rig::transport());
             let observation = run_cache_probe(model, &conformance_probe()).await;
             assert_cache_conformance(
                 &observation,
@@ -1647,11 +1646,10 @@ async fn conformance_streaming_probe_serves_most_of_the_prefix_from_cache() {
     with_anthropic_cassette(
         "prompt_caching/conformance_streaming_probe",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .on(rig::transport());
             let observation = run_cache_probe_streaming(model, &conformance_probe()).await;
             assert_cache_conformance(
                 &observation,
@@ -1681,16 +1679,15 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
         "prompt_caching/conformance_agent_loop",
         |client| async move {
             // Built from a model that has prompt caching *enabled*.
-            // `rig::AgentBuilder::new(rig::model(client.completion(name)))` constructs a default model, which places no
+            // `rig::AgentBuilder::new(client.completion(name).on(rig::transport()))` constructs a default model, which places no
             // `cache_control` markers at all — a first recording made exactly
             // that mistake and produced a convincing-looking "the agent loop
             // busts the cache" result (zero cached tokens on every turn) that
             // was really just caching switched off.
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .on(rig::transport());
             let response = rig::agent::AgentBuilder::new(model)
                 .preamble(&conformance_probe().preamble)
                 .tool(CacheProbeLookupTool)

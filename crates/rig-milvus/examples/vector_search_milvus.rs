@@ -1,6 +1,6 @@
-use rig_core::Model;
 use rig_core::vector_store::InsertDocuments;
 use rig_core::vector_store::request::VectorSearchRequest;
+use rig_core::wire::Wire as _;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -31,10 +31,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
     let openai_client = OpenAI::from_env()?;
     let http = rig_reqwest::shared();
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-        http,
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+        .on(http);
 
     let base_url = std::env::var("MILVUS_BASE_URL")?;
     let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;

@@ -1,6 +1,7 @@
 //! Hugging Face context smoke test.
 
 use rig::providers::openai::wire::{HUGGINGFACE, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
@@ -12,9 +13,11 @@ async fn context_smoke() {
         .iter()
         .copied()
         .fold(
-            rig::AgentBuilder::new(rig::model(
-                provider.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
-            )),
+            rig::AgentBuilder::new(
+                provider
+                    .completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+                    .on(rig::transport()),
+            ),
             rig::AgentBuilder::context,
         )
         .build();

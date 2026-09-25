@@ -5,6 +5,7 @@
 
 use rig::completion::FinishReason;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use super::super::support::with_openai_completions_cassette;
 use crate::support::{
@@ -27,10 +28,11 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
     with_openai_completions_cassette(
         "regression/chat_compat_finish_reason",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(openai::GPT_4O)))
-                .preamble(STREAMING_PREAMBLE)
-                .max_tokens(8)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(openai::GPT_4O).on(rig::transport()))
+                    .preamble(STREAMING_PREAMBLE)
+                    .max_tokens(8)
+                    .build();
 
             let mut stream = agent
                 .prompt("Write a detailed five paragraph essay about the ocean.")
@@ -55,10 +57,11 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
     with_openai_completions_cassette(
         "regression/chat_compat_finish_reason_natural",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(openai::GPT_4O)))
-                .preamble(STREAMING_PREAMBLE)
-                .max_tokens(512)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(openai::GPT_4O).on(rig::transport()))
+                    .preamble(STREAMING_PREAMBLE)
+                    .max_tokens(512)
+                    .build();
 
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =

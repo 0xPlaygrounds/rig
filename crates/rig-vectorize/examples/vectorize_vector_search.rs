@@ -11,7 +11,7 @@
 // 3. Run the example:
 //    cargo run --release --example vectorize_vector_search
 
-use rig_core::Model;
+use rig_core::wire::Wire as _;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -32,10 +32,9 @@ struct Word {
 async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
     let http = rig_reqwest::shared();
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-        http,
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+        .on(http);
 
     let vector_store = VectorizeVectorStore::new(
         model.clone(),

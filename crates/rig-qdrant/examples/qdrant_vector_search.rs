@@ -11,8 +11,8 @@ use qdrant_client::{
     Qdrant,
     qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
 };
-use rig_core::Model;
 use rig_core::vector_store::request::VectorSearchRequest;
+use rig_core::wire::Wire as _;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -51,10 +51,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
     let http = rig_reqwest::shared();
 
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http);
 
     let documents = EmbeddingsBuilder::new(model.clone())
         .document(Word {

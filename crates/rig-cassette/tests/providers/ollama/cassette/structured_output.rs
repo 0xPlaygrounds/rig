@@ -7,6 +7,7 @@ use super::super::support::with_ollama_cassette;
 use crate::support::{
     STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assert_smoke_structured_output,
 };
+use rig::wire::Wire as _;
 
 const MODEL: &str = "qwen3:4b";
 
@@ -15,7 +16,7 @@ async fn structured_output_smoke() {
     with_ollama_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .output_schema::<SmokeStructuredOutput>()
                 .additional_params(serde_json::json!({ "think": false }))
                 .build();

@@ -72,6 +72,7 @@ struct Field {
 ///
 /// # Example
 /// ```no_run
+/// use rig_core::wire::Wire as _;
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 /// use rig_core::{providers::openai::{self, wire::OpenAI}, vector_store::{VectorStoreIndex, VectorSearchRequest}};
 ///
@@ -90,7 +91,7 @@ struct Field {
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
-/// let model = rig_core::Model::new(openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None), http); // <-- replace with your embedding model.
+/// let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None).on(http); // <-- replace with your embedding model.
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
 ///     model,

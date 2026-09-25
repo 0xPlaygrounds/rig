@@ -5,6 +5,7 @@
 //! owned history, JSON response formats, explicit tool choice, usage accounting,
 //! and provider metadata preservation.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -564,7 +565,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = rig::model(client.completion(SESSION_MODEL));
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
             let tool = InspectManifest { log };
             let request = CompletionRequestBuilder::new(
                     "Call inspect_manifest exactly once for project rig-groq with critical=true, retries=2, \
@@ -608,7 +609,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/tool_choice_auto_required_specific_and_none",
         |client| async move {
-            let model = rig::model(client.completion(SESSION_MODEL));
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
 
             let auto = model
                 .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object.")
@@ -664,7 +665,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 "specific tool choice should force only lookup_orchard_label, saw {specific_calls:?}"
             );
 
-            let none_model = rig::model(client.completion(TOOL_CHOICE_NONE_MODEL));
+            let none_model = client.completion(TOOL_CHOICE_NONE_MODEL).on(rig::transport());
             let none = none_model
                 .call(CompletionRequestBuilder::new("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -692,7 +693,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = rig::model(client.completion(JSON_OBJECT_MODEL));
+            let model = client.completion(JSON_OBJECT_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
@@ -736,7 +737,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
-            let model = rig::model(client.completion(JSON_SCHEMA_MODEL));
+            let model = client.completion(JSON_SCHEMA_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
             )
@@ -767,7 +768,7 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/low_latency_streaming_text_surfaces_final_usage",
         |client| async move {
-            let model = rig::model(client.completion(SESSION_MODEL));
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
             let mut stream = model
                 .stream(CompletionRequestBuilder::new(
                             "Reply with exactly this comma-separated sequence and no extra words: alpha,beta,gamma,delta,epsilon,zeta,eta,theta",

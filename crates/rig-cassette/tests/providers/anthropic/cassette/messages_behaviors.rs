@@ -10,6 +10,7 @@
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::providers::anthropic;
+use rig::wire::Wire as _;
 
 use super::super::support::with_anthropic_cassette;
 use rig::completion::CompletionRequestBuilder;
@@ -19,7 +20,9 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
     with_anthropic_cassette(
         "messages_behaviors/max_tokens_truncation_preserves_stop_reason_and_partial_text",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Write a story of at least 150 words about a lighthouse keeper.",
             )

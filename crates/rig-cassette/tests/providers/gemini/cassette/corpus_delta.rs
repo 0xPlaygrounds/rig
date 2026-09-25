@@ -9,6 +9,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
 use rig::providers::gemini;
 use rig::streaming::{Delta, StreamEvent};
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_gemini_corpus_delta_cassette;
@@ -21,9 +22,11 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 async fn interactions_baseline_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_delta_cassette("corpus_delta/interactions_baseline", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = rig::agent::AgentBuilder::new(rig::model(
-            client.interactions(gemini::completion::GEMINI_2_5_FLASH),
-        ))
+        let agent = rig::agent::AgentBuilder::new(
+            client
+                .interactions(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport()),
+        )
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
         .temperature(0.0)

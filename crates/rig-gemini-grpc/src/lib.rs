@@ -1,12 +1,12 @@
 //! Gemini completion and embedding wires over the gRPC API.
 //!
 //! ```no_run
-//! use rig_core::Model;
+//! use rig_core::wire::Wire as _;
 //! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_0_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 //! let transport = GeminiGrpc::new("YOUR_API_KEY").await?;
-//! let model = Model::new(GenerateContent::new(GEMINI_2_0_FLASH), transport);
+//! let model = GenerateContent::new(GEMINI_2_0_FLASH).on(transport);
 //! # let _ = model;
 //! # Ok(())
 //! # }

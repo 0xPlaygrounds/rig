@@ -2,6 +2,7 @@
 //! follow-up): structured output, response chaining, live hook retries, error
 //! responses, and raw-vs-normalized agreement.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -24,7 +25,10 @@ async fn structured_output_and_identity() {
     with_openai_cassette(
         "response_identity_edge/structured_output_and_identity",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let schema = schemars::schema_for!(Sum);
             let response = model
                 .call(
@@ -51,7 +55,10 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
     with_openai_cassette(
         "response_identity_edge/previous_response_id_chain_keeps_axes_distinct",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let first = model
                 .call(
                     CompletionRequestBuilder::new(
@@ -131,11 +138,15 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
         "response_identity_edge/blocking_hook_retry_uses_second_attempts_id",
         |client| async move {
             let hook = RetryOnce::default();
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-                    .preamble("You are a terse assistant.")
-                    .add_hook(hook.clone())
-                    .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(openai::GPT_4O)
+                    .on(rig::transport()),
+            )
+            .preamble("You are a terse assistant.")
+            .add_hook(hook.clone())
+            .build();
 
             agent
                 .prompt("Reply with exactly: first probe")
@@ -161,11 +172,10 @@ async fn provider_error_response_carries_request_id() {
     with_openai_cassette(
         "response_identity_edge/provider_error_response_surfaces_cleanly",
         |client| async move {
-            let model = rig::model(
-                client
-                    .openai
-                    .completion("gpt-nonexistent-model-for-identity-edge"),
-            );
+            let model = client
+                .openai
+                .completion("gpt-nonexistent-model-for-identity-edge")
+                .on(rig::transport());
             let error = model
                 .call(CompletionRequestBuilder::new("Never answered").build())
                 .await
@@ -194,7 +204,10 @@ async fn raw_and_normalized_views_agree_on_identity() {
     with_openai_cassette(
         "response_identity_edge/raw_and_normalized_views_agree_on_identity",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Reply with exactly: two views probe").build();
             let response = model

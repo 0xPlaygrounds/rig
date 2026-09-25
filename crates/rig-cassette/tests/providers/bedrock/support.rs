@@ -1,3 +1,4 @@
+use rig::wire::Wire as _;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -27,7 +28,7 @@ pub(super) struct Bedrock(pub BedrockRuntime);
 
 impl Bedrock {
     pub(super) fn completion(&self, model: &str) -> Model<Converse, BedrockRuntime> {
-        Model::new(Converse::new(model), self.0.clone())
+        Converse::new(model).on(self.0.clone())
     }
 
     pub(super) fn embedding(
@@ -35,7 +36,7 @@ impl Bedrock {
         model: &str,
         ndims: Option<usize>,
     ) -> Model<Embeddings, BedrockRuntime> {
-        Model::new(Embeddings::new(model, ndims), self.0.clone())
+        Embeddings::new(model, ndims).on(self.0.clone())
     }
 
     pub(super) fn agent(&self, model: &str) -> rig::agent::AgentBuilder {

@@ -2,6 +2,7 @@
 //! Entry storage, startup rewrites and settlement observations run in native systems.
 
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use super::super::support::with_openai_lifecycle_cassette;
 use crate::support::{
@@ -23,7 +24,7 @@ async fn middleware_phases_observe_a_unary_completion() {
                 probe.clone(),
                 |client| async move {
                     let mut ecs = ecs_lifecycle::agent(
-                        rig::Model::new(client.openai.completion(MODEL), client.http.clone()),
+                        client.openai.completion(MODEL).on(client.http.clone()),
                         BASIC_PREAMBLE,
                     );
                     let response = ecs.prompt(BASIC_PROMPT, false).await;
@@ -55,7 +56,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
                 probe.clone(),
                 |client| async move {
                     let mut ecs = ecs_lifecycle::agent(
-                        rig::Model::new(client.openai.completion(MODEL), client.http.clone()),
+                        client.openai.completion(MODEL).on(client.http.clone()),
                         STREAMING_PREAMBLE,
                     );
                     ecs_lifecycle::install(&mut ecs, settle_hook);
@@ -94,7 +95,7 @@ async fn run_start_rewrite_reaches_the_provider() {
                 WireProbe::default(),
                 |client| async move {
                     let mut ecs = ecs_lifecycle::agent(
-                        rig::Model::new(client.openai.completion(MODEL), client.http.clone()),
+                        client.openai.completion(MODEL).on(client.http.clone()),
                         BASIC_PREAMBLE,
                     );
                     ecs_lifecycle::install(&mut ecs, agent_hook);
@@ -134,7 +135,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
                 WireProbe::default(),
                 |client| async move {
                     let mut ecs = ecs_lifecycle::agent(
-                        rig::Model::new(client.openai.completion(MODEL), client.http.clone()),
+                        client.openai.completion(MODEL).on(client.http.clone()),
                         "You are a calculator. Use the add tool for arithmetic.",
                     );
                     ecs.tool(Adder);
@@ -179,7 +180,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
                 WireProbe::default(),
                 |client| async move {
                     let mut ecs = ecs_lifecycle::agent(
-                        rig::Model::new(client.openai.completion(MODEL), client.http.clone()),
+                        client.openai.completion(MODEL).on(client.http.clone()),
                         "You are a calculator. Use the add tool for arithmetic.",
                     );
                     ecs.tool(Adder);

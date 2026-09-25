@@ -47,6 +47,7 @@
 //! `stop_reason`.
 
 use rig::message::AssistantContent;
+use rig::wire::Wire as _;
 
 use futures::StreamExt;
 use rig::completion::{FinishReason, ToolDefinition};
@@ -159,7 +160,7 @@ async fn streamed_body(
     request: rig::completion::CompletionRequest,
     sink: Observed<Streamed>,
 ) {
-    let model = rig::model(client.completion(model_name));
+    let model = client.completion(model_name).on(rig::transport());
     let stream = model.stream(request).expect("stream should open");
     sink.put(drain_stream(stream).await);
 }
@@ -299,7 +300,9 @@ async fn terminal_raw_round_trips_into_provider_type() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                    client
+                        .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                        .on(rig::transport()),
                     probe_request(),
                     sink,
                 )
@@ -402,7 +405,9 @@ async fn raw_exposes_stop_sequence() {
         let sink = sink.clone();
         move |client| async move {
             capture_terminal(
-                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                client
+                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    .on(rig::transport()),
                 CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
                     .max_tokens(32)
                     .additional_params(json!({ "stop_sequences": ["alpha"] }))
@@ -475,7 +480,9 @@ async fn normalized_terminal_matches_raw_renormalized() {
             let sink = sink.clone();
             move |client| async move {
                 capture_terminal(
-                    rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                    client
+                        .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                        .on(rig::transport()),
                     probe_request(),
                     sink,
                 )

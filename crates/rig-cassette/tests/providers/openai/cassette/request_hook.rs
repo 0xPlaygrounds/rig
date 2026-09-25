@@ -1,6 +1,7 @@
 //! Preserves the live request-hook example as provider-local regression coverage.
 
 use anyhow::{Result, anyhow};
+use rig::wire::Wire as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -74,12 +75,14 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
     with_openai_cassette_result(
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-                    .preamble(
-                        "You are a comedian here to entertain the user using humour and jokes.",
-                    )
-                    .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(openai::GPT_4O)
+                    .on(rig::transport()),
+            )
+            .preamble("You are a comedian here to entertain the user using humour and jokes.")
+            .build();
 
             let hook = SessionIdHook {
                 session_id: "abc123",

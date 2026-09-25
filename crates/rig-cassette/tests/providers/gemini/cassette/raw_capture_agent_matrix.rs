@@ -45,6 +45,7 @@
 //! where the cell needs two), and the multi-turn cells' first interaction is a
 //! `functionCall` turn.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
@@ -340,7 +341,7 @@ async fn hooks_observe_raw_blocking() {
     with_gemini_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .temperature(0.0)
                 .add_hook(hook)
                 .build();
@@ -389,7 +390,7 @@ async fn hooks_observe_raw_streamed() {
     with_gemini_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .temperature(0.0)
                 .add_hook(hook)
                 .build();
@@ -451,7 +452,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     with_gemini_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(Adder)
@@ -524,7 +525,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     with_gemini_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(Adder)

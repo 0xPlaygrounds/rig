@@ -24,6 +24,7 @@ use futures::StreamExt;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
 use rig::providers::doubleword;
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::{
@@ -99,7 +100,7 @@ fn assert_recorded_transport_parity(blocking_scenario: &str, streaming_scenario:
 }
 
 async fn unknown_model_blocking_body(client: OpenAI) {
-    let model = rig::model(client.completion(UNKNOWN_MODEL));
+    let model = client.completion(UNKNOWN_MODEL).on(rig::transport());
     let error = model
         .call(CompletionRequestBuilder::new(PROMPT).max_tokens(8).build())
         .await
@@ -108,7 +109,7 @@ async fn unknown_model_blocking_body(client: OpenAI) {
 }
 
 async fn unknown_model_streaming_body(client: OpenAI) {
-    let model = rig::model(client.completion(UNKNOWN_MODEL));
+    let model = client.completion(UNKNOWN_MODEL).on(rig::transport());
     let result = model.stream(CompletionRequestBuilder::new(PROMPT).max_tokens(8).build());
     let mut stream = result.expect("streaming HTTP failures are delivered in-band");
     let error = loop {
@@ -122,7 +123,9 @@ async fn unknown_model_streaming_body(client: OpenAI) {
 }
 
 async fn invalid_key_blocking_body(client: OpenAI) {
-    let model = rig::model(client.completion(doubleword::QWEN3_5_9B));
+    let model = client
+        .completion(doubleword::QWEN3_5_9B)
+        .on(rig::transport());
     let error = model
         .call(CompletionRequestBuilder::new(PROMPT).max_tokens(8).build())
         .await
@@ -131,7 +134,9 @@ async fn invalid_key_blocking_body(client: OpenAI) {
 }
 
 async fn invalid_key_streaming_body(client: OpenAI) {
-    let model = rig::model(client.completion(doubleword::QWEN3_5_9B));
+    let model = client
+        .completion(doubleword::QWEN3_5_9B)
+        .on(rig::transport());
     let result = model.stream(CompletionRequestBuilder::new(PROMPT).max_tokens(8).build());
     let mut stream = result.expect("streaming HTTP failures are delivered in-band");
     let error = loop {
@@ -145,7 +150,9 @@ async fn invalid_key_streaming_body(client: OpenAI) {
 }
 
 async fn invalid_temperature_blocking_body(client: OpenAI) {
-    let model = rig::model(client.completion(doubleword::QWEN3_5_9B));
+    let model = client
+        .completion(doubleword::QWEN3_5_9B)
+        .on(rig::transport());
     let error = model
         .call(
             CompletionRequestBuilder::new(PROMPT)
@@ -159,7 +166,9 @@ async fn invalid_temperature_blocking_body(client: OpenAI) {
 }
 
 async fn invalid_temperature_streaming_body(client: OpenAI) {
-    let model = rig::model(client.completion(doubleword::QWEN3_5_9B));
+    let model = client
+        .completion(doubleword::QWEN3_5_9B)
+        .on(rig::transport());
     let result = model.stream(
         CompletionRequestBuilder::new(PROMPT)
             .additional_params(json!({ "temperature": 100 }))

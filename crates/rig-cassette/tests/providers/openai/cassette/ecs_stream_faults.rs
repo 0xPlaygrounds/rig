@@ -14,6 +14,7 @@ use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
 use rig::providers::openai::{self, GPT_4O};
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
+use rig::wire::Wire as _;
 use rig_cassette::effect_log::EffectLog;
 use rig_ecs::{
     agent::{Failure, MaxTokens, Preamble, Role},
@@ -44,7 +45,7 @@ fn scripted_model(
     chunks: Vec<Bytes>,
 ) -> Model<openai::wire::OpenAiWire, SequencedStreamingHttpClient> {
     let (client, http) = scripted_client(chunks);
-    Model::new(client.completion(GPT_4O), http)
+    client.completion(GPT_4O).on(http)
 }
 
 /// The scripted cells' witness check, over this module's credential.
@@ -96,7 +97,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
                 "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
                 |client| async move {
                     let run = native_run(
-                        rig::model(client.openai.completion(MISSING_MODEL)),
+                        client.openai.completion(MISSING_MODEL).on(rig::transport()),
                         "",
                         SETUP_PROMPT,
                         witness,
@@ -383,7 +384,7 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
         for witness in [true, false] {
             let runs = &mut runs;
             with_openai_cassette("streaming/streaming_smoke", |client| async move {
-                let model = rig::model(client.openai.completion(GPT_4O));
+                let model = client.openai.completion(GPT_4O).on(rig::transport());
                 let run = native_run_serving(
                     |label| crate::ecs_matrix::world::FirstDelta {
                         inner: rig::serve::adapters::ModelAdapter::new(label, model),

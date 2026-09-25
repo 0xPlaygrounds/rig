@@ -47,6 +47,7 @@ use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason,
 use rig::message::AssistantContent;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -155,9 +156,13 @@ async fn raw_normalize_reproduces_completion() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
         |client| async move {
-            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -212,9 +217,13 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call",
         |client| async move {
-            capture_completion(rig::model(client.completion(MODEL)), tool_request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                tool_request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -312,9 +321,13 @@ async fn empty_output_fallback_still_carries_raw() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/empty_output_fallback_still_carries_raw",
         |client| async move {
-            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("the fallback rebuilds the response from the event stream");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("the fallback rebuilds the response from the event stream");
         },
     )
     .await;

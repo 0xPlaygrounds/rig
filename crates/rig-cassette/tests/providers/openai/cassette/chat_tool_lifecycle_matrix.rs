@@ -33,6 +33,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
@@ -256,7 +257,10 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
-    let model = rig::model(client.openai.chat(model_name(cell.model)));
+    let model = client
+        .openai
+        .chat(model_name(cell.model))
+        .on(rig::transport());
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
@@ -312,9 +316,12 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
-    let builder = rig::AgentBuilder::new(rig::model(
-        client.chat.completion(model_name(cell.model)),
-    ))
+    let builder = rig::AgentBuilder::new(
+        client
+            .chat
+            .completion(model_name(cell.model))
+            .on(rig::transport()),
+    )
     .preamble(PREAMBLE)
     .additional_params(
         json!({ "tool_choice": "required", "parallel_tool_calls": cell.shape == Shape::Parallel }),

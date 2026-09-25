@@ -2,6 +2,7 @@
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use rig::completion::CompletionRequestBuilder;
+use rig::wire::Wire as _;
 use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
     http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
@@ -134,30 +135,27 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
     match provider {
         "openai" => {
             adapted(
-                rig::Model::new(
-                    OpenAI::with_key(&OPENAI, "test-not-a-key").chat("gpt-4o"),
-                    http,
-                ),
+                OpenAI::with_key(&OPENAI, "test-not-a-key")
+                    .chat("gpt-4o")
+                    .on(http),
                 direct,
             )
             .await
         }
         "deepseek" => {
             adapted(
-                rig::Model::new(
-                    OpenAI::with_key(&DEEPSEEK, "test-not-a-key").completion("deepseek-reasoner"),
-                    http,
-                ),
+                OpenAI::with_key(&DEEPSEEK, "test-not-a-key")
+                    .completion("deepseek-reasoner")
+                    .on(http),
                 direct,
             )
             .await
         }
         "anthropic" => {
             adapted(
-                rig::Model::new(
-                    Anthropic::new("test-not-a-key").completion("claude-sonnet-4-5"),
-                    http,
-                ),
+                Anthropic::new("test-not-a-key")
+                    .completion("claude-sonnet-4-5")
+                    .on(http),
                 direct,
             )
             .await

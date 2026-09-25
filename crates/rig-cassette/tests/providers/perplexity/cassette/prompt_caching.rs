@@ -38,6 +38,7 @@
 //! ```
 
 use rig::providers::perplexity;
+use rig::wire::Wire as _;
 
 use crate::cache_conformance::{
     CacheAccounting, CacheProbe, CacheSupport, assert_no_meaningful_prefix_cache,
@@ -67,7 +68,7 @@ async fn blocking_probe_observes_no_meaningful_prefix_cache() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_perplexity_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = rig::model(client.completion(CACHE_MODEL));
+        let model = client.completion(CACHE_MODEL).on(rig::transport());
         let observation = run_cache_probe(model, &probe()).await;
         assert_no_meaningful_prefix_cache(
             &observation,
@@ -87,7 +88,7 @@ async fn streaming_probe_observes_no_meaningful_prefix_cache() {
     with_perplexity_prompt_caching_cassette(
         "prompt_caching/streaming_probe",
         |client| async move {
-            let model = rig::model(client.completion(CACHE_MODEL));
+            let model = client.completion(CACHE_MODEL).on(rig::transport());
             let observation = run_cache_probe_streaming(model, &probe()).await;
             assert_no_meaningful_prefix_cache(
                 &observation,

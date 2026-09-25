@@ -34,6 +34,7 @@
 use rig::completion::CompletionRequest;
 use rig::providers::openai::responses_api;
 use rig::providers::xai;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 
 use super::support::with_xai_cassette_result;
@@ -85,7 +86,7 @@ async fn raw_normalize_reproduces_completion() {
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
         |client| {
             capture_completion_pair(
-                rig::model(client.completion(MODEL)),
+                client.completion(MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -141,7 +142,7 @@ async fn raw_completion_carries_request_id_on_the_type() {
         "raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type",
         |client| {
             capture_completion(
-                rig::model(client.completion(MODEL)),
+                client.completion(MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )

@@ -7,6 +7,7 @@ use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::vector_store::request::VectorSearchRequest;
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 
 #[derive(Embed, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -19,7 +20,9 @@ struct Greetings {
 #[ignore = "requires MISTRAL_API_KEY and --features derive"]
 async fn derive_embeddings_and_vector_search() {
     let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
-    let embedding_model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
+    let embedding_model = client
+        .embedding(mistral::embedding::MISTRAL_EMBED, None)
+        .on(rig::transport());
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .document(Greetings {
             message: "Hello, world!".to_string(),

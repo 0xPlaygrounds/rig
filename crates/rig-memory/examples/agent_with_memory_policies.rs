@@ -50,11 +50,10 @@ async fn main() -> Result<()> {
     let sliding_memory = InMemoryConversationMemory::new()
         .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
 
-    let sliding_agent =
-        AgentBuilder::new(Model::new(client.completion(openai::GPT_4O), http.clone()))
-            .preamble("You are a helpful assistant. Keep responses short.")
-            .memory(sliding_memory)
-            .build();
+    let sliding_agent = AgentBuilder::new(client.completion(openai::GPT_4O).on(http.clone()))
+        .preamble("You are a helpful assistant. Keep responses short.")
+        .memory(sliding_memory)
+        .build();
 
     let reply = sliding_agent
         .prompt("Remember: my favorite color is teal.")
@@ -66,11 +65,10 @@ async fn main() -> Result<()> {
     let token_memory = InMemoryConversationMemory::new()
         .with_filter(TokenWindowMemory::new(256, approx_token_count).into_filter());
 
-    let token_agent =
-        AgentBuilder::new(Model::new(client.completion(openai::GPT_4O), http.clone()))
-            .preamble("You are a helpful assistant. Keep responses short.")
-            .memory(token_memory)
-            .build();
+    let token_agent = AgentBuilder::new(client.completion(openai::GPT_4O).on(http.clone()))
+        .preamble("You are a helpful assistant. Keep responses short.")
+        .memory(token_memory)
+        .build();
 
     let reply = token_agent
         .prompt("Plan a 3-day trip to Kyoto.")

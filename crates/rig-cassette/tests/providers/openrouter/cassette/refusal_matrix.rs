@@ -80,6 +80,7 @@
 use rig::message::Message;
 use rig::providers::openai::completion::Message as OpenAiMessage;
 use rig::providers::openrouter;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -143,7 +144,7 @@ async fn blocking_raw_model_surfaces_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_raw_model_surfaces_refusal",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -178,10 +179,11 @@ async fn blocking_agent_prompt_surfaces_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_agent_prompt_surfaces_refusal",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(REFUSING_MODEL)))
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(REFUSING_MODEL).on(rig::transport()))
+                    .max_tokens(CAP)
+                    .additional_params(refusal_request_params("OpenAI"))
+                    .build();
 
             let response = agent
                 .prompt(REFUSED_PROMPT)
@@ -213,7 +215,7 @@ async fn blocking_raw_and_normalized_agree() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_raw_and_normalized_agree",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -260,7 +262,7 @@ async fn blocking_refusal_finishes_with_stop() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_finishes_with_stop",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -287,7 +289,7 @@ async fn blocking_usage_survives_the_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_usage_survives_the_refusal",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -330,7 +332,7 @@ async fn blocking_refusal_with_tools_in_request() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_with_tools_in_request",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
@@ -362,7 +364,7 @@ async fn blocking_refusal_with_preamble() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_with_preamble",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .preamble("You are a helpful assistant. Answer in the schema.".to_owned())
                 .max_tokens(CAP)
@@ -390,7 +392,7 @@ async fn blocking_refusal_survives_into_history() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_survives_into_history",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let first = model
                 .call(
                     CompletionRequestBuilder::new(REFUSED_PROMPT)
@@ -443,7 +445,7 @@ async fn blocking_refusal_under_a_tight_cap() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_under_a_tight_cap",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(32)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -475,7 +477,7 @@ async fn streaming_raw_model_surfaces_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_raw_model_surfaces_refusal",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -508,10 +510,11 @@ async fn streaming_agent_surfaces_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_agent_surfaces_refusal",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(REFUSING_MODEL)))
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(REFUSING_MODEL).on(rig::transport()))
+                    .max_tokens(CAP)
+                    .additional_params(refusal_request_params("OpenAI"))
+                    .build();
 
             let mut stream = agent.prompt(REFUSED_PROMPT).stream();
             let observed = collect_stream_observation(&mut stream).await;
@@ -533,7 +536,7 @@ async fn streaming_terminal_carries_usage_and_reason() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_terminal_carries_usage_and_reason",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -568,7 +571,7 @@ async fn streaming_refusal_emits_no_tool_calls() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_refusal_emits_no_tool_calls",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
@@ -607,7 +610,7 @@ async fn transports_agree_on_the_refusal_text() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/transports_agree_on_the_refusal_text",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
 
             let blocking = model
                 .call(
@@ -662,7 +665,9 @@ async fn blocking_gpt_4_1_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_gpt_4_1_refusal",
         |client| async move {
-            let model = rig::model(client.completion(SECOND_REFUSING_MODEL));
+            let model = client
+                .completion(SECOND_REFUSING_MODEL)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -691,7 +696,7 @@ async fn blocking_azure_routed_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_azure_routed_refusal",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("Azure"))
@@ -716,7 +721,7 @@ async fn streaming_azure_routed_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_azure_routed_refusal",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("Azure"))
@@ -744,7 +749,7 @@ async fn control_answerable_prompt_is_unchanged_blocking() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_answerable_prompt_is_unchanged_blocking",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(ANSWERABLE_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -771,7 +776,7 @@ async fn control_answerable_prompt_is_unchanged_streaming() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_answerable_prompt_is_unchanged_streaming",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(ANSWERABLE_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -801,7 +806,7 @@ async fn control_mini_answers_inside_schema() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_mini_answers_inside_schema",
         |client| async move {
-            let model = rig::model(client.completion(NON_REFUSING_MODEL));
+            let model = client.completion(NON_REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
@@ -829,7 +834,7 @@ async fn control_no_schema_refusal_is_plain_content() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_no_schema_refusal_is_plain_content",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(pinned_only("OpenAI"))
@@ -856,7 +861,7 @@ async fn control_tool_call_turn_is_unchanged() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_tool_call_turn_is_unchanged",
         |client| async move {
-            let model = rig::model(client.completion(REFUSING_MODEL));
+            let model = client.completion(REFUSING_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new("Call the ping tool.")
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])

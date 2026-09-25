@@ -1,7 +1,7 @@
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::image::{AMAZON_NOVA_CANVAS, Images};
-use rig_core::Model;
 use rig_core::image_generation::ImageGenerationRequestBuilder;
+use rig_core::wire::Wire as _;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -10,8 +10,7 @@ const DEFAULT_PATH: &str = "./output.png";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let image_generation_model =
-        Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env());
+    let image_generation_model = Images::new(AMAZON_NOVA_CANVAS).on(BedrockRuntime::from_env());
     let response = image_generation_model
         .call(
             ImageGenerationRequestBuilder::new(

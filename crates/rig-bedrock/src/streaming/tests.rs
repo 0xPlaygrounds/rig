@@ -1,11 +1,12 @@
 use super::*;
 use crate::completion::{Converse, ConverseRequest};
 use futures::StreamExt;
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{AssistantContent, Reasoning};
 use rig_core::streaming::{CompletionStream, Delta, StreamEvent};
 use rig_core::wire::Mode;
+use rig_core::wire::Wire as _;
 
 // ---- Event-seam helpers: a transport that replays scripted events ----
 
@@ -41,12 +42,10 @@ impl Transport<Converse> for Scripted {
 /// The stream `model`'s Converse endpoint yields for scripted `events`.
 fn stream_of(model: &str, events: Vec<aws_bedrock::ConverseStreamOutput>) -> CompletionStream {
     let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
-    Model::new(
-        Converse::new(model),
-        Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
-    )
-    .stream(request)
-    .expect("the stream opens")
+    Converse::new(model)
+        .on(Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))))
+        .stream(request)
+        .expect("the stream opens")
 }
 
 /// A stream over events a decoder already produced, folded as a relayed
@@ -950,7 +949,8 @@ async fn a_converse_stream_whose_send_fails_reports_it_in_band() {
     let runtime =
         crate::client::BedrockRuntime::from(aws_sdk_bedrockruntime::Client::from_conf(config));
     let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
-    let mut stream = Model::new(Converse::new("amazon.nova-lite-v1:0"), runtime)
+    let mut stream = Converse::new("amazon.nova-lite-v1:0")
+        .on(runtime)
         .stream(request)
         .expect("opening a stream sends nothing");
     let first = stream.next().await.expect("the stream yields the failure");

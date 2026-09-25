@@ -10,13 +10,14 @@ use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::DeepSeek;
 
 fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-flash")),
+        model: client.completion("deepseek-flash").on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),
@@ -54,7 +55,7 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,
-        model: rig::Model::new(client.completion("deepseek-flash"), http.clone()),
+        model: client.completion("deepseek-flash").on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),

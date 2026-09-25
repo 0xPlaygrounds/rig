@@ -53,6 +53,7 @@ use rig::completion::{
 };
 use rig::message::ToolChoice;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde::Deserialize as _;
 use serde_json::{Value, json};
 
@@ -361,7 +362,7 @@ async fn chat_text_turn_parity() {
         "raw_completion_parity_matrix/chat_text_turn_parity",
         |client| {
             capture_completion_pair(
-                rig::model(client.openai.chat(MODEL)),
+                client.openai.chat(MODEL).on(rig::transport()),
                 text_request(),
                 observed.clone(),
             )
@@ -380,7 +381,7 @@ async fn chat_tool_turn_parity() {
         "raw_completion_parity_matrix/chat_tool_turn_parity",
         |client| {
             capture_completion_pair(
-                rig::model(client.openai.chat(MODEL)),
+                client.openai.chat(MODEL).on(rig::transport()),
                 tool_request(),
                 observed.clone(),
             )
@@ -404,7 +405,7 @@ async fn chat_plain_raw_completion_lacks_request_id() {
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
         |client| {
             capture_completion_pair(
-                rig::model(client.openai.chat(MODEL)),
+                client.openai.chat(MODEL).on(rig::transport()),
                 text_request(),
                 observed.clone(),
             )
@@ -584,7 +585,7 @@ async fn responses_text_turn_parity() {
         "raw_completion_parity_matrix/responses_text_turn_parity",
         |client| {
             capture_completion_pair(
-                rig::model(client.openai.completion(MODEL)),
+                client.openai.completion(MODEL).on(rig::transport()),
                 text_request(),
                 observed.clone(),
             )
@@ -607,7 +608,7 @@ async fn responses_tool_turn_parity() {
         "raw_completion_parity_matrix/responses_tool_turn_parity",
         |client| {
             capture_completion_pair(
-                rig::model(client.openai.completion(MODEL)),
+                client.openai.completion(MODEL).on(rig::transport()),
                 tool_request(),
                 observed.clone(),
             )

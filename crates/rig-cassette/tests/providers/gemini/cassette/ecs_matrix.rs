@@ -10,6 +10,7 @@ use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{
     GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW,
 };
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
@@ -24,8 +25,14 @@ fn wire(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
-        route: Some(rig::model(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW))),
+        model: client
+            .completion(GEMINI_3_FLASH_PREVIEW)
+            .on(rig::transport()),
+        route: Some(
+            client
+                .completion(GEMINI_3_1_FLASH_LITE_PREVIEW)
+                .on(rig::transport()),
+        ),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -43,7 +50,7 @@ fn legacy(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_2_5_FLASH)),
+        model: client.completion(GEMINI_2_5_FLASH).on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -316,7 +323,9 @@ fn reasoning_wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion("gemini-3-flash-preview")),
+        model: client
+            .completion("gemini-3-flash-preview")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

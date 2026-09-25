@@ -9,6 +9,7 @@
 //! modes: on replay the same code paths run against the replay server.
 
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_lifecycle_cassette;
 use crate::support::{
@@ -25,10 +26,9 @@ async fn middleware_phases_observe_a_unary_completion() {
         "lifecycle_matrix/middleware_unary",
         probe.clone(),
         |client, http| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
-                    .preamble(BASIC_PREAMBLE)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(http.clone()))
+                .preamble(BASIC_PREAMBLE)
+                .build();
             let response = agent
                 .prompt(BASIC_PROMPT)
                 .await
@@ -49,11 +49,10 @@ async fn middleware_response_phase_precedes_stream_consumption() {
         "lifecycle_matrix/middleware_streaming",
         probe.clone(),
         |client, http| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
-                    .preamble(STREAMING_PREAMBLE)
-                    .add_hook(settle_hook)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(http.clone()))
+                .preamble(STREAMING_PREAMBLE)
+                .add_hook(settle_hook)
+                .build();
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             let (response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
@@ -80,11 +79,10 @@ async fn run_start_rewrite_reaches_the_provider() {
         "lifecycle_matrix/run_start_rewrite",
         WireProbe::default(),
         |client, http| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
-                    .preamble(BASIC_PREAMBLE)
-                    .add_hook(agent_hook)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(http.clone()))
+                .preamble(BASIC_PREAMBLE)
+                .add_hook(agent_hook)
+                .build();
             // The original prompt says nothing about pineapples; only the
             // pre-run rewrite can put the marker into the model's reply.
             let response = agent
@@ -110,12 +108,11 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
         "lifecycle_matrix/entry_log_order",
         WireProbe::default(),
         |client, http| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
-                    .preamble("You are a calculator. Use the add tool for arithmetic.")
-                    .tool(Adder)
-                    .add_hook(agent_hook)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(http.clone()))
+                .preamble("You are a calculator. Use the add tool for arithmetic.")
+                .tool(Adder)
+                .add_hook(agent_hook)
+                .build();
             let mut stream = agent
                 .prompt("What is 9 + 16? Use the add tool, then reply with just the number.")
                 .max_turns(3)
@@ -144,12 +141,11 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
         "lifecycle_matrix/run_settled_tool_run",
         WireProbe::default(),
         |client, http| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
-                    .preamble("You are a calculator. Use the add tool for arithmetic.")
-                    .tool(Adder)
-                    .add_hook(agent_hook)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(http.clone()))
+                .preamble("You are a calculator. Use the add tool for arithmetic.")
+                .tool(Adder)
+                .add_hook(agent_hook)
+                .build();
             let response = agent
                 .prompt("What is 7 + 15? Use the add tool, then reply with just the number.")
                 .max_turns(3)

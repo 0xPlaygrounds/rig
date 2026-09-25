@@ -1,5 +1,6 @@
 //! Cassette-backed OpenRouter reasoning tool roundtrip tests.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -13,15 +14,16 @@ use super::super::support::with_openrouter_cassette;
 async fn streaming() {
     with_openrouter_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = rig::AgentBuilder::new(rig::model(client.completion("openai/gpt-5.2")))
-            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-            .max_tokens(4096)
-            .tool(WeatherTool::new(call_count.clone()))
-            .additional_params(serde_json::json!({
-                "reasoning": { "effort": "high" },
-                "include_reasoning": true
-            }))
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion("openai/gpt-5.2").on(rig::transport()))
+                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                .max_tokens(4096)
+                .tool(WeatherTool::new(call_count.clone()))
+                .additional_params(serde_json::json!({
+                    "reasoning": { "effort": "high" },
+                    "include_reasoning": true
+                }))
+                .build();
 
         let stream = agent
             .prompt(reasoning::TOOL_USER_PROMPT)
@@ -41,16 +43,17 @@ async fn nonstreaming() {
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion("openai/gpt-5.2")))
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(4096)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "reasoning": { "effort": "high" },
-                    "include_reasoning": true
-                }))
-                .default_max_turns(2)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion("openai/gpt-5.2").on(rig::transport()))
+                    .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                    .max_tokens(4096)
+                    .tool(WeatherTool::new(call_count.clone()))
+                    .additional_params(serde_json::json!({
+                        "reasoning": { "effort": "high" },
+                        "include_reasoning": true
+                    }))
+                    .default_max_turns(2)
+                    .build();
 
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())

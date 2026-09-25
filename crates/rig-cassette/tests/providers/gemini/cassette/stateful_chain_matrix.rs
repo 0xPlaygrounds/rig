@@ -5,6 +5,7 @@
 //! committed chain replays but cannot seed a live call later. Record a chain
 //! in one session.
 
+use rig::wire::Wire as _;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::sync::{Arc, Mutex};
@@ -104,7 +105,7 @@ async fn cached_content_lifecycle_chain() {
     with_gemini_prompt_caching_cassette(
         "stateful_chain_matrix/cached_content_lifecycle_chain",
         |client: Gemini| async move {
-            let caches = rig::model(client.cached_contents());
+            let caches = client.cached_contents().on(rig::transport());
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -138,12 +139,11 @@ async fn cached_content_lifecycle_chain() {
                 if let Err(error) = &sibling {
                     panic!("creating the sibling cache: {error}");
                 }
-                let model = rig::model(
-                    generator
-                        .clone()
-                        .completion(CACHE_MODEL)
-                        .with_cached_content(name.clone()),
-                );
+                let model = generator
+                    .clone()
+                    .completion(CACHE_MODEL)
+                    .with_cached_content(name.clone())
+                    .on(rig::transport());
                 let reply = model
                     .call(ask(
                         "What is the code of record alpha? Reply with the code only.",
@@ -170,13 +170,12 @@ async fn cached_content_lifecycle_chain() {
             })
             .await;
 
-            let refused = rig::model(
-                client
-                    .completion(CACHE_MODEL)
-                    .with_cached_content(created.name.clone()),
-            )
-            .call(ask("What is the code of record alpha?"))
-            .await;
+            let refused = client
+                .completion(CACHE_MODEL)
+                .with_cached_content(created.name.clone())
+                .on(rig::transport())
+                .call(ask("What is the code of record alpha?"))
+                .await;
             let refused = refused.expect_err("a deleted cache handle must be refused");
             let report = rig::error::ErrorReport::from(&refused);
             assert!(
@@ -346,7 +345,10 @@ async fn interactions_chain_with_tool_call() {
                     .push(id.to_owned());
             };
             deleting_interactions(&client, &stored, async {
-                let model = rig::model(client.clone().interactions(INTERACTIONS_MODEL));
+                let model = client
+                    .clone()
+                    .interactions(INTERACTIONS_MODEL)
+                    .on(rig::transport());
                 let params = |previous: Option<String>| {
                     serde_json::to_value(AdditionalParameters {
                         store: Some(true),
@@ -483,7 +485,7 @@ async fn file_uri_chain() {
                         ),
                     ],
                 };
-                let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+                let model = client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport());
                 let first = model
                     .call(ask_with(vec![document.clone()]))
                     .await

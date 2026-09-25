@@ -68,6 +68,7 @@
 //! shape carried verbatim, an absent `usage`, and an explicit `null`.
 
 use rig::providers::openai::{self, TranscriptionUsage};
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::with_openai_transcription_cassette;
@@ -103,7 +104,10 @@ async fn whisper_reports_duration_usage() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/whisper_reports_duration_usage",
         |client| async move {
-            let response = rig::model(client.openai.transcription(openai::WHISPER_1))
+            let response = client
+                .openai
+                .transcription(openai::WHISPER_1)
+                .on(rig::transport())
                 .call(
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
@@ -127,7 +131,10 @@ async fn gpt_4o_transcribe_reports_token_usage() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/gpt_4o_transcribe_reports_token_usage",
         |client| async move {
-            let response = rig::model(client.openai.transcription("gpt-4o-transcribe"))
+            let response = client
+                .openai
+                .transcription("gpt-4o-transcribe")
+                .on(rig::transport())
                 .call(
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
@@ -164,7 +171,10 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/gpt_4o_mini_transcribe_reports_token_usage",
         |client| async move {
-            let response = rig::model(client.openai.transcription("gpt-4o-mini-transcribe"))
+            let response = client
+                .openai
+                .transcription("gpt-4o-mini-transcribe")
+                .on(rig::transport())
                 .call(
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
@@ -190,7 +200,10 @@ async fn completions_client_reports_duration_usage() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/completions_client_reports_duration_usage",
         |client| async move {
-            let response = rig::model(client.openai.transcription(openai::WHISPER_1))
+            let response = client
+                .openai
+                .transcription(openai::WHISPER_1)
+                .on(rig::transport())
                 .call(
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
@@ -214,7 +227,10 @@ async fn completions_client_reports_token_usage() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/completions_client_reports_token_usage",
         |client| async move {
-            let response = rig::model(client.openai.transcription("gpt-4o-transcribe"))
+            let response = client
+                .openai
+                .transcription("gpt-4o-transcribe")
+                .on(rig::transport())
                 .call(
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
@@ -242,7 +258,10 @@ async fn verbose_json_still_reports_duration_usage() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/verbose_json_still_reports_duration_usage",
         |client| async move {
-            let response = rig::model(client.openai.transcription(openai::WHISPER_1))
+            let response = client
+                .openai
+                .transcription(openai::WHISPER_1)
+                .on(rig::transport())
                 .call(
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
@@ -276,7 +295,10 @@ async fn transcript_still_reaches_the_normalized_response() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/transcript_still_reaches_the_normalized_response",
         |client| async move {
-            let response = rig::model(client.openai.transcription(openai::WHISPER_1))
+            let response = client
+                .openai
+                .transcription(openai::WHISPER_1)
+                .on(rig::transport())
                 .call(
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))
@@ -302,7 +324,10 @@ async fn rejected_request_surfaces_the_provider_body() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/rejected_request_surfaces_the_provider_body",
         |client| async move {
-            let Err(error) = rig::model(client.openai.transcription(openai::WHISPER_1))
+            let Err(error) = client
+                .openai
+                .transcription(openai::WHISPER_1)
+                .on(rig::transport())
                 .call(
                     TranscriptionRequestBuilder::new(audio())
                         .filename(Some("audio.mp3".to_owned()))

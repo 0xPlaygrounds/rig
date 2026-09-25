@@ -33,6 +33,7 @@
 
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use super::super::support::with_chatgpt_cassette;
@@ -96,9 +97,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("stream should start");
+            capture_sole_terminal(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should start");
         },
     )
     .await;
@@ -137,9 +142,13 @@ async fn stream_raw_exposes_terminal_status() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
         |client| async move {
-            capture_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("stream should start");
+            capture_sole_terminal(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should start");
         },
     )
     .await;

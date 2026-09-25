@@ -1,10 +1,10 @@
 use google_cloud_aiplatform_v1::model::GenerateContentResponse;
-use rig_core::Model;
 use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
 use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
 use rig_core::wire::Mode;
+use rig_core::wire::Wire as _;
 use rig_vertexai::completion::{GEMINI_2_5_FLASH, GenerateContent, VertexRequest};
 
 /// Answers with one stored reply instead of calling Vertex AI.
@@ -28,7 +28,8 @@ impl Transport<GenerateContent> for Stored {
 
 fn complete(reply: GenerateContentResponse) -> Result<CompletionResponse, ProviderError> {
     futures::executor::block_on(
-        Model::new(GenerateContent::new(GEMINI_2_5_FLASH), Stored(reply))
+        GenerateContent::new(GEMINI_2_5_FLASH)
+            .on(Stored(reply))
             .call(CompletionRequestBuilder::new("hello").build()),
     )
 }

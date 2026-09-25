@@ -1,13 +1,10 @@
 //! The Bedrock text-embedding wire over `InvokeModel`: one request per text.
 //!
 //! ```no_run
+//! use rig_core::wire::Wire as _;
 //! use rig_bedrock::{client::BedrockRuntime, embedding::{AMAZON_TITAN_EMBED_TEXT_V2_0, Embeddings}};
-//! use rig_core::Model;
 //!
-//! let model = Model::new(
-//!     Embeddings::new(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256)),
-//!     BedrockRuntime::from_env(),
-//! );
+//! let model = Embeddings::new(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256)).on(BedrockRuntime::from_env());
 //! # let _ = model;
 //! ```
 

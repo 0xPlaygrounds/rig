@@ -12,6 +12,7 @@ use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ErasedHandler;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{
@@ -58,7 +59,7 @@ async fn own_bus(
     ) -> AgentBuilder<rig::agent::WithToolServerHandle>,
 ) -> rig::cassette::effect_log::EffectLog {
     let server = add_tool_under(layers);
-    let builder = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+    let builder = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
         .temperature(0.0)
@@ -151,7 +152,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "default",
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                 )),
             )
             .expect("a fresh key");
@@ -216,7 +217,7 @@ async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
             ))
             .layered(ReplaceLoadLayer);
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)

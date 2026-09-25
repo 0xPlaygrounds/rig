@@ -2,6 +2,7 @@
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 
 use serde_json::json;
@@ -96,10 +97,11 @@ async fn plaintext_document_prompt() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/plaintext_document_prompt",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble("You are a helpful assistant that analyzes documents.")
-                .temperature(0.5)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("You are a helpful assistant that analyzes documents.")
+                    .temperature(0.5)
+                    .build();
 
             let document = Document {
                 data: DocumentSourceKind::String(rust_document()),
@@ -124,10 +126,11 @@ async fn plaintext_document_with_instruction() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/plaintext_document_with_instruction",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble("You are a helpful assistant that analyzes documents.")
-                .temperature(0.5)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("You are a helpful assistant that analyzes documents.")
+                    .temperature(0.5)
+                    .build();
 
             let response = agent
                 .prompt(Message::User {
@@ -153,10 +156,11 @@ async fn streaming_document_citations_accepts_null_citation_start() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/streaming_document_citations_accepts_null_citation_start",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble("Answer using the supplied document and citation metadata.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("Answer using the supplied document and citation metadata.")
+                    .temperature(0.0)
+                    .build();
 
             let mut stream = agent.prompt(citation_prompt()).stream();
             let response = collect_stream_final_response(&mut stream)
@@ -174,7 +178,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/document_citations_followup_preserves_history",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let prompt = citation_prompt();
 
             let first_request = CompletionRequestBuilder::new(prompt.clone())

@@ -7,6 +7,7 @@
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
+use rig::wire::Wire as _;
 
 use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
@@ -15,8 +16,14 @@ use rig::providers::openai::OpenAI;
 fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion(MISTRAL_SMALL_3_2_24B)),
-        route: Some(rig::model(client.completion(MISTRAL_SMALL_3_2_24B))),
+        model: client
+            .completion(MISTRAL_SMALL_3_2_24B)
+            .on(rig::transport()),
+        route: Some(
+            client
+                .completion(MISTRAL_SMALL_3_2_24B)
+                .on(rig::transport()),
+        ),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -240,7 +247,9 @@ crate::matrix::case_matrix! {
 fn reasoning_wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::Venice,
-        model: rig::model(client.completion(rig::providers::venice::QWEN3_235B_A22B_THINKING)),
+        model: client
+            .completion(rig::providers::venice::QWEN3_235B_A22B_THINKING)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -9,8 +9,9 @@
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
+use rig::wire::Wire as _;
 use rig_core::completion::{CompletionRequestBuilder, FinishReason};
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, WireInput, event_frame, fixtures::drain,
@@ -72,10 +73,8 @@ fn driver() -> WireDriver {
                     Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
-            let model = Model::new(
-                Converse::new("amazon.nova-lite-v1:0"),
-                Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
-            );
+            let model = Converse::new("amazon.nova-lite-v1:0")
+                .on(Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))));
             let stream = model.stream(CompletionRequestBuilder::new("hi").build())?;
             Ok(drain(stream).await)
         })

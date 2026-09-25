@@ -4,6 +4,7 @@ use crate::cache_conformance::assert_breakpoints_match_support;
 use crate::{
     cache_conformance::assert_prefix_stable, ecs_agent::EcsAgent, ecs_cache::assert_cache_growth,
 };
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
@@ -12,8 +13,11 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
             super::super::support::with_openai_completions_prompt_caching_cassette(
                 "prompt_caching/chat_completions_agent_loop",
                 |client| async move {
-                    let ecs =
-                        EcsAgent::new(rig::model(client.chat(CACHE_MODEL)), &probe().preamble, 1);
+                    let ecs = EcsAgent::new(
+                        client.chat(CACHE_MODEL).on(rig::transport()),
+                        &probe().preamble,
+                        1,
+                    );
 
                     assert_cache_growth(ecs, &OPENAI_CACHE_SUPPORT, "chat completions agent loop")
                         .await;
@@ -45,7 +49,7 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
                 "prompt_caching/responses_agent_loop",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        rig::model(client.openai.completion(CACHE_MODEL)),
+                        client.openai.completion(CACHE_MODEL).on(rig::transport()),
                         &probe().preamble,
                         1,
                     );

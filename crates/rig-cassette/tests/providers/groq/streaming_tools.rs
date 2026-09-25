@@ -1,6 +1,7 @@
 //! Groq streaming tools smoke test.
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -21,7 +22,9 @@ use rig::completion::CompletionRequestBuilder;
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
     let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let model = rig::model(groq.completion(STREAMING_TOOLS_RAW_MODEL));
+    let model = groq
+        .completion(STREAMING_TOOLS_RAW_MODEL)
+        .on(rig::transport());
     let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .tool(zero_arg_tool_definition("ping"))
         .tool_choice(ToolChoice::Required)
@@ -35,7 +38,9 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let model = rig::model(groq.completion(STREAMING_TOOLS_RAW_MODEL));
+    let model = groq
+        .completion(STREAMING_TOOLS_RAW_MODEL)
+        .on(rig::transport());
     let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
         .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
         .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -56,11 +61,14 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let agent = rig::AgentBuilder::new(rig::model(groq.completion(STREAMING_TOOLS_MULTI_MODEL)))
-        .preamble(TWO_TOOL_STREAM_PREAMBLE)
-        .tool(AlphaSignal)
-        .tool(BetaSignal)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        groq.completion(STREAMING_TOOLS_MULTI_MODEL)
+            .on(rig::transport()),
+    )
+    .preamble(TWO_TOOL_STREAM_PREAMBLE)
+    .tool(AlphaSignal)
+    .tool(BetaSignal)
+    .build();
 
     let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(8).stream();
     let observation = collect_stream_observation(&mut stream).await;
@@ -76,10 +84,13 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_emit_tool_call_before_later_text() {
     let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let agent = rig::AgentBuilder::new(rig::model(groq.completion(STREAMING_TOOLS_ORDERED_MODEL)))
-        .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-        .tool(AlphaSignal)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        groq.completion(STREAMING_TOOLS_ORDERED_MODEL)
+            .on(rig::transport()),
+    )
+    .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+    .tool(AlphaSignal)
+    .build();
 
     let mut stream = agent
         .prompt(ORDERED_TOOL_STREAM_PROMPT)
@@ -98,7 +109,9 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let model = rig::model(groq.completion(STREAMING_TOOLS_RAW_MODEL));
+    let model = groq
+        .completion(STREAMING_TOOLS_RAW_MODEL)
+        .on(rig::transport());
     let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
         .tool(rig::tool::tool_definition(&AlphaSignal))

@@ -16,6 +16,7 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
 use rig::tool::RegisteredTool;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_corpus_causal_cassette;
@@ -52,7 +53,7 @@ async fn over_host(client: Anthropic, host: Host) -> rig::cassette::effect_log::
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
-                rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
             )),
         )
         .expect("a fresh key");

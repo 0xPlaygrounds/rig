@@ -25,6 +25,7 @@ mod support;
 use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::completion::CompletionRequest;
 use rig_core::message::{AssistantContent, Message, Text, UserContent};
+use rig_core::wire::Wire as _;
 use rig_vertexai::VertexAi;
 use rig_vertexai::completion::GenerateContent;
 use support::{LocalEndpoint, Reply, SentinelCredentials, text_response};
@@ -120,7 +121,7 @@ fn a_worker_thread_completes_through_the_retained_runtime() {
                 .expect("client");
             (
                 endpoint,
-                rig_core::Model::new(GenerateContent::new("gemini-2.5-flash"), client),
+                GenerateContent::new("gemini-2.5-flash").on(client),
             )
         }
     });

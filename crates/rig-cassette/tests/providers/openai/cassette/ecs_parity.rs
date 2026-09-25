@@ -2,6 +2,7 @@
 //! fixtures. The original tests remain independent baseline executions.
 
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use rig_ecs::agent::{MaxTokens, Temperature};
 use rig_ecs::bus::Streamed;
 
@@ -21,7 +22,10 @@ async fn completion_smoke() {
         async {
             with_openai_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    rig::model(client.openai.completion(openai::GPT_4O)),
+                    client
+                        .openai
+                        .completion(openai::GPT_4O)
+                        .on(rig::transport()),
                     BASIC_PREAMBLE,
                     1,
                 );
@@ -42,7 +46,10 @@ async fn streaming_smoke() {
         async {
             with_openai_cassette("streaming/streaming_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    rig::model(client.openai.completion(openai::GPT_4O)),
+                    client
+                        .openai
+                        .completion(openai::GPT_4O)
+                        .on(rig::transport()),
                     STREAMING_PREAMBLE,
                     1,
                 );
@@ -78,7 +85,10 @@ async fn streaming_tools_smoke() {
                 "streaming_tools/streaming_tools_smoke",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        rig::model(client.openai.completion(openai::GPT_4O)),
+                        client
+                            .openai
+                            .completion(openai::GPT_4O)
+                            .on(rig::transport()),
                         STREAMING_TOOLS_PREAMBLE,
                         2,
                     );
@@ -108,7 +118,10 @@ async fn example_streaming_prompt() {
         async {
             with_openai_cassette("streaming/example_streaming_prompt", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    rig::model(client.openai.completion(openai::GPT_4O)),
+                    client
+                        .openai
+                        .completion(openai::GPT_4O)
+                        .on(rig::transport()),
                     "Be precise and concise.",
                     1,
                 );
@@ -144,7 +157,10 @@ async fn example_streaming_with_tools() {
                 "streaming_tools/example_streaming_with_tools",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        rig::model(client.openai.completion(openai::GPT_4O)),
+                        client
+                            .openai
+                            .completion(openai::GPT_4O)
+                            .on(rig::transport()),
                         "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",
                         2,

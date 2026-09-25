@@ -9,6 +9,7 @@ use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{
     GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW,
 };
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{
@@ -28,8 +29,14 @@ fn wire(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
-        route: Some(rig::model(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW))),
+        model: client
+            .completion(GEMINI_3_FLASH_PREVIEW)
+            .on(rig::transport()),
+        route: Some(
+            client
+                .completion(GEMINI_3_1_FLASH_LITE_PREVIEW)
+                .on(rig::transport()),
+        ),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -46,7 +53,7 @@ fn legacy(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_2_5_FLASH)),
+        model: client.completion(GEMINI_2_5_FLASH).on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -77,7 +84,9 @@ async fn error_facts_unary() {
             "error_envelope/nonexistent_model_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    rig::model(client.completion("gemini-nonexistent-rig-test")),
+                    client
+                        .completion("gemini-nonexistent-rig-test")
+                        .on(rig::transport()),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),
@@ -109,7 +118,9 @@ async fn error_facts_streamed() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    rig::model(client.completion("gemini-nonexistent-rig-test")),
+                    client
+                        .completion("gemini-nonexistent-rig-test")
+                        .on(rig::transport()),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),

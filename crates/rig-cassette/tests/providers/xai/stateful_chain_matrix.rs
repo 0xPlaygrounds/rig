@@ -4,6 +4,7 @@
 //! body passes or panics. The id is account-scoped and deleted by the
 //! recording, so the fixture replays but cannot seed a live call.
 
+use rig::wire::Wire as _;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 
 use futures::FutureExt;
@@ -84,7 +85,7 @@ async fn file_id_chain() {
                     UserContent::text("How many pages does this PDF have? Answer with a number."),
                 ],
             };
-            let model = rig::model(client.completion(xai::GROK_4));
+            let model = client.completion(xai::GROK_4).on(rig::transport());
             let first = model
                 .call(request(vec![document.clone()]))
                 .await

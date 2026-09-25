@@ -4,6 +4,7 @@ use assert_fs::TempDir;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
+use rig::wire::Wire as _;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -86,7 +87,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         "device authorization should populate the auth cache"
     );
 
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
+    let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport()))
         .preamble(BASIC_PREAMBLE)
         .build();
     let mut stream = agent.prompt(BASIC_PROMPT).stream();
@@ -99,7 +100,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     let cached_client = oauth_client_with_auth_file(&auth_file).await;
 
     let cached_agent =
-        rig::AgentBuilder::new(rig::model(cached_client.completion(LIVE_MODEL))).build();
+        rig::AgentBuilder::new(cached_client.completion(LIVE_MODEL).on(rig::transport())).build();
     let mut cached_stream = cached_agent
         .prompt("Reply with the single word cached.")
         .stream();
@@ -137,7 +138,7 @@ async fn refresh_token_cache_authorize_and_completion_smoke() {
         "refresh should persist a refresh token"
     );
 
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL))).build();
+    let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport())).build();
     let mut stream = agent
         .prompt("Reply with the single word refreshed.")
         .stream();

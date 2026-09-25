@@ -8,6 +8,7 @@ use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{OpenAiCassette, with_openai_corpus_host_cassette};
@@ -37,7 +38,10 @@ async fn embeds_over_host(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
-                rig::model(client.openai.completion(openai::GPT_4O)),
+                client
+                    .openai
+                    .completion(openai::GPT_4O)
+                    .on(rig::transport()),
             )),
         )
         .expect("a fresh key");
@@ -46,11 +50,10 @@ async fn embeds_over_host(
             HandlerKey::from(EMBED_KEY),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "host",
-                rig::model(
-                    client
-                        .openai
-                        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-                ),
+                client
+                    .openai
+                    .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+                    .on(rig::transport()),
             )),
         )
         .expect("a fresh key");

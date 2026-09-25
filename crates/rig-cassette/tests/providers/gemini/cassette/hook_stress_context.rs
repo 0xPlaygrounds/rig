@@ -7,6 +7,7 @@
 //! rig-synthesized values (see `tools_support`'s note).
 
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 
 use super::super::hook_stress_support::{
     ApplyPatch, CHAIN_PREAMBLE, CountingMultiply, EventTap, ScratchpadReader, fact_doc,
@@ -31,9 +32,11 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
     with_gemini_cassette(
         "hook_stress_context/hook_context_identity_stable_and_turn_advances_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble(CHAIN_PREAMBLE)
             .temperature(0.0)
@@ -81,9 +84,11 @@ async fn agent_name_absent_when_unconfigured_blocking() {
         "hook_stress_context/agent_name_absent_when_unconfigured_blocking",
         |client| async move {
             // No `.name(..)` on the builder.
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble(CHAIN_PREAMBLE)
             .temperature(0.0)
             .tool(add)
@@ -125,7 +130,7 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
     with_gemini_cassette(
         "hook_stress_context/scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
+            let agent = rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()))
                 .name("stress-agent")
                 .preamble(CHAIN_PREAMBLE)
                 .temperature(0.0)
@@ -190,9 +195,11 @@ async fn block_id_correlates_tool_call_and_result_blocking() {
     with_gemini_cassette(
         "hook_stress_context/block_id_correlates_tool_call_and_result_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble(CHAIN_PREAMBLE)
             .temperature(0.0)
@@ -242,9 +249,11 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
     with_gemini_cassette(
         "hook_stress_context/two_observe_only_hooks_both_observe_the_run_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble(CHAIN_PREAMBLE)
             .temperature(0.0)
@@ -292,9 +301,11 @@ async fn add_hook_appends_across_builder_and_request_blocking() {
         |client| async move {
             // One hook on the agent builder, one on the request: both must fire
             // (the request-level add_hook appends to the agent-default stack).
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble(CHAIN_PREAMBLE)
             .temperature(0.0)
@@ -335,9 +346,11 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
     with_gemini_cassette(
         "hook_stress_context/completion_call_patches_accumulate_from_two_hooks_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble(
                 "You are a helpful assistant. Consult the provided context for any facts you \
@@ -389,9 +402,11 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
     with_gemini_cassette(
         "hook_stress_context/two_hooks_narrow_active_tools_to_intersection_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble(
                 "You are a calculator assistant. Use a provided tool for any arithmetic you \

@@ -36,6 +36,7 @@ use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::deepseek;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -234,7 +235,7 @@ fn assert_parseable(arguments: &str, scenario: &str) {
 /// carries no tool call at all — the truncated one is dropped exactly as the
 /// streaming path drops it.
 async fn assert_blocking_truncation_survives(client: &OpenAI, max_tokens: u64) -> Result<()> {
-    let model = rig::model(client.completion(MODEL));
+    let model = client.completion(MODEL).on(rig::transport());
     let response = model
         .call(request(
             TOOL_PREAMBLE,
@@ -292,7 +293,7 @@ async fn assert_blocking_truncation_survives(client: &OpenAI, max_tokens: u64) -
 /// Streaming twin: the stream already dropped the unusable call; this pins that
 /// it still does, and that its terminal record reports the same `Length`.
 async fn assert_streaming_truncation_survives(client: &OpenAI, max_tokens: u64) -> Result<()> {
-    let model = rig::model(client.completion(MODEL));
+    let model = client.completion(MODEL).on(rig::transport());
     let outcome = collect_raw_stream_outcome(model.stream(request(
         TOOL_PREAMBLE,
         vec![file_report_tool()],
@@ -338,7 +339,7 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_12_truncates_before_any_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let normalized = model
                 .call(request(
                     TOOL_PREAMBLE,
@@ -376,7 +377,7 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let normalized = model
                 .call(request(
                     TOOL_PREAMBLE,
@@ -414,7 +415,7 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_20_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let normalized = model
                 .call(request(
                     TOOL_PREAMBLE,
@@ -500,7 +501,7 @@ async fn blocking_budget_96_complete_arguments_are_untouched() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_96_complete_arguments_are_untouched",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let normalized = model
                 .call(request(
                     TOOL_PREAMBLE,
@@ -540,7 +541,7 @@ async fn streaming_budget_12_truncates_before_any_tool_call() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_12_truncates_before_any_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let outcome = collect_raw_stream_outcome(model.stream(request(
                 TOOL_PREAMBLE,
                 vec![file_report_tool()],
@@ -570,7 +571,7 @@ async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let outcome = collect_raw_stream_outcome(model.stream(request(
                 TOOL_PREAMBLE,
                 vec![file_report_tool()],
@@ -668,7 +669,7 @@ async fn streaming_budget_96_complete_arguments_are_untouched() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_96_complete_arguments_are_untouched",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let outcome = collect_raw_stream_outcome(model.stream(request(
                 TOOL_PREAMBLE,
                 vec![file_report_tool()],
@@ -697,7 +698,7 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_parallel_calls_keep_the_complete_one",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let normalized = model
                 .call(request(
                     PARALLEL_PREAMBLE,
@@ -740,7 +741,7 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_parallel_calls_keep_the_complete_one",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let outcome = collect_raw_stream_outcome(model.stream(request(
                 PARALLEL_PREAMBLE,
                 vec![page_oncall_tool(), file_report_tool()],
@@ -775,7 +776,7 @@ async fn blocking_text_before_a_truncated_call_survives() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_text_before_a_truncated_call_survives",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let normalized = model
                 .call(request(
                     TEXT_FIRST_PREAMBLE,
@@ -819,7 +820,7 @@ async fn streaming_text_before_a_truncated_call_survives() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_text_before_a_truncated_call_survives",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let outcome = collect_raw_stream_outcome(model.stream(request(
                 TEXT_FIRST_PREAMBLE,
                 vec![file_report_tool()],
@@ -853,7 +854,7 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_reasoner_truncated_call_keeps_the_reasoning_block",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let normalized = model
                 .call(request_for(REASONER_INCIDENT_PROMPT,
                     REASONER_TOOL_PREAMBLE,
@@ -894,7 +895,7 @@ async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_reasoner_truncated_call_keeps_the_reasoning_block",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request_for(REASONER_INCIDENT_PROMPT,
@@ -1021,7 +1022,7 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
         "truncation_matrix/agent_blocking_truncated_call_is_not_invoked",
         |client| async move {
             let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(TOOL_PREAMBLE)
                 .tool(FileReport {
                     invocations: invocations.clone(),
@@ -1070,7 +1071,7 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
         "truncation_matrix/agent_streaming_truncated_call_is_not_invoked",
         |client| async move {
             let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(TOOL_PREAMBLE)
                 .tool(FileReport {
                     invocations: invocations.clone(),
@@ -1117,7 +1118,7 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
         "truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked",
         |client| async move {
             let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(TOOL_PREAMBLE)
                 .tool(ZeroArgumentFileReport {
                     invocations: invocations.clone(),
@@ -1157,7 +1158,7 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
         "truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked",
         |client| async move {
             let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
                 .preamble(TOOL_PREAMBLE)
                 .tool(ZeroArgumentFileReport {
                     invocations: invocations.clone(),

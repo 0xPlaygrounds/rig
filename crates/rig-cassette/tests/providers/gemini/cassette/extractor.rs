@@ -4,6 +4,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
+use rig::wire::Wire as _;
 use rig_agent::test_utils::validate_extraction_fields;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -23,9 +24,11 @@ async fn extractor_smoke() {
         AdditionalParameters::default().with_config(GenerationConfig::default());
 
     super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(rig::model(
-            client.completion(gemini::completion::GEMINI_2_5_FLASH),
-        ))
+        let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(
+            client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport()),
+        )
         .additional_params(
             serde_json::to_value(additional_params)
                 .expect("Gemini additional params should serialize"),
@@ -75,9 +78,11 @@ async fn extractor_with_additional_params() {
     super::super::support::with_gemini_cassette(
         "extractor/extractor_with_additional_params",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .additional_params(serde_json::to_value(params).expect("params should serialize"))
             .build();
 

@@ -1,4 +1,5 @@
 use rig::providers::gemini::Gemini;
+use rig::wire::Wire as _;
 use rig_agent::test_utils::MockImageGeneratorTool;
 
 /// Verifies that Gemini can process an image returned by a classic tool call.
@@ -7,13 +8,17 @@ use rig_agent::test_utils::MockImageGeneratorTool;
 async fn test_gemini_agent_with_image_tool_result_e2e() -> anyhow::Result<()> {
     let client = Gemini::from_env()?;
 
-    let agent = rig::AgentBuilder::new(rig::model(client.completion("gemini-3-flash-preview")))
-        .preamble(
-            "You are a helpful assistant. When asked about images, use the \
+    let agent = rig::AgentBuilder::new(
+        client
+            .completion("gemini-3-flash-preview")
+            .on(rig::transport()),
+    )
+    .preamble(
+        "You are a helpful assistant. When asked about images, use the \
              generate_test_image tool to create one, then describe what you see in the image.",
-        )
-        .tool(MockImageGeneratorTool)
-        .build();
+    )
+    .tool(MockImageGeneratorTool)
+    .build();
 
     let response_text = agent
         .prompt("Please generate a test image and tell me what color the pixel is.")

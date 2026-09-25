@@ -5,6 +5,7 @@
 //! cell's own test.
 
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
+use rig::wire::Wire as _;
 
 use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
@@ -13,7 +14,9 @@ use rig::providers::openai::OpenAI;
 fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client
+            .completion(MISTRAL_SMALL_3_2_24B)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -24,7 +27,9 @@ fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAi
 fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion("venice-nonexistent-rig-test")),
+        model: client
+            .completion("venice-nonexistent-rig-test")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

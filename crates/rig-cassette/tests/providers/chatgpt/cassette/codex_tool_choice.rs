@@ -11,6 +11,7 @@
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::chatgpt;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 
 use super::super::support::with_chatgpt_cassette;
 use crate::support::{Adder, AlphaSignal, Subtract, TOOLS_PREAMBLE};
@@ -31,7 +32,7 @@ async fn required_forces_a_tool_call() {
     with_chatgpt_cassette(
         "codex_tool_choice/required_forces_a_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(chatgpt::GPT_5_4));
+            let model = client.completion(chatgpt::GPT_5_4).on(rig::transport());
             let request = CompletionRequestBuilder::new("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
@@ -63,7 +64,7 @@ async fn none_suppresses_tool_calls() {
     with_chatgpt_cassette(
         "codex_tool_choice/none_suppresses_tool_calls",
         |client| async move {
-            let model = rig::model(client.completion(chatgpt::GPT_5_4));
+            let model = client.completion(chatgpt::GPT_5_4).on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("What is 2 plus 3? Reply with just the number.")
                     .preamble(TOOLS_PREAMBLE.to_string())
@@ -103,7 +104,7 @@ async fn specific_single_function_targets_named_tool() {
     with_chatgpt_cassette(
         "codex_tool_choice/specific_single_function_targets_named_tool",
         |client| async move {
-            let model = rig::model(client.completion(chatgpt::GPT_5_4));
+            let model = client.completion(chatgpt::GPT_5_4).on(rig::transport());
             let request = CompletionRequestBuilder::new("Compute 9 minus 4 using a tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
@@ -161,7 +162,7 @@ async fn specific_multiple_functions_use_allowed_tools() {
     with_chatgpt_cassette(
         "codex_tool_choice/specific_multiple_functions_use_allowed_tools",
         |client| async move {
-            let model = rig::model(client.completion(chatgpt::GPT_5_4));
+            let model = client.completion(chatgpt::GPT_5_4).on(rig::transport());
             let request = CompletionRequestBuilder::new("What is 2 plus 3? Use exactly one tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))

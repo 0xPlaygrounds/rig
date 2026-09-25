@@ -4,6 +4,7 @@
 //! operation future. No provider construction data is inserted into the world.
 
 use bevy_app::App;
+use rig_core::wire::Wire as _;
 use rig_core::{
     completion::CompletionRequestBuilder,
     effect::{EffectKind, HandlerDescriptor, family},
@@ -44,12 +45,10 @@ fn main() -> anyhow::Result<()> {
     // Complete SDK preparation before borrowing the execution world. A host
     // with an already-prepared PredictionService can inject that instead.
     runtime.block_on(client.inner())?;
-    let model = rig_core::Model::new(
-        rig_vertexai::completion::GenerateContent::new(
-            rig_vertexai::completion::GEMINI_2_5_FLASH_LITE,
-        ),
-        client.clone(),
-    );
+    let model = rig_vertexai::completion::GenerateContent::new(
+        rig_vertexai::completion::GEMINI_2_5_FLASH_LITE,
+    )
+    .on(client.clone());
     let handler = Hosted {
         handler: ErasedHandler::new(ModelAdapter::new("vertex", model)),
         runtime: runtime.handle().clone(),

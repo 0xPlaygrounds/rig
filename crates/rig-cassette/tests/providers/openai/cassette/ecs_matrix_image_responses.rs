@@ -7,6 +7,7 @@
 //! scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
 use rig::providers::openai::GPT_5_MINI;
+use rig::wire::Wire as _;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, world::run_world};
@@ -14,7 +15,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion(GPT_5_MINI)),
+        model: client.openai.completion(GPT_5_MINI).on(rig::transport()),
         route: None,
         temperature: None,
         additional_params: None,

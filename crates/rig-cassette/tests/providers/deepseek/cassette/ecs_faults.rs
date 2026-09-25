@@ -11,6 +11,7 @@
 
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{
@@ -31,7 +32,7 @@ fn thinking_disabled() -> serde_json::Value {
 fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-chat")),
+        model: client.completion("deepseek-chat").on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -42,7 +43,9 @@ fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAi
 fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-v9-nonexistent")),
+        model: client
+            .completion("deepseek-v9-nonexistent")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -105,7 +108,7 @@ fn scripted_stream(
     let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::Model::new(client.completion("deepseek-chat"), http.clone()),
+        model: client.completion("deepseek-chat").on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -121,7 +124,7 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::Model::new(client.completion("deepseek-chat"), http.clone()),
+        model: client.completion("deepseek-chat").on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

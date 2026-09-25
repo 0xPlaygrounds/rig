@@ -52,10 +52,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().with_target(false).init();
 
     // Create the Vertex AI model using implicit credentials
-    let model = Model::new(
-        GenerateContent::new(GEMINI_2_5_FLASH_LITE),
-        VertexAi::from_env()?,
-    );
+    let model = GenerateContent::new(GEMINI_2_5_FLASH_LITE).on(VertexAi::from_env()?);
 
     // Create agent with a calculator tool
     let calculator_agent = AgentBuilder::new(model)

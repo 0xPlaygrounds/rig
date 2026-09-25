@@ -1,6 +1,7 @@
 use futures::FutureExt;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::gemini::Gemini;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
@@ -539,7 +540,7 @@ async fn always_deleting_cached_contents_reporting<Fut, R>(
 {
     let outcome = AssertUnwindSafe(body).catch_unwind().await;
 
-    let caches = rig::model(client.cached_contents());
+    let caches = client.cached_contents().on(rig::transport());
     let mut failures = Vec::new();
     for handle in handles {
         if let Err(error) = caches.delete(handle).await {

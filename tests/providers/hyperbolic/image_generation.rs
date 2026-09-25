@@ -2,6 +2,7 @@
 
 use rig::providers::hyperbolic;
 use rig::providers::openai::wire::{HYPERBOLIC, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{IMAGE_PROMPT, assert_nonempty_bytes};
 use rig::image_generation::ImageGenerationRequestBuilder;
@@ -10,7 +11,9 @@ use rig::image_generation::ImageGenerationRequestBuilder;
 #[ignore = "requires HYPERBOLIC_API_KEY"]
 async fn image_generation_smoke() {
     let provider = OpenAI::from_env_with(&HYPERBOLIC).expect("config should build from env");
-    let model = rig::model(provider.image_generation(hyperbolic::SDXL_TURBO));
+    let model = provider
+        .image_generation(hyperbolic::SDXL_TURBO)
+        .on(rig::transport());
 
     let response = model
         .call(

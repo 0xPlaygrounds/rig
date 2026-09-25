@@ -29,6 +29,7 @@
 
 use anyhow::Result;
 use rig::providers::groq;
+use rig::wire::Wire as _;
 
 use super::support::with_groq_cassette_result;
 use crate::support::{assert_nonempty_response, assistant_text_response};
@@ -52,7 +53,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
     with_groq_cassette_result(
         "constants_matrix/catalog_lists_current_constants",
         |client| async move {
-            let models = rig::model(client.models()).call(()).await?;
+            let models = client.models().on(rig::transport()).call(()).await?;
             let served: Vec<&str> = models.data.iter().map(|model| model.id.as_str()).collect();
             let missing: Vec<&str> = PUBLIC_CONSTANTS
                 .iter()
@@ -70,7 +71,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
 }
 
 async fn assert_completion_smoke(client: OpenAI, model_id: &str) -> Result<()> {
-    let model = rig::model(client.completion(model_id));
+    let model = client.completion(model_id).on(rig::transport());
     let request = CompletionRequestBuilder::new(PROMPT).max_tokens(64).build();
     let response = model.call(request).await?;
     let text = assistant_text_response(&response.choice)

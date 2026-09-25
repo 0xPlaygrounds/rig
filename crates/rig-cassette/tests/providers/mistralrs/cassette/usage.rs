@@ -1,5 +1,6 @@
 //! Cassette coverage for mistral.rs usage without OpenAI `output_tokens_details`.
 
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
@@ -10,7 +11,7 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
     with_mistralrs_completions_cassette(
         "usage/chat_completion_usage_without_output_tokens_details_deserializes",
         |client| async move {
-            let model = rig::model(client.chat(model_name()));
+            let model = client.chat(model_name()).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "/no_think Explain usage accounting in one sentence.",
             )

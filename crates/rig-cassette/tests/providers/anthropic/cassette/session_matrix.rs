@@ -2,6 +2,7 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::with_anthropic_cassette;
+use rig::wire::Wire as _;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -24,9 +25,9 @@ fn models(
     rig::Model<rig::providers::anthropic::wire::Messages>,
 ) {
     (
-        rig::model(client.completion("claude-haiku-4-5")),
-        rig::model(client.completion("claude-haiku-4-5")),
-        rig::model(client.completion("claude-sonnet-4-6")),
+        client.completion("claude-haiku-4-5").on(rig::transport()),
+        client.completion("claude-haiku-4-5").on(rig::transport()),
+        client.completion("claude-sonnet-4-6").on(rig::transport()),
     )
 }
 

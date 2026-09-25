@@ -10,6 +10,7 @@ use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::providers::gemini::Gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::Gemini;
 
@@ -26,7 +27,7 @@ fn wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion("gemini-2.5-flash")),
+        model: client.completion("gemini-2.5-flash").on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -42,7 +43,7 @@ fn task_wire(
     >,
 > {
     Wire {
-        model: rig::model(client.completion("gemini-3.8-flash")),
+        model: client.completion("gemini-3.8-flash").on(rig::transport()),
         thinking: THINKING,
         route: None,
         temperature: Some(0.0),
@@ -87,7 +88,7 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,
-        model: rig::Model::new(client.completion("gemini-2.5-flash"), http.clone()),
+        model: client.completion("gemini-2.5-flash").on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

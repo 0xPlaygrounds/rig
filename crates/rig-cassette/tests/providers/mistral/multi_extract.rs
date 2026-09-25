@@ -1,4 +1,5 @@
 //! Mistral live coverage for batch multi-extract pipelines.
+use rig::wire::Wire as _;
 use std::future::IntoFuture;
 
 use anyhow::Result;
@@ -74,19 +75,19 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
     let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
-    let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(rig::model(
-        client.completion(DEFAULT_MODEL),
-    ))
+    let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(
+        client.completion(DEFAULT_MODEL).on(rig::transport()),
+    )
     .append_preamble("Extract names from the given text.")
     .retries(2)
     .build();
-    let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(rig::model(
-        client.completion(DEFAULT_MODEL),
-    ))
+    let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(
+        client.completion(DEFAULT_MODEL).on(rig::transport()),
+    )
     .append_preamble("Extract topics from the given text.")
     .retries(2)
     .build();
-    let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(rig::model(client.completion(DEFAULT_MODEL)))
+    let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(client.completion(DEFAULT_MODEL).on(rig::transport()))
         .append_preamble(
             "Extract sentiment and confidence from the given text. \
              Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",

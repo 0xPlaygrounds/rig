@@ -14,6 +14,7 @@
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_openrouter_cassette;
@@ -72,8 +73,22 @@ async fn turn(
 ) -> Vec<AssistantContent> {
     let request = request(route, history);
     match route {
-        Route::Chat => run(rig::model(client.completion(model)), request, streamed).await,
-        Route::Responses => run(rig::model(client.responses(model)), request, streamed).await,
+        Route::Chat => {
+            run(
+                client.completion(model).on(rig::transport()),
+                request,
+                streamed,
+            )
+            .await
+        }
+        Route::Responses => {
+            run(
+                client.responses(model).on(rig::transport()),
+                request,
+                streamed,
+            )
+            .await
+        }
     }
 }
 

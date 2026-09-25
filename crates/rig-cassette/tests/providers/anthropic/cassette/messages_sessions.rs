@@ -15,6 +15,7 @@ use rig::completion::{CompletionRequestBuilder, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::anthropic;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 
 use super::super::support::with_anthropic_cassette;
 use super::streaming_tools::assert_cassette_groups_multiple_tool_results;
@@ -94,9 +95,11 @@ async fn sequential_tool_calls_nonstreaming() {
     with_anthropic_cassette(
         "messages_sessions/sequential_tool_calls_nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
             .max_tokens(2048)
             .tool(Adder)
@@ -148,9 +151,11 @@ async fn sequential_tool_calls_streaming() {
     with_anthropic_cassette(
         "messages_sessions/sequential_tool_calls_streaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
             .max_tokens(2048)
             .tool(Adder)
@@ -197,9 +202,11 @@ async fn parallel_tool_use_single_turn_nonstreaming() {
     with_anthropic_cassette(
         "messages_sessions/parallel_tool_use_single_turn_nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble(TWO_TOOL_STREAM_PREAMBLE)
             .max_tokens(2048)
             .tool(AlphaSignal)
@@ -268,7 +275,9 @@ async fn long_history_replay_nonstreaming() {
     with_anthropic_cassette(
         "messages_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .on(rig::transport());
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool_use so the follow-up can echo its
@@ -382,9 +391,11 @@ async fn usage_accumulates_across_streaming_multi_turn() {
     with_anthropic_cassette(
         "messages_sessions/usage_accumulates_across_streaming_multi_turn",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
             .max_tokens(2048)
             .tool(AlphaSignal)

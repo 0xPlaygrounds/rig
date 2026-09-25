@@ -4,6 +4,7 @@
 use super::super::support::with_gemini_cassette;
 use crate::history_survival::portability::{Cell, Source};
 use rig::providers::gemini::Gemini;
+use rig::wire::Wire as _;
 
 fn params() -> Option<serde_json::Value> {
     None
@@ -16,7 +17,7 @@ fn model(
     rig::providers::gemini::completion::GenerateContent,
     rig::http_client::BoxedHttpClient,
 > {
-    rig::model(client.completion(cell.model))
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(source: Source) -> Cell {

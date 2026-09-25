@@ -48,6 +48,7 @@
 //!   `verify_path` for this dialect, and it reports the build tag and
 //!   modalities that say what produced a fixture.
 
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_request_paths, recorded_statuses_and_bodies};
@@ -69,7 +70,9 @@ use rig::completion::CompletionRequestBuilder;
 #[tokio::test]
 async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
-        let models = rig::model(client.models())
+        let models = client
+            .models()
+            .on(rig::transport())
             .call(())
             .await
             .expect("listing llama.cpp models should succeed");
@@ -150,7 +153,9 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
         // `verify()` *is* the `/props` request; there is no separate typed
         // accessor, which is itself part of the exclude decision for the
         // operational routes.
-        rig::model(client.verify())
+        client
+            .verify()
+            .on(rig::transport())
             .verify()
             .await
             .expect("an unkeyed server verifies successfully");
@@ -209,7 +214,7 @@ async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
         // The wrapper hands out the plain OpenAI configuration; the Responses
         // surface is a *different* wire over the same socket and the same
         // base URL, which is the whole shape of the exclusion.
-        let model = rig::model(client.responses(CASSETTE_MODEL));
+        let model = client.responses(CASSETTE_MODEL).on(rig::transport());
         let response = model
             .call(
                 CompletionRequestBuilder::new("/no_think Reply with the single word: ok")

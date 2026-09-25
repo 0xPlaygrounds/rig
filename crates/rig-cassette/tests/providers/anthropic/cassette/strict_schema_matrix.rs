@@ -4,6 +4,7 @@ use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_anthropic_cassette;
@@ -16,11 +17,10 @@ async fn assert_strict_schema_rejected(
     prompt: &str,
     parameters: Value,
 ) {
-    let model = rig::model(
-        client
-            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            .with_strict_tools(),
-    );
+    let model = client
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .with_strict_tools()
+        .on(rig::transport());
     let request = CompletionRequestBuilder::new(prompt)
         .max_tokens(64)
         .tool_choice(ToolChoice::Required)
@@ -1085,11 +1085,10 @@ async fn required_and_optional_property_order_schema_is_accepted() {
     with_anthropic_cassette(
         "strict_schema_matrix/required_and_optional_property_order_schema_is_accepted",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Call record_order with required_first = yes and optional_last = included.",
             )

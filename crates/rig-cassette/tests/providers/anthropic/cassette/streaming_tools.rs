@@ -1,6 +1,7 @@
 //! Anthropic streaming tools smoke test.
 
 use rig::message::AssistantContent;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use futures::StreamExt;
@@ -28,9 +29,11 @@ async fn streaming_tools_smoke() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)
@@ -53,9 +56,11 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
     with_anthropic_cassette(
         "streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble(TWO_TOOL_STREAM_PREAMBLE)
             .tool(AlphaSignal)
             .tool(BetaSignal)
@@ -117,7 +122,7 @@ async fn serial_serving_reproduces_the_recorded_request_order() {
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
             let order = OutOfOrderSignalOrder::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6).on(rig::transport()))
                 .configure_bus(rig_core::serve::ServingPolicy {
                     serial_per_handler: true,
                     ..rig_core::serve::ServingPolicy::default()
@@ -164,7 +169,7 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
         let order = OutOfOrderSignalOrder::default();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
+        let agent = rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6).on(rig::transport()))
             .preamble(TWO_TOOL_STREAM_PREAMBLE)
             .tool(OutOfOrderAlphaSignal(order.clone()))
             .tool(OutOfOrderBetaSignal(order))
@@ -651,9 +656,11 @@ async fn streaming_tools_effect_log_is_the_golden_fixture() {
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .name("golden")
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
@@ -690,7 +697,7 @@ async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
         |client| async move {
             let order = OutOfOrderSignalOrder::default();
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6).on(rig::transport()))
                 .name("golden")
                 .configure_bus(rig_core::serve::ServingPolicy {
                     serial_per_handler: true,

@@ -68,6 +68,7 @@ use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -184,7 +185,7 @@ async fn blocking_body(
     max_tokens: Option<u64>,
     expected_substring: &'static str,
 ) {
-    let model = rig::model(client.completion(model_id));
+    let model = client.completion(model_id).on(rig::transport());
     let mut request = CompletionRequestBuilder::new(prompt)
         .temperature(0.0)
         .additional_params(params);
@@ -215,7 +216,7 @@ async fn streaming_body(
     max_tokens: Option<u64>,
     expected_substring: &'static str,
 ) {
-    let model = rig::model(client.completion(model_id));
+    let model = client.completion(model_id).on(rig::transport());
     let mut request = CompletionRequestBuilder::new(prompt)
         .temperature(0.0)
         .additional_params(params);
@@ -293,7 +294,7 @@ async fn blocking_agent_prompt_answers_after_code_execution() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_agent_prompt_answers_after_code_execution",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
+            let agent = rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()))
                 .temperature(0.0)
                 .max_tokens(2000)
                 .additional_params(code_execution_params())
@@ -323,7 +324,7 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/streaming_agent_prompt_answers_after_code_execution",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
+            let agent = rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()))
                 .temperature(0.0)
                 .max_tokens(2000)
                 .additional_params(code_execution_params())
@@ -371,7 +372,9 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
         |client| async move {
             use rig::providers::gemini::completion::gemini_api_types::PartKind;
 
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Use the code execution tool to sum the integers from 1 to 100. \
                  State the number in your answer.",
@@ -542,7 +545,9 @@ async fn blocking_code_execution_with_visible_thoughts() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_code_execution_with_visible_thoughts",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2500)
@@ -582,7 +587,9 @@ async fn streaming_code_execution_with_visible_thoughts() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/streaming_code_execution_with_visible_thoughts",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2500)
@@ -624,7 +631,9 @@ async fn blocking_code_execution_with_preamble() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_code_execution_with_preamble",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .temperature(0.0)
@@ -655,7 +664,9 @@ async fn streaming_code_execution_with_preamble() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/streaming_code_execution_with_preamble",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .temperature(0.0)
@@ -913,9 +924,11 @@ async fn blocking_code_execution_replayed_in_chat_history() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .temperature(0.0)
             .max_tokens(2000)
             .additional_params(code_execution_params())
@@ -963,6 +976,7 @@ mod unit {
     use rig::error::ProviderError;
     use rig::providers::gemini::Gemini;
     use rig::test_utils::RecordingHttpClient;
+    use rig::wire::Wire as _;
     use serde_json::{Value, json};
 
     /// One `executableCode` part, exactly as recorded in
@@ -1005,10 +1019,9 @@ mod unit {
     /// stated here and carried by the real wire, driver and decoder — the
     /// same path every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, ProviderError> {
-        let model = rig::Model::new(
-            Gemini::new("unit-key").completion("gemini-2.5-flash"),
-            RecordingHttpClient::new(reply_with(parts)),
-        );
+        let model = Gemini::new("unit-key")
+            .completion("gemini-2.5-flash")
+            .on(RecordingHttpClient::new(reply_with(parts)));
         let request = rig::completion::CompletionRequestBuilder::new("unit").build();
         model.call(request).await
     }

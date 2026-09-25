@@ -49,6 +49,7 @@ use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::streaming::StreamFinal;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 
 use super::super::support::{
@@ -322,7 +323,9 @@ async fn capture_terminal_pair(
     request: rig::completion::CompletionRequest,
     sink: Observed<(StreamFinal, StreamFinal)>,
 ) {
-    let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+    let model = client
+        .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+        .on(rig::transport());
 
     let normalized =
         collect_required_terminal(model.stream(request.clone()).expect("`stream` should open"))
@@ -373,7 +376,9 @@ async fn text_turn_parity() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion_pair(
-                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                client
+                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    .on(rig::transport()),
                 text_request(),
                 sink,
             )
@@ -397,7 +402,9 @@ async fn tool_call_turn_parity() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion_pair(
-                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                client
+                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    .on(rig::transport()),
                 tool_request(),
                 sink,
             )

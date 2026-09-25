@@ -11,6 +11,7 @@ use crate::support::{
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, MemoryOp};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig_ecs::{
     agent::MessageParts,
     bus::{EffectOutcome, Policy},
@@ -218,7 +219,7 @@ async fn host_bus_memory_effect_log() {
             "corpus_memory/host_bus_memory",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     false,
                 );

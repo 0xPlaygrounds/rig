@@ -6,6 +6,7 @@ use super::chat_tool_lifecycle_matrix::{
 };
 use crate::ecs_agent::EcsAgent;
 use anyhow::Result;
+use rig::wire::Wire as _;
 use rig::{providers::openai, tool::Tool};
 use rig_ecs::{
     agent::{AdditionalParams, Failure, MaxTokens, ToolCallSlot},
@@ -93,7 +94,11 @@ async fn run_cell(
 ) -> Result<()> {
     assert_eq!(cell.surface, Surface::Agent);
     let invocations = InvocationLog::default();
-    let mut ecs = EcsAgent::new(rig::model(client.chat(model_name(cell.model))), PREAMBLE, 1);
+    let mut ecs = EcsAgent::new(
+        client.chat(model_name(cell.model)).on(rig::transport()),
+        PREAMBLE,
+        1,
+    );
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         MaxTokens(Some(128)),
         AdditionalParams(Some(

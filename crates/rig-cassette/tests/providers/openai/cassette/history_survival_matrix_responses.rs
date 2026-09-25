@@ -3,6 +3,7 @@
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::wire::Wire as _;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "reasoning": { "effort": "low" } }))
@@ -15,7 +16,7 @@ fn model(
     rig::providers::openai::responses_api::wire::Responses,
     rig::http_client::BoxedHttpClient,
 > {
-    rig::model(client.openai.responses(cell.model))
+    client.openai.responses(cell.model).on(rig::transport())
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

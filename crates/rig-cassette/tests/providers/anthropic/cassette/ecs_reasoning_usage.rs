@@ -4,6 +4,7 @@ use super::reasoning_usage_matrix::{
 };
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
+use rig::wire::Wire as _;
 use rig::{effect::Outcome, providers::anthropic};
 use rig_ecs::{
     agent::{AdditionalParams, DefaultMaxTurns, MaxTokens, Turn},
@@ -21,7 +22,9 @@ async fn agent_blocking_thinking() {
                 "reasoning_usage_matrix/agent_blocking_thinking",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)),
+                        client
+                            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                            .on(rig::transport()),
                         "You are a meticulous arithmetic assistant.",
                         1,
                     );

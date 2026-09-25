@@ -1,5 +1,6 @@
 //! Copilot structured output coverage, including the migrated example path.
 
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -47,7 +48,8 @@ async fn structured_output_smoke() {
     with_copilot_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL))).build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport())).build();
 
             let response: SmokeStructuredOutput = agent
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
@@ -66,7 +68,7 @@ async fn prompt_typed_and_output_schema() {
     with_copilot_cassette(
         "structured_output/prompt_typed_and_output_schema",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport()))
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",
                 )
@@ -90,7 +92,7 @@ async fn prompt_typed_and_output_schema() {
             );
 
             let agent_with_schema =
-                rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
+                rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport()))
                     .preamble(
                         "You are a helpful weather assistant. Respond with realistic weather data.",
                     )

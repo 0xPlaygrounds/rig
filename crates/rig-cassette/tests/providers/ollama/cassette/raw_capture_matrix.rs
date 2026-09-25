@@ -44,6 +44,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 
 use rig::providers::ollama;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -98,9 +99,13 @@ async fn raw_round_trips_provider_type() {
     with_ollama_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -146,9 +151,13 @@ async fn raw_exposes_ollama_durations() {
     with_ollama_cassette(
         "raw_capture_matrix/raw_exposes_ollama_durations",
         |client| async move {
-            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -207,9 +216,13 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_ollama_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;

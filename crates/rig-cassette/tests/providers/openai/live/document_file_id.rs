@@ -9,6 +9,7 @@ use rig::message::{
 };
 use rig::providers::openai;
 use rig::providers::openai::wire::{OpenAI, Route};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
@@ -185,7 +186,7 @@ async fn responses_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
         let client = OpenAI::from_env()
             .expect("config should build from env");
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(openai::GPT_5_5)))
+        let agent = rig::AgentBuilder::new(client.completion(openai::GPT_5_5).on(rig::transport()))
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();
@@ -224,7 +225,7 @@ async fn chat_completions_document_file_id_roundtrip_live() {
         let client = OpenAI::from_env()
             .expect("config should build from env")
             .with_route(Route::Chat);
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(openai::GPT_5_5)))
+        let agent = rig::AgentBuilder::new(client.completion(openai::GPT_5_5).on(rig::transport()))
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();

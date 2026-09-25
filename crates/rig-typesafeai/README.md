@@ -41,7 +41,7 @@ let query = Assessment {
 # Ok::<(), Error>(())
 ```
 
-With a Jev model (`Model::new(Jev::from_env()?, http)`), evaluate it directly:
+With a Jev model (`Jev::from_env()?.on(http)`), evaluate it directly:
 
 ```rust,ignore
 let answers: Assessment<NoulAnswer, NoulAnswer> =

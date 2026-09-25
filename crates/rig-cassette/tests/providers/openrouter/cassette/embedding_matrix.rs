@@ -9,6 +9,7 @@
 
 use super::super::support::with_openrouter_cassette;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use crate::support::{
     EMBEDDING_INPUTS, EmbeddingMatrixExpectations, assert_normalized_embedding_response,
@@ -32,7 +33,9 @@ async fn normalized_response_is_complete() {
     with_openrouter_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = rig::model(client.embedding("openai/text-embedding-3-small", None));
+            let model = client
+                .embedding("openai/text-embedding-3-small", None)
+                .on(rig::transport());
             let response = model
                 .call(inputs())
                 .await
@@ -49,7 +52,9 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_openrouter_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = rig::model(client.embedding("openai/text-embedding-3-small", None));
+        let model = client
+            .embedding("openai/text-embedding-3-small", None)
+            .on(rig::transport());
         let response = model
             .call(inputs())
             .await
@@ -77,7 +82,9 @@ async fn raw_round_trips() {
 async fn raw_route_parity() {
     const SCENARIO: &str = "embedding_matrix/raw_route_parity";
     with_openrouter_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = rig::model(client.embedding("openai/text-embedding-3-small", None));
+        let model = client
+            .embedding("openai/text-embedding-3-small", None)
+            .on(rig::transport());
         let first = model
             .call(inputs())
             .await
@@ -115,7 +122,10 @@ async fn single_text_convenience() {
     with_openrouter_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = rig::model(client.embedding("openai/text-embedding-3-small", None)).boxed();
+            let model = client
+                .embedding("openai/text-embedding-3-small", None)
+                .on(rig::transport())
+                .boxed();
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
@@ -139,7 +149,9 @@ async fn error_preserves_provider_body() {
     with_openrouter_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = rig::model(client.embedding("no-such/embedding-model", None));
+            let model = client
+                .embedding("no-such/embedding-model", None)
+                .on(rig::transport());
             let error = model
                 .call(inputs())
                 .await

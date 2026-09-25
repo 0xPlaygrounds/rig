@@ -1,6 +1,7 @@
 //! Generated images fed back as input on OpenAI: see `common/image_inputs.rs`.
 
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::with_openai_cassette;
@@ -20,13 +21,16 @@ async fn generated_image_as_user_content() {
         "image_input_matrix/generated_image_as_user_content",
         |client| async move {
             let bytes = image_inputs::generate(
-                &rig::model(client.openai.image_generation(GENERATOR)),
+                &client
+                    .openai
+                    .image_generation(GENERATOR)
+                    .on(rig::transport()),
                 Some(1024),
                 quality(),
             )
             .await;
             image_inputs::as_user_content(
-                &rig::model(client.openai.chat("gpt-4.1-mini")),
+                &client.openai.chat("gpt-4.1-mini").on(rig::transport()),
                 &bytes,
                 None,
             )
@@ -45,13 +49,19 @@ async fn generated_image_as_tool_result() {
         "image_input_matrix/generated_image_as_tool_result",
         |client| async move {
             let bytes = image_inputs::generate(
-                &rig::model(client.openai.image_generation(GENERATOR)),
+                &client
+                    .openai
+                    .image_generation(GENERATOR)
+                    .on(rig::transport()),
                 Some(1024),
                 quality(),
             )
             .await;
             image_inputs::as_tool_result(
-                &rig::model(client.openai.responses(openai::GPT_5_6)),
+                &client
+                    .openai
+                    .responses(openai::GPT_5_6)
+                    .on(rig::transport()),
                 &bytes,
                 Some(json!({ "reasoning": { "effort": "low" }, "store": false })),
             )

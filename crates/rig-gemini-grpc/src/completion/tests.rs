@@ -36,10 +36,9 @@ impl Transport<GenerateContent> for Scripted {
 fn scripted(
     replies: Vec<Result<GenerateContentResponse, ProviderError>>,
 ) -> Model<GenerateContent, Scripted> {
-    Model::new(
-        GenerateContent::new(GEMINI_2_5_FLASH),
-        Scripted(std::sync::Arc::new(std::sync::Mutex::new(replies))),
-    )
+    GenerateContent::new(GEMINI_2_5_FLASH).on(Scripted(std::sync::Arc::new(std::sync::Mutex::new(
+        replies,
+    ))))
 }
 
 fn hello() -> CompletionRequest {
@@ -788,7 +787,9 @@ fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
     ];
     let recording = Recording::default();
     futures::executor::block_on(
-        Model::new(GenerateContent::new(GEMINI_2_5_FLASH), recording.clone()).call(request),
+        GenerateContent::new(GEMINI_2_5_FLASH)
+            .on(recording.clone())
+            .call(request),
     )
     .expect("the call succeeds");
 

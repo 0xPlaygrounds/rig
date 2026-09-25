@@ -16,10 +16,10 @@
 //! model.
 //!
 //! ```no_run
+//! use rig_core::wire::Wire as _;
 //! use rig_bedrock::{client::BedrockRuntime, completion::{AMAZON_NOVA_LITE, Converse}};
-//! use rig_core::Model;
 //!
-//! let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env());
+//! let model = Converse::new(AMAZON_NOVA_LITE).on(BedrockRuntime::from_env());
 //! # let _ = model;
 //! ```
 

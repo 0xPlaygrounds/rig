@@ -2,13 +2,16 @@
 
 use rig::image_generation::ImageGenerationRequestBuilder;
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn nano_banana_image_generation_smoke() {
     super::super::support::with_gemini_cassette(
         "image_generation/nano_banana_image_generation_smoke",
         |client| async move {
-            let model = rig::model(client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE));
+            let model = client
+                .image_generation(gemini::GEMINI_2_5_FLASH_IMAGE)
+                .on(rig::transport());
             let response = model
                 .call(
                     ImageGenerationRequestBuilder::new(

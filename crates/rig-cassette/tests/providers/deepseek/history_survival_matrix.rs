@@ -3,6 +3,7 @@
 //! rule tracks the call ids.
 
 use rig::providers::deepseek;
+use rig::wire::Wire as _;
 
 use super::support::with_deepseek_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
@@ -13,7 +14,7 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
-    rig::model(client.completion(cell.model))
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

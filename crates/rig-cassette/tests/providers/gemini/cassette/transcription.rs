@@ -2,6 +2,7 @@
 
 use rig::providers::gemini;
 use rig::transcription::TranscriptionRequestBuilder;
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
@@ -9,7 +10,9 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[tokio::test]
 async fn transcription_smoke() {
     with_gemini_cassette("transcription/transcription_smoke", |client| async move {
-        let model = rig::model(client.transcription(gemini::completion::GEMINI_3_FLASH_PREVIEW));
+        let model = client
+            .transcription(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+            .on(rig::transport());
         let response = model
             .call(
                 TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)

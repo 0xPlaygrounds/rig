@@ -44,6 +44,7 @@
 //!   - Out-of-process death (kill -9, OOM, power loss) runs no in-process code;
 //!     surviving that would require persisting the accumulator to disk.
 
+use rig::wire::Wire as _;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -352,7 +353,7 @@ async fn run_scenario(
     http: &reqwest::Client,
     api_key: &str,
 ) -> anyhow::Result<Report> {
-    let model = rig::model(Gemini::from_env()?.completion(MODEL));
+    let model = Gemini::from_env()?.completion(MODEL).on(rig::transport());
 
     let stream = model.stream(
         CompletionRequestBuilder::new(prompt)

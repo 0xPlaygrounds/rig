@@ -14,6 +14,7 @@ use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_serving_cassette};
@@ -50,7 +51,7 @@ async fn two_tools(
     concurrency: usize,
     events: bool,
 ) -> rig::cassette::effect_log::EffectLog {
-    let builder = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+    let builder = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
         .name("golden")
         .configure_bus(bus)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
@@ -177,19 +178,20 @@ async fn capacity_one_effect_log_is_the_golden_fixture() {
 async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-            .name("golden")
-            .configure_bus(rig::serve::ServingPolicy {
-                serial_per_handler: true,
-                ..rig::serve::ServingPolicy::default()
-            })
-            .preamble(TOOLS_PREAMBLE)
-            .temperature(0.0)
-            .tool(Adder)
-            .memory(rig::memory::InMemoryConversationMemory::new())
-            .conversation("golden-conversation")
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .configure_bus(rig::serve::ServingPolicy {
+                    serial_per_handler: true,
+                    ..rig::serve::ServingPolicy::default()
+                })
+                .preamble(TOOLS_PREAMBLE)
+                .temperature(0.0)
+                .tool(Adder)
+                .memory(rig::memory::InMemoryConversationMemory::new())
+                .conversation("golden-conversation")
+                .record_to(recorder.clone())
+                .build();
         let response = agent
             .prompt(ADD_PROMPT)
             .max_turns(3)
@@ -221,15 +223,19 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
 async fn model_route_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_serving_cassette("corpus_serving/model_route", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-            .name("golden")
-            .preamble(TOOLS_PREAMBLE)
-            .temperature(0.0)
-            .model_route("fast", rig::model(client.completion(CLAUDE_HAIKU_4_5)))
-            .tool(Adder)
-            .add_hook(RouteAfterFirstTurn)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(TOOLS_PREAMBLE)
+                .temperature(0.0)
+                .model_route(
+                    "fast",
+                    client.completion(CLAUDE_HAIKU_4_5).on(rig::transport()),
+                )
+                .tool(Adder)
+                .add_hook(RouteAfterFirstTurn)
+                .record_to(recorder.clone())
+                .build();
         let response = agent
             .prompt(ADD_PROMPT)
             .max_turns(3)
@@ -266,14 +272,18 @@ async fn model_route_effect_log_is_the_golden_fixture() {
 async fn model_route_unselected_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-            .name("golden")
-            .preamble(TOOLS_PREAMBLE)
-            .temperature(0.0)
-            .model_route("fast", rig::model(client.completion(CLAUDE_HAIKU_4_5)))
-            .tool(Adder)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(TOOLS_PREAMBLE)
+                .temperature(0.0)
+                .model_route(
+                    "fast",
+                    client.completion(CLAUDE_HAIKU_4_5).on(rig::transport()),
+                )
+                .tool(Adder)
+                .record_to(recorder.clone())
+                .build();
         let response = agent
             .prompt(ADD_PROMPT)
             .max_turns(3)
@@ -318,7 +328,7 @@ async fn over_host_bus(client: Anthropic, streamed: bool) -> rig::cassette::effe
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
-                rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
             )),
         )
         .expect("a fresh key");

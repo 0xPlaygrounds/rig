@@ -1,6 +1,7 @@
 //! Cassette-backed Venice text-to-speech smoke test.
 
 use rig::providers::venice;
+use rig::wire::Wire as _;
 
 use super::super::support::with_venice_direct_cassette;
 use rig::audio_generation::AudioGenerationRequestBuilder;
@@ -17,7 +18,7 @@ async fn audio_generation_smoke() {
     with_venice_direct_cassette(
         "audio_generation/audio_generation_smoke",
         |client, http| async move {
-            let model = rig::Model::new(client.audio_generation(venice::TTS_KOKORO), http.clone());
+            let model = client.audio_generation(venice::TTS_KOKORO).on(http.clone());
             let response = model
                 .call(
                     AudioGenerationRequestBuilder::new("Rig speaks.", "af_sky")

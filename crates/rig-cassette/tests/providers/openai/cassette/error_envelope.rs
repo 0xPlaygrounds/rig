@@ -9,6 +9,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 use futures::StreamExt;
 use rig::error::ErrorReport;
+use rig::wire::Wire as _;
 
 use super::super::support::with_openai_cassette;
 use rig::completion::CompletionRequestBuilder;
@@ -18,7 +19,10 @@ async fn nonexistent_model_error_preserves_status_and_body() {
     with_openai_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = rig::model(client.openai.completion("gpt-4o-mini-nonexistent-rig-test"));
+            let model = client
+                .openai
+                .completion("gpt-4o-mini-nonexistent-rig-test")
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new("Say hi.")
                 .max_tokens(16)
                 .build();
@@ -55,7 +59,10 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_openai_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = rig::model(client.openai.completion("gpt-4o-mini-nonexistent-rig-test"));
+            let model = client
+                .openai
+                .completion("gpt-4o-mini-nonexistent-rig-test")
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new("Say hi.")
                 .max_tokens(16)
                 .build();

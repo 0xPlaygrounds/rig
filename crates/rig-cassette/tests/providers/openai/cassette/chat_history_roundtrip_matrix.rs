@@ -29,6 +29,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -207,7 +208,10 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = rig::model(client.openai.chat(model_name(cell.model)));
+    let model = client
+        .openai
+        .chat(model_name(cell.model))
+        .on(rig::transport());
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The raw surface is the same reply: the native chat-completions

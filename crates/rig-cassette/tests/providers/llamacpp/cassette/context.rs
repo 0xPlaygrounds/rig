@@ -2,6 +2,7 @@
 
 use super::super::cassette_support::*;
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn context_smoke() {
@@ -10,7 +11,7 @@ async fn context_smoke() {
             .iter()
             .copied()
             .fold(
-                rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL))),
+                rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport())),
                 |builder, doc| builder.context(doc),
             )
             .build();

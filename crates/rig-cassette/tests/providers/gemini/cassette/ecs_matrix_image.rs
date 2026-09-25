@@ -8,6 +8,7 @@
 
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
@@ -22,7 +23,9 @@ fn wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
+        model: client
+            .completion(GEMINI_3_FLASH_PREVIEW)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

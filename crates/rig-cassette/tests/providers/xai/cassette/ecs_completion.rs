@@ -3,6 +3,7 @@ use crate::ecs_agent::EcsAgent;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 use crate::xai::support::with_xai_cassette;
 use rig::providers::xai;
+use rig::wire::Wire as _;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {
@@ -10,7 +11,7 @@ async fn completion_smoke() {
         async {
             with_xai_cassette("agent/completion_smoke", |client| async move {
                 let mut ecs = EcsAgent::new(
-                    rig::model(client.completion(xai::GROK_3_MINI)),
+                    client.completion(xai::GROK_3_MINI).on(rig::transport()),
                     BASIC_PREAMBLE,
                     1,
                 );

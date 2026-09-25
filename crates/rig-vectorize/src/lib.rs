@@ -6,13 +6,14 @@
 //! # Example
 //!
 //! ```no_run
+//! use rig_core::wire::Wire as _;
 //! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
 //! # fn example() -> anyhow::Result<()> {
 //! let openai = openai::wire::OpenAI::from_env()?;
 //! let http = rig_reqwest::shared();
-//! let embedding_model = rig_core::Model::new(openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None), http);
+//! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None).on(http);
 //!
 //! let vector_store = VectorizeVectorStore::new(
 //!     embedding_model,

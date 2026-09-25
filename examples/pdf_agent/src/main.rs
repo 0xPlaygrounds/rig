@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     println!("Successfully loaded and chunked PDF documents");
 
     // Create embedding model
-    let model = rig::model(client.embedding("bge-m3", None));
+    let model = client.embedding("bge-m3", None).on(rig::transport());
 
     // Create embeddings builder
     let mut builder = EmbeddingsBuilder::new(model.clone());
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
     println!("Successfully created vector store and index");
 
     // Create RAG agent
-    let rag_agent = AgentBuilder::new(rig::model(client.completion("deepseek-r1")))
+    let rag_agent = AgentBuilder::new(client.completion("deepseek-r1").on(rig::transport()))
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
         .dynamic_context(1, index)
         .build();

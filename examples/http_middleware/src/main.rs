@@ -79,10 +79,11 @@ async fn main() -> Result<()> {
     let http_client = BoxedHttpClient::new(rig::http_client::ReqwestClient::default())
         .with_middleware(WireLogger);
 
-    let agent = AgentBuilder::new(Model::new(
-        Anthropic::new(api_key).completion(anthropic::completion::CLAUDE_SONNET_4_6),
-        http_client,
-    ))
+    let agent = AgentBuilder::new(
+        Anthropic::new(api_key)
+            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            .on(http_client),
+    )
     .preamble("You are a helpful assistant.")
     .build();
 

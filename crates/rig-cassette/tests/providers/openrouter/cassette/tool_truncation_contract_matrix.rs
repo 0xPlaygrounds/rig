@@ -35,6 +35,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/tool_truncation_contract_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -194,7 +195,9 @@ impl Tool for FileReport {
 }
 
 async fn run_model(client: OpenAI, cell: Cell) -> Observation {
-    let model = rig::model(client.completion(model_name(cell.model)));
+    let model = client
+        .completion(model_name(cell.model))
+        .on(rig::transport());
     match cell.transport {
         Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => Observation {
@@ -241,18 +244,22 @@ async fn run_model(client: OpenAI, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAI, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(model_name(cell.model))))
-        .preamble(PREAMBLE)
-        .tool(FileReport {
-            invocations: Arc::clone(&invocations),
-        })
-        .additional_params(json!({
-            "tool_choice": "required",
-            "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-        }))
-        .max_tokens(max_tokens(cell.budget))
-        .default_max_turns(1)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        client
+            .completion(model_name(cell.model))
+            .on(rig::transport()),
+    )
+    .preamble(PREAMBLE)
+    .tool(FileReport {
+        invocations: Arc::clone(&invocations),
+    })
+    .additional_params(json!({
+        "tool_choice": "required",
+        "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
+    }))
+    .max_tokens(max_tokens(cell.budget))
+    .default_max_turns(1)
+    .build();
     let mut errors = Vec::new();
     match cell.transport {
         Transport::Blocking => {

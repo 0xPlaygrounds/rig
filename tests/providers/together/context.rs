@@ -2,6 +2,7 @@
 
 use rig::providers::openai::wire::{OpenAI, TOGETHER};
 use rig::providers::together;
+use rig::wire::Wire as _;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
@@ -13,9 +14,11 @@ async fn context_smoke() {
         .iter()
         .copied()
         .fold(
-            rig::AgentBuilder::new(rig::model(
-                provider.completion(together::MIXTRAL_8X7B_INSTRUCT_V0_1),
-            )),
+            rig::AgentBuilder::new(
+                provider
+                    .completion(together::MIXTRAL_8X7B_INSTRUCT_V0_1)
+                    .on(rig::transport()),
+            ),
             rig::AgentBuilder::context,
         )
         .build();

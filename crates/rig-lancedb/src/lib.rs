@@ -359,6 +359,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     ///
     /// # Example
     /// ```no_run
+    /// use rig_core::wire::Wire as _;
     /// use rig_core::providers::openai::{self, wire::OpenAI};
     /// use rig_core::vector_store::VectorStoreIndex;
     /// use rig_core::vector_store::request::VectorSearchRequest;
@@ -367,7 +368,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     /// # async fn example(table: lancedb::Table) -> Result<(), anyhow::Error> {
     /// let openai_client = OpenAI::from_env()?;
     /// let http = rig_reqwest::shared();
-    /// let model = rig_core::Model::new(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None), http);
+    /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None).on(http);
     /// let vector_store_index =
     ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///

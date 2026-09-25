@@ -1,4 +1,5 @@
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use rig::sqlite::{
@@ -147,7 +148,9 @@ async fn vector_search_test() {
     });
 
     let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     let embeddings = create_embeddings(model.clone()).await;
 
@@ -228,7 +231,9 @@ async fn insert_documents_test() {
     });
 
     let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
     let embeddings = create_embeddings(model.clone()).await;
 
     let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), model)

@@ -9,6 +9,7 @@
 //! model.
 
 use super::super::cassette_support::*;
+use rig::wire::Wire as _;
 
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 use rig::Embed;
@@ -22,7 +23,9 @@ struct Greetings {
 #[tokio::test]
 async fn embeddings_smoke() {
     with_llamacpp_embeddings_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, None));
+        let model = client
+            .embedding(CASSETTE_EMBEDDING_MODEL, None)
+            .on(rig::transport());
 
         let embeddings = model
             .call(
@@ -45,9 +48,11 @@ async fn derive_document_embeddings() {
     with_llamacpp_embeddings_cassette(
         "embeddings/derive_document_embeddings",
         |client| async move {
-            let embeddings = rig::embeddings::EmbeddingsBuilder::new(rig::model(
-                client.embedding(CASSETTE_EMBEDDING_MODEL, None),
-            ))
+            let embeddings = rig::embeddings::EmbeddingsBuilder::new(
+                client
+                    .embedding(CASSETTE_EMBEDDING_MODEL, None)
+                    .on(rig::transport()),
+            )
             .document(Greetings {
                 message: "Hello, world!".to_string(),
             })

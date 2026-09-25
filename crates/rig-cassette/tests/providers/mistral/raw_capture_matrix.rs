@@ -38,6 +38,7 @@
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::providers::mistral;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -112,7 +113,7 @@ async fn raw_round_trips_mistral_type() {
         "raw_capture_matrix/raw_round_trips_mistral_type",
         |client| {
             capture_completion(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 request(),
                 observed.clone(),
             )
@@ -155,7 +156,7 @@ async fn raw_exposes_object_and_service_tier() {
         "raw_capture_matrix/raw_exposes_object_and_service_tier",
         |client| {
             capture_completion(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 request(),
                 observed.clone(),
             )
@@ -196,7 +197,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 request(),
                 observed.clone(),
             )
@@ -274,7 +275,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
         "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call",
         |client| {
             capture_completion(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 tool_request(),
                 observed.clone(),
             )

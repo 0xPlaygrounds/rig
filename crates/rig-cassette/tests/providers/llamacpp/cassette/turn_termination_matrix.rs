@@ -44,6 +44,7 @@
 //! behaviour cannot leave a cell green while covering nothing.
 
 use rig::completion::FinishReason;
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_interaction_bodies, recorded_json_request};
@@ -119,7 +120,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/blocking_truncated_turn",
         |client| async move {
-            rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
                 .max_tokens(TINY_CAP)
@@ -164,11 +165,12 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/streaming_truncated_turn",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
-                .preamble(CONCISE_PREAMBLE)
-                .temperature(0.0)
-                .max_tokens(TINY_CAP)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
+                    .preamble(CONCISE_PREAMBLE)
+                    .temperature(0.0)
+                    .max_tokens(TINY_CAP)
+                    .build();
 
             let mut stream = agent.prompt(TRUNCATING_PROMPT).add_hook(probe).stream();
             let _ = collect_stream_final_response(&mut stream).await;
@@ -197,7 +199,7 @@ async fn blocking_completed_turn_reports_stop() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/blocking_completed_turn",
         |client| async move {
-            rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
                 .max_tokens(ROOMY_CAP)
@@ -235,7 +237,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/blocking_tool_turn",
         |client| async move {
-            rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
                 .preamble(TOOL_PREAMBLE)
                 .temperature(0.0)
                 .max_tokens(ROOMY_CAP)
@@ -275,7 +277,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/escalating_retry",
         |client| async move {
-            rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            rig::AgentBuilder::new(client.completion(CASSETTE_MODEL).on(rig::transport()))
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
                 // The agent baseline. Neither attempt should report it: the

@@ -43,6 +43,7 @@
 use rig::completion::CompletionRequest;
 use rig::providers::openai;
 use rig::providers::openai::wire::GROQ;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -137,7 +138,7 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
         |client| {
             capture_completion_pair(
-                rig::model(client.completion(RAW_CAPTURE_MODEL)),
+                client.completion(RAW_CAPTURE_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -195,7 +196,7 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
         "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id",
         |client| {
             capture_completion(
-                rig::model(client.completion(RAW_CAPTURE_MODEL)),
+                client.completion(RAW_CAPTURE_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )

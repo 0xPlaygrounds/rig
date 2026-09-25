@@ -32,6 +32,7 @@
 //! recording that stopped calling fails instead of covering nothing.
 
 use rig::message::AssistantContent;
+use rig::wire::Wire as _;
 
 use futures::StreamExt as _;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
@@ -168,7 +169,7 @@ async fn stream_raw_round_trips_terminal_type() {
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| {
             capture_text_and_terminal(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 request(),
                 observed.clone(),
             )
@@ -213,7 +214,7 @@ async fn stream_raw_exposes_terminal_service_tier() {
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier",
         |client| {
             capture_terminal(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 request(),
                 observed.clone(),
             )
@@ -258,7 +259,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
         |client| async move {
             // No shared capture helper collects completed tool calls beside
             // the terminal record, so this cell drives the stream itself.
-            let model = rig::model(client.completion(DEFAULT_MODEL));
+            let model = client.completion(DEFAULT_MODEL).on(rig::transport());
             let stream = model.stream(tool_request())?;
             sink.put(collect_tool_calls_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())

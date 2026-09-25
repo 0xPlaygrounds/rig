@@ -5,6 +5,7 @@ use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
 };
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -176,7 +177,7 @@ async fn permission_control_prompt_example() -> Result<()> {
         |client| async move {
             let cleanup = FileCleanup::new("blocking")?;
 
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: cleanup.path().to_path_buf(),
@@ -219,7 +220,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         |client| async move {
             let cleanup = FileCleanup::new("streaming")?;
 
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: cleanup.path().to_path_buf(),

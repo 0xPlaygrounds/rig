@@ -64,6 +64,7 @@ use rig::completion::PromptError;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::streaming::StreamedUserContent;
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use super::super::support::with_anthropic_cassette;
@@ -154,9 +155,11 @@ impl AgentHook for OnMalformed {
 }
 
 fn agent(client: Anthropic) -> rig::agent::Agent {
-    rig::AgentBuilder::new(rig::model(
-        client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-    ))
+    rig::AgentBuilder::new(
+        client
+            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            .on(rig::transport()),
+    )
     .preamble(STREAMING_TOOLS_PREAMBLE)
     .tool(Adder)
     .tool(Subtract)

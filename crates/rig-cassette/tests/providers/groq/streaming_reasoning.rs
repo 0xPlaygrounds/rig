@@ -1,6 +1,7 @@
 //! Migrated from `examples/groq_streaming_reasoning.rs`.
 
 use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
@@ -10,10 +11,13 @@ use super::STREAMING_REASONING_MODEL;
 #[ignore = "requires GROQ_API_KEY"]
 async fn parsed_reasoning_stream() {
     let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let agent = rig::AgentBuilder::new(rig::model(groq.completion(STREAMING_REASONING_MODEL)))
-        .preamble("You are a comedian here to entertain the user using humour and jokes.")
-        .additional_params(serde_json::json!({ "reasoning_format": "parsed" }))
-        .build();
+    let agent = rig::AgentBuilder::new(
+        groq.completion(STREAMING_REASONING_MODEL)
+            .on(rig::transport()),
+    )
+    .preamble("You are a comedian here to entertain the user using humour and jokes.")
+    .additional_params(serde_json::json!({ "reasoning_format": "parsed" }))
+    .build();
 
     let mut stream = agent.prompt("Entertain me!").stream();
     let response = collect_stream_final_response(&mut stream)

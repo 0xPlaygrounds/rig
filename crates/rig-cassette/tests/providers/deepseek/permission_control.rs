@@ -6,6 +6,7 @@ use rig::agent::{
 };
 use rig::providers::deepseek;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -171,7 +172,7 @@ async fn permission_control_prompt_example() -> Result<()> {
         |client| async move {
             let _cleanup = FileCleanup::new("prompt")?;
 
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
+            let agent = rig::AgentBuilder::new(client.completion(deepseek::DEEPSEEK_V4_FLASH).on(rig::transport()))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: _cleanup.path.clone(),
@@ -220,7 +221,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         |client| async move {
             let _cleanup = FileCleanup::new("streaming")?;
 
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
+            let agent = rig::AgentBuilder::new(client.completion(deepseek::DEEPSEEK_V4_FLASH).on(rig::transport()))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: _cleanup.path.clone(),

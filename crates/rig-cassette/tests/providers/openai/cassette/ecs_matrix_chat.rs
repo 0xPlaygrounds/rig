@@ -7,6 +7,7 @@
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
 use rig::providers::openai::{GPT_5_MINI, GPT_5_NANO};
+use rig::wire::Wire as _;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, world::run_world};
@@ -14,8 +15,8 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: rig::model(client.openai.chat(GPT_5_MINI)),
-        route: Some(rig::model(client.openai.chat(GPT_5_NANO))),
+        model: client.openai.chat(GPT_5_MINI).on(rig::transport()),
+        route: Some(client.openai.chat(GPT_5_NANO).on(rig::transport())),
         temperature: None,
         additional_params: None,
     }
@@ -220,7 +221,10 @@ crate::matrix::case_matrix! {
 fn reasoning_wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: rig::model(client.openai.chat(rig::providers::openai::GPT_5_MINI)),
+        model: client
+            .openai
+            .chat(rig::providers::openai::GPT_5_MINI)
+            .on(rig::transport()),
         route: None,
         temperature: None,
         additional_params: None,

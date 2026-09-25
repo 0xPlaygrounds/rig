@@ -6,6 +6,7 @@
 use futures::StreamExt;
 use rig::error::ProviderError;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::wire::Wire as _;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};
 use crate::support::assert_transport_request_id;
@@ -18,7 +19,7 @@ async fn auth_rejection_carries_identity() {
     with_anthropic_cassette_bogus_key(
         "error_identity_edge/auth_rejection_carries_identity",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let error = model
                 .call(
                     CompletionRequestBuilder::new("Never authenticated")
@@ -54,7 +55,7 @@ async fn validation_error_carries_identity() {
     with_anthropic_cassette(
         "error_identity_edge/validation_error_carries_identity",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let error = model
                 .call(
                     CompletionRequestBuilder::new("Never validated")
@@ -100,7 +101,9 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
     with_anthropic_cassette(
         "error_identity_edge/streaming_connect_4xx_matches_blocking_richness",
         |client| async move {
-            let model = rig::model(client.completion("claude-nonexistent-model-for-error-edge"));
+            let model = client
+                .completion("claude-nonexistent-model-for-error-edge")
+                .on(rig::transport());
             let result = model.stream(
                 CompletionRequestBuilder::new("Never streamed")
                     .max_tokens(16)
@@ -149,7 +152,7 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
     with_anthropic_cassette_bogus_key(
         "error_identity_edge/streaming_connect_auth_rejection_classifies_with_contract",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let result = model.stream(
                 CompletionRequestBuilder::new("Never streamed")
                     .max_tokens(16)
@@ -193,10 +196,11 @@ async fn streamed_agent_run_failure_exposes_error_identity_accessors() {
     with_anthropic_cassette_bogus_key(
         "error_identity_edge/streamed_agent_run_failure_exposes_error_identity_accessors",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble("You are a terse assistant.")
-                .max_tokens(16)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("You are a terse assistant.")
+                    .max_tokens(16)
+                    .build();
 
             let mut stream = agent
                 .prompt(rig::completion::Message::user("Never authenticated"))

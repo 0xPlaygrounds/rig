@@ -615,10 +615,11 @@ fn merge_provider_tools_into_additional_params(
 /// sending when the history came from a caller.
 ///
 /// ```no_run
-/// use rig_core::{Model, completion::CompletionRequestBuilder, providers::openai::OpenAI};
+/// use rig_core::wire::Wire as _;
+/// use rig_core::{completion::CompletionRequestBuilder, providers::openai::OpenAI};
 ///
 /// # async fn run(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-/// let model = Model::new(OpenAI::from_env()?.completion("gpt-4o"), http);
+/// let model = OpenAI::from_env()?.completion("gpt-4o").on(http);
 /// let request = CompletionRequestBuilder::new("Who are you?")
 ///     .temperature(0.5)
 ///     .build();

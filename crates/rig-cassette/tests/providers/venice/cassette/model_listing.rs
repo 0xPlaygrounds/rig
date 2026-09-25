@@ -1,11 +1,14 @@
 //! Venice model listing smoke test.
 
 use super::super::support::with_venice_cassette;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_venice_cassette("model_listing/list_models_smoke", |client| async move {
-        let models = rig::model(client.models())
+        let models = client
+            .models()
+            .on(rig::transport())
             .call(())
             .await
             .expect("listing Venice models should succeed");

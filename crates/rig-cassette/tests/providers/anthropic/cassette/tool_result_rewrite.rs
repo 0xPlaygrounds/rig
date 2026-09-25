@@ -8,6 +8,7 @@
 //! the model's answer never contains it — and the blocking and streaming tests
 //! assert the same behavior, since both drivers share the same tool seam.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, OutcomeAction, OutcomeEvent};
@@ -144,9 +145,11 @@ async fn tool_result_redacted_by_hook_blocking() {
         "tool_result_rewrite/tool_result_redacted_by_hook_blocking",
         move |client| async move {
             let execution_probe = tool.clone();
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble(PREAMBLE)
             .tool(tool)
             .add_hook(RedactSsnFromResult)
@@ -179,9 +182,11 @@ async fn tool_result_redacted_by_hook_streaming() {
         "tool_result_rewrite/tool_result_redacted_by_hook_streaming",
         move |client| async move {
             let execution_probe = tool.clone();
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble(PREAMBLE)
             .tool(tool)
             .add_hook(RedactSsnFromResult)

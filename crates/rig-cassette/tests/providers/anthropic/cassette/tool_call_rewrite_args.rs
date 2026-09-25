@@ -8,6 +8,7 @@
 //! arguments reached execution — and the blocking and streaming tests assert the
 //! same behavior, since both drivers share the same tool-execution seam.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent};
@@ -146,9 +147,11 @@ async fn tool_call_args_rewritten_by_hook_blocking() {
     with_anthropic_cassette(
         "tool_call_rewrite_args/tool_call_args_rewritten_by_hook_blocking",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
             .tool(weather)
             .add_hook(PinUnitsToCelsius)
@@ -177,9 +180,11 @@ async fn tool_call_args_rewritten_by_hook_streaming() {
     with_anthropic_cassette(
         "tool_call_rewrite_args/tool_call_args_rewritten_by_hook_streaming",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
             .tool(weather)
             .add_hook(PinUnitsToCelsius)

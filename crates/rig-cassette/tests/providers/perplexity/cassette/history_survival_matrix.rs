@@ -6,6 +6,7 @@
 //! than recorded.
 
 use rig::providers::perplexity;
+use rig::wire::Wire as _;
 
 use super::super::support::with_perplexity_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
@@ -16,7 +17,7 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
-    rig::model(client.completion(cell.model))
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

@@ -12,6 +12,7 @@ use rig::completion::{Message, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -155,9 +156,11 @@ async fn nested_arguments_roundtrip_nonstreaming() {
     with_gemini_cassette(
         "generate_tool_args/nested_arguments_roundtrip_nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble(NESTED_ARGS_PREAMBLE)
             .temperature(0.0)
             .tool(PlanTrip)
@@ -202,7 +205,9 @@ async fn nested_arguments_streaming() {
     with_gemini_cassette(
         "generate_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .temperature(0.0)
@@ -237,7 +242,9 @@ async fn unicode_arguments_streaming() {
     with_gemini_cassette(
         "generate_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",
@@ -300,7 +307,9 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
     with_gemini_cassette(
         "generate_tool_args/optional_nullable_argument_omitted_when_not_requested",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Log an event named \"deploy\" using the log_event tool. \
                      Do not attach a note.",

@@ -7,6 +7,7 @@ use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::wire::Wire as _;
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -27,9 +28,11 @@ async fn streaming_smoke() {
     let additional_params = AdditionalParameters::default().with_config(thinking_config);
 
     super::super::support::with_gemini_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(
-            client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
-        ))
+        let agent = rig::AgentBuilder::new(
+            client
+                .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport()),
+        )
         .preamble(STREAMING_PREAMBLE)
         .additional_params(
             serde_json::to_value(additional_params)
@@ -63,9 +66,11 @@ async fn example_streaming_prompt() {
     super::super::support::with_gemini_cassette(
         "streaming/example_streaming_prompt",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                    .on(rig::transport()),
+            )
             .preamble("Be precise and concise.")
             .temperature(0.5)
             .additional_params(serde_json::to_value(params).expect("params should serialize"))
@@ -89,7 +94,9 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_exposes_finish_reason_and_model_version",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new("Reply with exactly: final metadata ok")
                 .temperature(0.0)
                 .build();
@@ -142,7 +149,9 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_handles_terminal_finish_reason_chunk",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Reply with exactly: contentless final metadata ok")
                     .temperature(0.0)

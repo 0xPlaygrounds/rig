@@ -9,6 +9,7 @@ use crate::support::{Adder, BASIC_PREAMBLE, STRUCTURED_OUTPUT_PROMPT, TOOLS_PREA
 use rig::effect::EffectFamily;
 use rig::message::ToolChoice;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::wire::Wire as _;
 use rig_ecs::agent::*;
 
 #[tokio::test]
@@ -16,7 +17,7 @@ async fn tool_unary_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                 BASIC_PREAMBLE,
                 false,
             );
@@ -61,7 +62,7 @@ async fn tool_streamed_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_corpus_output_cassette("corpus_output/tool_streamed", |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                 BASIC_PREAMBLE,
                 true,
             );
@@ -99,7 +100,7 @@ async fn prompted_unary_effect_log() {
             "corpus_output/prompted_unary",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -147,7 +148,7 @@ async fn prompted_streamed_effect_log() {
             "corpus_output/prompted_streamed",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     true,
                 );
@@ -188,7 +189,7 @@ async fn tool_with_real_tool_effect_log() {
             "corpus_output/tool_with_real_tool",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -237,7 +238,7 @@ async fn prompted_with_real_tool_effect_log() {
             "corpus_output/prompted_with_real_tool",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     TOOLS_PREAMBLE,
                     false,
                 );
@@ -286,7 +287,7 @@ async fn tool_choice_specific_output_effect_log() {
             "corpus_output/tool_choice_specific_output",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -334,7 +335,7 @@ async fn tool_choice_required_effect_log() {
             "corpus_output/tool_choice_required",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -379,7 +380,7 @@ async fn tool_under_none_degrades_effect_log() {
             "corpus_output/tool_under_none_degrades",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -427,7 +428,7 @@ async fn tool_thinking_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_corpus_output_cassette("corpus_output/tool_thinking", |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                 BASIC_PREAMBLE,
                 false,
             );

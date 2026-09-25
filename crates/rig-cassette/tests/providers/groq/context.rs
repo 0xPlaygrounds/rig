@@ -1,6 +1,7 @@
 //! Groq context smoke test.
 
 use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
@@ -14,7 +15,7 @@ async fn context_smoke() {
         .iter()
         .copied()
         .fold(
-            rig::AgentBuilder::new(rig::model(groq.completion(CONTEXT_MODEL))),
+            rig::AgentBuilder::new(groq.completion(CONTEXT_MODEL).on(rig::transport())),
             |builder, doc| builder.context(doc),
         )
         .build();

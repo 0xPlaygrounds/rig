@@ -13,6 +13,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
+use rig::wire::Wire as _;
 use rig_ecs::agent::AdditionalParams;
 
 #[tokio::test]
@@ -23,7 +24,9 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
                 "streaming_tools/streaming_tools_emit_tool_call_before_later_text",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         ORDERED_TOOL_STREAM_PREAMBLE,
                         1,
                     );
@@ -72,7 +75,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
         "streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
         |client| async move {
             let mut ecs = EcsAgent::new(
-                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                 TWO_TOOL_STREAM_PREAMBLE,
                 1,
             );

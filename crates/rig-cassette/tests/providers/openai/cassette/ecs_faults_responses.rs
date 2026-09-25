@@ -12,6 +12,7 @@
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::{GPT_4O, GPT_5_MINI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{
@@ -27,7 +28,7 @@ use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, s
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion(GPT_5_MINI)),
+        model: client.openai.completion(GPT_5_MINI).on(rig::transport()),
         route: None,
         temperature: None,
         additional_params: None,
@@ -38,7 +39,10 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
 fn missing(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion("gpt-4o-mini-nonexistent-rig-test")),
+        model: client
+            .openai
+            .completion("gpt-4o-mini-nonexistent-rig-test")
+            .on(rig::transport()),
         route: None,
         temperature: None,
         additional_params: None,
@@ -50,7 +54,7 @@ fn missing(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::w
 fn legacy(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion(GPT_4O)),
+        model: client.openai.completion(GPT_4O).on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -109,7 +113,7 @@ fn scripted_stream(
     let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: rig::Model::new(client.completion(GPT_5_MINI), http.clone()),
+        model: client.completion(GPT_5_MINI).on(http.clone()),
         route: None,
         temperature: None,
         additional_params: None,
@@ -125,7 +129,7 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: rig::Model::new(client.completion(GPT_5_MINI), http.clone()),
+        model: client.completion(GPT_5_MINI).on(http.clone()),
         route: None,
         temperature: None,
         additional_params: None,

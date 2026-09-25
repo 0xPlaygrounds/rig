@@ -7,13 +7,14 @@ use super::super::support::with_ollama_cassette;
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
+use rig::wire::Wire as _;
 
 const MODEL: &str = "qwen3:4b";
 
 #[tokio::test]
 async fn streaming_smoke() {
     with_ollama_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
             .preamble(STREAMING_PREAMBLE)
             .additional_params(serde_json::json!({ "think": false }))
             .build();

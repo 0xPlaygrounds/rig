@@ -1,6 +1,7 @@
 //! Adversarial handle round-trips on OpenAI: see
 //! `rig_test_support::history_survival::adversarial`.
 
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::with_openai_cassette;
@@ -19,7 +20,7 @@ async fn colliding_ids_chat() {
     const SCENARIO: &str = "adversarial/colliding_ids_chat";
     with_openai_cassette("adversarial/colliding_ids_chat", |client| async move {
         adversarial::colliding_ids(
-            rig::model(client.openai.chat("gpt-4.1-mini")),
+            client.openai.chat("gpt-4.1-mini").on(rig::transport()),
             "call_dup",
             None,
         )
@@ -34,7 +35,7 @@ async fn colliding_ids_responses() {
     const SCENARIO: &str = "adversarial/colliding_ids_responses";
     with_openai_cassette("adversarial/colliding_ids_responses", |client| async move {
         adversarial::colliding_ids(
-            rig::model(client.openai.responses("gpt-4.1-mini")),
+            client.openai.responses("gpt-4.1-mini").on(rig::transport()),
             "call_dup",
             Some(json!({ "store": false })),
         )
@@ -50,8 +51,11 @@ async fn out_of_order_results_chat() {
     with_openai_cassette(
         "adversarial/out_of_order_results_chat",
         |client| async move {
-            adversarial::out_of_order_results(rig::model(client.openai.chat("gpt-4.1-mini")), None)
-                .await;
+            adversarial::out_of_order_results(
+                client.openai.chat("gpt-4.1-mini").on(rig::transport()),
+                None,
+            )
+            .await;
         },
     )
     .await;
@@ -65,7 +69,7 @@ async fn out_of_order_results_responses() {
         "adversarial/out_of_order_results_responses",
         |client| async move {
             adversarial::out_of_order_results(
-                rig::model(client.openai.responses("gpt-5-mini")),
+                client.openai.responses("gpt-5-mini").on(rig::transport()),
                 reasoning("low"),
             )
             .await;
@@ -82,7 +86,7 @@ async fn long_encrypted_payload() {
     const SCENARIO: &str = "adversarial/long_encrypted_payload";
     with_openai_cassette("adversarial/long_encrypted_payload", |client| async move {
         adversarial::reasoning_round_trip(
-            rig::model(client.openai.responses("gpt-5-mini")),
+            client.openai.responses("gpt-5-mini").on(rig::transport()),
             "Work this out carefully before acting. Let n be the number of primes below 600 \
              and s the sum of the decimal digits of the 90th prime. Count the primes in \
              blocks of 100 and verify each block. If n + s is even, the record is alpha, \
@@ -104,7 +108,7 @@ async fn three_provider_round_trip() {
         "adversarial/three_provider_round_trip",
         |client| async move {
             adversarial::round_trip_hop(
-                rig::model(client.openai.responses("gpt-5-mini")),
+                client.openai.responses("gpt-5-mini").on(rig::transport()),
                 Hop::OpenAiResponses,
                 reasoning("low"),
             )

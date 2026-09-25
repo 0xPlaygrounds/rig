@@ -4,6 +4,7 @@ use rig::completion::{AssistantContent, Message};
 use rig::message::ToolChoice;
 use rig::providers::gemini;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 
 use crate::support::{
     Adder, Subtract, assert_mentions_expected_number, collect_raw_stream_observation,
@@ -51,7 +52,9 @@ async fn specific_add_raw_streaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Use the add tool to calculate 20 + 22. Do not use subtraction.",
             )
@@ -103,7 +106,9 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(
@@ -157,9 +162,11 @@ async fn none_streaming_does_not_emit_tool_calls() {
     super::super::support::with_gemini_cassette(
         "tool_choice/none_streaming_no_tools",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble("You are a deterministic calculator test. Answer directly in text.")
             .temperature(0.0)
             .tool(Adder)
@@ -204,9 +211,11 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
     super::super::support::with_gemini_cassette(
         "tool_choice/none_nonstreaming_no_tools",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble("You are a deterministic calculator test. Answer directly in text.")
             .temperature(0.0)
             .tool(Adder)

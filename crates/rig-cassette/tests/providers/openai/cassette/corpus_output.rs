@@ -6,6 +6,7 @@
 use rig::effect::{EffectFamily, EffectKind};
 use rig::providers::openai;
 use rig::run::OutputMode;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_corpus_output_cassette;
@@ -34,14 +35,19 @@ fn tool_names(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
 async fn tool_unary_effect_log_is_the_golden_fixture() {
     with_openai_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-            .name("golden")
-            .preamble(BASIC_PREAMBLE)
-            .temperature(0.0)
-            .output_schema_raw(event_schema())
-            .output_mode(OutputMode::Tool)
-            .record_to(recorder.clone())
-            .build();
+        let agent = rig::AgentBuilder::new(
+            client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport()),
+        )
+        .name("golden")
+        .preamble(BASIC_PREAMBLE)
+        .temperature(0.0)
+        .output_schema_raw(event_schema())
+        .output_mode(OutputMode::Tool)
+        .record_to(recorder.clone())
+        .build();
         let response = agent
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
@@ -59,14 +65,19 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
     with_openai_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-            .name("golden")
-            .preamble(BASIC_PREAMBLE)
-            .temperature(0.0)
-            .output_schema_raw(event_schema())
-            .output_mode(OutputMode::Prompted)
-            .record_to(recorder.clone())
-            .build();
+        let agent = rig::AgentBuilder::new(
+            client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport()),
+        )
+        .name("golden")
+        .preamble(BASIC_PREAMBLE)
+        .temperature(0.0)
+        .output_schema_raw(event_schema())
+        .output_mode(OutputMode::Prompted)
+        .record_to(recorder.clone())
+        .build();
         let response = agent
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await

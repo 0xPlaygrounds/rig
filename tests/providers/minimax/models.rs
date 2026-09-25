@@ -6,13 +6,14 @@
 //! (rig#2079).
 
 use rig::providers::openai::wire::{self as openai_wire, OpenAI};
+use rig::wire::Wire as _;
 
 #[tokio::test]
 #[ignore = "requires MINIMAX_API_KEY"]
 async fn list_models_smoke() {
     let client =
         OpenAI::from_env_with(&openai_wire::MINIMAX).expect("MINIMAX_API_KEY should be set");
-    let models = match rig::model(client.models()).call(()).await {
+    let models = match client.models().on(rig::transport()).call(()).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing MiniMax models should succeed\nDisplay: {error}\nDebug: {error:#?}")

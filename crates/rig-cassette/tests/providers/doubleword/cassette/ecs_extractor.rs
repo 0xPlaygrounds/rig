@@ -2,6 +2,7 @@
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson};
+use rig::wire::Wire as _;
 use rig_agent::test_utils::validate_extraction_fields;
 #[tokio::test]
 async fn extractor_smoke() {
@@ -9,7 +10,7 @@ async fn extractor_smoke() {
         async {
             with_doubleword_cassette("extractor/extractor_smoke", |client| async move {
                 let response = EcsExtractor::<SmokePerson>::new(
-                    rig::model(client.completion(DEFAULT_MODEL)),
+                    client.completion(DEFAULT_MODEL).on(rig::transport()),
                     None,
                     None,
                 )

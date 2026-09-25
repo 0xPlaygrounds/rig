@@ -46,6 +46,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 
 use rig::providers::ollama;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -118,9 +119,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("stream should start");
+            capture_sole_terminal(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should start");
         },
     )
     .await;
@@ -166,9 +171,13 @@ async fn stream_raw_exposes_terminal_durations() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
         |client| async move {
-            capture_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("stream should start");
+            capture_sole_terminal(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should start");
         },
     )
     .await;

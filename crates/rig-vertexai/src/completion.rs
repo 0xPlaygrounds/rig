@@ -3,11 +3,11 @@
 //! streaming RPC.
 //!
 //! ```no_run
-//! use rig_core::Model;
+//! use rig_core::wire::Wire as _;
 //! use rig_vertexai::{VertexAi, completion::{GEMINI_2_5_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), rig_vertexai::client::VertexAiClientError> {
-//! let model = Model::new(GenerateContent::new(GEMINI_2_5_FLASH), VertexAi::from_env()?);
+//! let model = GenerateContent::new(GEMINI_2_5_FLASH).on(VertexAi::from_env()?);
 //! # let _ = model;
 //! # Ok(())
 //! # }

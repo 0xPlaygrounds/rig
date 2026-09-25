@@ -2,6 +2,7 @@
 
 use anyhow::{Result, anyhow};
 use rig::TypedPromptResponse;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -58,9 +59,9 @@ async fn extract_backward_compatibility() -> Result<()> {
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
             let model = CASSETTE_MODEL;
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(model),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client.completion(model).on(rig::transport()),
+            )
             .append_preamble(EXTRACTOR_PREAMBLE)
             .additional_params(json!({ "temperature": 0.0 }))
             .build();
@@ -86,9 +87,9 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
             let model = CASSETTE_MODEL;
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(model),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client.completion(model).on(rig::transport()),
+            )
             .append_preamble(EXTRACTOR_PREAMBLE)
             .additional_params(json!({ "temperature": 0.0 }))
             .build();
@@ -118,9 +119,9 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
             use rig::message::Message;
 
             let model = CASSETTE_MODEL;
-            let extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
-                client.completion(model),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Address>::new(
+                client.completion(model).on(rig::transport()),
+            )
             .append_preamble(EXTRACTOR_PREAMBLE)
             .additional_params(json!({ "temperature": 0.0 }))
             .build();
@@ -153,9 +154,9 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
             let model = CASSETTE_MODEL;
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(model),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client.completion(model).on(rig::transport()),
+            )
             .append_preamble(EXTRACTOR_PREAMBLE)
             .additional_params(json!({ "temperature": 0.0 }))
             .build();
@@ -190,9 +191,9 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         |client| async move {
             let model = CASSETTE_MODEL;
 
-            let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(model),
-            ))
+            let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client.completion(model).on(rig::transport()),
+            )
             .append_preamble(EXTRACTOR_PREAMBLE)
             .additional_params(json!({ "temperature": 0.0 }))
             .build();
@@ -202,9 +203,9 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
 
             anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
 
-            let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
-                client.completion(model),
-            ))
+            let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(
+                client.completion(model).on(rig::transport()),
+            )
             .append_preamble(EXTRACTOR_PREAMBLE)
             .additional_params(json!({ "temperature": 0.0 }))
             .build();

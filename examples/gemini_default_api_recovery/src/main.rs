@@ -340,7 +340,7 @@ async fn run_workspace_canary_attempt(
 ) -> Result<WorkspaceStreamObservation, String> {
     let client = Gemini::from_env().map_err(|error| error.to_string())?;
     let agent_name = format!("workspace-default-api-canary-{attempt}");
-    let agent = AgentBuilder::new(rig::model(client.completion(GEMINI_CANARY_MODEL)))
+    let agent = AgentBuilder::new(client.completion(GEMINI_CANARY_MODEL).on(rig::transport()))
         .name(&agent_name)
         .preamble(WORKSPACE_STYLE_PREAMBLE)
         .additional_params(gemini_canary_additional_params().map_err(|error| error.to_string())?)

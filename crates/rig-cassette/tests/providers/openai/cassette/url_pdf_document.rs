@@ -7,6 +7,7 @@
 //! See <https://platform.openai.com/docs/guides/pdf-files>.
 use rig::message::{DocumentMediaType, Message, UserContent};
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
@@ -18,11 +19,15 @@ async fn url_pdf_document_prompt() {
     with_openai_cassette(
         "url_pdf_document/url_pdf_document_prompt",
         |client| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-                    .preamble("You are a helpful assistant that analyzes documents.")
-                    .temperature(0.0)
-                    .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(openai::GPT_4O)
+                    .on(rig::transport()),
+            )
+            .preamble("You are a helpful assistant that analyzes documents.")
+            .temperature(0.0)
+            .build();
 
             let response = agent
                 .prompt(Message::User {

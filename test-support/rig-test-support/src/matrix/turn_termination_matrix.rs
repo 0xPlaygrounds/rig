@@ -12,7 +12,7 @@ macro_rules! turn_termination_matrix_case {
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
                     {
-                        rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                        rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), rig::transport()))
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(TINY_CAP)
@@ -55,7 +55,7 @@ macro_rules! turn_termination_matrix_case {
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
                     {
-                        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                        let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), rig::transport()))
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(TINY_CAP)
@@ -85,7 +85,7 @@ macro_rules! turn_termination_matrix_case {
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
                     {
-                        rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                        rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), rig::transport()))
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(ROOMY_CAP)
@@ -119,7 +119,7 @@ macro_rules! turn_termination_matrix_case {
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
                     {
-                        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                        let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), rig::transport()))
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(ROOMY_CAP)
@@ -144,7 +144,7 @@ macro_rules! turn_termination_matrix_case {
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
                     {
-                        rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                        rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), rig::transport()))
                             .preamble(TOOL_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(ROOMY_CAP)
@@ -184,7 +184,7 @@ macro_rules! turn_termination_matrix_case {
                 let observed = probe.clone();
                 $wrapper($scenario, |client| async move {
                     {
-                        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                        let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), rig::transport()))
                             .preamble(TOOL_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(ROOMY_CAP)
@@ -220,7 +220,7 @@ macro_rules! turn_termination_matrix_case {
                 let escalations = escalate.clone();
                 $wrapper($scenario, |client| async move {
                     {
-                        rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                        rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), rig::transport()))
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(64)
@@ -264,7 +264,7 @@ macro_rules! turn_termination_matrix_case {
                 let escalations = escalate.clone();
                 $wrapper($scenario, |client| async move {
                     {
-                        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+                        let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), rig::transport()))
                             .preamble(CONCISE_PREAMBLE)
                             .temperature(0.0)
                             .max_tokens(64)

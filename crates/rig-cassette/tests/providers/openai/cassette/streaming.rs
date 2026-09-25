@@ -1,6 +1,7 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{
@@ -11,9 +12,14 @@ use crate::support::{
 #[tokio::test]
 async fn streaming_smoke() {
     with_openai_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-            .preamble(STREAMING_PREAMBLE)
-            .build();
+        let agent = rig::AgentBuilder::new(
+            client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport()),
+        )
+        .preamble(STREAMING_PREAMBLE)
+        .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let (response, provider_final) =
@@ -34,10 +40,15 @@ async fn streaming_smoke() {
 #[tokio::test]
 async fn example_streaming_prompt() {
     with_openai_cassette("streaming/example_streaming_prompt", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-            .preamble("Be precise and concise.")
-            .temperature(0.5)
-            .build();
+        let agent = rig::AgentBuilder::new(
+            client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport()),
+        )
+        .preamble("Be precise and concise.")
+        .temperature(0.5)
+        .build();
 
         let mut stream = agent
             .prompt("When and where and what type is the next solar eclipse?")

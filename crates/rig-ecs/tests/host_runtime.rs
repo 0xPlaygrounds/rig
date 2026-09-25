@@ -15,6 +15,7 @@ use rig_cassette::{
     ecs::{EffectLogResource, Replay},
     effect_log::EffectLog,
 };
+use rig_core::wire::Wire as _;
 use rig_core::{
     error::{ErrorKind, ErrorReport},
     providers::gemini::Gemini,
@@ -66,12 +67,10 @@ fn gateway(
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|_| refused())?;
-    let model = rig_core::Model::new(
-        Gemini::new(token)
-            .with_base_url(endpoint)
-            .completion("gemini-test"),
-        ReqwestClient::new(http),
-    );
+    let model = Gemini::new(token)
+        .with_base_url(endpoint)
+        .completion("gemini-test")
+        .on(ReqwestClient::new(http));
     Ok(ErasedHandler::new(ModelAdapter::new("gemini-test", model)))
 }
 

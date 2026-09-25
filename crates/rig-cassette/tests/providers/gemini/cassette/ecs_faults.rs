@@ -13,6 +13,7 @@ use rig::error::ErrorKind;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{GEMINI_2_5_FLASH, GEMINI_3_FLASH_PREVIEW};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{
@@ -35,7 +36,9 @@ fn wire(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
+        model: client
+            .completion(GEMINI_3_FLASH_PREVIEW)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -53,7 +56,9 @@ fn missing(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion("gemini-nonexistent-rig-test")),
+        model: client
+            .completion("gemini-nonexistent-rig-test")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -72,7 +77,7 @@ fn legacy(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_2_5_FLASH)),
+        model: client.completion(GEMINI_2_5_FLASH).on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -134,7 +139,7 @@ fn scripted_stream(
     let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::Model::new(client.completion(GEMINI_3_FLASH_PREVIEW), http.clone()),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW).on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -150,7 +155,7 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::Model::new(client.completion(GEMINI_3_FLASH_PREVIEW), http.clone()),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW).on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

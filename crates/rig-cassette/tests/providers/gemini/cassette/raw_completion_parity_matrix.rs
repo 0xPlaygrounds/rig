@@ -40,6 +40,7 @@ use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -149,9 +150,13 @@ async fn rest_raw_try_into_matches_completion() {
     with_gemini_cassette(
         "raw_completion_parity_matrix/rest_raw_try_into_matches_completion",
         |client| async move {
-            capture_completion_pair(rig::model(client.completion(REST_MODEL)), request(), sink)
-                .await
-                .expect("both turns of the same request should succeed");
+            capture_completion_pair(
+                client.completion(REST_MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("both turns of the same request should succeed");
         },
     )
     .await;
@@ -210,7 +215,7 @@ async fn interactions_raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/interactions_raw_try_into_matches_completion",
         |client| async move {
             capture_completion_pair(
-                rig::model(client.interactions(INTERACTIONS_MODEL)),
+                client.interactions(INTERACTIONS_MODEL).on(rig::transport()),
                 request(),
                 sink,
             )

@@ -39,6 +39,7 @@
 
 use rig::completion::FinishReason;
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -94,7 +95,7 @@ async fn raw_roundtrips_interaction() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_roundtrips_interaction",
         |client| async move {
-            let model = rig::model(client.interactions(MODEL));
+            let model = client.interactions(MODEL).on(rig::transport());
             let response = model
                 .call(request())
                 .await
@@ -150,7 +151,7 @@ async fn raw_exposes_lifecycle_fields() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields",
         |client| async move {
-            let model = rig::model(client.interactions(MODEL));
+            let model = client.interactions(MODEL).on(rig::transport());
             let response = model
                 .call(request())
                 .await

@@ -1,6 +1,7 @@
 //! Cassette-backed Venice embeddings coverage.
 
 use rig::providers::venice;
+use rig::wire::Wire as _;
 
 use super::super::support::with_venice_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
@@ -8,7 +9,9 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 #[tokio::test]
 async fn embeddings_smoke() {
     with_venice_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None));
+        let model = client
+            .embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None)
+            .on(rig::transport());
         let embeddings = model
             .call(
                 EMBEDDING_INPUTS
@@ -29,7 +32,9 @@ async fn embeddings_smoke() {
 #[tokio::test]
 async fn embeddings_honor_requested_dimensions() {
     with_venice_cassette("embeddings/requested_dimensions", |client| async move {
-        let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, Some(256)));
+        let model = client
+            .embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, Some(256))
+            .on(rig::transport());
         let embeddings = model
             .call(vec!["dimensioned input".to_string()])
             .await

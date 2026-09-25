@@ -3,6 +3,7 @@ use super::super::hook_stress_support::fact_doc;
 use super::super::tools_support::CountingAdd;
 use super::ecs_stress_runtime as runtime;
 use rig::message::{Message, ToolChoice};
+use rig::wire::Wire as _;
 const CODEWORD: &str = "ZULU-99";
 use super::super::support::with_gemini_cassette;
 use crate::support::assert_nonempty_response;
@@ -15,7 +16,9 @@ async fn preamble_override_forces_codeword_blocking() {
                 "hook_stress_patch/preamble_override_forces_codeword_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         "You are a terse assistant.",
                         Some("stress-agent"),
                         None,
@@ -67,7 +70,9 @@ async fn tool_choice_required_forces_a_tool_call_blocking() {
                 "hook_stress_patch/tool_choice_required_forces_a_tool_call_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         "You are a calculator assistant.",
                         Some("stress-agent"),
                         None,
@@ -116,7 +121,7 @@ async fn history_replacement_injects_prior_fact_blocking() {
             "hook_stress_patch/history_replacement_injects_prior_fact_blocking",
             |client| async move {
                 let mut ecs = runtime::agent(
-                    rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                    client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                     "You are a helpful assistant. Use the conversation so far to answer.",
                     Some("stress-agent"),
                     None,
@@ -168,7 +173,9 @@ async fn multi_field_patch_applies_preamble_and_context_blocking() {
                 "hook_stress_patch/multi_field_patch_applies_preamble_and_context_blocking",
                 |client| async move {
                     let mut ecs = runtime::agent(
-                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                        client
+                            .completion(gemini::completion::GEMINI_2_5_FLASH)
+                            .on(rig::transport()),
                         "You are a terse assistant.",
                         Some("stress-agent"),
                         None,

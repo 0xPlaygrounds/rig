@@ -15,6 +15,7 @@
 
 use rig::message::AssistantContent;
 use rig::providers::{doubleword, openai};
+use rig::wire::Wire as _;
 use serde::Deserialize as _;
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
@@ -26,7 +27,7 @@ const PROMPT: &str = "Compute 17 * 23. Give the number only after thinking.";
 const CAP: u64 = 128;
 
 async fn exercise_blocking(client: OpenAI, model_name: &'static str) {
-    let model = rig::model(client.completion(model_name));
+    let model = client.completion(model_name).on(rig::transport());
     let response = model
         .call(
             CompletionRequestBuilder::new(PROMPT)
@@ -62,7 +63,7 @@ async fn exercise_blocking(client: OpenAI, model_name: &'static str) {
 }
 
 async fn exercise_streaming(client: OpenAI, model_name: &'static str) {
-    let model = rig::model(client.completion(model_name));
+    let model = client.completion(model_name).on(rig::transport());
     let stream = model
         .stream(
             CompletionRequestBuilder::new(PROMPT)

@@ -26,7 +26,7 @@ fn extract_text(choice: &[AssistantContent]) -> String {
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn websocket_session_roundtrip() -> Result<()> {
     let client = OpenAI::from_env().expect("config should build from env");
-    let model = rig::model(client.responses(openai::GPT_4O_MINI));
+    let model = client.responses(openai::GPT_4O_MINI).on(rig::transport());
     let mut session = model.responses_websocket().await?;
 
     let warmup_request =

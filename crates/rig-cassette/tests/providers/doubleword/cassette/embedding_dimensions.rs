@@ -123,7 +123,7 @@ fn embedding_model(
     client: &OpenAI,
     width: Option<usize>,
 ) -> rig::Model<rig::providers::openai::wire::Embeddings> {
-    rig::model(client.embedding(MODEL, width))
+    client.embedding(MODEL, width).on(rig::transport())
 }
 
 /// Runs one input through the model and proves `ndims()` described the vector
@@ -166,7 +166,9 @@ async fn embed_batch(client: &OpenAI, width: Option<usize>, inputs: &[&str]) {
 /// An input Doubleword itself refuses, at a width that still had to reach the
 /// wire for the refusal to be the provider's rather than rig's.
 async fn assert_rejected_input(client: &OpenAI, input: &str) {
-    let error = rig::model(client.embedding(MODEL, Some(512)))
+    let error = client
+        .embedding(MODEL, Some(512))
+        .on(rig::transport())
         .call(vec![input.to_string()])
         .await
         .map(|response| response.embeddings)
@@ -351,7 +353,7 @@ async fn usage_survives_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/usage_survives_a_requested_width",
         |client| async move {
-            let model = rig::model(client.embedding(MODEL, Some(256)));
+            let model = client.embedding(MODEL, Some(256)).on(rig::transport());
             let response = model
                 .call(vec![PROBE.to_string()])
                 .await
@@ -382,7 +384,7 @@ async fn usage_at_the_default_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/usage_at_the_default_width",
         |client| async move {
-            let model = rig::model(client.embedding(MODEL, None));
+            let model = client.embedding(MODEL, None).on(rig::transport());
             let response = model
                 .call(vec![PROBE.to_string()])
                 .await
@@ -410,7 +412,7 @@ async fn builder_documents_at_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/builder_documents_at_a_requested_width",
         |client| async move {
-            let model = rig::model(client.embedding(MODEL, Some(128)));
+            let model = client.embedding(MODEL, Some(128)).on(rig::transport());
             let documents = EmbeddingsBuilder::new(model.clone())
                 .document("first note".to_string())
                 .expect("document should embed")
@@ -439,7 +441,7 @@ async fn builder_documents_at_the_default_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/builder_documents_at_the_default_width",
         |client| async move {
-            let model = rig::model(client.embedding(MODEL, None));
+            let model = client.embedding(MODEL, None).on(rig::transport());
             let documents = EmbeddingsBuilder::new(model.clone())
                 .document("first note".to_string())
                 .expect("document should embed")
@@ -558,8 +560,9 @@ async fn an_unknown_model_still_puts_the_requested_width_on_the_wire() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/an_unknown_model_still_puts_the_requested_width_on_the_wire",
         |client| async move {
-            let model =
-                rig::model(client.embedding("Qwen/Qwen4-Embedding-Unreleased", Some(8_192)));
+            let model = client
+                .embedding("Qwen/Qwen4-Embedding-Unreleased", Some(8_192))
+                .on(rig::transport());
             assert_eq!(model.wire.capabilities().ndims, 8_192);
             let error = model
                 .call(vec![PROBE.to_string()])

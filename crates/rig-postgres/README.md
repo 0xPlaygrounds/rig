@@ -101,8 +101,9 @@ Example usage
 
 ```rust
     // OpenAI's embeddings wire on the default transport
-    let model = rig::model(rig::providers::openai::wire::OpenAI::from_env()?
-            .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None));
+    let model = rig::providers::openai::wire::OpenAI::from_env()?
+        .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None)
+        .on(rig::transport());
 
     // connect to Postgres
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");

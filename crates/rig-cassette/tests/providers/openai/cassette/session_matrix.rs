@@ -2,6 +2,7 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
+use rig::wire::Wire as _;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -35,9 +36,9 @@ fn models(
     >,
 ) {
     (
-        rig::model(client.openai.responses("gpt-5-mini")),
-        rig::model(client.openai.responses("gpt-5-mini")),
-        rig::model(client.openai.responses("gpt-5.2")),
+        client.openai.responses("gpt-5-mini").on(rig::transport()),
+        client.openai.responses("gpt-5-mini").on(rig::transport()),
+        client.openai.responses("gpt-5.2").on(rig::transport()),
     )
 }
 

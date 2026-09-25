@@ -1,7 +1,6 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig_agent::AgentBuilder;
-use rig_core::Model;
 use rig_core::providers::openai;
 use rig_core::wire::Wire;
 use rig_core::{embeddings::EmbeddingsBuilder, providers::openai::wire::OpenAI};
@@ -17,10 +16,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let http = rig_reqwest::shared();
 
     // Select an embedding model.
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http.clone(),
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http.clone());
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;
@@ -77,14 +75,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Build RAG agent with dynamic context.
     // Use OpenAI-compatible API interface to build agent
-    let agent = AgentBuilder::new(Model::new(
-        openai_client.completion(openai::GPT_4O),
-        http.clone(),
-    ))
-    .temperature(0.5)
-    .preamble("You are a helpful AI assistant.")
-    .dynamic_context(top_k, vector_store_index)
-    .build();
+    let agent = AgentBuilder::new(openai_client.completion(openai::GPT_4O).on(http.clone()))
+        .temperature(0.5)
+        .preamble("You are a helpful AI assistant.")
+        .dynamic_context(top_k, vector_store_index)
+        .build();
 
     let query = "My boss says I zindle too much, what does that mean?";
 

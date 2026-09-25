@@ -2,6 +2,7 @@
 
 use crate::copilot::{live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn streaming() {
@@ -16,7 +17,7 @@ async fn streaming() {
         let mut finals = Vec::new();
         reasoning::run_reasoning_roundtrip_streaming_with_final(
             ReasoningRoundtripAgent::new(
-                rig::model(client.completion(live_responses_model())),
+                client.completion(live_responses_model()).on(rig::transport()),
                 Some(serde_json::json!({
                     "reasoning": { "effort": "medium" }
                 })),
@@ -41,7 +42,9 @@ async fn streaming() {
 async fn nonstreaming() {
     with_copilot_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            rig::model(client.completion(live_responses_model())),
+            client
+                .completion(live_responses_model())
+                .on(rig::transport()),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),

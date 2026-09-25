@@ -4,6 +4,7 @@ use axum::http;
 use rig::error::ProviderError;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
+use rig::wire::Wire as _;
 
 use super::super::support::with_chatgpt_cassette;
 use rig::completion::CompletionRequestBuilder;
@@ -32,7 +33,7 @@ async fn assert_nonstreaming_http_error(
     expected_status: http::StatusCode,
     expected_message: &str,
 ) {
-    let model = rig::model(client.completion(chatgpt::GPT_5_4));
+    let model = client.completion(chatgpt::GPT_5_4).on(rig::transport());
     let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model

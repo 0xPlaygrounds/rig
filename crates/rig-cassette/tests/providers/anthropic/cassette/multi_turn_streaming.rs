@@ -1,5 +1,6 @@
 //! Migrated from `examples/multi_turn_streaming.rs`.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -169,9 +170,11 @@ async fn multi_turn_streaming_tools() {
     super::super::support::with_anthropic_cassette(
         "multi_turn_streaming/multi_turn_streaming_tools",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .on(rig::transport()),
+            )
             .preamble("You must use tools for arithmetic.")
             .tool(Add::new(add_calls.clone()))
             .tool(Subtract::new(subtract_calls.clone()))

@@ -5,6 +5,7 @@
 //! caller-owned history, native/JSON-object structured output, tool choice, and
 //! provider usage/metadata preservation.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -521,7 +522,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = rig::model(client.completion(SESSION_MODEL));
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
             let tool = InspectManifest { log };
             let request = CompletionRequestBuilder::new(
                     "Call inspect_manifest exactly once for project rig-mistral with critical=true, retries=2, \
@@ -555,7 +556,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/tool_choice_auto_any_specific_and_none",
         |client| async move {
-            let model = rig::model(client.completion(SESSION_MODEL));
+            let model = client.completion(SESSION_MODEL).on(rig::transport());
 
             let auto = model
                 .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object.")
@@ -634,7 +635,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = rig::model(client.completion(STRUCTURED_MODEL));
+            let model = client.completion(STRUCTURED_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
@@ -674,7 +675,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
-            let model = rig::model(client.completion(STRUCTURED_MODEL));
+            let model = client.completion(STRUCTURED_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
             )

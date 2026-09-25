@@ -86,12 +86,10 @@ async fn main() -> Result<()> {
     // The Chat Completions route, whose response carries `system_fingerprint`;
     // OpenAI's default route is the Responses API, so the configuration is
     // routed once and the agent follows.
-    let model = rig_core::Model::new(
-        OpenAI::from_env()?
-            .with_route(Route::Chat)
-            .completion(openai::GPT_5_2),
-        rig_reqwest::shared(),
-    );
+    let model = OpenAI::from_env()?
+        .with_route(Route::Chat)
+        .completion(openai::GPT_5_2)
+        .on(rig_reqwest::shared());
     let agent = AgentBuilder::new(model)
         .preamble("Answer in one short sentence.")
         .add_hook(PrintOpenAiFields)

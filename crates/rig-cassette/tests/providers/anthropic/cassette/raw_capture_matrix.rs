@@ -52,6 +52,7 @@ use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason,
 use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{CompletionResponse, Content};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -229,7 +230,9 @@ async fn raw_round_trips_into_provider_type() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                client
+                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    .on(rig::transport()),
                 probe_request(),
                 sink,
             )
@@ -292,7 +295,9 @@ async fn raw_exposes_stop_sequence() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                client
+                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    .on(rig::transport()),
                 CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
                     .max_tokens(32)
                     .additional_params(json!({ "stop_sequences": ["alpha"] }))
@@ -364,7 +369,9 @@ async fn normalized_fields_match_raw_renormalized() {
             let sink = sink.clone();
             move |client| async move {
                 capture_completion(
-                    rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                    client
+                        .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                        .on(rig::transport()),
                     probe_request(),
                     sink,
                 )
@@ -443,7 +450,9 @@ async fn raw_exposes_thinking_block_and_signature() {
             let sink = sink.clone();
             move |client| async move {
                 capture_completion(
-                    rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)),
+                    client
+                        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                        .on(rig::transport()),
                     thinking_request(),
                     sink,
                 )
@@ -581,7 +590,9 @@ async fn raw_exposes_tool_use_block() {
         let sink = sink.clone();
         move |client| async move {
             capture_completion(
-                rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                client
+                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                    .on(rig::transport()),
                 tool_request(),
                 sink,
             )

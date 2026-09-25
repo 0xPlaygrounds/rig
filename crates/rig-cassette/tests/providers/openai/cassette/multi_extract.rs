@@ -1,5 +1,6 @@
 //! Preserves the live multi-extract example as provider-local regression coverage.
 
+use rig::wire::Wire as _;
 use std::future::IntoFuture;
 
 use anyhow::Result;
@@ -35,17 +36,17 @@ async fn batch_multi_extract_chain() -> Result<()> {
         |cassette| async move {
             let client = cassette.openai;
             let names_extractor =
-                rig::extractor::ExtractorBuilder::<Names>::new(rig::model(client.completion(openai::GPT_4O_MINI)))
+                rig::extractor::ExtractorBuilder::<Names>::new(client.completion(openai::GPT_4O_MINI).on(rig::transport()))
                     .append_preamble("Extract names from the given text.")
                     .retries(2)
                     .build();
             let topics_extractor =
-                rig::extractor::ExtractorBuilder::<Topics>::new(rig::model(client.completion(openai::GPT_4O_MINI)))
+                rig::extractor::ExtractorBuilder::<Topics>::new(client.completion(openai::GPT_4O_MINI).on(rig::transport()))
                     .append_preamble("Extract topics from the given text.")
                     .retries(2)
                     .build();
             let sentiment_extractor =
-                rig::extractor::ExtractorBuilder::<Sentiment>::new(rig::model(client.completion(openai::GPT_4O_MINI)))
+                rig::extractor::ExtractorBuilder::<Sentiment>::new(client.completion(openai::GPT_4O_MINI).on(rig::transport()))
                     .append_preamble("Extract sentiment and confidence from the given text.")
                     .retries(2)
                     .build();

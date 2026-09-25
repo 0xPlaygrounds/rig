@@ -7,6 +7,7 @@ use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -29,11 +30,10 @@ pub(super) async fn strict_tool_call_arguments(
     prompt: &str,
     parameters: serde_json::Value,
 ) -> serde_json::Value {
-    let model = rig::model(
-        client
-            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-            .with_strict_tools(),
-    );
+    let model = client
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .with_strict_tools()
+        .on(rig::transport());
     let request = CompletionRequestBuilder::new(prompt)
         .preamble(
             "Call the supplied tool exactly once and follow the requested argument shape."
@@ -75,11 +75,10 @@ async fn strict_tools_opt_in_roundtrip() {
     with_anthropic_cassette(
         "messages_strict_tools/strict_tools_opt_in_roundtrip",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Call record_booking exactly once with passengers = 2 and cabin = economy.",
             )

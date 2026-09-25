@@ -5,6 +5,7 @@
 use futures::StreamExt;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;
+use rig::wire::Wire as _;
 
 use super::super::support::{with_openai_cassette, with_openai_completions_cassette};
 use rig::completion::CompletionRequestBuilder;
@@ -22,7 +23,10 @@ async fn responses_nonstreaming_carries_identity() {
     with_openai_cassette(
         "response_identity/responses_nonstreaming_carries_identity",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let response = model
                 .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
@@ -50,7 +54,10 @@ async fn responses_streaming_carries_identity() {
     with_openai_cassette(
         "response_identity/responses_streaming_carries_identity",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport());
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
@@ -80,7 +87,7 @@ async fn chat_completions_nonstreaming_carries_identity() {
     with_openai_completions_cassette(
         "response_identity/chat_completions_nonstreaming_carries_identity",
         |client| async move {
-            let model = rig::model(client.chat(openai::GPT_4O));
+            let model = client.chat(openai::GPT_4O).on(rig::transport());
             let response = model
                 .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
@@ -105,7 +112,7 @@ async fn chat_completions_streaming_carries_identity() {
     with_openai_completions_cassette(
         "response_identity/chat_completions_streaming_carries_identity",
         |client| async move {
-            let model = rig::model(client.chat(openai::GPT_4O));
+            let model = client.chat(openai::GPT_4O).on(rig::transport());
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
@@ -140,12 +147,16 @@ async fn agent_tool_run_reports_per_attempt_identity() {
         "response_identity/agent_tool_run_reports_per_attempt_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-                    .preamble(TOOLS_PREAMBLE)
-                    .tool(Adder)
-                    .add_hook(probe.clone())
-                    .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(openai::GPT_4O)
+                    .on(rig::transport()),
+            )
+            .preamble(TOOLS_PREAMBLE)
+            .tool(Adder)
+            .add_hook(probe.clone())
+            .build();
 
             let response = agent
                 .prompt("What is 2 + 3? Use the tool, then state the result.")
@@ -181,11 +192,15 @@ async fn streamed_agent_run_reports_identity() {
         "response_identity/streamed_agent_run_reports_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-                    .preamble("You are a terse assistant.")
-                    .add_hook(probe.clone())
-                    .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .openai
+                    .completion(openai::GPT_4O)
+                    .on(rig::transport()),
+            )
+            .preamble("You are a terse assistant.")
+            .add_hook(probe.clone())
+            .build();
 
             let mut stream = agent
                 .prompt(rig::completion::Message::user(

@@ -15,6 +15,7 @@
 //! | additional params | `response_format` | `{"type":"json_object"}` |
 
 use rig::providers::doubleword;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
@@ -43,7 +44,7 @@ async fn temperature_from_the_typed_builder() {
     with_doubleword_cassette(
         "request_parameter_matrix/temperature_from_the_typed_builder",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             model
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
@@ -65,7 +66,7 @@ async fn max_tokens_from_the_typed_builder() {
     with_doubleword_cassette(
         "request_parameter_matrix/max_tokens_from_the_typed_builder",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             model
                 .call(CompletionRequestBuilder::new(PROMPT).max_tokens(7).build())
                 .await
@@ -82,7 +83,7 @@ async fn top_p_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/top_p_from_additional_params",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             model
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
@@ -104,7 +105,7 @@ async fn seed_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/seed_from_additional_params",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             model
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
@@ -126,7 +127,7 @@ async fn stop_sequence_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/stop_sequence_from_additional_params",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             model
                 .call(
                     CompletionRequestBuilder::new("Write alpha BANANA omega.")
@@ -149,7 +150,7 @@ async fn json_object_response_format_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/json_object_response_format_from_additional_params",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             model
                 .call(
                     CompletionRequestBuilder::new("Return a JSON object with ok set to true.")

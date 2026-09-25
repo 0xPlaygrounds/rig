@@ -26,6 +26,7 @@ use rig_core::completion::{CompletionRequest, ToolDefinition};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, Text, ToolChoice, UserContent};
 use rig_core::streaming::StreamEvent;
+use rig_core::wire::Wire as _;
 use rig_vertexai::VertexAi;
 use rig_vertexai::client::VertexAiClientError;
 use rig_vertexai::completion::GenerateContent;
@@ -54,7 +55,7 @@ async fn hosted_model(
         .with_prediction_service(service)
         .build()
         .expect("supplied client plus explicit project and location");
-    Model::new(GenerateContent::new(MODEL), client)
+    GenerateContent::new(MODEL).on(client)
 }
 
 fn request(prompt: &str) -> CompletionRequest {
@@ -387,7 +388,7 @@ async fn deferred_client_initialization_failure_surfaces_on_first_use() {
         .with_credentials(credentials.credentials())
         .build()
         .expect("building the Rig client resolves no SDK client yet");
-    let model = Model::new(GenerateContent::new(MODEL), client);
+    let model = GenerateContent::new(MODEL).on(client);
 
     for attempt in 1..=2 {
         let error = model

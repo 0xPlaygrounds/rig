@@ -10,6 +10,7 @@ use bytes::Bytes;
 use rig::error::ErrorKind;
 use rig::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
 use rig::test_utils::SequencedStreamingHttpClient;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_gemini_cassette;
@@ -65,10 +66,11 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MISSING_MODEL)))
-                .max_tokens(SETUP_MAX_TOKENS)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(MISSING_MODEL).on(rig::transport()))
+                    .max_tokens(SETUP_MAX_TOKENS)
+                    .record_to(recorder.clone())
+                    .build();
             let mut stream = agent.prompt(SETUP_PROMPT).stream();
             let drained = drain(&mut stream).await;
             drop(stream);
@@ -100,12 +102,9 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
     let (client, http) = scripted_client(vec![gemini_sse(&[BLOCKED_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = rig::AgentBuilder::new(rig::Model::new(
-        client.completion(GEMINI_2_5_FLASH),
-        http.clone(),
-    ))
-    .record_to(recorder.clone())
-    .build();
+    let agent = rig::AgentBuilder::new(client.completion(GEMINI_2_5_FLASH).on(http.clone()))
+        .record_to(recorder.clone())
+        .build();
     let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
     drop(stream);
@@ -143,12 +142,9 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     let (client, http) = scripted_client(vec![gemini_sse(&[CONTENT_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = rig::AgentBuilder::new(rig::Model::new(
-        client.completion(GEMINI_2_5_FLASH),
-        http.clone(),
-    ))
-    .record_to(recorder.clone())
-    .build();
+    let agent = rig::AgentBuilder::new(client.completion(GEMINI_2_5_FLASH).on(http.clone()))
+        .record_to(recorder.clone())
+        .build();
     let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
     drop(stream);
@@ -178,12 +174,9 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 async fn in_band_error_after_content_fails_with_the_envelope() {
     let (client, http) = scripted_client(vec![gemini_sse(&[CONTENT_FRAME, IN_BAND_ERROR_FRAME])]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = rig::AgentBuilder::new(rig::Model::new(
-        client.completion(GEMINI_2_5_FLASH),
-        http.clone(),
-    ))
-    .record_to(recorder.clone())
-    .build();
+    let agent = rig::AgentBuilder::new(client.completion(GEMINI_2_5_FLASH).on(http.clone()))
+        .record_to(recorder.clone())
+        .build();
     let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
     drop(stream);
@@ -230,9 +223,11 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
 #[tokio::test]
 async fn multi_frame_stream_recording() {
     with_gemini_cassette("stream_faults/multi_frame_stream", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(
-            client.completion(rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW),
-        ))
+        let agent = rig::AgentBuilder::new(
+            client
+                .completion(rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport()),
+        )
         .preamble(crate::support::STREAMING_PREAMBLE)
         .build();
         let mut stream = agent
@@ -267,12 +262,9 @@ async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
         .collect();
     let (client, http) = scripted_client(vec![crate::stream_faults::sse_bytes(&prefix)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = rig::AgentBuilder::new(rig::Model::new(
-        client.completion(GEMINI_2_5_FLASH),
-        http.clone(),
-    ))
-    .record_to(recorder.clone())
-    .build();
+    let agent = rig::AgentBuilder::new(client.completion(GEMINI_2_5_FLASH).on(http.clone()))
+        .record_to(recorder.clone())
+        .build();
     let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
     drop(stream);

@@ -2,6 +2,7 @@
 //! Anthropic-signed and Gemini-signed reasoning beside a tool exchange.
 
 use rig::providers::xai;
+use rig::wire::Wire as _;
 
 use super::support::with_xai_cassette;
 use crate::history_survival::portability::{Cell, Source};
@@ -14,7 +15,7 @@ fn model(
     client: rig::providers::openai::OpenAI,
     cell: Cell,
 ) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
-    rig::model(client.completion(cell.model))
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(source: Source) -> Cell {

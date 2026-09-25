@@ -2,6 +2,7 @@
 
 use rig::loaders::FileLoader;
 use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
 
@@ -18,7 +19,7 @@ async fn loaders_smoke() {
         .into_iter();
 
     let agent = examples
-        .fold(rig::AgentBuilder::new(rig::model(groq.completion(LOADERS_MODEL))), |builder, (path, content)| {
+        .fold(rig::AgentBuilder::new(groq.completion(LOADERS_MODEL).on(rig::transport())), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble(

@@ -17,6 +17,7 @@ pub use crate::completion::{Message, PromptError, StructuredOutputError};
 pub use crate::tool::{Tool, ToolSet};
 pub use rig_core::driver::{BoxedModel, Model, Transport};
 pub use rig_core::error::ProviderError;
+pub use rig_core::wire::Wire;
 
 pub use rig_core::Embed;
 pub use rig_core::embeddings::EmbeddingsBuilder;

@@ -124,7 +124,7 @@ async fn main() -> Result<()> {
     let client = OpenAI::from_env()?;
     // A fresh agent per run (both share the same tool and preamble).
     let make_agent = || {
-        AgentBuilder::new(rig::model(client.completion(openai::GPT_4O)))
+        AgentBuilder::new(client.completion(openai::GPT_4O).on(rig::transport()))
             .preamble(PREAMBLE)
             .tool(Add)
             .build()

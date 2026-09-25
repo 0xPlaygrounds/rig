@@ -37,6 +37,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_truncation_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -192,7 +193,10 @@ impl Tool for FileReport {
 }
 
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
-    let model = rig::model(client.openai.chat(model_name(cell.model)));
+    let model = client
+        .openai
+        .chat(model_name(cell.model))
+        .on(rig::transport());
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
@@ -241,15 +245,20 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
-    let agent = rig::AgentBuilder::new(rig::model(client.chat.completion(model_name(cell.model))))
-        .preamble(PREAMBLE)
-        .tool(FileReport {
-            invocations: Arc::clone(&invocations),
-        })
-        .additional_params(json!({ "tool_choice": "required" }))
-        .max_tokens(max_tokens(cell.budget))
-        .default_max_turns(1)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        client
+            .chat
+            .completion(model_name(cell.model))
+            .on(rig::transport()),
+    )
+    .preamble(PREAMBLE)
+    .tool(FileReport {
+        invocations: Arc::clone(&invocations),
+    })
+    .additional_params(json!({ "tool_choice": "required" }))
+    .max_tokens(max_tokens(cell.budget))
+    .default_max_turns(1)
+    .build();
     let mut errors = Vec::new();
     match cell.transport {
         Transport::Blocking => {

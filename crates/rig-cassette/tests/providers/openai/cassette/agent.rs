@@ -1,6 +1,7 @@
 //! OpenAI agent completion smoke test.
 
 use rig::providers::openai;
+use rig::wire::Wire as _;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
@@ -8,9 +9,14 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 async fn completion_smoke() {
     with_openai_cassette("agent/completion_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-            .preamble(BASIC_PREAMBLE)
-            .build();
+        let agent = rig::AgentBuilder::new(
+            client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport()),
+        )
+        .preamble(BASIC_PREAMBLE)
+        .build();
 
         let response = agent
             .prompt(BASIC_PROMPT)

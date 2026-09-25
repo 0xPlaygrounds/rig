@@ -5,6 +5,7 @@ use futures::StreamExt;
 use rig::providers::openai::responses_api;
 use rig::providers::xai;
 use rig::streaming::StreamEvent;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 
 use super::support::with_xai_cassette;
@@ -23,7 +24,7 @@ async fn nonstreaming_response_carries_identity() {
     with_xai_cassette(
         "response_identity/nonstreaming_response_carries_identity",
         |client| async move {
-            let model = rig::model(client.completion(xai::GROK_3_MINI));
+            let model = client.completion(xai::GROK_3_MINI).on(rig::transport());
             let response = model
                 .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
@@ -48,7 +49,7 @@ async fn streaming_terminal_carries_identity() {
     with_xai_cassette(
         "response_identity/streaming_terminal_carries_identity",
         |client| async move {
-            let model = rig::model(client.completion(xai::GROK_3_MINI));
+            let model = client.completion(xai::GROK_3_MINI).on(rig::transport());
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
@@ -83,10 +84,11 @@ async fn streamed_agent_run_reports_identity() {
         "response_identity/streamed_agent_run_reports_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_3_MINI)))
-                .preamble("You are a terse assistant.")
-                .add_hook(probe.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI).on(rig::transport()))
+                    .preamble("You are a terse assistant.")
+                    .add_hook(probe.clone())
+                    .build();
 
             let mut stream = agent
                 .prompt(rig::completion::Message::user(
@@ -118,7 +120,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
     with_xai_cassette(
         "response_identity/raw_and_normalized_views_agree_on_identity",
         |client| async move {
-            let model = rig::model(client.completion(xai::GROK_3_MINI));
+            let model = client.completion(xai::GROK_3_MINI).on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Reply with exactly: two views probe").build();
             let response = model
@@ -153,7 +155,9 @@ async fn provider_error_classifies_with_contract_but_reports_no_id() {
     with_xai_cassette(
         "response_identity/provider_error_classifies_with_contract_but_reports_no_id",
         |client| async move {
-            let model = rig::model(client.completion("grok-nonexistent-model-for-identity-edge"));
+            let model = client
+                .completion("grok-nonexistent-model-for-identity-edge")
+                .on(rig::transport());
             let error = model
                 .call(CompletionRequestBuilder::new("Never answered").build())
                 .await
@@ -183,7 +187,7 @@ async fn auth_rejection_classifies_with_contract() {
     with_xai_cassette_bogus_key(
         "response_identity/auth_rejection_classifies_with_contract",
         |client| async move {
-            let model = rig::model(client.completion(xai::GROK_3_MINI));
+            let model = client.completion(xai::GROK_3_MINI).on(rig::transport());
             let error = model
                 .call(CompletionRequestBuilder::new("Never authenticated").build())
                 .await

@@ -2,6 +2,7 @@
 //!
 //! This covers providers that return non-streaming reasoning items with a
 //! `content` array containing `reasoning_text`, as llama.cpp does.
+use rig::wire::Wire as _;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::panic::AssertUnwindSafe;
@@ -34,15 +35,18 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
         "openai_compatible/reasoning_content_tool_roundtrip",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.completion("llama-cpp-reasoning-model")))
-                    .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                    .tool(WeatherTool::new(call_count.clone()))
-                    .additional_params(json!({
-                        "reasoning": { "effort": "medium" }
-                    }))
-                    .default_max_turns(2)
-                    .build();
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion("llama-cpp-reasoning-model")
+                    .on(rig::transport()),
+            )
+            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+            .tool(WeatherTool::new(call_count.clone()))
+            .additional_params(json!({
+                "reasoning": { "effort": "medium" }
+            }))
+            .default_max_turns(2)
+            .build();
 
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())

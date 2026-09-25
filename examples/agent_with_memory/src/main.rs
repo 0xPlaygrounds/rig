@@ -17,10 +17,14 @@ async fn main() -> Result<()> {
     // depend on the `rig-memory` companion crate. Here we use the bare backend.
     let memory = InMemoryConversationMemory::new();
 
-    let agent = AgentBuilder::new(rig::model(OpenAI::from_env()?.completion(openai::GPT_4O)))
-        .preamble("You are a helpful assistant with persistent memory.")
-        .memory(memory)
-        .build();
+    let agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .completion(openai::GPT_4O)
+            .on(rig::transport()),
+    )
+    .preamble("You are a helpful assistant with persistent memory.")
+    .memory(memory)
+    .build();
 
     let first = agent
         .prompt("My name is Alice.")

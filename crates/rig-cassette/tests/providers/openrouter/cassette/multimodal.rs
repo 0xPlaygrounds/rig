@@ -5,6 +5,7 @@ use rig::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
     Message, UserContent, VideoMediaType,
 };
+use rig::wire::Wire as _;
 
 use crate::support::{
     AUDIO_FIXTURE_PATH, IMAGE_FIXTURE_PATH, PDF_FIXTURE_PATH, VIDEO_FIXTURE_PATH,
@@ -49,7 +50,7 @@ fn audio_content() -> UserContent {
 #[tokio::test]
 async fn image_analysis_prompt() {
     with_openrouter_cassette("multimodal/image_analysis_prompt", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
             .preamble("You are a helpful assistant that describes images in detail.")
             .build();
 
@@ -71,7 +72,7 @@ async fn image_analysis_prompt() {
 #[tokio::test]
 async fn pdf_analysis_prompt() {
     with_openrouter_cassette("multimodal/pdf_analysis_prompt", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
             .preamble("You are a helpful assistant that summarizes documents.")
             .build();
 
@@ -93,7 +94,7 @@ async fn pdf_analysis_prompt() {
 #[tokio::test]
 async fn mixed_multimodal_prompt() {
     with_openrouter_cassette("multimodal/mixed_multimodal_prompt", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
             .preamble("You are a helpful assistant.")
             .build();
 
@@ -117,7 +118,7 @@ async fn mixed_multimodal_prompt() {
 #[tokio::test]
 async fn video_analysis_prompt() {
     with_openrouter_cassette("multimodal/video_analysis_prompt", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
             .preamble("You are a helpful assistant that describes videos.")
             .build();
 
@@ -139,7 +140,7 @@ async fn video_analysis_prompt() {
 #[tokio::test]
 async fn audio_analysis_prompt() {
     with_openrouter_cassette("multimodal/audio_analysis_prompt", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(VISION_MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL).on(rig::transport()))
             .preamble("You are a helpful assistant that transcribes and describes audio.")
             .build();
 

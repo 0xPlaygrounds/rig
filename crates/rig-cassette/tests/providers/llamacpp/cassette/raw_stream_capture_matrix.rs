@@ -56,6 +56,7 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_stream_capture_matrix -- --test-threads=1`
 
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -88,7 +89,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| {
             capture_sole_terminal(
-                rig::model(client.completion(CASSETTE_MODEL)),
+                client.completion(CASSETTE_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -128,7 +129,7 @@ async fn stream_raw_exposes_envelope_fields() {
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| {
             capture_sole_terminal(
-                rig::model(client.completion(CASSETTE_MODEL)),
+                client.completion(CASSETTE_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -210,7 +211,7 @@ async fn stream_raw_preserves_llamacpp_timings() {
         "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings",
         |client| {
             capture_sole_terminal(
-                rig::model(client.completion(CASSETTE_MODEL)),
+                client.completion(CASSETTE_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )

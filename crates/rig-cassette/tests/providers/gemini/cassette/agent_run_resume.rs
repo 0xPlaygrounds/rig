@@ -5,6 +5,7 @@
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 
 use super::super::agent_run_support::{
     FORCE_TOOLS_PREAMBLE, GeminiAgent, call_model, execute_pending_calls,
@@ -26,7 +27,9 @@ async fn resume_from_serialized_state_mid_tool_execution() {
         "agent_run_resume/resume_from_serialized_state_mid_tool_execution",
         |client| async move {
             let agent = GeminiAgent::new(
-                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,
@@ -132,7 +135,9 @@ async fn resume_while_invalid_tool_call_awaits_resolution() {
         "agent_run_resume/resume_while_invalid_tool_call_awaits_resolution",
         |client| async move {
             let agent = GeminiAgent::new(
-                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,
@@ -231,7 +236,7 @@ async fn resume_after_invalid_tool_call_retry_rollback() {
         "agent_run_resume/resume_after_invalid_tool_call_retry_rollback",
         |client| async move {
             let agent = GeminiAgent::new(
-                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,

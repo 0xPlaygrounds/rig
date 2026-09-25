@@ -2,6 +2,7 @@
 
 use rig::providers::anthropic;
 use rig::providers::openai::wire::{MIRA, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{
     Adder, Subtract, TOOLS_PREAMBLE, TOOLS_PROMPT, assert_mentions_expected_number,
@@ -11,9 +12,11 @@ use crate::support::{
 #[ignore = "requires MIRA_API_KEY"]
 async fn tools_smoke() {
     let provider = OpenAI::from_env_with(&MIRA).expect("config should build from env");
-    let agent = rig::AgentBuilder::new(rig::model(
-        provider.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-    ))
+    let agent = rig::AgentBuilder::new(
+        provider
+            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            .on(rig::transport()),
+    )
     .preamble(TOOLS_PREAMBLE)
     .tool(Adder)
     .tool(Subtract)

@@ -38,6 +38,7 @@
 
 use rig::completion::CompletionRequest;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -71,7 +72,9 @@ async fn raw_is_the_verbatim_response_body() {
     let sink = Observed::default();
     with_groq_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
         capture_completion(
-            rig::model(client.completion(RAW_CAPTURE_MATRIX_MODEL)),
+            client
+                .completion(RAW_CAPTURE_MATRIX_MODEL)
+                .on(rig::transport()),
             request(),
             sink.clone(),
         )
@@ -135,7 +138,9 @@ async fn raw_exposes_queue_time() {
     let sink = Observed::default();
     with_groq_cassette_result("raw_capture_matrix/raw_exposes_queue_time", |client| {
         capture_completion(
-            rig::model(client.completion(RAW_CAPTURE_MATRIX_MODEL)),
+            client
+                .completion(RAW_CAPTURE_MATRIX_MODEL)
+                .on(rig::transport()),
             request(),
             sink.clone(),
         )
@@ -193,7 +198,9 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                rig::model(client.completion(RAW_CAPTURE_MATRIX_MODEL)),
+                client
+                    .completion(RAW_CAPTURE_MATRIX_MODEL)
+                    .on(rig::transport()),
                 request(),
                 sink.clone(),
             )

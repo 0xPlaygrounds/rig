@@ -11,6 +11,7 @@ use rig::message::AssistantContent;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};
@@ -28,7 +29,10 @@ async fn strict_tools_opt_in_roundtrip() {
             // The recorded request body locks the strict-tools contract:
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the backend.
-            let model = rig::model(client.completion(chatgpt::GPT_5_4).with_strict_tools());
+            let model = client
+                .completion(chatgpt::GPT_5_4)
+                .with_strict_tools()
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
@@ -79,7 +83,7 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
     with_chatgpt_cassette(
         "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip",
         |client| async move {
-            let model = rig::model(client.completion(chatgpt::GPT_5_4));
+            let model = client.completion(chatgpt::GPT_5_4).on(rig::transport());
             // `store` and `prompt_cache_key` are Responses-API wire fields
             // with no normalized home, so they are read off the backend's own
             // response type — deserialized from the one reply's `raw`, which
@@ -151,9 +155,10 @@ async fn explicit_preamble_and_mid_conversation_system_messages_are_instructions
             // ChatGPT rejects `system` items in `input`; the recorded request
             // body locks that the provider lifts both the preamble and later
             // system messages into the top-level `instructions` field.
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
-                .preamble("You are a concise assistant.")
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4).on(rig::transport()))
+                    .preamble("You are a concise assistant.")
+                    .build();
             let mut history = vec![
                 Message::user("Hello!"),
                 Message::assistant("Hi! How can I help you today?"),
@@ -182,7 +187,7 @@ async fn default_instructions_merge_with_explicit_preamble() {
         "codex_behaviors/default_instructions_merge_with_explicit_preamble",
         "Default instruction marker: always include DEFAULT-CODEX-MARKER when asked for the default marker.",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4).on(rig::transport()))
                 .preamble("Explicit instruction marker: also include EXPLICIT-CODEX-MARKER.")
                 .build();
             let mut history = Vec::<Message>::new();

@@ -13,6 +13,7 @@ use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_gemini_cassette;
@@ -220,8 +221,12 @@ fn assert_recorded(cell: Cell, scenario: &str) {
 
 async fn run(client: Gemini, cell: Cell) {
     match cell.api {
-        Api::GenerateContent => conversation(rig::model(client.completion(cell.model)), cell).await,
-        Api::Interactions => conversation(rig::model(client.interactions(cell.model)), cell).await,
+        Api::GenerateContent => {
+            conversation(client.completion(cell.model).on(rig::transport()), cell).await
+        }
+        Api::Interactions => {
+            conversation(client.interactions(cell.model).on(rig::transport()), cell).await
+        }
     }
 }
 

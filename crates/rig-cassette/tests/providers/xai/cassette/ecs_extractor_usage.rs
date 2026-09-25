@@ -5,6 +5,7 @@ use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
 use rig::message::Message;
 use rig::providers::xai;
+use rig::wire::Wire as _;
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {
     rig_test_support::goldens::world_golden_test(
@@ -13,7 +14,7 @@ async fn extract_backward_compatibility() -> Result<()> {
                 "extractor_usage/extract_backward_compatibility",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Person>::new(
-                        rig::model(client.completion(xai::GROK_3_MINI)),
+                        client.completion(xai::GROK_3_MINI).on(rig::transport()),
                         None,
                         None,
                     );
@@ -49,7 +50,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
                 "extractor_usage/extract_with_usage_returns_data_and_usage",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Person>::new(
-                        rig::model(client.completion(xai::GROK_3_MINI)),
+                        client.completion(xai::GROK_3_MINI).on(rig::transport()),
                         None,
                         None,
                     );
@@ -87,7 +88,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
                 "extractor_usage/extract_with_chat_history_with_usage_works",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Address>::new(
-                        rig::model(client.completion(xai::GROK_3_MINI)),
+                        client.completion(xai::GROK_3_MINI).on(rig::transport()),
                         None,
                         None,
                     );
@@ -128,7 +129,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
                 "extractor_usage/extract_and_extract_with_usage_return_same_data",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Person>::new(
-                        rig::model(client.completion(xai::GROK_3_MINI)),
+                        client.completion(xai::GROK_3_MINI).on(rig::transport()),
                         None,
                         None,
                     );
@@ -170,7 +171,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
                 "extractor_usage/usage_tracking_works_for_different_schemas",
                 |client| async move {
                     let mut person_extractor = EcsExtractor::<Person>::new(
-                        rig::model(client.completion(xai::GROK_3_MINI)),
+                        client.completion(xai::GROK_3_MINI).on(rig::transport()),
                         None,
                         None,
                     );

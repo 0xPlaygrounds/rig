@@ -8,6 +8,7 @@
 //! covers setup and further examples.
 //!
 //! ```no_run
+//! use rig_core::wire::Wire as _;
 //! use neo4rs::ConfigBuilder;
 //! use rig_core::providers::openai::{self, wire::OpenAI};
 //! use rig_core::vector_store::VectorStoreIndex;
@@ -25,7 +26,7 @@
 //! async fn main() -> Result<(), anyhow::Error> {
 //!     let openai = OpenAI::from_env()?;
 //!     let http = rig_reqwest::shared();
-//!     let model = rig_core::Model::new(openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None), http);
+//!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None).on(http);
 //!
 //!     let client = Neo4jClient::from_config(
 //!         ConfigBuilder::default()

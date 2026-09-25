@@ -4,6 +4,7 @@ use futures::StreamExt;
 use rig::message::AssistantContent;
 use rig::message::Message;
 use rig::streaming::{Delta, StreamEvent};
+use rig::wire::Wire as _;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::{
@@ -31,7 +32,7 @@ async fn default_instructions_fill_required_instructions() {
         .await
         .with_instructions("Always answer with the single word cedar.");
 
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL))).build();
+    let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport())).build();
     let mut stream = agent
         .prompt("Reply with the exact word from the instructions.")
         .stream();
@@ -45,7 +46,10 @@ async fn default_instructions_fill_required_instructions() {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn system_messages_are_lifted_into_instructions() {
-    let model = rig::model(live_client().await.completion(LIVE_MODEL));
+    let model = live_client()
+        .await
+        .completion(LIVE_MODEL)
+        .on(rig::transport());
 
     let request =
         CompletionRequestBuilder::new("Reply with the exact word from the system message.")

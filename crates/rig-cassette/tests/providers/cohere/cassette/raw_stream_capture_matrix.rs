@@ -34,6 +34,7 @@
 use rig::completion::FinishReason;
 use rig::providers::cohere::streaming::StreamingCompletionResponse;
 use rig::streaming::StreamFinal;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -104,7 +105,7 @@ async fn raw_roundtrips_streaming_completion_response() {
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
             capture_text_and_sole_terminal(
-                rig::model(client.completion(CASSETTE_MODEL)),
+                client.completion(CASSETTE_MODEL).on(rig::transport()),
                 request(),
                 sink,
             )
@@ -160,7 +161,7 @@ async fn raw_exposes_terminal_only_fields() {
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
             capture_text_and_sole_terminal(
-                rig::model(client.completion(CASSETTE_MODEL)),
+                client.completion(CASSETTE_MODEL).on(rig::transport()),
                 request(),
                 sink,
             )

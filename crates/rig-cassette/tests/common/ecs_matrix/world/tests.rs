@@ -1,5 +1,5 @@
 use super::join_logs;
-use rig::Model;
+use rig::wire::Wire as _;
 use rig_cassette::effect_log::{EffectLog, RecordedStreamError};
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId},
@@ -10,8 +10,7 @@ use rig_core::{
 fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
     use super::super::{Wire, cells::ThinkingWire};
     use rig_core::{providers::anthropic::wire::Anthropic, test_utils::SequencedHttpClient};
-    let model = Model::new(
-        Anthropic::new("local-test-key").completion("model"),
+    let model = Anthropic::new("local-test-key").completion("model").on(
         rig::http_client::BoxedHttpClient::new(SequencedHttpClient::new(vec![])),
     );
     let wire = Wire {
@@ -26,10 +25,11 @@ fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
         "default model options fit the recipe"
     );
     let cached = Wire {
-        model: rig::Model::new(
-            wire.model.wire.with_automatic_caching(),
-            wire.model.transport,
-        ),
+        model: wire
+            .model
+            .wire
+            .with_automatic_caching()
+            .on(wire.model.transport),
         ..wire
     };
     assert!(
@@ -64,26 +64,30 @@ fn model_level_options_require_intact_host_bindings() {
     }
     let provider = OpenAI::new("local-test-key");
     check(
-        Model::new(
-            provider.chat("model").with_prompt_caching(),
-            rig::http_client::BoxedHttpClient::new(SequencedHttpClient::new(vec![])),
-        ),
+        provider
+            .chat("model")
+            .with_prompt_caching()
+            .on(rig::http_client::BoxedHttpClient::new(
+                SequencedHttpClient::new(vec![]),
+            )),
         ThinkingWire::OpenAiChat,
     );
     check(
-        Model::new(
-            provider.responses("model").with_strict_tools(),
-            rig::http_client::BoxedHttpClient::new(SequencedHttpClient::new(vec![])),
-        ),
+        provider
+            .responses("model")
+            .with_strict_tools()
+            .on(rig::http_client::BoxedHttpClient::new(
+                SequencedHttpClient::new(vec![]),
+            )),
         ThinkingWire::OpenAiResponses,
     );
     check(
-        Model::new(
-            Gemini::new("local-test-key")
-                .completion("model")
-                .with_cached_content("cachedContents/test"),
-            rig::http_client::BoxedHttpClient::new(SequencedHttpClient::new(vec![])),
-        ),
+        Gemini::new("local-test-key")
+            .completion("model")
+            .with_cached_content("cachedContents/test")
+            .on(rig::http_client::BoxedHttpClient::new(
+                SequencedHttpClient::new(vec![]),
+            )),
         ThinkingWire::Gemini,
     );
 }

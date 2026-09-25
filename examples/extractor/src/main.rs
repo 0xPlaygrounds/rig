@@ -5,6 +5,7 @@
 use anyhow::Result;
 use rig::extractor::ExtractorBuilder;
 use rig::providers::openai::{self, OpenAI};
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +26,8 @@ const SECOND_INPUT: &str = "Jane Smith is a data scientist.";
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?;
     let extractor =
-        ExtractorBuilder::<Person>::new(rig::model(client.completion(openai::GPT_4))).build();
+        ExtractorBuilder::<Person>::new(client.completion(openai::GPT_4).on(rig::transport()))
+            .build();
 
     let person = extractor.extract(FIRST_INPUT).await?.output;
     println!("{}", serde_json::to_string_pretty(&person)?);

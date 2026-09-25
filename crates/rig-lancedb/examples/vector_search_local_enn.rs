@@ -1,5 +1,4 @@
 use fixture::{as_record_batch, words};
-use rig_core::Model;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::wire::Wire;
@@ -18,10 +17,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let http = rig_reqwest::shared();
 
     // Select the embedding model and generate our embeddings
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http);
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())

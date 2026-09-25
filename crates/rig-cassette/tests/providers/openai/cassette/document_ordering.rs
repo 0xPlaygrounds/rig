@@ -1,6 +1,7 @@
 //! Focused OpenAI cassette coverage for request document ordering.
 use rig::completion::{AssistantContent, Document, Message};
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -45,7 +46,10 @@ async fn responses_keeps_documents_after_system_before_history() {
     super::super::support::with_openai_cassette(
         "document_ordering/responses_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = rig::model(client.openai.completion(openai::GPT_4O))
+            let response = client
+                .openai
+                .completion(openai::GPT_4O)
+                .on(rig::transport())
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
                         .message(Message::system(SYSTEM_INSTRUCTION))
@@ -76,7 +80,9 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
     super::super::support::with_openai_completions_cassette(
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = rig::model(client.chat(openai::GPT_4O))
+            let response = client
+                .chat(openai::GPT_4O)
+                .on(rig::transport())
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
                         .message(Message::system(SYSTEM_INSTRUCTION))

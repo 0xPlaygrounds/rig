@@ -5,15 +5,21 @@ use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
     assert_mentions_expected_number, collect_stream_final_response,
 };
+use rig::wire::Wire as _;
 
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn streaming_tools_smoke() {
-    let agent = rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_MODEL)))
-        .preamble(STREAMING_TOOLS_PREAMBLE)
-        .tool(Adder)
-        .tool(Subtract)
-        .build();
+    let agent = rig::AgentBuilder::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .preamble(STREAMING_TOOLS_PREAMBLE)
+    .tool(Adder)
+    .tool(Subtract)
+    .build();
 
     let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
     let response = collect_stream_final_response(&mut stream)
@@ -26,15 +32,20 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn example_streaming_with_tools() {
-    let agent = rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_MODEL)))
-        .preamble(
-            "You are a calculator here to help the user perform arithmetic operations. \
+    let agent = rig::AgentBuilder::new(
+        live_client()
+            .await
+            .completion(LIVE_MODEL)
+            .on(rig::transport()),
+    )
+    .preamble(
+        "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",
-        )
-        .max_tokens(1024)
-        .tool(Adder)
-        .tool(Subtract)
-        .build();
+    )
+    .max_tokens(1024)
+    .tool(Adder)
+    .tool(Subtract)
+    .build();
 
     let mut stream = agent.prompt("Calculate 2 - 5").stream();
     let response = collect_stream_final_response(&mut stream)

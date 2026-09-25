@@ -2,6 +2,7 @@
 
 use crate::copilot::{LIVE_MODEL, with_copilot_noninteractive_oauth_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn cached_oauth_allows_noninteractive_completion() {
@@ -14,12 +15,13 @@ async fn cached_oauth_allows_noninteractive_completion() {
             // false`, so a credential that needed a device flow would have
             // failed there rather than prompting.
 
-            let response = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
-                .preamble(BASIC_PREAMBLE)
-                .build()
-                .prompt(BASIC_PROMPT)
-                .await
-                .expect("non-interactive OAuth completion should succeed");
+            let response =
+                rig::AgentBuilder::new(client.completion(LIVE_MODEL).on(rig::transport()))
+                    .preamble(BASIC_PREAMBLE)
+                    .build()
+                    .prompt(BASIC_PROMPT)
+                    .await
+                    .expect("non-interactive OAuth completion should succeed");
 
             assert_nonempty_response(&response.output);
         },

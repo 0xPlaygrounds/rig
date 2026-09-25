@@ -82,6 +82,7 @@ use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::streaming::{Delta, StreamEvent};
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -199,7 +200,9 @@ async fn two_terminal_stream_keeps_the_text_after_the_first_finish() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_keeps_the_text_after_the_first_finish",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
@@ -243,7 +246,9 @@ async fn two_terminal_stream_blocking_twin_has_the_same_answer() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_blocking_twin_has_the_same_answer",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
@@ -272,9 +277,11 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .temperature(0.0)
             .max_tokens(2000)
             .additional_params(code_execution_params())
@@ -314,7 +321,9 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_terminal_carries_the_last_usage",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
@@ -369,7 +378,9 @@ async fn two_terminal_stream_with_visible_thoughts() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_with_visible_thoughts",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(3000)
@@ -410,7 +421,9 @@ async fn gemini_3_flash_does_not_emit_the_intermediate_finish() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/gemini_3_flash_does_not_emit_the_intermediate_finish",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW));
+            let model = client
+                .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(3000)
@@ -444,7 +457,9 @@ async fn two_terminal_stream_through_raw_stream() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_through_raw_stream",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
@@ -502,7 +517,9 @@ async fn two_terminal_stream_unicode_answer_after_the_first_finish() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_unicode_answer_after_the_first_finish",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "You must call the code execution tool twice as two separate executions. \
                  Execution 1: run only print(6 * 7). Then, after seeing that number, \
@@ -540,7 +557,9 @@ async fn single_terminal_text_stream_is_unchanged() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/single_terminal_text_stream_is_unchanged",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new("Reply with exactly the word PONG.")
                 .temperature(0.0)
                 .max_tokens(400)
@@ -571,7 +590,9 @@ async fn single_terminal_tool_call_stream_is_unchanged() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/single_terminal_tool_call_stream_is_unchanged",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new("What is 41 plus 1? Use the add tool.")
                 .temperature(0.0)
                 .max_tokens(1000)
@@ -610,7 +631,9 @@ async fn max_tokens_truncated_stream_still_reports_length() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/max_tokens_truncated_stream_still_reports_length",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new("Write 300 words about lighthouses.")
                 .temperature(0.0)
                 .max_tokens(32)
@@ -640,7 +663,9 @@ async fn thinking_stream_terminal_is_unchanged() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/thinking_stream_terminal_is_unchanged",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "How many minutes are in two days? Answer with the number.",
             )
@@ -680,6 +705,7 @@ mod unit {
     use futures::StreamExt;
     use rig::completion::FinishReason;
     use rig::message::AssistantContent;
+    use rig::wire::Wire as _;
 
     use rig::providers::gemini::{self, Gemini};
     use rig::streaming::{Delta, StreamEvent};
@@ -727,10 +753,9 @@ mod unit {
     where
         T: rig::http_client::HttpClientExt + Clone + std::fmt::Debug + Send + Sync + 'static,
     {
-        let model = rig::Model::new(
-            Gemini::new("test-key").completion(gemini::completion::GEMINI_2_5_FLASH),
-            http_client,
-        );
+        let model = Gemini::new("test-key")
+            .completion(gemini::completion::GEMINI_2_5_FLASH)
+            .on(http_client);
         let request = rig::completion::CompletionRequestBuilder::new("hello").build();
         let mut stream = model.stream(request).expect("stream should open");
 

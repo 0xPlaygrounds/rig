@@ -2,6 +2,7 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::support::with_deepseek_cassette;
+use rig::wire::Wire as _;
 
 use crate::history_survival::sessions::{self, Cell};
 use rig::providers::openai::OpenAI;
@@ -25,9 +26,9 @@ fn models(
     rig::Model<rig::providers::openai::wire::OpenAiWire>,
 ) {
     (
-        rig::model(client.completion("deepseek-v4-flash")),
-        rig::model(client.completion("deepseek-v4-flash")),
-        rig::model(client.completion("deepseek-v4-pro")),
+        client.completion("deepseek-v4-flash").on(rig::transport()),
+        client.completion("deepseek-v4-flash").on(rig::transport()),
+        client.completion("deepseek-v4-pro").on(rig::transport()),
     )
 }
 

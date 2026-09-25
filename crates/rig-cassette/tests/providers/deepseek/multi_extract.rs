@@ -1,5 +1,6 @@
 //! DeepSeek live coverage for batch multi-extract pipelines.
 
+use rig::wire::Wire as _;
 use std::future::IntoFuture;
 
 use anyhow::Result;
@@ -33,15 +34,15 @@ async fn batch_multi_extract_chain() -> Result<()> {
     with_deepseek_cassette_result(
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
         |client| async move {
-            let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
+            let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(client.completion(deepseek::DEEPSEEK_V4_FLASH).on(rig::transport()))
                 .append_preamble("Extract names from the given text.")
                 .retries(2)
                 .build();
-            let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
+            let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(client.completion(deepseek::DEEPSEEK_V4_FLASH).on(rig::transport()))
                 .append_preamble("Extract topics from the given text.")
                 .retries(2)
                 .build();
-            let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
+            let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(client.completion(deepseek::DEEPSEEK_V4_FLASH).on(rig::transport()))
                 .append_preamble("Extract sentiment and confidence from the given text.")
                 .retries(2)
                 .build();

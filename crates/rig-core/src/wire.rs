@@ -11,6 +11,7 @@
 
 use std::borrow::Cow;
 
+use crate::driver::{Model, Transport};
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -452,6 +453,15 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     /// the endpoint has its own name (Gemini `generate_content`).
     fn telemetry(&self, streaming: bool) -> Telemetry<Self> {
         <Self::Op as Operation>::telemetry(streaming)
+    }
+
+    /// This wire on `transport`: the [`Model`] that sends it, read in the
+    /// order it is thought about (provider, endpoint, transport).
+    fn on<T: Transport<Self>>(self, transport: T) -> Model<Self, T>
+    where
+        Self: Sized,
+    {
+        Model::new(self, transport)
     }
 }
 

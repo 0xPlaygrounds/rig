@@ -1,6 +1,7 @@
 //! Migrated from `examples/huggingface_subproviders.rs`.
 
 use rig::providers::openai::wire::{HUGGINGFACE, OpenAI, SubRoute};
+use rig::wire::Wire as _;
 
 use crate::support::{Adder, Subtract, assert_mentions_expected_number};
 
@@ -20,7 +21,7 @@ async fn tool_prompt_across_subproviders() {
         let provider = OpenAI::from_env_with(&HUGGINGFACE)
             .expect("config should build from env")
             .with_sub_route(sub_route);
-        let agent = rig::AgentBuilder::new(rig::model(provider.completion(model)))
+        let agent = rig::AgentBuilder::new(provider.completion(model).on(rig::transport()))
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \
                  Use the provided tools to answer the user's question.",

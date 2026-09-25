@@ -3,6 +3,7 @@
 //! Run only these cases with:
 //! `cargo test -p rig --test xai xai::reasoning_tool_roundtrip::streaming -- --ignored --nocapture`
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -16,11 +17,12 @@ use crate::reasoning::{self, WeatherTool};
 async fn streaming() {
     with_xai_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_3_MINI)))
-            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-            .max_tokens(4096)
-            .tool(WeatherTool::new(call_count.clone()))
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI).on(rig::transport()))
+                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                .max_tokens(4096)
+                .tool(WeatherTool::new(call_count.clone()))
+                .build();
 
         let stream = agent
             .prompt(reasoning::TOOL_USER_PROMPT)
@@ -40,12 +42,13 @@ async fn nonstreaming() {
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_3_MINI)))
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(4096)
-                .tool(WeatherTool::new(call_count.clone()))
-                .default_max_turns(2)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI).on(rig::transport()))
+                    .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                    .max_tokens(4096)
+                    .tool(WeatherTool::new(call_count.clone()))
+                    .default_max_turns(2)
+                    .build();
 
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())

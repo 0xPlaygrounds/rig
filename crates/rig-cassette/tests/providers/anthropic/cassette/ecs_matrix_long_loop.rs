@@ -8,6 +8,7 @@
 
 use rig::providers::anthropic::wire::Anthropic;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
@@ -17,7 +18,9 @@ const THINKING: cells::ThinkingWire = cells::ThinkingWire::Anthropic;
 fn wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: rig::model(client.completion("claude-haiku-4-5-20251001")),
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -27,11 +30,10 @@ fn wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::
 fn task_wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: THINKING,
-        model: rig::model(
-            client
-                .completion("claude-haiku-4-5-20251001")
-                .with_prompt_caching(),
-        ),
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .with_prompt_caching()
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -43,11 +45,10 @@ fn automatic_task_wire(
 ) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: THINKING,
-        model: rig::model(
-            client
-                .completion("claude-haiku-4-5-20251001")
-                .with_automatic_caching_1h(),
-        ),
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .with_automatic_caching_1h()
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -59,14 +60,11 @@ fn mixed_task_wire(
 ) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: THINKING,
-        model: rig::model(
-            client
-                .completion("claude-haiku-4-5-20251001")
-                .with_automatic_caching()
-                .with_static_prefix_cache_ttl(
-                    rig::providers::anthropic::completion::CacheTtl::OneHour,
-                ),
-        ),
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .with_automatic_caching()
+            .with_static_prefix_cache_ttl(rig::providers::anthropic::completion::CacheTtl::OneHour)
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -117,7 +115,9 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,
-        model: rig::Model::new(client.completion("claude-haiku-4-5-20251001"), http.clone()),
+        model: client
+            .completion("claude-haiku-4-5-20251001")
+            .on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

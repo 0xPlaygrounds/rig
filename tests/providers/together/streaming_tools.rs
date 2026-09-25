@@ -2,6 +2,7 @@
 
 use rig::providers::openai::wire::{OpenAI, TOGETHER};
 use rig::providers::together;
+use rig::wire::Wire as _;
 
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
@@ -12,9 +13,11 @@ use crate::support::{
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn streaming_tools_smoke() {
     let provider = OpenAI::from_env_with(&TOGETHER).expect("config should build from env");
-    let agent = rig::AgentBuilder::new(rig::model(
-        provider.completion(together::LLAMA_2_70B_CHAT_TOGETHER),
-    ))
+    let agent = rig::AgentBuilder::new(
+        provider
+            .completion(together::LLAMA_2_70B_CHAT_TOGETHER)
+            .on(rig::transport()),
+    )
     .preamble(STREAMING_TOOLS_PREAMBLE)
     .tool(Adder)
     .tool(Subtract)

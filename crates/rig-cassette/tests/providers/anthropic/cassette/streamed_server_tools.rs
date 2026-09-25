@@ -20,6 +20,7 @@ use rig::completion::ProviderToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use rig::streaming::{BlockKind, StreamEvent};
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -68,7 +69,7 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
     with_anthropic_cassette(
         "streamed_server_tools/streamed_web_search_preserves_server_tool_blocks",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_OPUS_4_8));
+            let model = client.completion(CLAUDE_OPUS_4_8).on(rig::transport());
             let request = CompletionRequestBuilder::new(WEB_SEARCH_PROMPT)
                 .provider_tool(web_search_tool())
                 .max_tokens(1024).build();
@@ -130,7 +131,7 @@ async fn blocking_web_search_preserves_server_tool_blocks() {
     with_anthropic_cassette(
         "streamed_server_tools/blocking_web_search_preserves_server_tool_blocks",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_OPUS_4_8));
+            let model = client.completion(CLAUDE_OPUS_4_8).on(rig::transport());
             let request = CompletionRequestBuilder::new(WEB_SEARCH_PROMPT)
                 .provider_tool(web_search_tool())
                 .max_tokens(1024).build();

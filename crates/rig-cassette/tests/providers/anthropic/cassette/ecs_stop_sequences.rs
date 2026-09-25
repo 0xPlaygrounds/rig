@@ -1,6 +1,7 @@
 //! Stop metadata and empty results from native agent execution.
 use super::{empty_stop_sequence_matrix as empty, stop_sequence_terminal_matrix as terminal};
 use crate::{ecs_agent::EcsAgent, ecs_lifecycle};
+use rig::wire::Wire as _;
 use rig::{completion::FinishReason, providers::anthropic};
 use rig_ecs::agent::{AdditionalParams, MaxTokens};
 use serde_json::json;
@@ -29,7 +30,9 @@ async fn agent_stream_single_sequence() {
                 "stop_sequence_terminal_matrix/agent_stream_single_sequence",
                 |client| async move {
                     let mut ecs = agent(
-                        rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                        client
+                            .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                            .on(rig::transport()),
                         64,
                         "charlie",
                     );
@@ -64,7 +67,9 @@ async fn agent_prompt_empty_stop_sequence() {
                 "empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence",
                 |client| async move {
                     let mut ecs = agent(
-                        rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                        client
+                            .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                            .on(rig::transport()),
                         32,
                         "alpha",
                     );
@@ -98,7 +103,9 @@ async fn agent_stream_empty_stop_sequence() {
                 "empty_stop_sequence_matrix/agent_stream_empty_stop_sequence",
                 |client| async move {
                     let mut ecs = agent(
-                        rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+                        client
+                            .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                            .on(rig::transport()),
                         32,
                         "alpha",
                     );

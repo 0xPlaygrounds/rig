@@ -21,6 +21,7 @@ use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSes
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_core::wasm_compat::WasmBoxedFuture;
+use rig_core::wire::Wire as _;
 use rig_core::ws_client::{BoxedWebSocketConnection, CloseFrame, Frame, WebSocketConnection};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -153,10 +154,9 @@ impl WebSocketConnection for ScriptedConnection {
 
 /// A bound wire whose HTTP transport is a stub: these tests never send one.
 pub fn test_client() -> TestClient {
-    Model::new(
-        OpenAI::new("test-key").responses("gpt-4o"),
-        RecordingHttpClient::new("{}"),
-    )
+    OpenAI::new("test-key")
+        .responses("gpt-4o")
+        .on(RecordingHttpClient::new("{}"))
 }
 
 /// A session over `script`, with no event timeout.

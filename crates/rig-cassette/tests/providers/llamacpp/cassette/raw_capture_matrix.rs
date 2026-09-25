@@ -67,6 +67,7 @@
 
 use rig::completion::CompletionRequest;
 use rig::providers::{llamacpp, openai};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -125,7 +126,7 @@ async fn raw_reads_back_as_the_provider_type() {
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| {
             capture_completion(
-                rig::model(client.completion(CASSETTE_MODEL)),
+                client.completion(CASSETTE_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -183,7 +184,7 @@ async fn raw_exposes_envelope_fields() {
     let sink = Observed::default();
     with_llamacpp_cassette_result("raw_capture_matrix/raw_exposes_envelope_fields", |client| {
         capture_completion(
-            rig::model(client.completion(CASSETTE_MODEL)),
+            client.completion(CASSETTE_MODEL).on(rig::transport()),
             request(),
             sink.clone(),
         )
@@ -241,7 +242,7 @@ async fn normalized_fields_match_the_typed_raw() {
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| {
             capture_completion(
-                rig::model(client.completion(CASSETTE_MODEL)),
+                client.completion(CASSETTE_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -310,7 +311,7 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
     let sink = Observed::default();
     with_llamacpp_cassette_result("raw_capture_matrix/raw_preserves_timings", |client| {
         capture_completion(
-            rig::model(client.completion(CASSETTE_MODEL)),
+            client.completion(CASSETTE_MODEL).on(rig::transport()),
             request(),
             sink.clone(),
         )

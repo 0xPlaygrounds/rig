@@ -2,6 +2,7 @@
 //! feature collisions, failure/recovery paths, and replay semantics, chosen
 //! because a plausible implementation error would make each cell fail.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -51,12 +52,11 @@ async fn caching_and_identity_share_the_wire_blocking() {
     with_anthropic_cassette(
         "response_identity_edge/caching_and_identity_share_the_wire_blocking",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(CLAUDE_SONNET_4_6)
-                    .with_prompt_caching()
-                    .with_static_prefix_cache_ttl(CacheTtl::OneHour),
-            );
+            let model = client
+                .completion(CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .with_static_prefix_cache_ttl(CacheTtl::OneHour)
+                .on(rig::transport());
             let send = |model: Model<Messages>| async move {
                 model
                     .call(
@@ -109,12 +109,11 @@ async fn caching_and_identity_share_the_wire_streaming() {
     with_anthropic_cassette(
         "response_identity_edge/caching_and_identity_share_the_wire_streaming",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(CLAUDE_SONNET_4_6)
-                    .with_prompt_caching()
-                    .with_static_prefix_cache_ttl(CacheTtl::OneHour),
-            );
+            let model = client
+                .completion(CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .with_static_prefix_cache_ttl(CacheTtl::OneHour)
+                .on(rig::transport());
             let send = |model: Model<Messages>| async move {
                 let mut stream = model
                     .stream(
@@ -155,7 +154,10 @@ async fn strict_tools_and_identity() {
     with_anthropic_cassette(
         "response_identity_edge/strict_tools_and_identity",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6).with_strict_tools());
+            let model = client
+                .completion(CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Use the add tool: what is 2 + 3?")
@@ -184,7 +186,7 @@ async fn extended_thinking_and_identity() {
     with_anthropic_cassette(
         "response_identity_edge/extended_thinking_and_identity",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(
@@ -213,7 +215,7 @@ async fn documents_and_identity() {
     with_anthropic_cassette(
         "response_identity_edge/documents_and_identity",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new(
@@ -286,12 +288,13 @@ async fn tool_error_retry_reports_distinct_ids_blocking() {
         "response_identity_edge/tool_error_retry_reports_distinct_ids_blocking",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble("Use the add tool. If it fails transiently, call it again once.")
-                .max_tokens(1024)
-                .tool(FlakyAdder::default())
-                .add_hook(probe.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("Use the add tool. If it fails transiently, call it again once.")
+                    .max_tokens(1024)
+                    .tool(FlakyAdder::default())
+                    .add_hook(probe.clone())
+                    .build();
 
             let response = agent
                 .prompt("What is 2 + 3? Use the tool.")
@@ -336,12 +339,13 @@ async fn tool_error_retry_reports_distinct_ids_streamed() {
         "response_identity_edge/tool_error_retry_reports_distinct_ids_streamed",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble("Use the add tool. If it fails transiently, call it again once.")
-                .max_tokens(1024)
-                .tool(FlakyAdder::default())
-                .add_hook(probe.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("Use the add tool. If it fails transiently, call it again once.")
+                    .max_tokens(1024)
+                    .tool(FlakyAdder::default())
+                    .add_hook(probe.clone())
+                    .build();
 
             let mut stream = agent
                 .prompt(Message::user("What is 2 + 3? Use the tool."))
@@ -406,11 +410,12 @@ async fn streamed_hook_retry_uses_second_connections_id() {
         "response_identity_edge/streamed_hook_retry_uses_second_connections_id",
         |client| async move {
             let hook = RetryOnce::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble("You are a terse assistant.")
-                .max_tokens(64)
-                .add_hook(hook.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("You are a terse assistant.")
+                    .max_tokens(64)
+                    .add_hook(hook.clone())
+                    .build();
 
             let mut stream = agent
                 .prompt(Message::user("Reply with exactly: first probe"))
@@ -469,16 +474,17 @@ async fn repaired_invalid_call_keeps_call_identity() {
         "response_identity_edge/repaired_invalid_call_keeps_call_identity",
         |client| async move {
             let hook = RepairToAdd::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble(
-                    "Call the sum_values tool exactly once for the sum. As soon as any \
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble(
+                        "Call the sum_values tool exactly once for the sum. As soon as any \
                      tool result arrives — whatever tool name it shows — state the final \
                      answer in plain text and make no further tool calls.",
-                )
-                .max_tokens(1024)
-                .tool(Adder)
-                .add_hook(hook.clone())
-                .build();
+                    )
+                    .max_tokens(1024)
+                    .tool(Adder)
+                    .add_hook(hook.clone())
+                    .build();
 
             let response = agent
                 .prompt("What is 2 + 3? Use the sum_values tool.")
@@ -540,12 +546,13 @@ async fn max_turns_exhaustion_still_observed_completed_calls() {
         "response_identity_edge/max_turns_exhaustion_still_observed_completed_calls",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble(TOOLS_PREAMBLE)
-                .max_tokens(1024)
-                .tool(Adder)
-                .add_hook(probe.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble(TOOLS_PREAMBLE)
+                    .max_tokens(1024)
+                    .tool(Adder)
+                    .add_hook(probe.clone())
+                    .build();
 
             let error = agent
                 .prompt("What is 2 + 3? Use the tool.")
@@ -577,7 +584,7 @@ async fn parallel_tool_calls_one_identity_per_turn() {
         "response_identity_edge/parallel_tool_calls_one_identity_per_turn",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
                 .preamble(
                     "Use the add tool for arithmetic. When asked for several sums, emit all \
                      the tool calls in one single response.",
@@ -618,11 +625,12 @@ async fn history_replay_does_not_leak_prior_run_identity() {
         "response_identity_edge/history_replay_does_not_leak_prior_run_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .preamble("You are a terse assistant.")
-                .max_tokens(64)
-                .add_hook(probe.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .preamble("You are a terse assistant.")
+                    .max_tokens(64)
+                    .add_hook(probe.clone())
+                    .build();
 
             let first = agent
                 .prompt("Reply with exactly: run A probe")
@@ -662,7 +670,7 @@ async fn stream_conversion_carries_live_identity() {
     with_anthropic_cassette(
         "response_identity_edge/stream_conversion_carries_live_identity",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6).on(rig::transport());
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: conversion probe")
@@ -699,7 +707,9 @@ async fn provider_error_response_surfaces_cleanly() {
     with_anthropic_cassette(
         "response_identity_edge/provider_error_response_surfaces_cleanly",
         |client| async move {
-            let model = rig::model(client.completion("claude-nonexistent-model-for-identity-edge"));
+            let model = client
+                .completion("claude-nonexistent-model-for-identity-edge")
+                .on(rig::transport());
             let error = model
                 .call(
                     CompletionRequestBuilder::new("Reply with exactly: never sent successfully")

@@ -5,12 +5,13 @@
 //! `_observed` twins take the observation context a bus records under.
 //!
 //! ```no_run
+//! use rig_core::wire::Wire as _;
 //! use rig_core::completion::CompletionRequestBuilder;
 //! use rig_core::driver::Model;
 //! use rig_core::providers::openai::{self, OpenAI};
 //!
 //! # async fn example(http: rig_core::http_client::BoxedHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-//! let model = Model::new(OpenAI::from_env()?.responses(openai::GPT_5_2), http);
+//! let model = OpenAI::from_env()?.responses(openai::GPT_5_2).on(http);
 //! let response = model.call(CompletionRequestBuilder::new("Hello").build()).await?;
 //! # let _ = response;
 //! # Ok(())

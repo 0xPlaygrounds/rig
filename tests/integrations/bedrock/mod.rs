@@ -1,3 +1,4 @@
+use rig::wire::Wire as _;
 use rig_test_support::support;
 
 use rig::Model;
@@ -27,11 +28,11 @@ pub(crate) struct Bedrock(BedrockRuntime);
 
 impl Bedrock {
     pub(crate) fn completion(&self, model: impl Into<String>) -> Model<Converse, BedrockRuntime> {
-        Model::new(Converse::new(model), self.0.clone())
+        Converse::new(model).on(self.0.clone())
     }
 
     pub(crate) fn image_generation(&self, model: &str) -> Model<Images, BedrockRuntime> {
-        Model::new(Images::new(model), self.0.clone())
+        Images::new(model).on(self.0.clone())
     }
 
     pub(crate) fn agent(&self, model: &str) -> AgentBuilder {

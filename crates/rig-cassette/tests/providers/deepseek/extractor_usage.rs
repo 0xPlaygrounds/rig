@@ -4,6 +4,7 @@ use anyhow::{Result, anyhow};
 use rig::TypedPromptResponse;
 use rig::message::Message;
 use rig::providers::deepseek;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -43,9 +44,11 @@ async fn extract_backward_compatibility() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(deepseek::DEEPSEEK_V4_FLASH),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client
+                    .completion(deepseek::DEEPSEEK_V4_FLASH)
+                    .on(rig::transport()),
+            )
             .build();
 
             let person = extractor
@@ -76,9 +79,11 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(deepseek::DEEPSEEK_V4_FLASH),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client
+                    .completion(deepseek::DEEPSEEK_V4_FLASH)
+                    .on(rig::transport()),
+            )
             .build();
 
             let response: TypedPromptResponse<Person> = extractor
@@ -120,9 +125,11 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/extract_with_chat_history_with_usage_works",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
-                client.completion(deepseek::DEEPSEEK_V4_FLASH),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Address>::new(
+                client
+                    .completion(deepseek::DEEPSEEK_V4_FLASH)
+                    .on(rig::transport()),
+            )
             .build();
 
             let chat_history = vec![Message::user(
@@ -174,9 +181,11 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(deepseek::DEEPSEEK_V4_FLASH),
-            ))
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client
+                    .completion(deepseek::DEEPSEEK_V4_FLASH)
+                    .on(rig::transport()),
+            )
             .build();
 
             let text = "Bob Johnson is a 55 year old retired teacher.";
@@ -224,9 +233,11 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/usage_tracking_works_for_different_schemas",
         |client| async move {
-            let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
-                client.completion(deepseek::DEEPSEEK_V4_FLASH),
-            ))
+            let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(
+                client
+                    .completion(deepseek::DEEPSEEK_V4_FLASH)
+                    .on(rig::transport()),
+            )
             .build();
             let person_response = person_extractor
                 .extract("Alice is a 25 year old developer.")
@@ -236,9 +247,11 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
                 "expected person usage tokens"
             );
 
-            let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
-                client.completion(deepseek::DEEPSEEK_V4_FLASH),
-            ))
+            let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(
+                client
+                    .completion(deepseek::DEEPSEEK_V4_FLASH)
+                    .on(rig::transport()),
+            )
             .build();
             let address_response = address_extractor
                 .extract("456 Oak Avenue, Cambridge, MA 02139")

@@ -20,13 +20,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let agent = AgentBuilder::new(rig_core::Model::new(
-        Converse::new(AMAZON_NOVA_LITE),
-        BedrockRuntime::from_env(),
-    ))
-    .preamble("Describe this document")
-    .temperature(0.5)
-    .build();
+    let agent = AgentBuilder::new(Converse::new(AMAZON_NOVA_LITE).on(BedrockRuntime::from_env()))
+        .preamble("Describe this document")
+        .temperature(0.5)
+        .build();
 
     let reqwest_client = reqwest::Client::new();
     let response = reqwest_client.get(DOCUMENT_URL).send().await?;

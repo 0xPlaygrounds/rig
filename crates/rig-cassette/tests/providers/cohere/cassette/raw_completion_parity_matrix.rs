@@ -36,6 +36,7 @@
 
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason};
 use rig::providers::cohere::completion::{CompletionResponse, FinishReason as CohereFinishReason};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -63,7 +64,7 @@ async fn raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/raw_try_into_matches_completion",
         |client| async move {
             capture_completion_pair(
-                rig::model(client.completion(CASSETTE_MODEL)),
+                client.completion(CASSETTE_MODEL).on(rig::transport()),
                 request(),
                 sink,
             )

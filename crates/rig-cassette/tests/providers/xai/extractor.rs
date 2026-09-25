@@ -1,6 +1,7 @@
 //! xAI extractor smoke test.
 
 use rig::providers::xai;
+use rig::wire::Wire as _;
 
 use super::support::with_xai_cassette;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
@@ -8,9 +9,9 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 #[tokio::test]
 async fn extractor_smoke() {
     with_xai_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(rig::model(
-            client.completion(xai::GROK_3_MINI),
-        ))
+        let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(
+            client.completion(xai::GROK_3_MINI).on(rig::transport()),
+        )
         .build();
 
         let response = extractor

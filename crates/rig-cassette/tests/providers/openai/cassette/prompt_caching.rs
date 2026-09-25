@@ -41,6 +41,7 @@
 
 use rig::providers::openai;
 use rig::providers::openai::OpenAI;
+use rig::wire::Wire as _;
 use serde_json::json;
 
 use crate::cache_conformance::{
@@ -103,7 +104,7 @@ async fn responses_blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     with_openai_prompt_caching_cassette(
         "prompt_caching/responses_blocking_probe",
         |client| async move {
-            let model = rig::model(client.openai.completion(CACHE_MODEL));
+            let model = client.openai.completion(CACHE_MODEL).on(rig::transport());
             let observation: CacheObservation = run_cache_probe(model, &keyed_probe()).await;
             assert_cache_conformance(
                 &observation,
@@ -143,7 +144,7 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
     const SCENARIO: &str = "prompt_caching/responses_unkeyed_probe";
 
     with_openai_prompt_caching_cassette("prompt_caching/responses_unkeyed_probe", |client| async move {
-        let model = rig::model(client.openai.completion(CACHE_MODEL));
+        let model = client.openai.completion(CACHE_MODEL).on(rig::transport());
         let observation = run_cache_probe(model, &probe()).await;
 
         // Not `assert_cache_conformance`: turn 2 legitimately misses here, and
@@ -185,7 +186,7 @@ async fn chat_completions_blocking_probe_hits_and_keeps_hitting_as_the_prefix_gr
     with_openai_completions_prompt_caching_cassette(
         "prompt_caching/chat_completions_blocking_probe",
         |client| async move {
-            let model = rig::model(client.chat(CACHE_MODEL));
+            let model = client.chat(CACHE_MODEL).on(rig::transport());
             let observation = run_cache_probe(model, &probe()).await;
             assert_cache_conformance(
                 &observation,
@@ -207,7 +208,7 @@ async fn responses_streaming_probe_survives_the_streaming_accumulator() {
     with_openai_prompt_caching_cassette(
         "prompt_caching/responses_streaming_probe",
         |client| async move {
-            let model = rig::model(client.openai.completion(CACHE_MODEL));
+            let model = client.openai.completion(CACHE_MODEL).on(rig::transport());
             let observation = run_cache_probe_streaming(model, &keyed_probe()).await;
             assert_cache_conformance(
                 &observation,
@@ -229,7 +230,7 @@ async fn chat_completions_streaming_probe_survives_the_streaming_accumulator() {
     with_openai_completions_prompt_caching_cassette(
         "prompt_caching/chat_completions_streaming_probe",
         |client| async move {
-            let model = rig::model(client.chat(CACHE_MODEL));
+            let model = client.chat(CACHE_MODEL).on(rig::transport());
             let observation = run_cache_probe_streaming(model, &probe()).await;
             assert_cache_conformance(
                 &observation,
@@ -260,15 +261,16 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
     with_openai_completions_prompt_caching_cassette(
         "prompt_caching/chat_completions_agent_loop",
         |client| async move {
-            let response = rig::AgentBuilder::new(rig::model(client.completion(CACHE_MODEL)))
-                .preamble(&probe().preamble)
-                .tool(CacheProbeLookupTool)
-                .temperature(0.0)
-                .build()
-                .prompt(AGENT_CACHE_PROMPT)
-                .max_turns(6)
-                .await
-                .expect("openai agent cache probe should complete");
+            let response =
+                rig::AgentBuilder::new(client.completion(CACHE_MODEL).on(rig::transport()))
+                    .preamble(&probe().preamble)
+                    .tool(CacheProbeLookupTool)
+                    .temperature(0.0)
+                    .build()
+                    .prompt(AGENT_CACHE_PROMPT)
+                    .max_turns(6)
+                    .await
+                    .expect("openai agent cache probe should complete");
 
             let observation = observation_from_completion_calls(response.completion_calls());
             assert_agent_growth_still_hits(
@@ -295,7 +297,7 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
         "prompt_caching/responses_agent_loop",
         |client| async move {
             let response =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(CACHE_MODEL)))
+                rig::AgentBuilder::new(client.openai.completion(CACHE_MODEL).on(rig::transport()))
                     .preamble(&probe().preamble)
                     .tool(CacheProbeLookupTool)
                     .temperature(0.0)
@@ -333,7 +335,7 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
 #[ignore = "requires OPENAI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
     let client = OpenAI::from_env().expect("OPENAI_API_KEY");
-    let model = rig::model(client.completion(CACHE_MODEL));
+    let model = client.completion(CACHE_MODEL).on(rig::transport());
     let observation = run_cache_probe(model, &keyed_probe()).await;
     report_and_assert_live(
         &observation,

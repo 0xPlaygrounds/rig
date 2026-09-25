@@ -2,6 +2,7 @@
 
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::CompletionResponse as ProviderResponse;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -35,7 +36,7 @@ async fn responses_api_accepts_null_metadata() {
     with_openai_vllm_cassette(
         "vllm/responses_api_accepts_null_metadata",
         |client| async move {
-            let model = rig::model(client.completion("Qwen/Qwen3-0.6B"));
+            let model = client.completion("Qwen/Qwen3-0.6B").on(rig::transport());
             let request = CompletionRequestBuilder::new("Reply with a short acknowledgement.")
                 .max_tokens(8).build();
 

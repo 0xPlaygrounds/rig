@@ -1,6 +1,7 @@
 //! Groq request-hook regression coverage.
 
 use anyhow::{Result, anyhow};
+use rig::wire::Wire as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -73,11 +74,12 @@ impl AgentHook for SessionIdHook<'_> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = rig::AgentBuilder::new(rig::model(
+    let agent = rig::AgentBuilder::new(
         OpenAI::from_env_with(&GROQ)
             .expect("GROQ_API_KEY should be set")
-            .completion(REQUEST_HOOK_MODEL),
-    ))
+            .completion(REQUEST_HOOK_MODEL)
+            .on(rig::transport()),
+    )
     .preamble("You are a comedian here to entertain the user using humour and jokes.")
     .build();
 

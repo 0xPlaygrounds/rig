@@ -2,6 +2,7 @@
 
 use rig::providers::openai::wire::{HUGGINGFACE, OpenAI};
 use rig::transcription::TranscriptionRequestBuilder;
+use rig::wire::Wire as _;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 
@@ -9,7 +10,9 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn transcription_smoke() {
     let provider = OpenAI::from_env_with(&HUGGINGFACE).expect("config should build from env");
-    let model = rig::model(provider.transcription("whisper-large-v3"));
+    let model = provider
+        .transcription("whisper-large-v3")
+        .on(rig::transport());
     let response = model
         .call(
             TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)

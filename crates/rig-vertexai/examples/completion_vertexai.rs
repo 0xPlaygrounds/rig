@@ -1,6 +1,6 @@
 use anyhow::Context;
-use rig_core::Model;
 use rig_core::completion::CompletionRequestBuilder;
+use rig_core::wire::Wire as _;
 use rig_vertexai::{
     VertexAi,
     completion::{GEMINI_2_5_FLASH_LITE, GenerateContent},
@@ -12,10 +12,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Uses ADC credentials and expects GOOGLE_CLOUD_PROJECT to be set. See
     // `rig_vertexai::VertexAiBuilder` for more granular control.
-    let model = Model::new(
-        GenerateContent::new(GEMINI_2_5_FLASH_LITE),
-        VertexAi::from_env()?,
-    );
+    let model = GenerateContent::new(GEMINI_2_5_FLASH_LITE).on(VertexAi::from_env()?);
 
     let request = CompletionRequestBuilder::new("What is the capital of France?")
         .max_tokens(1024)

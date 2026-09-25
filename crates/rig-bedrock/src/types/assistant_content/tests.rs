@@ -8,7 +8,7 @@ use crate::types::{
 use crate::completion::{Converse, ConverseFrame, ConverseRequest};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::wire::{Mode, Wire as _};
 use rig_core::{
@@ -60,7 +60,7 @@ fn complete_as(
     output: InternalConverseOutput,
 ) -> Result<completion::CompletionResponse, ProviderError> {
     let request = rig_core::completion::CompletionRequestBuilder::new("hi").build();
-    futures::executor::block_on(Model::new(Converse::new(model), Reply(output)).call(request))
+    futures::executor::block_on(Converse::new(model).on(Reply(output)).call(request))
 }
 
 /// `output` as a Nova model's Converse endpoint answers it.

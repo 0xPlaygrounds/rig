@@ -1,6 +1,7 @@
 //! VoyageAI embeddings smoke test.
 
 use rig::providers::voyageai::{self, wire::VoyageAi};
+use rig::wire::Wire as _;
 
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 
@@ -8,7 +9,9 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 #[ignore = "requires VOYAGE_API_KEY"]
 async fn embeddings_smoke() {
     let provider = VoyageAi::from_env().expect("config should build from env");
-    let model = rig::model(provider.embedding(voyageai::VOYAGE_3_LARGE, None));
+    let model = provider
+        .embedding(voyageai::VOYAGE_3_LARGE, None)
+        .on(rig::transport());
 
     let embeddings = model
         .call(

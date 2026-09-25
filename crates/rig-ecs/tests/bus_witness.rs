@@ -17,6 +17,7 @@
 //! | a full sink is incomplete, never silently equal | `a_full_sink_reports_incompleteness` |
 
 use crate::bus_support;
+use rig_core::wire::Wire as _;
 
 use std::sync::Arc;
 
@@ -136,10 +137,9 @@ fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
     let http = RecordingHttpClient::new(
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
     );
-    let model = rig_core::Model::new(
-        rig_core::providers::gemini::Gemini::new("test-key").completion("test-model"),
-        http.clone(),
-    );
+    let model = rig_core::providers::gemini::Gemini::new("test-key")
+        .completion("test-model")
+        .on(http.clone());
     let request = CompletionRequestBuilder::new("identical call").build();
     register(&mut app, "model", ModelAdapter::new("test-model", model));
     let operation = AdapterContext::new(log.clone(), Subject::default(), "logical-call");
@@ -1349,10 +1349,9 @@ fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
     let http = RecordingHttpClient::new(
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
     );
-    let model = rig_core::Model::new(
-        rig_core::providers::gemini::Gemini::new("test-key").completion("test-model"),
-        http,
-    );
+    let model = rig_core::providers::gemini::Gemini::new("test-key")
+        .completion("test-model")
+        .on(http);
     let request = CompletionRequestBuilder::new("same pass").build();
     register(
         &mut app,

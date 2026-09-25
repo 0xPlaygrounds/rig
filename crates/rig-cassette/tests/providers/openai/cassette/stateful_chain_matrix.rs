@@ -6,6 +6,7 @@
 //! deleted at the end of the recording, so the fixture cannot seed a live
 //! call later. Record a chain in one session.
 
+use rig::wire::Wire as _;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::sync::{Arc, Mutex};
@@ -178,7 +179,7 @@ async fn stored_chain_with_tool_call() {
         |client| async move {
             let resources = Created::default();
             cleaned(&client, &resources, async {
-                let model = rig::model(client.openai.responses(MODEL));
+                let model = client.openai.responses(MODEL).on(rig::transport());
                 let stored = |previous: Option<&str>| {
                     let mut params = json!({ "store": true, "reasoning": { "effort": "low" } });
                     if let Some(previous) = previous {
@@ -272,7 +273,7 @@ async fn stored_then_stateless_mid_conversation() {
         |client| async move {
             let resources = Created::default();
             cleaned(&client, &resources, async {
-                let model = rig::model(client.openai.responses(MODEL));
+                let model = client.openai.responses(MODEL).on(rig::transport());
                 let params = |previous: Option<&str>, store: bool| {
                     let mut params = json!({
                         "store": store,
@@ -408,7 +409,7 @@ async fn file_id_chain() {
                     UserContent::text("What is the title on the first page? Answer briefly."),
                 ],
             };
-            let model = rig::model(client.openai.responses("gpt-4.1-mini"));
+            let model = client.openai.responses("gpt-4.1-mini").on(rig::transport());
             let params = json!({ "store": false });
             let first = model
                 .call(request(vec![document.clone()], vec![], params.clone()))

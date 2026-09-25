@@ -68,6 +68,7 @@
 
 use rig::error::ProviderError;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -101,7 +102,10 @@ async fn unlisted_model_generates_without_response_format() {
     with_openai_image_params_cassette(
         "image_params_matrix/unlisted_model_generates_without_response_format",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let response = model
                 .call(
@@ -131,7 +135,10 @@ async fn allowlisted_model_still_generates() {
     with_openai_image_params_cassette(
         "image_params_matrix/allowlisted_model_still_generates",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(openai::GPT_IMAGE_1));
+            let model = client
+                .openai
+                .image_generation(openai::GPT_IMAGE_1)
+                .on(rig::transport());
 
             let response = model
                 .call(
@@ -159,7 +166,10 @@ async fn retired_model_reaches_model_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/retired_model_reaches_model_validation",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(openai::DALL_E_3));
+            let model = client
+                .openai
+                .image_generation(openai::DALL_E_3)
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -194,7 +204,10 @@ async fn additional_params_quality_reaches_the_api() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_quality_reaches_the_api",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let response = model
                 .call(
@@ -223,7 +236,10 @@ async fn additional_params_output_format_reaches_the_api() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_output_format_reaches_the_api",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let response = model
                 .call(
@@ -261,7 +277,10 @@ async fn completions_client_shares_the_fixed_body() {
     with_openai_image_params_cassette(
         "image_params_matrix/completions_client_shares_the_fixed_body",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let response = model
                 .call(
@@ -290,7 +309,10 @@ async fn additional_params_invalid_background_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_background_is_rejected",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -319,7 +341,10 @@ async fn additional_params_invalid_output_format_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_output_format_is_rejected",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -347,7 +372,10 @@ async fn additional_params_invalid_quality_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_quality_is_rejected",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -376,7 +404,10 @@ async fn additional_params_override_size() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_size",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -404,7 +435,10 @@ async fn additional_params_override_model() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_model",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -432,7 +466,10 @@ async fn additional_params_override_prompt() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_prompt",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -463,7 +500,10 @@ async fn caller_can_reinstate_response_format() {
     with_openai_image_params_cassette(
         "image_params_matrix/caller_can_reinstate_response_format",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -493,7 +533,10 @@ async fn unlisted_dated_snapshot_reaches_its_own_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/unlisted_dated_snapshot_reaches_its_own_validation",
         |client| async move {
-            let model = rig::model(client.openai.image_generation("gpt-image-2-2026-04-21"));
+            let model = client
+                .openai
+                .image_generation("gpt-image-2-2026-04-21")
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -525,7 +568,10 @@ async fn chatgpt_image_latest_reaches_its_own_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/chatgpt_image_latest_reaches_its_own_validation",
         |client| async move {
-            let model = rig::model(client.openai.image_generation("chatgpt-image-latest"));
+            let model = client
+                .openai
+                .image_generation("chatgpt-image-latest")
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -563,11 +609,10 @@ async fn response_format_is_rejected_before_the_model_is_looked_at() {
     with_openai_image_params_cassette(
         "image_params_matrix/response_format_is_rejected_before_the_model_is_looked_at",
         |client| async move {
-            let model = rig::model(
-                client
-                    .openai
-                    .image_generation("rig-nonexistent-image-model"),
-            );
+            let model = client
+                .openai
+                .image_generation("rig-nonexistent-image-model")
+                .on(rig::transport());
 
             let error = model
                 .call(
@@ -601,7 +646,10 @@ async fn non_object_additional_params_are_a_no_op() {
     with_openai_image_params_cassette(
         "image_params_matrix/non_object_additional_params_are_a_no_op",
         |client| async move {
-            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
+            let model = client
+                .openai
+                .image_generation(UNLISTED_MODEL)
+                .on(rig::transport());
 
             let error = model
                 .call(

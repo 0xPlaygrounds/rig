@@ -7,6 +7,7 @@ use crate::{
 use bevy_ecs::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig_core::{
     effect::{EffectKind, MemoryOp, MemoryOutcome, Outcome},
     memory::ConversationMemory,
@@ -51,7 +52,7 @@ pub(super) fn agent(
     streamed: bool,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden_with_setup(
-        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
         preamble,
         streamed,
         |world| {

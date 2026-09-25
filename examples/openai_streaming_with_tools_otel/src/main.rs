@@ -135,20 +135,23 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent =
-        AgentBuilder::new(rig::model(OpenAI::from_env()?.completion(openai::GPT_4O)))
-            .preamble(
-                "You are a calculator here to help the user perform arithmetic
+    let calculator_agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .completion(openai::GPT_4O)
+            .on(rig::transport()),
+    )
+    .preamble(
+        "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.
             make your answer long, so we can test the streaming functionality,
             like 20 words",
-            )
-            .max_tokens(1024)
-            .default_max_turns(2)
-            .tool(Adder)
-            .tool(Subtract)
-            .name("Bob")
-            .build();
+    )
+    .max_tokens(1024)
+    .default_max_turns(2)
+    .tool(Adder)
+    .tool(Subtract)
+    .name("Bob")
+    .build();
 
     let mut stream = calculator_agent.prompt("Calculate 2 - 5").stream();
 

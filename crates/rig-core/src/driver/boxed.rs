@@ -3,11 +3,12 @@
 //! [`BoxedModel`] runs the same driver as the [`Model`] it was made from.
 //!
 //! ```no_run
+//! use rig_core::wire::Wire as _;
 //! use rig_core::{BoxedModel, Model, operation::Completion, providers::openai::OpenAI};
 //!
 //! # fn example(http: rig_core::http_client::BoxedHttpClient) -> Result<(), rig_core::client::EnvError> {
 //! let model: BoxedModel<Completion> =
-//!     Model::new(OpenAI::from_env()?.completion("gpt-5.2"), http).boxed();
+//!     OpenAI::from_env()?.completion("gpt-5.2").on(http).boxed();
 //! # let _ = model;
 //! # Ok(())
 //! # }

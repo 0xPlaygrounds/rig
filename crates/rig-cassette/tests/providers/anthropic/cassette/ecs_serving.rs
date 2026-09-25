@@ -13,6 +13,7 @@ use crate::{
 };
 use bevy_ecs::prelude::*;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig::{
     effect::{EffectFamily, HandlerKey},
     providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6},
@@ -42,7 +43,7 @@ fn route_after_first(
 }
 fn routed_agent(client: &Anthropic, selected: bool) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden(
-        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
         TOOLS_PREAMBLE,
         false,
     );
@@ -56,7 +57,7 @@ fn routed_agent(client: &Anthropic, selected: bool) -> EcsAgent {
             RuntimeHandler {
                 inner: Arc::new(ModelAdapter::new(
                     "fast",
-                    rig::model(client.completion(CLAUDE_HAIKU_4_5)),
+                    client.completion(CLAUDE_HAIKU_4_5).on(rig::transport()),
                 )),
                 runtime: io_runtime(),
             },
@@ -88,7 +89,7 @@ async fn two_tools(
     events: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
         TWO_TOOL_STREAM_PREAMBLE,
         events,
     );
@@ -230,7 +231,7 @@ async fn serial_memory_tools_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
             let mut ecs = EcsAgent::for_golden_with_setup(
-                rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                 TOOLS_PREAMBLE,
                 false,
                 |world| {
@@ -377,7 +378,7 @@ async fn model_route_unselected_effect_log() {
 /// stamps the log, whose header names no bus policy (the host's).
 async fn over_host_bus(client: Anthropic, streamed: bool) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
         TOOLS_PREAMBLE,
         streamed,
     );

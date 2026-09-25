@@ -12,13 +12,14 @@
 use anyhow::Result;
 use rig::error::ProviderError;
 use rig::providers::openai::wire::GROQ;
+use rig::wire::Wire as _;
 
 use super::support::{with_groq_cassette_bogus_key_result, with_groq_cassette_result};
 
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
     with_groq_cassette_result("models/list_models_smoke", |client| async move {
-        let models = rig::model(client.models()).call(()).await?;
+        let models = client.models().on(rig::transport()).call(()).await?;
 
         anyhow::ensure!(
             !models.data.is_empty(),
@@ -69,7 +70,9 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
     with_groq_cassette_bogus_key_result(
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
-            let error = rig::model(client.models())
+            let error = client
+                .models()
+                .on(rig::transport())
                 .call(())
                 .await
                 .expect_err("a bogus key must not list models");

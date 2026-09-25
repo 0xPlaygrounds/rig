@@ -33,6 +33,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/tool_lifecycle_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{zero,nested,parallel}_{model,agent}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
@@ -258,7 +259,9 @@ impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
 async fn run_model(client: OpenAI, cell: Cell) -> Observation {
-    let model = rig::model(client.completion(model_name(cell.model)));
+    let model = client
+        .completion(model_name(cell.model))
+        .on(rig::transport());
     match cell.transport {
         Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => {
@@ -312,13 +315,17 @@ async fn run_model(client: OpenAI, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAI, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
-    let builder = rig::AgentBuilder::new(rig::model(client.completion(model_name(cell.model))))
-        .preamble(PREAMBLE)
-        .additional_params(
-            json!({ "tool_choice": "any", "parallel_tool_calls": cell.shape == Shape::Parallel }),
-        )
-        .max_tokens(128)
-        .default_max_turns(1);
+    let builder = rig::AgentBuilder::new(
+        client
+            .completion(model_name(cell.model))
+            .on(rig::transport()),
+    )
+    .preamble(PREAMBLE)
+    .additional_params(
+        json!({ "tool_choice": "any", "parallel_tool_calls": cell.shape == Shape::Parallel }),
+    )
+    .max_tokens(128)
+    .default_max_turns(1);
     let agent = match cell.shape {
         Shape::Zero => builder
             .tool(Ping {

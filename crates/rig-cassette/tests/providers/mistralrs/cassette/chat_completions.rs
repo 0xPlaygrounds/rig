@@ -1,5 +1,6 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
+use rig::wire::Wire as _;
 use serde_json::Value;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
@@ -10,7 +11,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
     with_mistralrs_completions_cassette(
         "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
         |client| async move {
-            let model = rig::model(client.chat(model_name()));
+            let model = client.chat(model_name()).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Think briefly, then answer in one sentence why token usage should be reported.",
             )
@@ -61,7 +62,7 @@ async fn chat_completions_agent_prompt_completes() {
     with_mistralrs_completions_cassette(
         "chat_completions/chat_completions_agent_prompt_completes",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(model_name())))
+            let agent = rig::AgentBuilder::new(client.completion(model_name()).on(rig::transport()))
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
                 .build();

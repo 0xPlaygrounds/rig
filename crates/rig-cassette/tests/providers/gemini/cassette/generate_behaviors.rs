@@ -11,6 +11,7 @@
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +38,9 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
     with_gemini_cassette(
         "generate_behaviors/max_tokens_truncation_preserves_finish_reason_and_partial_text",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             // Thinking is disabled so the token budget is spent on visible
             // text and the truncated candidate still carries partial output.
             let request = CompletionRequestBuilder::new(
@@ -99,9 +102,11 @@ async fn structured_output_nested_arrays_and_optional_fields() {
     with_gemini_cassette(
         "generate_behaviors/structured_output_nested_arrays_and_optional_fields",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .output_schema::<EventRecord>()
             .temperature(0.0)
             .build();

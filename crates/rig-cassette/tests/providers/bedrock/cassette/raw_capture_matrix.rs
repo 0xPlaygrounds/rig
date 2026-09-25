@@ -56,9 +56,10 @@ use rig::bedrock;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig::bedrock::types::converse_output::InternalConverseOutput;
 use rig::completion::CompletionResponse as RigCompletionResponse;
-use rig::driver::{Model, Observation, Opened, Transport};
+use rig::driver::{Observation, Opened, Transport};
 use rig::error::ProviderError;
 use rig::wire::Mode;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -243,7 +244,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     // before the field-for-field comparison.
     let stored = InternalConverseOutput::deserialize(&response.raw)
         .expect("raw must deserialize into InternalConverseOutput");
-    let replay = Model::new(Converse::new(MODEL), Reply(stored));
+    let replay = Converse::new(MODEL).on(Reply(stored));
     let from_raw: RigCompletionResponse = replay.call(request()).await.expect("raw must normalize");
     let from_raw = from_raw.with_optional_provider_request_id(response.provider_request_id.clone());
 

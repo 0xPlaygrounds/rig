@@ -40,10 +40,11 @@ fn calculator(
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let calculator_agent = AgentBuilder::new(Model::new(
-        OpenAI::from_env()?.completion(providers::openai::GPT_4O),
-        rig_reqwest::shared(),
-    ))
+    let calculator_agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .completion(providers::openai::GPT_4O)
+            .on(rig_reqwest::shared()),
+    )
     .preamble("You are an agent with tools access, always use the tools")
     .max_tokens(1024)
     .tool(Calculator)

@@ -52,6 +52,7 @@ use rig::providers::copilot;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -142,7 +143,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = rig::model(client.completion(CHAT_MODEL));
+            let model = client.completion(CHAT_MODEL).on(rig::transport());
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
@@ -181,7 +182,12 @@ async fn chat_stream_raw_exposes_copilot_usage() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage",
         |client| async move {
-            capture_sole_terminal(rig::model(client.completion(CHAT_MODEL)), request(), sink).await
+            capture_sole_terminal(
+                client.completion(CHAT_MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
         },
     )
     .await
@@ -253,7 +259,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = rig::model(client.completion(RESPONSES_MODEL));
+            let model = client.completion(RESPONSES_MODEL).on(rig::transport());
             assert!(
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
@@ -291,7 +297,7 @@ async fn responses_stream_raw_exposes_terminal_status() {
         "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status",
         |client| async move {
             capture_sole_terminal(
-                rig::model(client.completion(RESPONSES_MODEL)),
+                client.completion(RESPONSES_MODEL).on(rig::transport()),
                 request(),
                 sink,
             )

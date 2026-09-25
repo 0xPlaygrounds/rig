@@ -109,9 +109,9 @@ fn portable_contract_paths_resolve() {
     assert_portable_facade::<PortableAdder>();
 }
 
-/// A single `use rig::prelude::*` provides `model`, `Model` and
-/// `AgentBuilder`: a provider's wire on the default transport, and an agent
-/// over it.
+/// A single `use rig::prelude::*` provides `transport`, `Wire::on`, `Model`
+/// and `AgentBuilder`: a provider's wire on the default transport, and an
+/// agent over it.
 #[test]
 fn completion_client_single_import_surface() {
     use rig::prelude::*;
@@ -123,18 +123,18 @@ fn completion_client_single_import_surface() {
         &rig::providers::openai::wire::OPENAI,
         "test-key",
     );
-    let _model = model(openai.completion("gpt-4o"));
-    let _explicit = Model::new(openai.completion("gpt-4o"), rig::rig_reqwest::shared());
-    let _agent = AgentBuilder::new(model(openai.completion("gpt-4o"))).build();
+    let _model = openai.completion("gpt-4o").on(transport());
+    let _explicit = openai.completion("gpt-4o").on(rig::rig_reqwest::shared());
+    let _agent = AgentBuilder::new(openai.completion("gpt-4o").on(transport())).build();
 }
 
 /// The same surface is reachable through explicit imports, without the
 /// prelude glob, including the typed extractor.
 #[test]
 fn completion_provider_explicit_facade_import_surface() {
-    use rig::Model;
     use rig::agent::AgentBuilder;
     use rig::extractor::ExtractorBuilder;
+    use rig::wire::Wire as _;
 
     #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
     struct Extracted {
@@ -145,10 +145,11 @@ fn completion_provider_explicit_facade_import_surface() {
         &rig::providers::openai::wire::OPENAI,
         "test-key",
     );
-    let _model = Model::new(openai.completion("gpt-4o"), rig::rig_reqwest::shared());
-    let _agent = AgentBuilder::new(rig::model(openai.completion("gpt-4o"))).build();
+    let _model = openai.completion("gpt-4o").on(rig::rig_reqwest::shared());
+    let _agent = AgentBuilder::new(openai.completion("gpt-4o").on(rig::transport())).build();
     let _extractor =
-        ExtractorBuilder::<Extracted>::new(rig::model(openai.completion("gpt-4o"))).build();
+        ExtractorBuilder::<Extracted>::new(openai.completion("gpt-4o").on(rig::transport()))
+            .build();
 }
 
 /// `use rig::prelude::*` still brings the classic contextual `Tool` and

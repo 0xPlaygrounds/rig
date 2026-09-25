@@ -1,6 +1,5 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig_core::Model;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::wire::Wire;
@@ -19,10 +18,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let http = rig_reqwest::shared();
 
     // Select an embedding model.
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;

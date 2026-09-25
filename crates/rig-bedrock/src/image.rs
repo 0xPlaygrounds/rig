@@ -1,10 +1,10 @@
 //! The Bedrock text-to-image wire over `InvokeModel`.
 //!
 //! ```no_run
+//! use rig_core::wire::Wire as _;
 //! use rig_bedrock::{client::BedrockRuntime, image::{AMAZON_NOVA_CANVAS, Images}};
-//! use rig_core::Model;
 //!
-//! let model = Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env());
+//! let model = Images::new(AMAZON_NOVA_CANVAS).on(BedrockRuntime::from_env());
 //! # let _ = model;
 //! ```
 

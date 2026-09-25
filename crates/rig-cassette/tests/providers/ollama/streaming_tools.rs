@@ -1,6 +1,7 @@
 //! Migrated from `examples/ollama_streaming_with_tools.rs`.
 
 use rig::providers::ollama::wire::Ollama;
+use rig::wire::Wire as _;
 
 use crate::support::{
     Adder, Subtract, assert_mentions_expected_number, collect_stream_final_response,
@@ -9,11 +10,12 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn example_streaming_with_tools() {
-    let agent = rig::AgentBuilder::new(rig::model(
+    let agent = rig::AgentBuilder::new(
         Ollama::from_env()
             .expect("config should build from env")
-            .completion("llama3.2"),
-    ))
+            .completion("llama3.2")
+            .on(rig::transport()),
+    )
     .preamble(
         "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question.",

@@ -11,6 +11,7 @@ use rig::bus::Bus;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_corpus_oracle_cassette;
@@ -37,7 +38,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "default",
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
                 )),
             )
             .expect("a fresh key");
@@ -94,7 +95,7 @@ async fn stop_after_turn_two_effect_log_is_the_golden_fixture() {
         "corpus_oracle/stop_after_turn_two",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)

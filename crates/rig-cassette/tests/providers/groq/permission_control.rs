@@ -6,6 +6,7 @@ use rig::agent::{
 };
 use rig::providers::openai::wire::{GROQ, OpenAI};
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -157,11 +158,12 @@ impl AgentHook for PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = rig::AgentBuilder::new(rig::model(
+    let agent = rig::AgentBuilder::new(
         OpenAI::from_env_with(&GROQ)
             .expect("GROQ_API_KEY should be set")
-            .completion(PERMISSION_CONTROL_PROMPT_MODEL),
-    ))
+            .completion(PERMISSION_CONTROL_PROMPT_MODEL)
+            .on(rig::transport()),
+    )
     .preamble("You are a helpful assistant that can read files using different methods.")
     .tool(ReadFileHead)
     .tool(ReadFileTail)
@@ -198,11 +200,12 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = rig::AgentBuilder::new(rig::model(
+    let agent = rig::AgentBuilder::new(
         OpenAI::from_env_with(&GROQ)
             .expect("GROQ_API_KEY should be set")
-            .completion(PERMISSION_CONTROL_STREAMING_MODEL),
-    ))
+            .completion(PERMISSION_CONTROL_STREAMING_MODEL)
+            .on(rig::transport()),
+    )
     .preamble("You are a helpful assistant that can read files using different methods.")
     .tool(ReadFileHead)
     .tool(ReadFileTail)

@@ -1,5 +1,6 @@
 //! Preserves the live multi-extract example as ChatGPT regression coverage.
 
+use rig::wire::Wire as _;
 use std::future::IntoFuture;
 
 use anyhow::Result;
@@ -30,19 +31,21 @@ struct Sentiment {
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn batch_multi_extract_chain() -> Result<()> {
     let client = live_client().await;
-    let names_extractor =
-        rig::extractor::ExtractorBuilder::<Names>::new(rig::model(client.completion(LIVE_MODEL)))
-            .append_preamble("Extract names from the given text.")
-            .retries(2)
-            .build();
-    let topics_extractor =
-        rig::extractor::ExtractorBuilder::<Topics>::new(rig::model(client.completion(LIVE_MODEL)))
-            .append_preamble("Extract topics from the given text.")
-            .retries(2)
-            .build();
-    let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(rig::model(
-        client.completion(LIVE_MODEL),
-    ))
+    let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(
+        client.completion(LIVE_MODEL).on(rig::transport()),
+    )
+    .append_preamble("Extract names from the given text.")
+    .retries(2)
+    .build();
+    let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(
+        client.completion(LIVE_MODEL).on(rig::transport()),
+    )
+    .append_preamble("Extract topics from the given text.")
+    .retries(2)
+    .build();
+    let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(
+        client.completion(LIVE_MODEL).on(rig::transport()),
+    )
     .append_preamble("Extract sentiment and confidence from the given text.")
     .retries(2)
     .build();

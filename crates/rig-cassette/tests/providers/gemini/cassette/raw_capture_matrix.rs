@@ -58,6 +58,7 @@ use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -227,9 +228,13 @@ async fn raw_roundtrips_generate_content_response() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_roundtrips_generate_content_response",
         |client| async move {
-            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -301,9 +306,13 @@ async fn raw_exposes_prompt_tokens_details() {
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_prompt_tokens_details",
         |client| async move {
-            capture_completion(rig::model(client.completion(MODEL)), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.completion(MODEL).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -353,7 +362,7 @@ async fn raw_exposes_forced_function_call() {
         "raw_capture_matrix/raw_exposes_forced_function_call",
         |client| async move {
             capture_completion(
-                rig::model(client.completion(MODEL)),
+                client.completion(MODEL).on(rig::transport()),
                 forced_tool_request(),
                 sink,
             )
@@ -468,7 +477,7 @@ async fn raw_exposes_structured_output_turn() {
         "raw_capture_matrix/raw_exposes_structured_output_turn",
         |client| async move {
             capture_completion(
-                rig::model(client.completion(MODEL)),
+                client.completion(MODEL).on(rig::transport()),
                 structured_output_request(),
                 sink,
             )

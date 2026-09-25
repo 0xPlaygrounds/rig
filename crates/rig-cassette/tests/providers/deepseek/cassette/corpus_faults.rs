@@ -7,11 +7,12 @@
 use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 use rig::providers::openai::OpenAI;
+use rig::wire::Wire as _;
 
 fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-chat")),
+        model: client.completion("deepseek-chat").on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -22,7 +23,9 @@ fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAi
 fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-v9-nonexistent")),
+        model: client
+            .completion("deepseek-v9-nonexistent")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

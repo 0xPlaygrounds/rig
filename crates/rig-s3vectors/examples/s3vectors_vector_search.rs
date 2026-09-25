@@ -2,11 +2,11 @@ use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3vectors::Client;
 use aws_sdk_s3vectors::config::Credentials;
 use rig_core::Embed;
-use rig_core::Model;
 use rig_core::embeddings::EmbeddingsBuilder;
 use rig_core::providers::openai::{self, wire::OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreIndex};
+use rig_core::wire::Wire as _;
 use std::env;
 
 const BUCKET_NAME: &str = "foo_bucket";
@@ -44,10 +44,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
     let http = rig_reqwest::shared();
 
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http);
 
     let documents = EmbeddingsBuilder::new(model.clone())
         .document(Word {

@@ -12,6 +12,7 @@
 use rig::providers::doubleword::QWEN3_5_397B_A17B;
 use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 use super::super::support::with_doubleword_cassette;
 use crate::ecs_matrix::{
@@ -27,7 +28,7 @@ use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, s
 fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: rig::model(client.completion(QWEN3_5_397B_A17B)),
+        model: client.completion(QWEN3_5_397B_A17B).on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -38,7 +39,9 @@ fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAi
 fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: rig::model(client.completion("rig/definitely-not-a-doubleword-model")),
+        model: client
+            .completion("rig/definitely-not-a-doubleword-model")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -100,7 +103,7 @@ fn scripted_stream(
     let http = rig::http_client::BoxedHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: rig::Model::new(client.completion(QWEN3_5_397B_A17B), http.clone()),
+        model: client.completion(QWEN3_5_397B_A17B).on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
@@ -116,7 +119,7 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: rig::Model::new(client.completion(QWEN3_5_397B_A17B), http.clone()),
+        model: client.completion(QWEN3_5_397B_A17B).on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),

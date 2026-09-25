@@ -5,6 +5,7 @@
 //! `reasoning.effort: high` + `include_reasoning: true`). Re-record them with:
 //! `RIG_PROVIDER_TEST_MODE=record OPENROUTER_API_KEY=... cargo test -p rig --all-features --test openrouter stream_encrypted_reasoning -- --test-threads=1`
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -26,7 +27,7 @@ async fn streaming_tools_smoke() {
     with_openrouter_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL).on(rig::transport()))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -134,7 +135,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
     with_openrouter_cassette(
         "streaming_tools/stream_encrypted_reasoning_reaches_the_choice",
         |client| async move {
-            let model = rig::model(client.completion(ENCRYPTED_REASONING_MODEL));
+            let model = client.completion(ENCRYPTED_REASONING_MODEL).on(rig::transport());
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
             let request = CompletionRequestBuilder::new(crate::reasoning::TOOL_USER_PROMPT)
@@ -203,7 +204,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
     with_openrouter_cassette(
         "streaming_tools/stream_encrypted_reasoning_survives_into_the_next_turn",
         |client| async move {
-            let model = rig::model(client.completion(ENCRYPTED_REASONING_MODEL));
+            let model = client.completion(ENCRYPTED_REASONING_MODEL).on(rig::transport());
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
             let reasoning_params = serde_json::json!({
@@ -285,7 +286,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_openrouter_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = rig::model(client.completion(TOOL_MODEL));
+            let model = client.completion(TOOL_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -311,7 +312,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_openrouter_cassette(
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let model = rig::model(client.completion(TOOL_MODEL));
+            let model = client.completion(TOOL_MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal)).build();

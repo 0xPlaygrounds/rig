@@ -1,5 +1,6 @@
 //! Migrated from `examples/multi_turn_streaming_gemini.rs`.
 
+use rig::wire::Wire as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -25,9 +26,11 @@ async fn runner_driven_multi_turn_streaming_loop() {
     super::super::support::with_gemini_cassette(
         "multi_turn_streaming/manual_multi_turn_streaming_loop",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble("You must use tools to answer arithmetic prompts.")
             .tool(Add::new(add_calls.clone()))
             .tool(Subtract::new(subtract_calls.clone()))

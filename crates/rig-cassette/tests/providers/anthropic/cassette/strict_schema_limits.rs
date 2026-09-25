@@ -4,6 +4,7 @@ use rig::completion::ToolDefinition;
 use rig::error::ProviderError;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
+use rig::wire::Wire as _;
 use serde_json::{Map, Value, json};
 
 use super::super::support::with_anthropic_cassette;
@@ -84,11 +85,10 @@ async fn twenty_strict_tools_are_accepted() {
     with_anthropic_cassette(
         "strict_schema_limits/twenty_strict_tools_are_accepted",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let tools = (0..20)
                 .map(|index| empty_tool(format!("boundary_tool_{index:02}")))
                 .collect::<Vec<_>>();
@@ -117,11 +117,10 @@ async fn twenty_one_strict_tools_are_rejected() {
     with_anthropic_cassette(
         "strict_schema_limits/twenty_one_strict_tools_are_rejected",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Call boundary_tool_20 with an empty object.")
                     .max_tokens(64)
@@ -150,11 +149,10 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
     with_anthropic_cassette(
         "strict_schema_limits/twenty_four_optional_parameters_in_one_schema_hit_internal_limit",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Call optional_boundary with an empty object; omit every optional field.",
             )
@@ -182,11 +180,10 @@ async fn twenty_five_optional_parameters_are_rejected() {
     with_anthropic_cassette(
         "strict_schema_limits/twenty_five_optional_parameters_are_rejected",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Call optional_boundary with an empty object.")
                     .max_tokens(64)
@@ -213,11 +210,10 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
     with_anthropic_cassette(
         "strict_schema_limits/sixteen_union_parameters_in_one_schema_hit_internal_limit",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Call union_boundary and set every union_00 through union_15 field to null.",
             )
@@ -245,11 +241,10 @@ async fn twenty_four_optional_parameters_across_tools_are_accepted() {
     with_anthropic_cassette(
         "strict_schema_limits/twenty_four_optional_parameters_across_tools_are_accepted",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let tools = (0..12)
                 .map(|tool_index| ToolDefinition {
                     name: format!("optional_tool_{tool_index:02}"),
@@ -287,11 +282,10 @@ async fn sixteen_union_parameters_across_tools_are_accepted() {
     with_anthropic_cassette(
         "strict_schema_limits/sixteen_union_parameters_across_tools_are_accepted",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let tools = (0..16)
                 .map(|tool_index| ToolDefinition {
                     name: format!("union_tool_{tool_index:02}"),
@@ -328,11 +322,10 @@ async fn seventeen_union_parameters_are_rejected() {
     with_anthropic_cassette(
         "strict_schema_limits/seventeen_union_parameters_are_rejected",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_strict_tools()
+                .on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Call union_boundary with every field set to null.")
                     .max_tokens(64)

@@ -4,6 +4,7 @@
 
 use bevy_ecs::prelude::*;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig::{effect::Outcome, providers::anthropic, streaming::StreamEvent};
 use rig_ecs::{
     agent::{MaxTokens, MaxTurns, Outputs, Preamble, Retry, Turn},
@@ -89,7 +90,9 @@ fn observe_turn(
 
 fn setup(client: &Anthropic) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5)),
+        client
+            .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+            .on(rig::transport()),
         "",
         1,
     );

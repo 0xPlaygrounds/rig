@@ -1,4 +1,4 @@
-use rig_core::Model;
+use rig_core::wire::Wire as _;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -27,10 +27,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint and select an embedding model
     let openai_client = OpenAI::from_env()?;
     let http = rig_reqwest::shared();
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(http);
 
     // Create ScyllaDB vector store
     let vector_store = ScyllaDbVectorStore::new(

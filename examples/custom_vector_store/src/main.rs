@@ -7,6 +7,7 @@ use redis::{
     aio::MultiplexedConnection,
     vector_sets::{VAddOptions, VSimOptions, VectorAddInput, VectorSimilaritySearchInput},
 };
+use rig::wire::Wire as _;
 use rig::{
     operation::Embedding,
     prelude::*,
@@ -184,7 +185,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize the OpenAI embeddings provider from the environment
     let openai_client = OpenAI::from_env()?;
     // Pair the embedding wire with the transport
-    let embedding_model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let embedding_model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .on(rig::transport());
 
     // Create the Redis vector store
     let mut store =

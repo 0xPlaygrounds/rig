@@ -3,6 +3,7 @@
 
 use crate::bus_support;
 use bevy_reflect::TypePath;
+use rig_core::wire::Wire as _;
 use rig_core::{
     effect::HandlerKey,
     providers::openai::wire::OpenAI,
@@ -19,10 +20,10 @@ const BODY: &str = r#"{"id":"c","object":"chat.completion","created":0,"model":"
 
 fn handler(label: &str, token: &str, endpoint: &str) -> (ErasedHandler, RecordingHttpClient) {
     let http = RecordingHttpClient::new(BODY);
-    let model = rig_core::Model::new(
-        OpenAI::new(token).with_base_url(endpoint).chat("model-x"),
-        http.clone(),
-    );
+    let model = OpenAI::new(token)
+        .with_base_url(endpoint)
+        .chat("model-x")
+        .on(http.clone());
     (ErasedHandler::new(ModelAdapter::new(label, model)), http)
 }
 

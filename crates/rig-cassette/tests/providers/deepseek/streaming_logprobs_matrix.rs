@@ -21,6 +21,7 @@
 //! concatenate token arrays in wire order, including DeepSeek's
 //! `reasoning_content` probability array.
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
@@ -122,7 +123,7 @@ fn max_tokens(cell: Cell) -> u64 {
 }
 
 async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = rig::model(client.completion(MODEL));
+    let model = client.completion(MODEL).on(rig::transport());
     let request = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell))

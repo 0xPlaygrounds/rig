@@ -22,6 +22,7 @@ use rig::providers::gemini::completion::gemini_api_types::{
 };
 use rig::providers::gemini::interactions_api;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::wire::Wire as _;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -172,7 +173,9 @@ async fn max_tokens_truncation_normalizes_to_length() {
     super::super::support::with_gemini_cassette(
         "streaming_grammar/max_tokens_truncation",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Write a 200-word story about a lighthouse keeper.")
                     .max_tokens(24)
@@ -204,7 +207,9 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
     super::super::support::with_gemini_cassette(
         "streaming_grammar/streaming_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -265,7 +270,7 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
     super::super::support::with_gemini_cassette(
         "streaming_grammar/thinking_stream",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW));
+            let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                     "How many positive integers n < 400 are divisible by 6 but not by 9? \
                      Think it through carefully step by step, then answer with just the number.",
@@ -366,7 +371,9 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
     super::super::support::with_gemini_cassette(
         "streaming_grammar/thinking_then_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW));
+            let model = client
+                .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport());
             // A trivial tool turn yields no thought parts on this wire; a
             // math sub-task reliably interleaves thinking with the call.
             let request = CompletionRequestBuilder::new(
@@ -442,7 +449,9 @@ async fn parallel_function_calls_stay_distinct() {
     super::super::support::with_gemini_cassette(
         "streaming_grammar/parallel_function_calls",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
                      together in this single reply, before writing any text. Emit the two \
@@ -524,7 +533,9 @@ async fn stop_finish_reason_normalizes_on_text_turn() {
     super::super::support::with_gemini_cassette(
         "streaming_grammar/stop_finish_reason",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("Reply with one short sentence about volcanoes.")
                     .additional_params(
@@ -553,7 +564,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_thinking_stream",
         |client| async move {
-            let model = rig::model(client.interactions("gemini-3-flash-preview"));
+            let model = client.interactions("gemini-3-flash-preview").on(rig::transport());
             let request = CompletionRequestBuilder::new(
                     "How many positive integers n < 200 are divisible by 4 but not by 10? \
                      Think it through, then answer with just the number.",
@@ -699,7 +710,9 @@ async fn interactions_requires_action_roundtrip() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_requires_action",
         |client| async move {
-            let model = rig::model(client.interactions("gemini-3-flash-preview"));
+            let model = client
+                .interactions("gemini-3-flash-preview")
+                .on(rig::transport());
             let tool = rig::tool::tool_definition(&AlphaSignal);
 
             let raw = model
@@ -814,7 +827,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_same_tool_twice",
         |client| async move {
-            let model = rig::model(client.interactions("gemini-3-flash-preview"));
+            let model = client.interactions("gemini-3-flash-preview").on(rig::transport());
             let request = CompletionRequestBuilder::new(
                     "Use the `add` tool twice in this single reply, before any text: first \
                      add 2 and 3, then add 10 and 20. Emit both tool calls together in this \
@@ -920,7 +933,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_signature_without_summaries",
         |client| async move {
-            let model = rig::model(client.interactions("gemini-3-flash-preview"));
+            let model = client.interactions("gemini-3-flash-preview").on(rig::transport());
             let request = CompletionRequestBuilder::new(
                     "How many positive integers n < 100 are divisible by 6 but not by 9? \
                      Think it through, then answer with just the number.",
@@ -1003,7 +1016,9 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
     super::super::support::with_gemini_cassette(
         "streaming_grammar/chat_sourced_history_replay",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let cross_provider_handle = rig::message::ToolCallId::new("call_abc123")
                 .expect("the chat-sourced identifier is non-empty");
             let history = vec![

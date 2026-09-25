@@ -39,6 +39,7 @@ use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::providers::openai;
 use rig::providers::openai::wire::OPENROUTER;
 use rig::providers::openrouter;
+use rig::wire::Wire as _;
 use serde::Deserialize as _;
 use serde_json::Value;
 
@@ -82,7 +83,7 @@ async fn raw_reproduces_the_completion_it_rode_on() {
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
         |client| {
             capture_completion_pair(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )
@@ -150,7 +151,7 @@ async fn no_request_id_contract_holds_on_both_turns() {
         "raw_completion_parity_matrix/plain_raw_completion_matches_completion_without_id",
         |client| {
             capture_completion_pair(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )

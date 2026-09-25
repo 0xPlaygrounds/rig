@@ -5,9 +5,9 @@
 //!
 //! ```no_run
 //! use rig_agent::prelude::*;
-//! use rig_core::{Model, providers::openai::{self, OpenAI}};
+//! use rig_core::providers::openai::{self, OpenAI};
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_5_2), rig_reqwest::shared());
+//! let model = OpenAI::from_env()?.completion(openai::GPT_5_2).on(rig_reqwest::shared());
 //! let agent = AgentBuilder::new(model).preamble("Be concise.").build();
 //! let response = agent.prompt("Explain ownership.").await?;
 //! # Ok(())

@@ -6,6 +6,7 @@
 //! moved into a dedicated per-bug exhaustive matrix before merge.
 
 use rig::providers::deepseek;
+use rig::wire::Wire as _;
 use serde_json::{Value, json};
 
 use super::support::{
@@ -52,7 +53,7 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
     with_deepseek_followup_hunt_cassette_result(
         "followup_hunt_matrix/blocking_stop_sequence_reaches_the_wire_and_stops_generation",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Write exactly `alpha ZEBRA omega` with no punctuation or explanation.",
             )
@@ -89,7 +90,7 @@ async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
     with_deepseek_followup_hunt_cassette_result(
         "followup_hunt_matrix/streaming_stop_sequence_reaches_the_wire_and_stops_generation",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Write exactly `alpha ZEBRA omega` with no punctuation or explanation.",
             )
@@ -127,7 +128,7 @@ async fn low_reasoning_effort_produces_a_reasoning_turn() {
     with_deepseek_followup_hunt_cassette_result(
         "followup_hunt_matrix/low_reasoning_effort_produces_a_reasoning_turn",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let request =
                 CompletionRequestBuilder::new("What is 17 + 25? Answer with only the number.")
                     .additional_params(json!({ "reasoning_effort": "low" }))
@@ -163,7 +164,7 @@ async fn policy_sensitive_response_content_shape_is_recorded() {
     with_deepseek_followup_hunt_cassette_result(
         "followup_hunt_matrix/policy_sensitive_response_content_shape_is_recorded",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL).on(rig::transport());
             let request = CompletionRequestBuilder::new(
                     "Give a concise, neutral historical summary of the June 1989 Tiananmen Square protests.",
                 )

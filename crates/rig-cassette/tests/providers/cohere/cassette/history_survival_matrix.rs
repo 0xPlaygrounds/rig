@@ -3,13 +3,14 @@
 use super::super::support::with_cohere_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
 use rig::providers::cohere::wire::Cohere;
+use rig::wire::Wire as _;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
 fn model(client: Cohere, cell: Cell) -> rig::Model<rig::providers::cohere::Chat> {
-    rig::model(client.completion(cell.model))
+    client.completion(cell.model).on(rig::transport())
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

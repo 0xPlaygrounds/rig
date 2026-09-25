@@ -6,13 +6,14 @@
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use rig::completion::CompletionRequestBuilder;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn nonstreaming_request_id_is_none_by_design() {
     with_cohere_cassette(
         "response_identity/nonstreaming_request_id_is_none_by_design",
         |client| async move {
-            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Reply with exactly: identity probe")
@@ -41,7 +42,7 @@ async fn streaming_request_id_is_none_by_design() {
     with_cohere_cassette(
         "response_identity/streaming_request_id_is_none_by_design",
         |client| async move {
-            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let model = client.completion(CASSETTE_MODEL).on(rig::transport());
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")

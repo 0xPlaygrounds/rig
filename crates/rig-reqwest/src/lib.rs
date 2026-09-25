@@ -161,10 +161,11 @@ use std::sync::Arc;
 /// [`ProviderError::Http`](rig_core::error::ProviderError::Http).
 ///
 /// ```no_run
-/// use rig_core::{Model, providers::openai::OpenAI};
+/// use rig_core::wire::Wire as _;
+/// use rig_core::providers::openai::OpenAI;
 ///
 /// # fn main() -> Result<(), rig_core::client::EnvError> {
-/// let model = Model::new(OpenAI::from_env()?.completion("gpt-5.2"), rig_reqwest::shared());
+/// let model = OpenAI::from_env()?.completion("gpt-5.2").on(rig_reqwest::shared());
 /// # let _ = model;
 /// # Ok(())
 /// # }

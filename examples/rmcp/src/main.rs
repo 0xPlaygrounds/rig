@@ -5,6 +5,7 @@
 //! - **Auto-updating**: Use [`McpClientHandler`] so the agent automatically
 //!   picks up tool changes when the MCP server sends
 //!   `notifications/tools/list_changed`.
+use rig::wire::Wire as _;
 use std::sync::Arc;
 
 use rig::{
@@ -262,7 +263,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Connected to server: {server_info:#?}");
 
     let openai_client = OpenAI::from_env()?;
-    let agent = AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4O)))
+    let agent = AgentBuilder::new(openai_client.completion(openai::GPT_4O).on(rig::transport()))
         .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.")
         .tool_server_handle(tool_server_handle)
         .build();

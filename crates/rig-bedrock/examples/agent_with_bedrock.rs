@@ -3,6 +3,7 @@ use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
 use rig_core::Model;
 use rig_core::loaders::FileLoader;
+use rig_core::wire::Wire as _;
 use tracing::info;
 
 mod common;
@@ -32,10 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 fn model() -> Result<Model<Converse, BedrockRuntime>, anyhow::Error> {
-    Ok(Model::new(
-        Converse::new(AMAZON_NOVA_LITE),
-        BedrockRuntime::from_env(),
-    ))
+    Ok(Converse::new(AMAZON_NOVA_LITE).on(BedrockRuntime::from_env()))
 }
 
 fn partial_agent() -> Result<AgentBuilder, anyhow::Error> {

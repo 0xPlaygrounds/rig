@@ -34,6 +34,7 @@
 //! | 4 raw order | `{blocking,streaming}_{single,parallel}.yaml` |
 //! | 2 signed agent loops | `{blocking,streaming}_signed_agent_roundtrip.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -158,7 +159,7 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
 }
 
 async fn run_cell(client: OpenAI, cell: Cell, observed: SharedChoice) -> Result<()> {
-    let model = rig::model(client.completion(MODEL));
+    let model = client.completion(MODEL).on(rig::transport());
     let choice = match cell.transport {
         Transport::Blocking => model.call(request(cell)).await?.choice,
         Transport::Streaming => {
@@ -180,7 +181,7 @@ async fn run_signed_agent(
     transport: Transport,
     invocations: Arc<AtomicUsize>,
 ) -> Result<()> {
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+    let agent = rig::AgentBuilder::new(client.completion(MODEL).on(rig::transport()))
         .preamble(
             "Reason before the requested first tool call. After its result, answer exactly DONE without calling another tool.",
         )

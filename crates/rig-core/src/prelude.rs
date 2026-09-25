@@ -9,6 +9,7 @@
 pub use crate::completion::Message;
 pub use crate::driver::{BoxedModel, Model, Transport};
 pub use crate::error::ProviderError;
+pub use crate::wire::Wire;
 
 // The root re-export includes the derive macro when enabled.
 pub use crate::Embed;

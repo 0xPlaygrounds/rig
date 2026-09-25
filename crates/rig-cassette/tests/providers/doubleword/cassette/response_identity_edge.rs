@@ -24,13 +24,14 @@
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use rig::completion::CompletionRequestBuilder;
+use rig::wire::Wire as _;
 
 #[tokio::test]
 async fn blocking_identity_contract_vs_reality() {
     with_doubleword_cassette(
         "response_identity_edge/blocking_identity_contract_vs_reality",
         |client| async move {
-            let model = rig::model(client.completion(DEFAULT_MODEL));
+            let model = client.completion(DEFAULT_MODEL).on(rig::transport());
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Reply with exactly: identity probe")
@@ -57,7 +58,7 @@ async fn streaming_identity_contract_vs_reality() {
     with_doubleword_cassette(
         "response_identity_edge/streaming_identity_contract_vs_reality",
         |client| async move {
-            let model = rig::model(client.completion(DEFAULT_MODEL));
+            let model = client.completion(DEFAULT_MODEL).on(rig::transport());
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")

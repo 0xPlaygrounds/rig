@@ -4,6 +4,7 @@ use anyhow::{Result, bail};
 use rig::typesafeai::{
     Choice, ChoiceAnswer, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
+use rig::wire::Wire as _;
 use rig::{completion::Message, error::ProviderError, prelude::*, providers::openai::OpenAI};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -130,9 +131,13 @@ async fn main() -> Result<()> {
         }
     }
 
-    let jev = rig::model(Jev::from_env()?);
+    let jev = Jev::from_env()?.on(rig::transport());
     let assistant = if with_agent {
-        Some(rig::model(OpenAI::from_env()?.completion("gpt-5.6-sol")))
+        Some(
+            OpenAI::from_env()?
+                .completion("gpt-5.6-sol")
+                .on(rig::transport()),
+        )
     } else {
         None
     };

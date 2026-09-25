@@ -4,6 +4,7 @@
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig::providers::gemini::Gemini;
+use rig::wire::Wire as _;
 
 fn wire(
     client: &Gemini,
@@ -15,7 +16,9 @@ fn wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion("gemini-2.5-flash-lite")),
+        model: client
+            .completion("gemini-2.5-flash-lite")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

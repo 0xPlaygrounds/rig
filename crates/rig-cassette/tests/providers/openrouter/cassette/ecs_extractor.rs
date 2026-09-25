@@ -2,13 +2,14 @@
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
+use rig::wire::Wire as _;
 #[tokio::test]
 async fn extractor_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_openrouter_cassette("extractor/extractor_smoke", |client| async move {
                 let mut extractor = EcsExtractor::<SmokePerson>::new(
-                    rig::model(client.completion(DEFAULT_MODEL)),
+                    client.completion(DEFAULT_MODEL).on(rig::transport()),
                     None,
                     None,
                 );

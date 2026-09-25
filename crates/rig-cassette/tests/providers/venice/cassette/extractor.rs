@@ -1,5 +1,6 @@
 //! Cassette-backed Venice structured extraction coverage.
 
+use rig::wire::Wire as _;
 use rig_agent::test_utils::validate_extraction_fields;
 
 use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
@@ -8,9 +9,9 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson};
 #[tokio::test]
 async fn extractor_smoke() {
     with_venice_cassette("extractor/extractor_smoke", |client| async move {
-        let response = rig::extractor::ExtractorBuilder::<SmokePerson>::new(rig::model(
-            client.completion(DEFAULT_MODEL),
-        ))
+        let response = rig::extractor::ExtractorBuilder::<SmokePerson>::new(
+            client.completion(DEFAULT_MODEL).on(rig::transport()),
+        )
         .build()
         .extract(EXTRACTOR_TEXT)
         .await

@@ -1,6 +1,7 @@
 //! Mistral streaming coverage, including the migrated example path.
 
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
+use rig::wire::Wire as _;
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -12,7 +13,7 @@ use super::DEFAULT_MODEL;
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn streaming_smoke() {
     let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
+    let agent = rig::AgentBuilder::new(client.completion(DEFAULT_MODEL).on(rig::transport()))
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -28,7 +29,7 @@ async fn streaming_smoke() {
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn example_streaming_prompt() {
     let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
+    let agent = rig::AgentBuilder::new(client.completion(DEFAULT_MODEL).on(rig::transport()))
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

@@ -44,6 +44,7 @@
 
 use rig::completion::CompletionRequest;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -103,9 +104,13 @@ async fn raw_is_the_reply_document() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            capture_completion(rig::model(client.chat(model_name())), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.chat(model_name()).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -145,9 +150,13 @@ async fn raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_exposes_envelope_fields",
         |client| async move {
-            capture_completion(rig::model(client.chat(model_name())), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.chat(model_name()).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -194,9 +203,13 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            capture_completion(rig::model(client.chat(model_name())), request(), sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                client.chat(model_name()).on(rig::transport()),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;

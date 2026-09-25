@@ -104,6 +104,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
 use rig::transcription::TranscriptionRequestBuilder;
+use rig::wire::Wire as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -223,7 +224,7 @@ async fn transcription_body(
     thoughts_expected: bool,
     expected_words: Option<&'static str>,
 ) {
-    let model = rig::model(client.transcription(model_id));
+    let model = client.transcription(model_id).on(rig::transport());
     let mut request = TranscriptionRequestBuilder::from_file(AUDIO_FIXTURE_PATH)
         .expect("audio fixture should load");
     if let Some(params) = params {
@@ -452,7 +453,7 @@ async fn text_response_body(client: Gemini, scenario: &'static str, cell: TextRe
         thoughts_expected,
     } = cell;
 
-    let model = rig::model(client.completion(model_id));
+    let model = client.completion(model_id).on(rig::transport());
     let mut request = CompletionRequestBuilder::new(prompt).temperature(0.0);
     if let Some(preamble) = preamble {
         request = request.preamble(preamble.to_string());
@@ -730,7 +731,9 @@ async fn text_response_on_a_tool_call_turn() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_on_a_tool_call_turn",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new("What is 41 plus 1? Use the add tool.")
                 .temperature(0.0)
                 .max_tokens(2000)
@@ -832,7 +835,9 @@ async fn text_response_across_two_candidates() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_across_two_candidates",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "Name one primary colour. Answer with the single word.",
             )
@@ -922,7 +927,9 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             // A budget large enough to start thinking and far too small to answer:
             // the turn truncates with reasoning and no visible text.
             let request = CompletionRequestBuilder::new(
@@ -975,7 +982,9 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
@@ -1048,7 +1057,9 @@ async fn blocking_keeps_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/blocking_keeps_a_trailing_thought_signature",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW));
+            let model = client
+                .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(SIGNATURE_PROMPT)
                 .temperature(0.0)
                 .max_tokens(1000)
@@ -1099,7 +1110,9 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW));
+            let model = client
+                .completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(SIGNATURE_PROMPT)
                 .temperature(0.0)
                 .max_tokens(1000)
@@ -1132,6 +1145,7 @@ mod unit {
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::test_utils::RecordingHttpClient;
     use rig::transcription::{NormalizeTranscriptionResponse, TranscriptionResponse};
+    use rig::wire::Wire as _;
     use serde_json::{Value, json};
 
     /// A thought part with the shape recorded in
@@ -1170,10 +1184,12 @@ mod unit {
     /// here and carried by the real wire, driver and decoder — the same path
     /// every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>, role: &str) -> CompletionResponse {
-        let model = rig::Model::new(
-            Gemini::new("unit-key").completion("gemini-2.5-flash"),
-            RecordingHttpClient::new(reply_with(parts, role).to_string()),
-        );
+        let model =
+            Gemini::new("unit-key")
+                .completion("gemini-2.5-flash")
+                .on(RecordingHttpClient::new(
+                    reply_with(parts, role).to_string(),
+                ));
         let request = rig::completion::CompletionRequestBuilder::new("unit").build();
         model
             .call(request)

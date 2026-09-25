@@ -6,6 +6,7 @@
 use rig::agent::RequestPatch;
 use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
+use rig::wire::Wire as _;
 
 use super::super::hook_stress_support::{ApplyPatch, FirstTurnPatch, fact_doc};
 use super::super::support::with_gemini_cassette;
@@ -20,9 +21,11 @@ async fn preamble_override_forces_codeword_blocking() {
         "hook_stress_patch/preamble_override_forces_codeword_blocking",
         |client| async move {
             // The agent's own preamble says nothing about a codeword.
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble("You are a terse assistant.")
             .build();
@@ -60,9 +63,11 @@ async fn tool_choice_required_forces_a_tool_call_blocking() {
     with_gemini_cassette(
         "hook_stress_patch/tool_choice_required_forces_a_tool_call_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble("You are a calculator assistant.")
             .tool(add)
@@ -98,7 +103,7 @@ async fn history_replacement_injects_prior_fact_blocking() {
     with_gemini_cassette(
         "hook_stress_patch/history_replacement_injects_prior_fact_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
+            let agent = rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH).on(rig::transport()))
                 .name("stress-agent")
                 .preamble("You are a helpful assistant. Use the conversation so far to answer.")
                 .build();
@@ -132,9 +137,11 @@ async fn multi_field_patch_applies_preamble_and_context_blocking() {
     with_gemini_cassette(
         "hook_stress_patch/multi_field_patch_applies_preamble_and_context_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .name("stress-agent")
             .preamble("You are a terse assistant.")
             .build();

@@ -14,6 +14,7 @@ use crate::{
 };
 use bevy_ecs::prelude::*;
 use rig::providers::anthropic::wire::Anthropic;
+use rig::wire::Wire as _;
 use rig::{
     effect::{EffectFamily, EffectKind},
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
@@ -34,7 +35,7 @@ fn layered_agent(
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden(
-        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
         TOOLS_PREAMBLE,
         false,
     );
@@ -120,7 +121,7 @@ fn check_history(
 fn memory_agent(client: Anthropic) -> EcsAgent {
     let mut memory_entity = None;
     let mut ecs = EcsAgent::for_golden_with_setup(
-        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        client.completion(CLAUDE_SONNET_4_6).on(rig::transport()),
         BASIC_PREAMBLE,
         false,
         |world| {

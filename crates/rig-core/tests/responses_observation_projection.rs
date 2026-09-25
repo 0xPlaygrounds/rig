@@ -9,7 +9,7 @@
 //! usage, verdict and response-id telemetry silently, with every test green.
 #![allow(clippy::expect_used)]
 
-use rig_core::Model;
+use rig_core::wire::Wire as _;
 use std::sync::Arc;
 
 use rig_core::completion::CompletionRequest;
@@ -49,7 +49,7 @@ const BODY: &str = r#"{
 #[tokio::test]
 async fn a_unary_responses_reply_projects_usage_verdict_and_id() {
     let http = SequencedHttpClient::new(vec![MockHttpResponse::success(BODY)]);
-    let model = Model::new(OpenAI::new("test-key").responses("gpt-4o"), http);
+    let model = OpenAI::new("test-key").responses("gpt-4o").on(http);
 
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "projection");

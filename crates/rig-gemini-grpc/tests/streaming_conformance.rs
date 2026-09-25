@@ -10,13 +10,14 @@
 //! `None`.
 
 use rig_core::completion::{CompletionRequest, CompletionRequestBuilder, FinishReason};
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     InterleavedReasoningFixture, ProviderWireFixture, WireDriver, WireInput, event_frame,
     fixtures::drain,
 };
 use rig_core::wire::Mode;
+use rig_core::wire::Wire as _;
 use rig_gemini_grpc::completion::{GenerateContent, GrpcFrame};
 use rig_gemini_grpc::proto;
 
@@ -69,11 +70,9 @@ fn driver() -> WireDriver {
                 })
                 .collect();
             let request: CompletionRequest = CompletionRequestBuilder::new("hello").build();
-            let stream = Model::new(
-                GenerateContent::new("gemini-2.5-pro"),
-                Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
-            )
-            .stream(request)?;
+            let stream = GenerateContent::new("gemini-2.5-pro")
+                .on(Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))))
+                .stream(request)?;
             Ok(drain(stream).await)
         })
     })

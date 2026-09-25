@@ -32,12 +32,9 @@ fn main() -> Result<()> {
     // model is `Model<OpenAiWire>`, so no transport type
     // reaches this crate's signatures.
     let transport = ReqwestClient::default().boxed();
-    let agent = AgentBuilder::new(Model::new(
-        OpenAI::from_env()?.completion(openai::GPT_4O),
-        transport,
-    ))
-    .preamble(PREAMBLE)
-    .build();
+    let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O).on(transport))
+        .preamble(PREAMBLE)
+        .build();
 
     // Split the run: a future for the pool, an event feed for the frame loop.
     let (run, mut events) = agent.prompt(PROMPT).run_channel();

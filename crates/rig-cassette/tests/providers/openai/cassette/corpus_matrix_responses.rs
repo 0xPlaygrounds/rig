@@ -10,6 +10,7 @@
 //! had, whose producer stays where it is.
 
 use rig::providers::openai::{GPT_5_MINI, GPT_5_NANO};
+use rig::wire::Wire as _;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
@@ -17,8 +18,8 @@ use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion(GPT_5_MINI)),
-        route: Some(rig::model(client.openai.completion(GPT_5_NANO))),
+        model: client.openai.completion(GPT_5_MINI).on(rig::transport()),
+        route: Some(client.openai.completion(GPT_5_NANO).on(rig::transport())),
         temperature: None,
         additional_params: None,
     }
@@ -255,7 +256,10 @@ fn reasoning_wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion(rig::providers::openai::GPT_5_MINI)),
+        model: client
+            .openai
+            .completion(rig::providers::openai::GPT_5_MINI)
+            .on(rig::transport()),
         route: None,
         temperature: None,
         additional_params: None,

@@ -5,6 +5,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
+use rig::wire::Wire as _;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
@@ -27,9 +28,11 @@ async fn streaming_tools_smoke() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)
@@ -52,7 +55,9 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
@@ -71,9 +76,11 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble(TWO_TOOL_STREAM_PREAMBLE)
             .tool(AlphaSignal)
             .tool(BetaSignal)
@@ -98,9 +105,11 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/streaming_tools_emit_tool_call_before_later_text",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
             .tool(AlphaSignal)
             .additional_params(streaming_tool_params())
@@ -127,9 +136,11 @@ async fn example_streaming_with_tools() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/example_streaming_with_tools",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \
                      Use the tools provided to answer the user's question.",

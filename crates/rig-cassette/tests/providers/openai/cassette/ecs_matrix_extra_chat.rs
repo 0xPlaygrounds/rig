@@ -6,6 +6,7 @@
 //! literals and the wire's models.
 
 use rig::providers::openai::{GPT_4O, GPT_5_MINI, GPT_5_NANO};
+use rig::wire::Wire as _;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{
@@ -16,8 +17,8 @@ use crate::ecs_matrix::{
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: rig::model(client.openai.chat(GPT_5_MINI)),
-        route: Some(rig::model(client.openai.chat(GPT_5_NANO))),
+        model: client.openai.chat(GPT_5_MINI).on(rig::transport()),
+        route: Some(client.openai.chat(GPT_5_NANO).on(rig::transport())),
         temperature: None,
         additional_params: None,
     }
@@ -47,7 +48,7 @@ async fn error_facts_unary() {
             "error_identity_edge/chat_completions_validation_error_carries_identity",
             |client| async move {
                 error_facts(
-                    rig::model(client.openai.chat(GPT_4O)),
+                    client.openai.chat(GPT_4O).on(rig::transport()),
                     ErrorProbe {
                         prompt: "Never validated",
                         max_tokens: None,
@@ -79,7 +80,10 @@ async fn error_facts_streamed() {
             "corpus_matrix_chat/error_facts_streamed",
             |client| async move {
                 error_facts(
-                    rig::model(client.openai.chat("gpt-5-mini-nonexistent-rig-test")),
+                    client
+                        .openai
+                        .chat("gpt-5-mini-nonexistent-rig-test")
+                        .on(rig::transport()),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),

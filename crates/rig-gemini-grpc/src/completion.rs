@@ -1,11 +1,11 @@
 //! The Gemini `GenerateContent` completion wire over gRPC.
 //!
 //! ```no_run
-//! use rig_core::Model;
+//! use rig_core::wire::Wire as _;
 //! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_5_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let model = Model::new(GenerateContent::new(GEMINI_2_5_FLASH), GeminiGrpc::new("API_KEY").await?);
+//! let model = GenerateContent::new(GEMINI_2_5_FLASH).on(GeminiGrpc::new("API_KEY").await?);
 //! # let _ = model;
 //! # Ok(())
 //! # }

@@ -10,13 +10,17 @@ use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::providers::openai::OpenAI;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig::wire::Wire as _;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::OpenAiResponses;
 
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion("gpt-4.1-mini")),
+        model: client
+            .openai
+            .completion("gpt-4.1-mini")
+            .on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -65,7 +69,7 @@ fn scripted_unary(
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,
-        model: rig::Model::new(client.completion("gpt-4.1-mini"), http.clone()),
+        model: client.completion("gpt-4.1-mini").on(http.clone()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

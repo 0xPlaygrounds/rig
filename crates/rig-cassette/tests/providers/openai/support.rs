@@ -23,8 +23,8 @@ use crate::cassettes::DirectRecordingHttpClient;
 /// wires serve every other OpenAI REST route (embeddings, transcriptions,
 /// images, speech, model listing, verification). So the same credential is
 /// held here on both routes, and a cell spells the route it drives by the
-/// field it reads: `rig::AgentBuilder::new(rig::model(client.openai.completion(model)))` beside
-/// `rig::AgentBuilder::new(rig::model(client.chat.completion(model)))`, with `.chat(model)` / `.responses(model)`
+/// field it reads: `rig::AgentBuilder::new(client.openai.completion(model).on(rig::transport()))` beside
+/// `rig::AgentBuilder::new(client.chat.completion(model).on(rig::transport()))`, with `.chat(model)` / `.responses(model)`
 /// still naming a typed wire when a cell reads the native reply.
 pub(super) struct OpenAiCassette<H = BoxedHttpClient> {
     /// The configuration on its flagship route.

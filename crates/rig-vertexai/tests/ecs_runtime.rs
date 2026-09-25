@@ -8,6 +8,7 @@
 mod support;
 
 use google_cloud_aiplatform_v1::client::PredictionService;
+use rig_core::wire::Wire as _;
 use rig_core::{
     completion::CompletionRequestBuilder,
     effect::{EffectKind, HandlerDescriptor},
@@ -59,7 +60,7 @@ async fn assemble(endpoint: &LocalEndpoint, credentials: &SentinelCredentials) -
     ErasedHandler::new(HostedVertex {
         handler: ErasedHandler::new(ModelAdapter::new(
             "vertex",
-            rig_core::Model::new(GenerateContent::new("gemini-test"), client),
+            GenerateContent::new("gemini-test").on(client),
         )),
         runtime: tokio::runtime::Handle::current(),
     })

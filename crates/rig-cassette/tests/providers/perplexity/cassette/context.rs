@@ -1,6 +1,7 @@
 //! Perplexity context/document cassette coverage.
 
 use rig::providers::perplexity;
+use rig::wire::Wire as _;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
@@ -13,7 +14,7 @@ async fn context_smoke() {
             .iter()
             .copied()
             .fold(
-                rig::AgentBuilder::new(rig::model(client.completion(perplexity::SONAR))),
+                rig::AgentBuilder::new(client.completion(perplexity::SONAR).on(rig::transport())),
                 |builder, doc| builder.context(doc),
             )
             .preamble(

@@ -12,6 +12,7 @@ use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::gemini;
 use rig::tool::Tool;
+use rig::wire::Wire as _;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::{
@@ -94,9 +95,11 @@ async fn sequential_tool_calls_ordering_nonstreaming() {
     with_gemini_cassette(
         "generate_sessions/sequential_tool_calls_ordering_nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
             .temperature(0.0)
             .tool(Adder)
@@ -147,9 +150,11 @@ async fn sequential_tool_calls_ordering_streaming() {
     with_gemini_cassette(
         "generate_sessions/sequential_tool_calls_ordering_streaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            let agent = rig::AgentBuilder::new(
+                client
+                    .completion(gemini::completion::GEMINI_2_5_FLASH)
+                    .on(rig::transport()),
+            )
             .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
             .temperature(0.0)
             .tool(Adder)
@@ -196,7 +201,9 @@ async fn long_history_replay_nonstreaming() {
     with_gemini_cassette(
         "generate_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
 
             // A finished prior session replayed statelessly: Gemini pairs
             // functionResponse parts to functionCall parts by name, so a fully
@@ -279,7 +286,9 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
     with_gemini_cassette(
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
-            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let model = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
+                .on(rig::transport());
             let request = CompletionRequestBuilder::new(
                 "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
                      Think it through, then answer in one short sentence.",

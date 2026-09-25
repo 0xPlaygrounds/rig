@@ -2,6 +2,7 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::support::with_xai_cassette;
+use rig::wire::Wire as _;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -24,9 +25,9 @@ fn models(
     rig::Model<rig::providers::openai::wire::OpenAiWire>,
 ) {
     (
-        rig::model(client.completion("grok-3-mini")),
-        rig::model(client.completion("grok-3-mini")),
-        rig::model(client.completion("grok-3-mini-fast")),
+        client.completion("grok-3-mini").on(rig::transport()),
+        client.completion("grok-3-mini").on(rig::transport()),
+        client.completion("grok-3-mini-fast").on(rig::transport()),
     )
 }
 

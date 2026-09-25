@@ -7,6 +7,7 @@
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop};
 use rig::providers::gemini::Gemini;
+use rig::wire::Wire as _;
 
 // gemini-2.5-flash, not flash-lite: at temperature 0 flash-lite answered the
 // `list_files` functionResponse with an empty candidate (no parts,
@@ -21,7 +22,7 @@ fn wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion("gemini-2.5-flash")),
+        model: client.completion("gemini-2.5-flash").on(rig::transport()),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

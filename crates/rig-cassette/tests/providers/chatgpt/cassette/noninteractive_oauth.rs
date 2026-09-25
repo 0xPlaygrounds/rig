@@ -1,6 +1,7 @@
 //! ChatGPT non-interactive OAuth cassette coverage.
 
 use rig::providers::chatgpt;
+use rig::wire::Wire as _;
 
 use super::super::support::with_chatgpt_noninteractive_oauth_cassette;
 use crate::support::{
@@ -15,9 +16,10 @@ async fn cached_oauth_allows_noninteractive_streaming_completion() {
             // The harness already resolved the cached credential without a
             // device flow — the yielded provider holds it — so the only thing
             // left to prove is that a turn goes out on it.
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
-                .preamble(BASIC_PREAMBLE)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4).on(rig::transport()))
+                    .preamble(BASIC_PREAMBLE)
+                    .build();
             let mut stream = agent.prompt(BASIC_PROMPT).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await

@@ -12,6 +12,7 @@ use rig::effect::{EffectFamily, EffectKind};
 use rig::message::ToolChoice;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::run::OutputMode;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_corpus_output_cassette;
@@ -75,14 +76,15 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 async fn tool_unary_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-            .name("golden")
-            .preamble(BASIC_PREAMBLE)
-            .temperature(0.0)
-            .output_schema_raw(event_schema())
-            .output_mode(OutputMode::Tool)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(BASIC_PREAMBLE)
+                .temperature(0.0)
+                .output_schema_raw(event_schema())
+                .output_mode(OutputMode::Tool)
+                .record_to(recorder.clone())
+                .build();
         let response = agent
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
@@ -112,14 +114,15 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 async fn tool_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_streamed", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-            .name("golden")
-            .preamble(BASIC_PREAMBLE)
-            .temperature(0.0)
-            .output_schema_raw(event_schema())
-            .output_mode(OutputMode::Tool)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(BASIC_PREAMBLE)
+                .temperature(0.0)
+                .output_schema_raw(event_schema())
+                .output_mode(OutputMode::Tool)
+                .record_to(recorder.clone())
+                .build();
         let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
         let output = final_output(&mut stream).await;
         drop(stream);
@@ -139,14 +142,15 @@ async fn tool_streamed_effect_log_is_the_golden_fixture() {
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-            .name("golden")
-            .preamble(BASIC_PREAMBLE)
-            .temperature(0.0)
-            .output_schema_raw(event_schema())
-            .output_mode(OutputMode::Prompted)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(BASIC_PREAMBLE)
+                .temperature(0.0)
+                .output_schema_raw(event_schema())
+                .output_mode(OutputMode::Prompted)
+                .record_to(recorder.clone())
+                .build();
         let response = agent
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await
@@ -173,14 +177,15 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
 async fn prompted_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/prompted_streamed", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-            .name("golden")
-            .preamble(BASIC_PREAMBLE)
-            .temperature(0.0)
-            .output_schema_raw(event_schema())
-            .output_mode(OutputMode::Prompted)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(BASIC_PREAMBLE)
+                .temperature(0.0)
+                .output_schema_raw(event_schema())
+                .output_mode(OutputMode::Prompted)
+                .record_to(recorder.clone())
+                .build();
         let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
         let output = final_output(&mut stream).await;
         drop(stream);
@@ -201,15 +206,16 @@ async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
         "corpus_output/tool_with_real_tool",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Tool)
-                .tool(Adder)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .output_schema_raw(event_schema())
+                    .output_mode(OutputMode::Tool)
+                    .tool(Adder)
+                    .record_to(recorder.clone())
+                    .build();
             let response = agent
                 .prompt(SUM_EVENT_PROMPT)
                 .max_turns(3)
@@ -240,15 +246,16 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
         "corpus_output/prompted_with_real_tool",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .name("golden")
-                .preamble(TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Prompted)
-                .tool(Adder)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .output_schema_raw(event_schema())
+                    .output_mode(OutputMode::Prompted)
+                    .tool(Adder)
+                    .record_to(recorder.clone())
+                    .build();
             let response = agent
                 .prompt(SUM_EVENT_PROMPT)
                 .max_turns(3)
@@ -279,17 +286,18 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
         "corpus_output/tool_choice_specific_output",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Tool)
-                .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["final_result".to_owned()],
-                })
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(BASIC_PREAMBLE)
+                    .temperature(0.0)
+                    .output_schema_raw(event_schema())
+                    .output_mode(OutputMode::Tool)
+                    .tool_choice(ToolChoice::Specific {
+                        function_names: vec!["final_result".to_owned()],
+                    })
+                    .record_to(recorder.clone())
+                    .build();
             let response = agent
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
@@ -313,15 +321,16 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
         "corpus_output/tool_choice_required",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Tool)
-                .tool_choice(ToolChoice::Required)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(BASIC_PREAMBLE)
+                    .temperature(0.0)
+                    .output_schema_raw(event_schema())
+                    .output_mode(OutputMode::Tool)
+                    .tool_choice(ToolChoice::Required)
+                    .record_to(recorder.clone())
+                    .build();
             let response = agent
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .max_turns(2)
@@ -345,15 +354,16 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
         "corpus_output/tool_under_none_degrades",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-                .name("golden")
-                .preamble(BASIC_PREAMBLE)
-                .temperature(0.0)
-                .output_schema_raw(event_schema())
-                .output_mode(OutputMode::Tool)
-                .tool_choice(ToolChoice::None)
-                .record_to(recorder.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                    .name("golden")
+                    .preamble(BASIC_PREAMBLE)
+                    .temperature(0.0)
+                    .output_schema_raw(event_schema())
+                    .output_mode(OutputMode::Tool)
+                    .tool_choice(ToolChoice::None)
+                    .record_to(recorder.clone())
+                    .build();
             let response = agent
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
@@ -379,16 +389,17 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
 async fn tool_thinking_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_thinking", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
-            .name("golden")
-            .preamble(BASIC_PREAMBLE)
-            .additional_params(
-                serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }),
-            )
-            .output_schema_raw(event_schema())
-            .output_mode(OutputMode::Tool)
-            .record_to(recorder.clone())
-            .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6).on(rig::transport()))
+                .name("golden")
+                .preamble(BASIC_PREAMBLE)
+                .additional_params(
+                    serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }),
+                )
+                .output_schema_raw(event_schema())
+                .output_mode(OutputMode::Tool)
+                .record_to(recorder.clone())
+                .build();
         let response = agent
             .prompt(STRUCTURED_OUTPUT_PROMPT)
             .await

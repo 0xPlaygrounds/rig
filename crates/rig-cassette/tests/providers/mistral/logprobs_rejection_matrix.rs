@@ -24,6 +24,7 @@
 //! |---|---|
 //! | all 4 | `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/{blocking,streaming}_{mistral_small,ministral_3b}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
@@ -62,7 +63,9 @@ fn model_name(model: Model) -> &'static str {
 }
 
 async fn run_cell(client: OpenAI, cell: Cell, observed: SharedError) -> Result<()> {
-    let model = rig::model(client.completion(model_name(cell.model)));
+    let model = client
+        .completion(model_name(cell.model))
+        .on(rig::transport());
     let request = CompletionRequestBuilder::new("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
         .max_tokens(8)

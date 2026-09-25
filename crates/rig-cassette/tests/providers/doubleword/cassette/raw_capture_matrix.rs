@@ -40,6 +40,7 @@
 
 use rig::completion::CompletionRequest;
 use rig::providers::openai;
+use rig::wire::Wire as _;
 use serde::Deserialize as _;
 use serde_json::json;
 
@@ -76,7 +77,7 @@ async fn raw_round_trips_openai_type() {
     let sink = Observed::default();
     with_doubleword_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
         capture_completion(
-            rig::model(client.completion(DEFAULT_MODEL)),
+            client.completion(DEFAULT_MODEL).on(rig::transport()),
             request(),
             sink.clone(),
         )
@@ -117,7 +118,7 @@ async fn raw_exposes_object() {
     let sink = Observed::default();
     with_doubleword_cassette_result("raw_capture_matrix/raw_exposes_object", |client| {
         capture_completion(
-            rig::model(client.completion(DEFAULT_MODEL)),
+            client.completion(DEFAULT_MODEL).on(rig::transport()),
             request(),
             sink.clone(),
         )
@@ -168,7 +169,7 @@ async fn normalized_fields_match_raw_renormalized() {
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| {
             capture_completion(
-                rig::model(client.completion(DEFAULT_MODEL)),
+                client.completion(DEFAULT_MODEL).on(rig::transport()),
                 request(),
                 sink.clone(),
             )

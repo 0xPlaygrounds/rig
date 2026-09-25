@@ -1,13 +1,14 @@
 //! Cassette-backed OpenRouter agent completion smoke test.
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
+use rig::wire::Wire as _;
 
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 
 #[tokio::test]
 async fn completion_smoke() {
     with_openrouter_cassette("agent/completion_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(DEFAULT_MODEL).on(rig::transport()))
             .preamble(BASIC_PREAMBLE)
             .build();
 

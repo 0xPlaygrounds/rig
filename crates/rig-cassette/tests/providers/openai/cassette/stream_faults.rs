@@ -16,6 +16,7 @@ use rig::providers::openai::GPT_4O;
 use rig::providers::openai::OpenAI;
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
+use rig::wire::Wire as _;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_cassette;
@@ -83,10 +84,12 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(MISSING_MODEL)))
-                .max_tokens(SETUP_MAX_TOKENS)
-                .record_to(recorder.clone())
-                .build();
+            let agent = rig::AgentBuilder::new(
+                client.openai.completion(MISSING_MODEL).on(rig::transport()),
+            )
+            .max_tokens(SETUP_MAX_TOKENS)
+            .record_to(recorder.clone())
+            .build();
             let mut stream = agent.prompt(SETUP_PROMPT).stream();
             let drained = drain(&mut stream).await;
             drop(stream);
@@ -120,7 +123,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     );
     let (client, http) = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(GPT_4O), http.clone()))
+    let agent = rig::AgentBuilder::new(client.completion(GPT_4O).on(http.clone()))
         .preamble(STREAMING_PREAMBLE)
         .record_to(recorder.clone())
         .build();
@@ -155,7 +158,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
     let invocations = Invocations::default();
     let (client, http) = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(GPT_4O), http.clone()))
+    let agent = rig::AgentBuilder::new(client.completion(GPT_4O).on(http.clone()))
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(CountedSubtract(invocations.clone()))
@@ -194,7 +197,7 @@ async fn error_event_after_content_fails_with_the_provider_error() {
     frames.push(ERROR_EVENT.to_owned());
     let (client, http) = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(GPT_4O), http.clone()))
+    let agent = rig::AgentBuilder::new(client.completion(GPT_4O).on(http.clone()))
         .preamble(STREAMING_PREAMBLE)
         .record_to(recorder.clone())
         .build();
@@ -240,7 +243,7 @@ async fn error_event_after_content_fails_with_the_provider_error() {
 async fn dropping_the_stream_at_the_first_delta_records_a_cancel() {
     with_openai_cassette("streaming/streaming_smoke", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(GPT_4O)))
+        let agent = rig::AgentBuilder::new(client.openai.completion(GPT_4O).on(rig::transport()))
             .preamble(STREAMING_PREAMBLE)
             .record_to(recorder.clone())
             .build();

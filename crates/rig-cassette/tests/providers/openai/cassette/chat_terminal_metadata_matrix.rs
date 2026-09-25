@@ -34,6 +34,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_terminal_metadata_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
 
+use rig::wire::Wire as _;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
@@ -121,7 +122,10 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = rig::model(client.openai.chat(model_name(cell.model)));
+    let model = client
+        .openai
+        .chat(model_name(cell.model))
+        .on(rig::transport());
     let mut builder = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));
