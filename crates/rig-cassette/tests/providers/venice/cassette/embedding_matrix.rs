@@ -136,8 +136,7 @@ async fn single_text_convenience() {
     with_venice_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model =
-                rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None)).erase();
+            let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None));
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await

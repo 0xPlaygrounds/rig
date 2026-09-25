@@ -100,8 +100,7 @@ async fn single_text_convenience() {
     with_mistral_embedding_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model =
-                rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None)).erase();
+            let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
             let response = model
                 .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await

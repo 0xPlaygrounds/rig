@@ -145,8 +145,7 @@ async fn embeddings_error_preserves_status_and_body() {
                 client
                     .openai
                     .embedding("text-embedding-nonexistent-model", None),
-            )
-            .erase();
+            );
             let error = model
                 .embed_text("never embedded")
                 .await

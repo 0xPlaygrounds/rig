@@ -15,16 +15,32 @@ use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
 
+impl<W, T> crate::driver::Model<W, T>
+where
+    W: crate::wire::Wire<Op = crate::operation::Embedding>,
+    T: crate::driver::Transport<W>,
+{
+    /// Embed one text, returning the last vector or an error if none is returned.
+    pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {
+        last_embedding(self.call(vec![text.to_owned()]).await?)
+    }
+}
+
 impl crate::driver::DynModel<crate::operation::Embedding> {
     /// Embed one text, returning the last vector or an error if none is returned.
     pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {
-        let mut embeddings = self.call(vec![text.to_owned()]).await?.embeddings;
-        embeddings.pop().ok_or_else(|| {
-            ProviderError::Response(
-                "embedding provider returned an empty response for embed_text".to_string(),
-            )
-        })
+        last_embedding(self.call(vec![text.to_owned()]).await?)
     }
+}
+
+/// The last vector of a one-text batch, or the empty-reply error.
+fn last_embedding(response: EmbeddingResponse) -> Result<Embedding, ProviderError> {
+    let mut embeddings = response.embeddings;
+    embeddings.pop().ok_or_else(|| {
+        ProviderError::Response(
+            "embedding provider returned an empty response for embed_text".to_string(),
+        )
+    })
 }
 
 /// Text embeddings and normalized provider metadata.

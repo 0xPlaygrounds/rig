@@ -17,6 +17,7 @@ use rig::streaming::Delta;
 use anyhow::Result;
 use futures::StreamExt;
 use rig::providers::mistral;
+use rig::wire::Wire;
 
 use super::support::with_mistral_capability_cassette;
 use rig::completion::CompletionRequestBuilder;
@@ -56,12 +57,11 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/mistral_embed_reports_its_real_dimensions",
         |client| async move {
-            let model =
-                rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None)).erase();
+            let model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.
-            let declared = model.capabilities().ndims;
+            let declared = model.wire.capabilities().ndims;
             let embedding = model.embed_text("dimension probe").await?;
             assert_declared_matches_returned(declared, embedding.vec.len());
             Ok::<_, anyhow::Error>(())
