@@ -174,7 +174,8 @@ where
     pub fn call(
         &self,
         request: Request<W>,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static + use<W, T>
+    {
         self.unary(request, None)
     }
 
@@ -183,7 +184,8 @@ where
         &self,
         request: Request<W>,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static + use<W, T>
+    {
         self.unary(request, Some(observation))
     }
 
@@ -194,7 +196,8 @@ where
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static + use<W, T>
+    {
         let model = self.clone();
         async move {
             let span = model.span(&request, false);

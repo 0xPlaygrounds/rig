@@ -215,7 +215,6 @@ pub async fn run(
     model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     cell: Cell,
 ) -> Observation {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let calls = Arc::new(AtomicUsize::new(0));
     let mut builder = AgentBuilder::new(model)
         .preamble(TOOL_SYSTEM_PROMPT)

@@ -167,7 +167,6 @@ impl EcsAgent {
         keep_events: bool,
         setup: impl FnOnce(&mut World),
     ) -> Self {
-        let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
         Self::served(
             |label| ModelAdapter::new(label, model),
             preamble,

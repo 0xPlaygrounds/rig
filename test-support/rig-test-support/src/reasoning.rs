@@ -140,7 +140,6 @@ pub async fn run_reasoning_delta_hook_streaming(
     additional_params: serde_json::Value,
     provider: &str,
 ) {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     let hook = ReasoningDeltaHookRecorder::default();
     let probe = hook.clone();
     let agent = AgentBuilder::new(model)

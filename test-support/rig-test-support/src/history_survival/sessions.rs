@@ -286,7 +286,6 @@ pub async fn run_memory(
     cell: Cell,
     streamed: bool,
 ) {
-    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
     use futures::StreamExt;
     use rig_agent::agent::{AgentBuilder, MultiTurnStreamItem};
 

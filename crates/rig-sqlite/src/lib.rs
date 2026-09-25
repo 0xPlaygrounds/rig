@@ -1538,8 +1538,8 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// # let _ = example();
 /// ```
 ///
-/// `M` must be the model whose embeddings populated the store; results are
-/// meaningless under another model.
+/// The model must be the one whose embeddings populated the store; results
+/// are meaningless under another model.
 pub struct SqliteVectorIndex<T> {
     store: SqliteVectorStore<T>,
     embedding_model: rig_core::BoxedModel<rig_core::operation::Embedding>,

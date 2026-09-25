@@ -22,7 +22,7 @@ use sqlx::{PgPool, Postgres, postgres::PgArguments, query::QueryAs};
 use uuid::Uuid;
 
 /// Vector store over a Postgres table. Queries are embedded with the same model
-/// `M` that populated the table, so results are meaningless under another model.
+/// that populated the table, so results are meaningless under another model.
 pub struct PostgresVectorStore {
     model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     pg_pool: PgPool,
