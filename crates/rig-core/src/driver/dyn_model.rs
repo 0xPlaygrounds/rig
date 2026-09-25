@@ -1,26 +1,6 @@
 //! A model erased to its operation: what a consumer stores when it holds
 //! any model of one operation without naming its wire and transport. A
-//! [`DynModel`] runs the same driver as the [`Model`] it was made from. A
-//! model used by one consumer is passed as is; a model shared by several
-//! is erased once and the handle is cloned. A model the bus serves is
-//! reached through a `ModelHandle` in the agent runtime instead.
-//!
-//! ```no_run
-//! use rig_core::embeddings::EmbeddingsBuilder;
-//! use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
-//! use rig_core::{Model, providers::openai::{self, OpenAI}};
-//!
-//! # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-//! let model = Model::new(OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None), http).erase();
-//! let embeddings = EmbeddingsBuilder::new(model.clone())
-//!     .documents(["a document".to_owned()])?
-//!     .build()
-//!     .await?;
-//! let index = InMemoryVectorStore::from_documents(embeddings).index(model);
-//! # let _ = index;
-//! # Ok(())
-//! # }
-//! ```
+//! [`DynModel`] runs the same driver as the [`Model`] it was made from.
 
 use std::fmt;
 use std::sync::Arc;
@@ -117,6 +97,28 @@ where
 ///
 /// Every call runs the driver the concrete model runs: spans, request ids,
 /// the operation's `accept` check and error enrichment are the same.
+///
+/// A model used by one consumer is passed as is; a model shared by several
+/// is erased once and the handle is cloned. A model the bus serves is a
+/// `ModelHandle` in the agent runtime instead: its calls are dispatched,
+/// recorded and observed by the bus.
+///
+/// ```no_run
+/// use rig_core::embeddings::EmbeddingsBuilder;
+/// use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
+/// use rig_core::{Model, providers::openai::{self, OpenAI}};
+///
+/// # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+/// let model = Model::new(OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None), http).erase();
+/// let embeddings = EmbeddingsBuilder::new(model.clone())
+///     .documents(["a document".to_owned()])?
+///     .build()
+///     .await?;
+/// let index = InMemoryVectorStore::from_documents(embeddings).index(model);
+/// # let _ = index;
+/// # Ok(())
+/// # }
+/// ```
 pub struct DynModel<Op: Operation> {
     inner: Arc<dyn ErasedModel<Op>>,
 }

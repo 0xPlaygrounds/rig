@@ -69,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
     ];
 
     // Generate embeddings for the documents
-    let embeddings = EmbeddingsBuilder::new(model.clone())
+    let embeddings = EmbeddingsBuilder::new(model)
         .documents(words.clone())?
         .build()
         .await?;

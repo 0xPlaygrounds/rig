@@ -451,7 +451,7 @@ where
     W: Wire<Op = Completion>,
     DynHttpClient: Transport<W>,
 {
-    ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http).erase()))
+    ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http)))
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a

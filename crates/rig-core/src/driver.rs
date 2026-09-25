@@ -186,10 +186,7 @@ where
         self.unary(request, Some(observation))
     }
 
-    /// The unary driver's future, returned as is by `call` and boxed by
-    /// [`DynModel`]: another `async fn` around it would put a second copy
-    /// of the driver's state on the stack.
-    pub(crate) async fn unary(
+    async fn unary(
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,

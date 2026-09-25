@@ -419,7 +419,7 @@ impl Agent {
 
     /// Make the model registered under `label` this agent value's default.
     /// Value semantics: clones of the agent keep their own default.
-    pub fn set_model_ref(&mut self, label: impl Into<ModelRef>) {
+    pub fn set_model_label(&mut self, label: impl Into<ModelRef>) {
         self.config.model_key = self.config.bus.model_key(label.into().as_str());
         self.config.anonymous_model = None;
     }
@@ -445,9 +445,9 @@ impl Agent {
         self.config.bus.owner()
     }
 
-    /// [`Agent::set_model_ref`] by value.
-    pub fn with_model_ref(mut self, label: impl Into<ModelRef>) -> Self {
-        self.set_model_ref(label);
+    /// [`Agent::set_model_label`] by value.
+    pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
+        self.set_model_label(label);
         self
     }
 

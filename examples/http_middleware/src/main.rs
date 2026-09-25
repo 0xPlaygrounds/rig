@@ -6,7 +6,7 @@
 //! streaming call, before the stream is consumed. Requires `ANTHROPIC_API_KEY`.
 
 use anyhow::{Context, Result};
-use rig::http_client::{DynHttpClient, HeaderMap, HeaderValue, HttpMiddleware, Method, Uri};
+use rig::http_client::{HeaderMap, HeaderValue, HttpMiddleware, Method, ReqwestClient, Uri};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
@@ -76,8 +76,7 @@ async fn main() -> Result<()> {
 
     // Erase the default transport, then attach the middleware — no provider
     // code involved; the same handle could back every provider a host builds.
-    let http_client =
-        DynHttpClient::new(rig::http_client::ReqwestClient::default()).with_middleware(WireLogger);
+    let http_client = ReqwestClient::default().erase().with_middleware(WireLogger);
 
     let agent = AgentBuilder::new(Model::new(
         Anthropic::new(api_key).completion(anthropic::completion::CLAUDE_SONNET_4_6),

@@ -46,8 +46,8 @@ where
 {
     /// Set a different default model for this extractor's subsequent runs.
     /// Use the model registered under `label` on the extractor's bus.
-    pub fn with_model_ref(mut self, label: impl Into<ModelRef>) -> Self {
-        self.agent.set_model_ref(label);
+    pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
+        self.agent.set_model_label(label);
         self
     }
 

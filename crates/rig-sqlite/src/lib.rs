@@ -341,8 +341,8 @@ fn sqlite_metadata_value(
 
 /// SQLite-backed storage for documents of type `T` and their embeddings.
 ///
-/// The store itself names no embedding model: construction only reads the
-/// model's dimensions, and searching requires an index created by
+/// The store itself names no embedding model: construction takes the vector
+/// width, and searching requires an index created by
 /// [`SqliteVectorStore::index`].
 #[derive(Clone)]
 pub struct SqliteVectorStore<T> {
@@ -425,7 +425,6 @@ where
         ndims: usize,
         distance_metric: SqliteDistanceMetric,
     ) -> Result<Self, VectorStoreError> {
-        let dims = ndims;
         let table_name = T::name();
         let embeddings_table_name = format!("{table_name}_embeddings");
         let embeddings_table_name_for_sql = embeddings_table_name.clone();
@@ -435,7 +434,7 @@ where
         let metadata_columns_for_schema_check = metadata_columns.clone();
         let distance_metric_name = distance_metric.vec0_name();
         let mut embeddings_columns =
-            format!("embedding float[{dims}] distance_metric={distance_metric_name}");
+            format!("embedding float[{ndims}] distance_metric={distance_metric_name}");
         for column in &metadata_columns {
             embeddings_columns.push_str(&format!(
                 ", {} {}",

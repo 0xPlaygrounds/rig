@@ -61,7 +61,7 @@ async fn main() -> Result<(), anyhow::Error> {
             definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }];
 
-    let documents = EmbeddingsBuilder::new(model.clone())
+    let documents = EmbeddingsBuilder::new(model)
         .documents(words)?
         .build()
         .await?;

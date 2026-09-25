@@ -156,7 +156,7 @@ impl crate::wire::Wire for InteractionResume {
         PROVIDER_NAME
     }
 
-    /// The interaction names its own model; this wire addresses none.
+    /// The interaction names its own model; this wire addresses no model id.
     fn id(&self) -> Option<&str> {
         None
     }

@@ -74,14 +74,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Build RAG agent with dynamic context.
     // Use OpenAI-compatible API interface to build agent
-    let agent = AgentBuilder::new(Model::new(
-        openai_client.completion(openai::GPT_4O),
-        http.clone(),
-    ))
-    .temperature(0.5)
-    .preamble("You are a helpful AI assistant.")
-    .dynamic_context(top_k, vector_store_index)
-    .build();
+    let agent = AgentBuilder::new(Model::new(openai_client.completion(openai::GPT_4O), http))
+        .temperature(0.5)
+        .preamble("You are a helpful AI assistant.")
+        .dynamic_context(top_k, vector_store_index)
+        .build();
 
     let query = "My boss says I zindle too much, what does that mean?";
 
