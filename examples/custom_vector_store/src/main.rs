@@ -7,7 +7,6 @@ use redis::{
     aio::MultiplexedConnection,
     vector_sets::{VAddOptions, VSimOptions, VectorAddInput, VectorSimilaritySearchInput},
 };
-use rig::wire::Wire as _;
 use rig::{
     operation::Embedding,
     prelude::*,

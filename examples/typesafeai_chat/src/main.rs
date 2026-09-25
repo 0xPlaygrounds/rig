@@ -4,7 +4,6 @@ use anyhow::{Result, bail};
 use rig::typesafeai::{
     Choice, ChoiceAnswer, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
-use rig::wire::Wire as _;
 use rig::{completion::Message, error::ProviderError, prelude::*, providers::openai::OpenAI};
 use serde::{Deserialize, Serialize};
 use std::{

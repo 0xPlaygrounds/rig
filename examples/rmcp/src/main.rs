@@ -5,7 +5,6 @@
 //! - **Auto-updating**: Use [`McpClientHandler`] so the agent automatically
 //!   picks up tool changes when the MCP server sends
 //!   `notifications/tools/list_changed`.
-use rig::wire::Wire as _;
 use std::sync::Arc;
 
 use rig::{

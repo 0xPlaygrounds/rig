@@ -67,7 +67,7 @@ struct Field {
 
 /// Vector index over a MongoDB collection.
 ///
-/// Queries are embedded with the same model `M` that populated the collection,
+/// Queries are embedded with the same model that populated the collection,
 /// so results are meaningless under another model.
 ///
 /// # Example

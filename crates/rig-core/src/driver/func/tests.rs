@@ -2,6 +2,7 @@
 //! shape, the request untouched, errors in band, and truncation when a
 //! stream names no terminal.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
@@ -11,8 +12,9 @@ use crate::completion::ProviderCapabilities;
 use crate::completion::{CompletionRequest, CompletionRequestBuilder, CompletionResponse, Usage};
 use crate::driver::{BoxedModel, Model};
 use crate::embeddings::Embedding as Vector;
+use crate::embeddings::EmbeddingsBuilder;
 use crate::error::ProviderError;
-use crate::message::{AssistantContent, Message};
+use crate::message::{AssistantContent, Message, Reasoning};
 use crate::operation::{AdapterOutput, Completion, EmbeddingCapabilities};
 use crate::streaming::{StreamEvent, StreamFinal};
 use crate::wire::Wire;
@@ -122,10 +124,18 @@ async fn the_request_reaches_the_closure_untouched() {
         *recorder.lock().expect("seen") = Some(request);
         async { Ok(answer("hi")) }
     });
+    // Reasoning another issuer signed: a wire that scoped the history to
+    // its own issuers would drop it before the closure saw it.
+    let mut reasoning =
+        Reasoning::new_with_signature("weighed the options", Some("sig".to_owned()));
+    reasoning.provider = Some("other".to_owned());
     let mut request = request();
     request.chat_history.insert(
         0,
-        Message::assistant("earlier reasoning from another provider"),
+        Message::Assistant {
+            id: None,
+            content: vec![AssistantContent::Reasoning(reasoning)],
+        },
     );
     model
         .call(request.clone())
@@ -234,6 +244,39 @@ async fn a_stream_without_a_terminal_is_truncation() {
         matches!(&error, ProviderError::Response(message) if message.contains("truncated")),
         "{error:?}"
     );
+
+    let error = model
+        .call(request())
+        .await
+        .expect_err("a call over the same reply is truncated too");
+    assert!(
+        matches!(&error, ProviderError::Response(message) if message.contains("truncated")),
+        "{error:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_closure_runs_when_its_reply_is_polled() {
+    let runs = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&runs);
+    let model = Model::completion_fn("closure", move |_| {
+        counter.fetch_add(1, Ordering::SeqCst);
+        async { Ok(answer("hi")) }
+    });
+
+    let stream = model.stream(request()).expect("the stream opens");
+    assert_eq!(runs.load(Ordering::SeqCst), 0, "opening sends nothing");
+    let _items: Vec<_> = stream.collect().await;
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+
+    let call = model.call(request());
+    assert_eq!(
+        runs.load(Ordering::SeqCst),
+        1,
+        "a call sends nothing until polled"
+    );
+    call.await.expect("the call succeeds");
+    assert_eq!(runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -282,6 +325,14 @@ async fn an_embedding_closure_embeds_a_batch_at_its_width() {
         .await
         .expect("the erased model embeds one text");
     assert_eq!(embedding.vec, vec![1.0, 2.0, 3.0]);
+
+    let embeddings = EmbeddingsBuilder::new(model.clone())
+        .documents(["a".to_owned(), "b".to_owned(), "c".to_owned()])
+        .expect("documents are added")
+        .build()
+        .await
+        .expect("the builder batches through the closure");
+    assert_eq!(embeddings.len(), 3);
 
     let declared = model.with_capabilities(EmbeddingCapabilities::new(8, 3).declaring(Some(4)));
     let error = declared

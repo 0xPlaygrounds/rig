@@ -457,10 +457,7 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
 
     /// This wire on `transport`: the [`Model`] that sends it, read in the
     /// order it is thought about (provider, endpoint, transport).
-    fn on<T: Transport<Self>>(self, transport: T) -> Model<Self, T>
-    where
-        Self: Sized,
-    {
+    fn on<T: Transport<Self>>(self, transport: T) -> Model<Self, T> {
         Model::new(self, transport)
     }
 }

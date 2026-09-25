@@ -23,6 +23,7 @@
 //! # }
 //! ```
 
+use std::fmt;
 use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
@@ -64,6 +65,12 @@ where
     }
 }
 
+impl<Op: Operation> fmt::Debug for FnWire<Op> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FnWire").field("name", &self.name).finish()
+    }
+}
+
 /// One frame of a closure model's reply: the whole response of a unary
 /// closure, or one event of a streaming closure.
 pub enum FnFrame<Op: Operation> {
@@ -74,8 +81,14 @@ pub enum FnFrame<Op: Operation> {
 }
 
 /// The decoder of a closure model: a whole response is re-emitted as the
-/// events it folds from, and an event is passed through.
-pub struct FnDecoder;
+/// events it folds from, and an event is passed through. A reply read whole
+/// that carried events but no terminal record is truncation, reported as an
+/// error; a stream reports it by carrying no terminal record.
+#[derive(Debug)]
+pub struct FnDecoder {
+    whole: bool,
+    terminal: bool,
+}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 type SendFn<Op> = dyn Fn(<Op as Operation>::Request) -> Reply<Op> + Send + Sync;
@@ -92,13 +105,19 @@ pub struct FnTransport<Op: Operation> {
 }
 
 impl<Op: Operation> FnTransport<Op> {
+    /// The closure runs when the reply future is polled, not when the
+    /// driver prepares the send.
     fn new<F, Fut>(send: F) -> Self
     where
         F: Fn(Op::Request) -> Fut + WasmCompatSend + WasmCompatSync + 'static,
         Fut: Future<Output = Opened<Op::Request, FnFrame<Op>>> + WasmCompatSend + 'static,
     {
+        let send = Arc::new(send);
         Self {
-            send: Arc::new(move |request| Box::pin(send(request))),
+            send: Arc::new(move |request| {
+                let send = Arc::clone(&send);
+                Box::pin(async move { send(request).await })
+            }),
         }
     }
 }
@@ -108,6 +127,12 @@ impl<Op: Operation> Clone for FnTransport<Op> {
         Self {
             send: Arc::clone(&self.send),
         }
+    }
+}
+
+impl<Op: Operation> fmt::Debug for FnTransport<Op> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("FnTransport")
     }
 }
 
@@ -130,8 +155,11 @@ where
         Ok(request)
     }
 
-    fn decoder(&self, _mode: Mode) -> FnDecoder {
-        FnDecoder
+    fn decoder(&self, mode: Mode) -> FnDecoder {
+        FnDecoder {
+            whole: mode == Mode::Unary,
+            terminal: false,
+        }
     }
 
     fn capabilities(&self) -> Op::Capabilities {
@@ -179,8 +207,23 @@ impl Decoder<Completion, FnFrame<Completion>> for FnDecoder {
 
     fn interpret(&mut self, frame: FnFrame<Completion>, out: &mut AdapterOutput) {
         match frame {
-            FnFrame::Whole(response) => out.response(&response, ImagePart::Block),
-            FnFrame::Event(event) => out.push(Ok(event)),
+            FnFrame::Whole(response) => {
+                self.terminal = true;
+                out.response(&response, ImagePart::Block);
+            }
+            FnFrame::Event(event) => {
+                self.terminal |= matches!(event, StreamEvent::Final(_));
+                out.push(Ok(event));
+            }
+        }
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput) {
+        if self.whole && !self.terminal {
+            out.error(ProviderError::Response(
+                "closure stream ended without a terminal record; treating the turn as truncated"
+                    .to_owned(),
+            ));
         }
     }
 }
@@ -197,6 +240,9 @@ impl Decoder<Embedding, FnFrame<Embedding>> for FnDecoder {
         out.push(Ok(response));
     }
 }
+
+/// The batch limit an embedding closure declares until told otherwise.
+pub const EMBEDDING_BATCH: usize = 1024;
 
 /// A whole reply as one frame, or the failure that replaced it.
 fn whole<Op: Operation>(
@@ -263,7 +309,8 @@ impl Model<FnWire<Completion>, FnTransport<Completion>> {
     /// of events. A call folds the events like any streamed reply. The
     /// closure's error is the call's error; an error item of its stream
     /// arrives after the events before it, and a stream that ends without a
-    /// terminal record is truncation.
+    /// terminal record is truncation on both surfaces: a call fails, a
+    /// stream carries no terminal record.
     pub fn completion_stream_fn<F, Fut, S>(name: impl Into<String>, f: F) -> Self
     where
         F: Fn(CompletionRequest) -> Fut + WasmCompatSend + WasmCompatSync + 'static,
@@ -288,7 +335,8 @@ impl Model<FnWire<Completion>, FnTransport<Completion>> {
 impl Model<FnWire<Embedding>, FnTransport<Embedding>> {
     /// An embedding model from a closure that embeds a batch of texts, one
     /// vector per text in order, at `ndims` dimensions. The batch limit is
-    /// unbounded until [`Self::with_capabilities`] states one.
+    /// [`EMBEDDING_BATCH`] texts until [`Self::with_capabilities`] states
+    /// another.
     pub fn embedding_fn<F, Fut>(name: impl Into<String>, ndims: usize, f: F) -> Self
     where
         F: Fn(Vec<String>) -> Fut + WasmCompatSend + WasmCompatSync + 'static,
@@ -297,7 +345,7 @@ impl Model<FnWire<Embedding>, FnTransport<Embedding>> {
         let name = name.into();
         let provider = name.clone();
         Self::new(
-            FnWire::new(name, EmbeddingCapabilities::new(usize::MAX, ndims)),
+            FnWire::new(name, EmbeddingCapabilities::new(EMBEDDING_BATCH, ndims)),
             FnTransport::new(move |texts| {
                 let provider = provider.clone();
                 let reply = f(texts);

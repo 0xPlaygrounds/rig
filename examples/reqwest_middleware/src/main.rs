@@ -5,7 +5,6 @@
 use anyhow::{Context, Result};
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
-use rig::wire::Wire as _;
 use rig::{prelude::*, providers::anthropic, providers::anthropic::wire::Anthropic};
 
 fn build_http_client() -> rig::rig_reqwest::ReqwestMiddlewareClient {

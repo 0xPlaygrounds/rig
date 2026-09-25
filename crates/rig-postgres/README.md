@@ -100,6 +100,8 @@ pub struct Product {
 Example usage
 
 ```rust
+    use rig::prelude::*;
+
     // OpenAI's embeddings wire on the default transport
     let model = rig::providers::openai::wire::OpenAI::from_env()?
         .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None)

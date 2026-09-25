@@ -112,7 +112,7 @@ impl HelixDBClient for HelixDB {
 
 /// Vector store backed by HelixDB queries.
 ///
-/// Queries are embedded with the same model `M` that populated the store, so
+/// Queries are embedded with the same model that populated the store, so
 /// results are meaningless under another model. Use [`HelixDB`] for `C` unless
 /// another transport is needed.
 ///

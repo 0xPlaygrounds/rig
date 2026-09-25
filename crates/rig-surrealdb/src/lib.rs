@@ -27,7 +27,7 @@ pub use surrealdb::engine::remote::ws::{Ws, Wss};
 
 /// Vector store backed by a SurrealDB table.
 ///
-/// Queries are embedded with the same model `M` that populated the table, so
+/// Queries are embedded with the same model that populated the table, so
 /// results are meaningless under another model.
 pub struct SurrealVectorStore<C>
 where

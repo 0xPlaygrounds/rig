@@ -50,7 +50,7 @@ impl From<VectorizeError> for VectorStoreError {
 
 /// Vector store backed by a Cloudflare Vectorize index.
 ///
-/// Queries are embedded with the same model `M` that populated the index, so
+/// Queries are embedded with the same model that populated the index, so
 /// results are meaningless under another model.
 #[derive(Debug, Clone)]
 pub struct VectorizeVectorStore {

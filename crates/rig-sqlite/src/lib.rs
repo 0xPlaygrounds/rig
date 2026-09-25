@@ -1500,7 +1500,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// // Initialize vector store
 /// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(
 ///     conn,
-///     &model,
+///     model.clone(),
 ///     SqliteDistanceMetric::Cosine,
 /// )
 /// .await?;

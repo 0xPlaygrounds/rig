@@ -1,5 +1,4 @@
 use anyhow::Result;
-use rig::wire::Wire as _;
 use rig::{
     embeddings::EmbeddingsBuilder,
     prelude::*,

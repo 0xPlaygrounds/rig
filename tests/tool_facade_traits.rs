@@ -124,7 +124,7 @@ fn completion_client_single_import_surface() {
         "test-key",
     );
     let _model = openai.completion("gpt-4o").on(transport());
-    let _explicit = openai.completion("gpt-4o").on(rig::rig_reqwest::shared());
+    let _explicit = Model::new(openai.completion("gpt-4o"), rig::rig_reqwest::shared());
     let _agent = AgentBuilder::new(openai.completion("gpt-4o").on(transport())).build();
 }
 
