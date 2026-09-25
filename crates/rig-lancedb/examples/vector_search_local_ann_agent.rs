@@ -3,6 +3,7 @@ use lancedb::index::vector::IvfPqIndexBuilder;
 use rig_agent::AgentBuilder;
 use rig_core::Model;
 use rig_core::providers::openai;
+use rig_core::wire::Wire;
 use rig_core::{embeddings::EmbeddingsBuilder, providers::openai::wire::OpenAI};
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
@@ -50,7 +51,10 @@ async fn main() -> Result<(), anyhow::Error> {
     } else {
         db.create_table(
             "definitions",
-            vec![as_record_batch(embeddings, model.capabilities().ndims)?],
+            vec![as_record_batch(
+                embeddings,
+                model.wire.capabilities().ndims,
+            )?],
         )
         .execute()
         .await?

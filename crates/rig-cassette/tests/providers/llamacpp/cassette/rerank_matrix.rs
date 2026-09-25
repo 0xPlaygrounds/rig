@@ -42,6 +42,7 @@ use crate::cassettes::{
 };
 
 use super::super::cassette_support::*;
+use rig::operation::RerankRequest;
 
 /// Three documents whose relevance to the query is unambiguous, so an
 /// assertion on the *ordering* is a real assertion rather than a coin flip.
@@ -76,7 +77,13 @@ async fn multiple_documents_come_back_ranked() {
     with_llamacpp_rerank_cassette("rerank_matrix/multiple_documents", |client| async move {
         let reranked = client
             .rerank(CASSETTE_RERANK_MODEL)
-            .rerank(QUERY, documents())
+            .call(
+                RerankRequest {
+                    query: QUERY.to_owned(),
+                    documents: documents(),
+                },
+                None,
+            )
             .await
             .expect("a multi-document rerank should succeed");
 
@@ -143,7 +150,13 @@ async fn scores_are_raw_logits_and_may_be_negative() {
     with_llamacpp_rerank_cassette("rerank_matrix/negative_scores", |client| async move {
         let reranked = client
             .rerank(CASSETTE_RERANK_MODEL)
-            .rerank(QUERY, documents())
+            .call(
+                RerankRequest {
+                    query: QUERY.to_owned(),
+                    documents: documents(),
+                },
+                None,
+            )
             .await
             .expect("rerank should succeed");
 
@@ -182,7 +195,13 @@ async fn a_single_document_is_still_a_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/single_document", |client| async move {
         let reranked = client
             .rerank(CASSETTE_RERANK_MODEL)
-            .rerank(QUERY, vec!["it is a bear".to_string()])
+            .call(
+                RerankRequest {
+                    query: QUERY.to_owned(),
+                    documents: vec!["it is a bear".to_string()],
+                },
+                None,
+            )
             .await
             .expect("a single-document rerank should succeed");
 
@@ -207,7 +226,13 @@ async fn top_n_beyond_the_document_count_is_clamped() {
             rig_test_support::endpoint::map_wire(client.rerank(CASSETTE_RERANK_MODEL), |wire| {
                 wire.with_top_n(99)
             })
-            .rerank(QUERY, documents())
+            .call(
+                RerankRequest {
+                    query: QUERY.to_owned(),
+                    documents: documents(),
+                },
+                None,
+            )
             .await
             .expect("an over-large top_n is clamped, not refused");
 
@@ -241,7 +266,13 @@ async fn top_n_below_the_document_count_truncates() {
             rig_test_support::endpoint::map_wire(client.rerank(CASSETTE_RERANK_MODEL), |wire| {
                 wire.with_top_n(1)
             })
-            .rerank(QUERY, documents())
+            .call(
+                RerankRequest {
+                    query: QUERY.to_owned(),
+                    documents: documents(),
+                },
+                None,
+            )
             .await
             .expect("a truncating top_n should succeed");
 
@@ -276,7 +307,13 @@ async fn top_n_zero_returns_an_empty_ranking() {
             rig_test_support::endpoint::map_wire(client.rerank(CASSETTE_RERANK_MODEL), |wire| {
                 wire.with_top_n(0)
             })
-            .rerank(QUERY, documents())
+            .call(
+                RerankRequest {
+                    query: QUERY.to_owned(),
+                    documents: documents(),
+                },
+                None,
+            )
             .await
             .expect("top_n 0 is a valid request, not an error");
 

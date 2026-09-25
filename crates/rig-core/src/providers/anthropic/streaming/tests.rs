@@ -1706,7 +1706,7 @@ async fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_c
     // actually emitted a tool call.
     let mut adapter = adapter();
     let mut out = AdapterOutput::new();
-    out.tool_call(
+    out.tool_end(
         crate::streaming::BlockId::wire("toolu_1"),
         ToolCallEnd::whole("add", json!({"x": 1})).with_tool_id("toolu_1"),
     );

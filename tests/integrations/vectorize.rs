@@ -51,8 +51,9 @@ async fn test_insert_documents() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect(), None)
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -85,8 +86,9 @@ async fn test_insert_and_query() {
     };
 
     let embeddings = model
-        .embed_texts(vec![doc.content.clone()])
+        .call(vec![doc.content.clone()], None)
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings =
@@ -130,8 +132,9 @@ async fn test_top_n_returns_full_documents() {
     };
 
     let embeddings = model
-        .embed_texts(vec![doc.content.clone()])
+        .call(vec![doc.content.clone()], None)
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     vector_store
@@ -191,8 +194,9 @@ async fn test_top_n_with_multiple_documents() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect(), None)
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -250,8 +254,9 @@ async fn test_query_with_eq_filter() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect(), None)
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -326,8 +331,9 @@ async fn test_query_with_combined_filters() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect(), None)
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -405,8 +411,9 @@ async fn test_query_with_in_filter() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect(), None)
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs

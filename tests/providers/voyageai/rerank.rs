@@ -1,5 +1,6 @@
 //! VoyageAI reranking smoke test.
 
+use rig::operation::RerankRequest;
 use rig::providers::voyageai::{self, wire::VoyageAi};
 use rig_test_support::endpoint::Endpoint;
 
@@ -13,12 +14,15 @@ async fn rerank_smoke() {
     let model = provider.rerank(voyageai::RERANK_2_5);
 
     let response = model
-        .rerank(
-            "capital of France",
-            vec![
-                "Paris is the capital of France.".to_string(),
-                "Madrid is the capital of Spain.".to_string(),
-            ],
+        .call(
+            RerankRequest {
+                query: "capital of France".to_owned(),
+                documents: vec![
+                    "Paris is the capital of France.".to_string(),
+                    "Madrid is the capital of Spain.".to_string(),
+                ],
+            },
+            None,
         )
         .await
         .expect("rerank request should succeed");

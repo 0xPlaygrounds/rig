@@ -64,6 +64,7 @@ use serde_json::{Value, json};
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
+use rig::operation::RerankRequest;
 
 /// A prompt long enough to overflow a 512-token context and short enough to
 /// keep the fixture readable.
@@ -460,8 +461,9 @@ async fn embeddings_without_the_flag_are_a_501() {
         |client| async move {
             let error = client
                 .embedding(CASSETTE_EMBEDDING_MODEL, None)
-                .embed_texts(["hello".to_string()])
+                .call(vec!["hello".to_string()], None)
                 .await
+                .map(|response| response.embeddings)
                 .expect_err("a server without --embeddings must refuse");
 
             assert_eq!(
@@ -504,8 +506,9 @@ async fn embeddings_with_pooling_none_are_a_400() {
         |client| async move {
             let error = client
                 .embedding(CASSETTE_EMBEDDING_MODEL, None)
-                .embed_texts(["hello".to_string()])
+                .call(vec!["hello".to_string()], None)
                 .await
+                .map(|response| response.embeddings)
                 .expect_err("--pooling none is not OpenAI-compatible");
 
             assert_eq!(
@@ -547,8 +550,9 @@ async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
         |client| async move {
             let embeddings = client
                 .embedding(CASSETTE_MODEL, None)
-                .embed_texts(["hello".to_string()])
+                .call(vec!["hello".to_string()], None)
                 .await
+                .map(|response| response.embeddings)
                 .expect("llama.cpp pools a causal LM rather than refusing");
 
             assert_eq!(embeddings.len(), 1);
@@ -727,7 +731,13 @@ async fn rerank_without_a_reranker_is_a_501() {
         |client| async move {
             let error = client
                 .rerank(CASSETTE_RERANK_MODEL)
-                .rerank("what is a panda?", vec!["hi".into(), "it is a bear".into()])
+                .call(
+                    RerankRequest {
+                        query: "what is a panda?".to_owned(),
+                        documents: vec!["hi".into(), "it is a bear".into()],
+                    },
+                    None,
+                )
                 .await
                 .expect_err("a server without --reranking must refuse");
 
@@ -768,7 +778,13 @@ async fn rerank_with_an_empty_document_list_is_a_400() {
     with_llamacpp_rerank_cassette("error_matrix/rerank_empty_documents", |client| async move {
         let error = client
             .rerank(CASSETTE_RERANK_MODEL)
-            .rerank("what is a panda?", Vec::new())
+            .call(
+                RerankRequest {
+                    query: "what is a panda?".to_owned(),
+                    documents: Vec::new(),
+                },
+                None,
+            )
             .await
             .expect_err("an empty document list is refused by the server");
 
@@ -820,8 +836,9 @@ async fn an_embeddings_input_past_the_batch_size_is_a_500() {
             let oversized = "word ".repeat(4_000);
             let error = client
                 .embedding(CASSETTE_EMBEDDING_MODEL, None)
-                .embed_texts([oversized])
+                .call(vec![oversized], None)
                 .await
+                .map(|response| response.embeddings)
                 .expect_err("an input past the physical batch must fail");
 
             assert_eq!(

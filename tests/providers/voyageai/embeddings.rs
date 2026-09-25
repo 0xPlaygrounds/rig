@@ -15,8 +15,15 @@ async fn embeddings_smoke() {
     let model = provider.embedding(voyageai::VOYAGE_3_LARGE, None);
 
     let embeddings = model
-        .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
+        .call(
+            EMBEDDING_INPUTS
+                .iter()
+                .map(|input| (*input).to_string())
+                .collect(),
+            None,
+        )
         .await
+        .map(|response| response.embeddings)
         .expect("embedding request should succeed");
 
     assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());

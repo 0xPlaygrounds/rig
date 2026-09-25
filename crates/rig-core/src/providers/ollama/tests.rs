@@ -1313,8 +1313,9 @@ async fn embeddings_non_success_preserves_status_and_body() {
     let model = crate::driver::Model::new(Ollama::new().embedding(ALL_MINILM, None), http_client);
 
     let error = model
-        .embed_texts(vec!["hello".to_string()])
+        .call(vec!["hello".to_string()], None)
         .await
+        .map(|response| response.embeddings)
         .expect_err("should fail with non-success status");
 
     assert!(matches!(error, ProviderError::ProviderResponse(_)));

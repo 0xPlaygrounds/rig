@@ -401,7 +401,7 @@ impl OllamaDecoder {
                 if let Some(wire_id) = key.wire_str() {
                     end = end.with_tool_id(wire_id);
                 }
-                tool_events.tool_call(key, end);
+                tool_events.tool_end(key, end);
             }
 
             // Split embedded reasoning only in terminal content without explicit

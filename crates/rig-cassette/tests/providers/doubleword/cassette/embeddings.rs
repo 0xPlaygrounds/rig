@@ -10,8 +10,15 @@ async fn embeddings_smoke() {
     with_doubleword_cassette("embeddings/embeddings_smoke", |client| async move {
         let model = client.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
         let embeddings = model
-            .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
+            .call(
+                EMBEDDING_INPUTS
+                    .iter()
+                    .map(|input| (*input).to_string())
+                    .collect(),
+                None,
+            )
             .await
+            .map(|response| response.embeddings)
             .expect("embedding request should succeed");
         assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());
     })

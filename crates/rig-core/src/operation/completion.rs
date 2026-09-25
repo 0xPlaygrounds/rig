@@ -686,11 +686,6 @@ impl AdapterOutput {
         id
     }
 
-    /// Open the tool-call block `id` (a no-op when already open).
-    pub fn tool_start(&mut self, id: &BlockId) {
-        self.open_if_unseen(id, BlockKind::ToolCall);
-    }
-
     /// A streamed tool-name fragment for the call `id`.
     pub fn tool_name(&mut self, id: &BlockId, name: impl Into<String>) {
         self.open_if_unseen(id, BlockKind::ToolCall);
@@ -720,12 +715,6 @@ impl AdapterOutput {
             end: BlockClose::ToolCall(end),
             block: None,
         }));
-    }
-
-    /// A tool call the wire delivered whole: its start and its authoritative
-    /// end in one step.
-    pub fn tool_call(&mut self, id: BlockId, end: ToolCallEnd) {
-        self.tool_end(id, end);
     }
 
     /// Open the reasoning block `id` (a no-op when already open).

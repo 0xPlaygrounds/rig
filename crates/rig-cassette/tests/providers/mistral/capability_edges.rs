@@ -19,6 +19,7 @@ use futures::StreamExt;
 use rig::providers::mistral;
 
 use super::support::with_mistral_capability_cassette;
+use rig::wire::Wire;
 
 /// One more than Mistral's real per-request cap, so a single un-chunked
 /// request would be rejected and only correct chunking can succeed.
@@ -33,8 +34,14 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
             // Straight through the model, bypassing the builder's chunking, so
             // the cell pins Mistral's own cap rather than rig's arithmetic.
             let error = model
-                .embed_texts((0..OVER_ONE_BATCH).map(|i| format!("document {i}")))
+                .call(
+                    (0..OVER_ONE_BATCH)
+                        .map(|i| format!("document {i}"))
+                        .collect(),
+                    None,
+                )
                 .await
+                .map(|response| response.embeddings)
                 // `Vec<Embedding>` is not `Debug`; map the Ok side away.
                 .map(|_| ())
                 .expect_err("Mistral must reject a batch over its cap");
@@ -54,7 +61,7 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.
-            let declared = model.capabilities().ndims;
+            let declared = model.wire.capabilities().ndims;
             let embedding = model.embed_text("dimension probe").await?;
             assert_declared_matches_returned(declared, embedding.vec.len());
             Ok::<_, anyhow::Error>(())

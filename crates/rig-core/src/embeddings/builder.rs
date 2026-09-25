@@ -121,7 +121,7 @@ where
         }
 
         let total_texts = texts.len();
-        let max_documents = max(1, self.model.capabilities().max_documents);
+        let max_documents = max(1, self.model.wire.capabilities().max_documents);
 
         let (slots, usage) = stream::iter(texts.into_iter().enumerate())
             .chunks(max_documents)

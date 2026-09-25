@@ -91,7 +91,7 @@ where
     type Family = <W::Op as ServeOperation>::Family;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        <W::Op as ServeOperation>::descriptor(&self.label, self.model.capabilities())
+        <W::Op as ServeOperation>::descriptor(&self.label, self.model.wire.capabilities())
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
@@ -223,7 +223,13 @@ impl ServeOperation for Rerank {
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model
-                    .rerank(&request.query, request.documents)
+                    .call(
+                        crate::operation::RerankRequest {
+                            query: request.query,
+                            documents: request.documents,
+                        },
+                        None,
+                    )
                     .await
                     .map(Outcome::Reranked)
                     .map_err(ErrorReport::from),

@@ -108,8 +108,9 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         let bare = Endpoint::new(OpenAI::new("llamacpp-local"), recorder.clone());
         let _ = bare
             .embedding("m", Some(1))
-            .embed_texts(["probe".to_string()])
-            .await;
+            .call(vec!["probe".to_string()], None)
+            .await
+            .map(|response| response.embeddings);
         let sent = &recorder.requests()[0];
         assert_eq!(
             sent.headers
@@ -126,8 +127,9 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         let provider = Endpoint::new(OpenAI::with_key(&LLAMACPP, ""), recorder.clone());
         let _ = provider
             .embedding("m", Some(1))
-            .embed_texts(["probe".to_string()])
-            .await;
+            .call(vec!["probe".to_string()], None)
+            .await
+            .map(|response| response.embeddings);
         assert!(
             recorder.requests()[0]
                 .headers

@@ -489,13 +489,16 @@ async fn a_recorded_rerank_reply_folds_its_ranking() {
         OpenAI::with_key(&LLAMACPP, "").rerank("bge-reranker-v2-m3"),
         RecordingHttpClient::new(reply),
     )
-    .rerank(
-        "which is about cats?",
-        vec![
-            "dogs bark".to_owned(),
-            "the sky is blue".to_owned(),
-            "cats purr".to_owned(),
-        ],
+    .call(
+        crate::operation::RerankRequest {
+            query: "which is about cats?".to_owned(),
+            documents: vec![
+                "dogs bark".to_owned(),
+                "the sky is blue".to_owned(),
+                "cats purr".to_owned(),
+            ],
+        },
+        None,
     )
     .await
     .expect("the reply decodes");
@@ -530,7 +533,13 @@ async fn a_rerank_reply_accepts_either_score_key() {
         OpenAI::with_key(&LLAMACPP, "").rerank("r"),
         RecordingHttpClient::new(reply),
     )
-    .rerank("q", vec!["a".to_owned()])
+    .call(
+        crate::operation::RerankRequest {
+            query: "q".to_owned(),
+            documents: vec!["a".to_owned()],
+        },
+        None,
+    )
     .await
     .expect("the reply decodes");
     assert_eq!(response.results[0].relevance_score, 0.75);

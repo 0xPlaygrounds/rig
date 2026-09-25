@@ -333,11 +333,13 @@ impl Neo4jClient {
         .await?;
 
         let index_config = if let Some(index) = index_info.first() {
-            if index.options.index_config.vector_dimensions != model.capabilities().ndims as i64 {
+            if index.options.index_config.vector_dimensions
+                != model.wire.capabilities().ndims as i64
+            {
                 tracing::warn!(
                     "The embedding vector dimensions of the existing Neo4j DB index ({}) do not match the provided model dimensions ({}). This may affect search performance.",
                     index.options.index_config.vector_dimensions,
-                    model.capabilities().ndims
+                    model.wire.capabilities().ndims
                 );
             }
             let embedding_property = index.properties.first().ok_or_else(|| {
@@ -415,7 +417,7 @@ impl Neo4jClient {
                         "similarity_function",
                         index_config.similarity_function.clone().to_bolt_type(),
                     )
-                    .param("dimensions", model.capabilities().ndims as i64),
+                    .param("dimensions", model.wire.capabilities().ndims as i64),
             )
             .await
             .map_err(VectorStoreError::datastore)?;

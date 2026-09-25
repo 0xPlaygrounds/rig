@@ -8,6 +8,7 @@ use super::*;
 use crate::completion::CompletionRequest;
 use crate::message::Message;
 use crate::test_utils::RecordingHttpClient;
+use crate::wire::Wire;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use bytes::Bytes;
 
@@ -498,11 +499,11 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
         RecordingHttpClient::new(Bytes::from(body)),
     );
     assert_eq!(
-        bound.capabilities().ndims,
+        bound.wire.capabilities().ndims,
         1536,
         "the width defaults from the model"
     );
-    assert_eq!(bound.capabilities().max_documents, 1024);
+    assert_eq!(bound.wire.capabilities().max_documents, 1024);
 
     let response = bound
         .call(documents.clone(), None)

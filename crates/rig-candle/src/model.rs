@@ -395,7 +395,7 @@ impl rig_core::wire::Decoder<rig_core::operation::Completion, CandleFrame> for C
         };
         match event {
             GenerationEvent::Text(text) => out.text(text),
-            GenerationEvent::ToolCall { id, end } => out.tool_call(id, end),
+            GenerationEvent::ToolCall { id, end } => out.tool_end(id, end),
             GenerationEvent::Reasoning {
                 id,
                 provider_id,

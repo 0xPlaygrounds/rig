@@ -23,7 +23,12 @@ async fn main() -> Result<()> {
     // Embed v3 embeds images with one fixed model at one fixed width, so the
     // image-embedding wire takes neither a model name nor a dimension count.
     let model = Model::new(cohere.image_embedding(), http);
-    let embedding = model.embed_image(&image).await?;
+    let response = model.call(vec![image.clone()], None).await?;
+    let embedding = response
+        .embeddings
+        .into_iter()
+        .next()
+        .context("the provider returned no embedding")?;
 
     println!(
         "embedded {} bytes into {} dimensions",

@@ -15,8 +15,9 @@ async fn embeddings_non_success_preserves_status_and_body() {
     );
 
     let error = model
-        .embed_texts(["hello".to_string()])
+        .call(vec!["hello".to_string()], None)
         .await
+        .map(|response| response.embeddings)
         .expect_err("should fail with non-success status");
 
     assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -44,8 +45,9 @@ async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
     );
 
     let error = model
-        .embed_texts(["hello".to_string()])
+        .call(vec!["hello".to_string()], None)
         .await
+        .map(|response| response.embeddings)
         .expect_err("should fail with provider error envelope");
 
     let ProviderError::ProviderResponse(stored) = &error else {
@@ -124,8 +126,12 @@ async fn image_batches_are_fully_validated_before_any_request() {
     );
 
     let error = model
-        .embed_images([b"\x89PNG\r\n\x1a\n".to_vec(), b"not an image".to_vec()])
+        .call(
+            vec![b"\x89PNG\r\n\x1a\n".to_vec(), b"not an image".to_vec()],
+            None,
+        )
         .await
+        .map(|response| response.embeddings)
         .expect_err("invalid batch should fail before transport");
 
     assert!(matches!(error, ProviderError::Request(_)));
@@ -145,8 +151,9 @@ async fn an_empty_image_batch_sends_nothing_and_is_a_response_failure() {
     );
 
     let error = model
-        .embed_images(Vec::<Vec<u8>>::new())
+        .call(Vec::<Vec<u8>>::new(), None)
         .await
+        .map(|response| response.embeddings)
         .expect_err("an empty batch has no payload to fold");
 
     assert!(
@@ -169,7 +176,7 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
     );
 
     let error = model
-        .embed_image(b"\x89PNG\r\n\x1a\n")
+        .call(vec![b"\x89PNG\r\n\x1a\n".to_vec()], None)
         .await
         .expect_err("should fail with non-success status");
 
@@ -195,7 +202,7 @@ async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
     );
 
     let error = model
-        .embed_image(b"\x89PNG\r\n\x1a\n")
+        .call(vec![b"\x89PNG\r\n\x1a\n".to_vec()], None)
         .await
         .expect_err("should fail with provider error envelope");
 

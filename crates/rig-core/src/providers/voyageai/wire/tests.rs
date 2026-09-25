@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_utils::RecordingHttpClient;
+use crate::wire::Wire;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
 fn voyage() -> VoyageAi {
@@ -112,9 +113,12 @@ async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
         voyage().rerank("rerank-2.5"),
         RecordingHttpClient::new(RERANK_BODY),
     )
-    .rerank(
-        "which is best?",
-        vec!["worse".to_owned(), "better".to_owned()],
+    .call(
+        RerankRequest {
+            query: "which is best?".to_owned(),
+            documents: vec!["worse".to_owned(), "better".to_owned()],
+        },
+        None,
     )
     .await
     .expect("the reply decodes");
@@ -168,7 +172,7 @@ fn a_rerank_wire_declares_the_batch_limit() {
         RecordingHttpClient::new(RERANK_BODY),
     );
     assert_eq!(voyage().rerank("rerank-2.5").capabilities(), 1000);
-    assert_eq!(bound.capabilities(), 1000);
+    assert_eq!(bound.wire.capabilities(), 1000);
 }
 
 #[test]

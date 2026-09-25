@@ -1,3 +1,4 @@
+use crate::operation::RerankRequest;
 /// The driver preserves Voyage's status and body on the rerank route: a
 /// caller reading a 503 must see what Voyage actually said.
 #[tokio::test]
@@ -14,7 +15,13 @@ async fn rerank_non_success_preserves_status_and_body() {
     );
 
     let error = model
-        .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
+        .call(
+            RerankRequest {
+                query: "query".to_owned(),
+                documents: vec!["doc one".to_string(), "doc two".to_string()],
+            },
+            None,
+        )
         .await
         .expect_err("rerank should fail with non-success status");
 
@@ -43,7 +50,13 @@ async fn rerank_2xx_error_envelope_preserves_status_and_body() {
     );
 
     let error = model
-        .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
+        .call(
+            RerankRequest {
+                query: "query".to_owned(),
+                documents: vec!["doc one".to_string(), "doc two".to_string()],
+            },
+            None,
+        )
         .await
         .expect_err("rerank should fail with provider error envelope");
 

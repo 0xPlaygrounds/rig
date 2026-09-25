@@ -435,7 +435,7 @@ where
         W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
         Tr: rig_core::driver::Transport<W>,
     {
-        let dims = embedding_model.capabilities().ndims;
+        let dims = embedding_model.wire.capabilities().ndims;
         let table_name = T::name();
         let embeddings_table_name = format!("{table_name}_embeddings");
         let embeddings_table_name_for_sql = embeddings_table_name.clone();

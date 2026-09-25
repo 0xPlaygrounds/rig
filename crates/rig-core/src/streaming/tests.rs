@@ -245,7 +245,7 @@ fn create_interleaved_stream() -> CompletionStream {
         );
         out.text("final-text");
         let (id, end) = whole_call("tool_1", "mock_tool", serde_json::json!({"arg": 1}));
-        out.tool_call(id, end);
+        out.tool_end(id, end);
         out.final_record(mock_final_with_total_tokens(3));
     })
 }
@@ -254,7 +254,7 @@ fn create_text_tool_text_stream() -> CompletionStream {
     scripted(|out| {
         out.text("first");
         let (id, end) = whole_call("tool_split", "mock_tool", serde_json::json!({"arg": "x"}));
-        out.tool_call(id, end);
+        out.tool_end(id, end);
         out.text("second");
         out.final_record(mock_final_with_total_tokens(3));
     })
@@ -393,7 +393,7 @@ async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
     // streaming path must reconcile it exactly as the unary path does.
     let mut stream = scripted(|out| {
         let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
-        out.tool_call(id, end);
+        out.tool_end(id, end);
         out.final_record(
             StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
                 .with_finish_reason(FinishReason::Stop),
@@ -560,7 +560,7 @@ async fn the_terminal_record_captures_the_providers_raw_terminal() {
 async fn finish_reason_is_reconciled_with_raw_attached() {
     let events = script(|out| {
         let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
-        out.tool_call(id, end);
+        out.tool_end(id, end);
         let usage = Usage::default();
         let raw = serde_json::to_value(usage).expect("serialize usage");
         out.final_record(
@@ -741,7 +741,7 @@ async fn a_full_tool_call_correlates_with_the_deltas_of_the_same_id() {
         out.tool_name(&BlockId::wire("tc1"), "add");
         out.tool_arguments(&BlockId::wire("tc1"), "{\"x\":1}");
         let (id, end) = whole_call("tc1", "add", serde_json::json!({"x": 1}));
-        out.tool_call(id, end);
+        out.tool_end(id, end);
         // The trailing end event for a call the full block already delivered.
         out.push(Ok(StreamEvent::BlockEnd {
             id: BlockId::wire("tc1"),
@@ -1141,7 +1141,7 @@ async fn full_reasoning_block_supersedes_deltas_across_interleaved_output() {
     let mut stream = scripted(|out| {
         out.reasoning_delta(&BlockId::wire("rs_1"), non_empty_id("rs_1"), "partial ");
         let (id, end) = whole_call("call_1", "probe", serde_json::json!({}));
-        out.tool_call(id, end);
+        out.tool_end(id, end);
         out.reasoning_block(
             BlockId::wire("rs_1"),
             non_empty_id("rs_1"),
@@ -1396,12 +1396,12 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
         for (position, explicit) in [explicit_first, !explicit_first].into_iter().enumerate() {
             let mut out = AdapterOutput::new();
             if explicit {
-                out.tool_call(
+                out.tool_end(
                     BlockId::wire("tool-0"),
                     ToolCallEnd::whole("explicit", serde_json::json!({})).with_tool_id("tool-0"),
                 );
             } else {
-                out.tool_call(
+                out.tool_end(
                     key.clone(),
                     ToolCallEnd::whole("generated", serde_json::json!({})),
                 );

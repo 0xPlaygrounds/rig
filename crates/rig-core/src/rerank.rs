@@ -18,27 +18,7 @@
 //! ```
 
 use crate::completion::{ResponseIdentity, Usage};
-use crate::error::ProviderError;
 use serde::{Deserialize, Serialize};
-
-impl<W, T> crate::driver::Model<W, T>
-where
-    W: crate::wire::Wire<Op = crate::operation::Rerank> + Clone,
-    T: crate::driver::Transport<W>,
-{
-    /// Rerank `documents` against `query`.
-    pub async fn rerank(
-        &self,
-        query: &str,
-        documents: Vec<String>,
-    ) -> Result<RerankResponse, ProviderError> {
-        let request = crate::operation::RerankRequest {
-            query: query.to_owned(),
-            documents,
-        };
-        self.call(request, None).await
-    }
-}
 
 /// A single reranked document result.
 #[derive(Debug, Clone, Serialize, Deserialize)]

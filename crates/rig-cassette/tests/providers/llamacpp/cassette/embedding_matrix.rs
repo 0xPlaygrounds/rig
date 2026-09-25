@@ -35,6 +35,7 @@ use serde_json::Value;
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
+use rig::wire::Wire;
 
 /// The width `Qwen/Qwen3-Embedding-0.6B-GGUF` returns, measured.
 const NATIVE_WIDTH: usize = 1024;
@@ -62,8 +63,9 @@ async fn the_native_width_comes_back_when_none_is_declared() {
     with_llamacpp_embeddings_cassette("embedding_matrix/native_width", |client| async move {
         let model = client.embedding(CASSETTE_EMBEDDING_MODEL, None);
         let embeddings = model
-            .embed_texts(["hello".to_string()])
+            .call(vec!["hello".to_string()], None)
             .await
+            .map(|response| response.embeddings)
             .expect("an undeclared width should succeed");
 
         assert_eq!(embeddings[0].vec.len(), NATIVE_WIDTH);
@@ -88,11 +90,12 @@ async fn a_declared_width_that_matches_is_accepted() {
         "embedding_matrix/declared_width_matches",
         |client| async move {
             let model = client.embedding(CASSETTE_EMBEDDING_MODEL, Some(NATIVE_WIDTH));
-            assert_eq!(model.capabilities().ndims, NATIVE_WIDTH);
+            assert_eq!(model.wire.capabilities().ndims, NATIVE_WIDTH);
 
             let embeddings = model
-                .embed_texts(["hello".to_string()])
+                .call(vec!["hello".to_string()], None)
                 .await
+                .map(|response| response.embeddings)
                 .expect("a correct declaration should succeed");
             assert_eq!(embeddings[0].vec.len(), NATIVE_WIDTH);
         },
@@ -118,8 +121,9 @@ async fn a_declared_width_llamacpp_cannot_honour_is_refused() {
         |client| async move {
             let model = client.embedding(CASSETTE_EMBEDDING_MODEL, Some(128));
             let error = model
-                .embed_texts(["hello".to_string()])
+                .call(vec!["hello".to_string()], None)
                 .await
+                .map(|response| response.embeddings)
                 .expect_err("llama.cpp cannot resize embeddings");
 
             match error {
@@ -166,8 +170,9 @@ async fn several_inputs_come_back_in_order_at_one_width() {
             "charlie".to_string(),
         ];
         let embeddings = model
-            .embed_texts(inputs.clone())
+            .call(inputs.to_vec(), None)
             .await
+            .map(|response| response.embeddings)
             .expect("a batch should succeed");
 
         assert_eq!(embeddings.len(), 3);

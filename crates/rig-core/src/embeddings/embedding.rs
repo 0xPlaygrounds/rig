@@ -22,20 +22,9 @@ where
     W: crate::wire::Wire<Op = crate::operation::Embedding> + Clone,
     T: crate::driver::Transport<W>,
 {
-    /// Embed text documents in one request, in input order.
-    pub async fn embed_texts(
-        &self,
-        texts: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<Embedding>, ProviderError> {
-        Ok(self
-            .call(texts.into_iter().collect(), None)
-            .await?
-            .embeddings)
-    }
-
     /// Embed one text, returning the last vector or an error if none is returned.
     pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {
-        let mut embeddings = self.embed_texts([text.to_owned()]).await?;
+        let mut embeddings = self.call(vec![text.to_owned()], None).await?.embeddings;
         embeddings.pop().ok_or_else(|| {
             ProviderError::Response(
                 "embedding provider returned an empty response for embed_text".to_string(),
@@ -153,34 +142,6 @@ impl ImageEmbeddingResponse {
 }
 
 crate::provider_response::modality_response_metadata_setters!(ImageEmbeddingResponse);
-
-impl<W, T> crate::driver::Model<W, T>
-where
-    W: crate::wire::Wire<Op = crate::operation::ImageEmbedding> + Clone,
-    T: crate::driver::Transport<W>,
-{
-    /// Embed images from their encoded file bytes in one request, in input order.
-    pub async fn embed_images(
-        &self,
-        images: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<Vec<Embedding>, ProviderError> {
-        Ok(self
-            .call(images.into_iter().collect(), None)
-            .await?
-            .embeddings)
-    }
-
-    /// Embed one encoded image, returning the last vector or an error if
-    /// none is returned.
-    pub async fn embed_image(&self, bytes: &[u8]) -> Result<Embedding, ProviderError> {
-        let mut embeddings = self.embed_images([bytes.to_owned()]).await?;
-        embeddings.pop().ok_or_else(|| {
-            ProviderError::Response(
-                "embedding provider returned an empty response for embed_image".to_string(),
-            )
-        })
-    }
-}
 
 /// A document identifier and its vector. Equality compares only the document,
 /// not vector values.

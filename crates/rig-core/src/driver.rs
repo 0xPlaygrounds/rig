@@ -29,8 +29,8 @@ use crate::streaming::{CompletionStream, StreamEvent};
 use crate::telemetry::SpanCombinator;
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
-    Capabilities, Decoder, Event, Fold, Mode, ObservationSink, Operation, Reply, Request, Response,
-    Sink, Wire, WireFrame,
+    Decoder, Event, Fold, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire,
+    WireFrame,
 };
 
 mod http_transport;
@@ -179,11 +179,6 @@ where
         let response = result?;
         <W::Op as Operation>::accept(&self.wire.capabilities(), self.wire.name(), &response)?;
         Ok(response)
-    }
-
-    /// What a runtime should account for about this model.
-    pub fn capabilities(&self) -> Capabilities<W> {
-        self.wire.capabilities()
     }
 
     async fn fold(
