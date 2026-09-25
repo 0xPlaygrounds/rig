@@ -39,7 +39,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
     let openai_api_key = env::var("OPENAI_API_KEY")?;
     let openai_client = OpenAI::new(&openai_api_key);
-    let http = rig_reqwest::shared();
 
     let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
     let neo4j_username = "recommendations";
@@ -58,7 +57,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // // Select the embedding model and generate our embeddings
     let model = Model::new(
         openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
+        rig_reqwest::shared(),
     );
 
     // Define the properties that will be retrieved from querying the graph nodes

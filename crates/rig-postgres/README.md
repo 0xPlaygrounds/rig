@@ -100,9 +100,11 @@ pub struct Product {
 Example usage
 
 ```rust
-    // OpenAI's embeddings wire on the default transport
+    // OpenAI's embeddings wire on the default transport, erased once: the
+    // builder and the store each take a clone of the handle.
     let model = rig::model(rig::providers::openai::wire::OpenAI::from_env()?
-            .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None));
+            .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None))
+        .erase();
 
     // connect to Postgres
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");

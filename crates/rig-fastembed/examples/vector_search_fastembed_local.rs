@@ -56,7 +56,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let embedding_model = Model::new(
         TextEmbeddings::new(test_model_info.model.clone(), 384),
         Fastembed::from_user_defined(user_defined_model)?,
-    );
+    )
+    .erase();
 
     // Create documents
     let documents = vec![

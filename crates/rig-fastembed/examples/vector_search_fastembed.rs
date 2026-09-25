@@ -24,7 +24,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let embedding_model = rig_core::Model::new(
         rig_fastembed::TextEmbeddings::for_model(&FastembedModel::AllMiniLML6V2Q, None)?,
         rig_fastembed::Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?,
-    );
+    )
+    .erase();
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![

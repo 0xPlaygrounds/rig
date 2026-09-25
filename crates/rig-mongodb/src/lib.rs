@@ -86,11 +86,14 @@ struct Field {
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
 /// let openai = OpenAI::from_env()?;
-/// let http = rig_reqwest::shared();
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
-/// let model = rig_core::Model::new(openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None), http); // <-- replace with your embedding model.
+/// // <-- replace with your embedding model.
+/// let model = rig_core::Model::new(
+///     openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
+///     rig_reqwest::shared(),
+/// );
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
 ///     model,

@@ -3,8 +3,9 @@
 //! Run it to watch the extractor keep counting upward until the stop condition is met.
 
 use anyhow::Result;
+use rig::operation::Completion;
 use rig::prelude::*;
-use rig::providers::openai::{self, OpenAI, wire::OpenAiWire};
+use rig::providers::openai::{self, OpenAI};
 
 use schemars::JsonSchema;
 
@@ -17,7 +18,9 @@ struct Counter {
 const TARGET_NUMBER: u32 = 2000;
 const STEP_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
-fn build_counter_extractor(model: Model<OpenAiWire>) -> rig::extractor::Extractor<Counter> {
+fn build_counter_extractor(
+    model: impl Into<DynModel<Completion>>,
+) -> rig::extractor::Extractor<Counter> {
     rig::extractor::ExtractorBuilder::new(model)
         .append_preamble(
             "

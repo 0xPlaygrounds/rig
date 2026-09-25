@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
 
     let jev = rig::model(Jev::from_env()?);
     let assistant = if with_agent {
-        Some(rig::model(OpenAI::from_env()?.completion("gpt-5.6-sol")))
+        Some(rig::model(OpenAI::from_env()?.completion("gpt-5.6-sol")).erase())
     } else {
         None
     };

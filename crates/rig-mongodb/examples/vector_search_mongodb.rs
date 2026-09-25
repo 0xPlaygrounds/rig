@@ -51,7 +51,6 @@ where
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
     let openai_client = OpenAI::from_env()?;
-    let http = rig_reqwest::shared();
 
     // Initialize MongoDB client
     let mongodb_connection_string = env::var("MONGODB_CONNECTION_STRING")?;
@@ -67,8 +66,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // Select the embedding model and generate our embeddings
     let model = Model::new(
         openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        http,
-    );
+        rig_reqwest::shared(),
+    )
+    .erase();
 
     let words = vec![
         Word {

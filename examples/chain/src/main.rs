@@ -2,8 +2,9 @@
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
 
+use rig::operation::Completion;
 use rig::prelude::*;
-use rig::providers::openai::{self, OpenAI, wire::OpenAiWire};
+use rig::providers::openai::{self, OpenAI};
 use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore};
@@ -18,7 +19,7 @@ fn sample_definitions() -> [&'static str; 3] {
     ]
 }
 
-fn build_dictionary_agent(model: Model<OpenAiWire>) -> rig::agent::Agent {
+fn build_dictionary_agent(model: impl Into<DynModel<Completion>>) -> rig::agent::Agent {
     AgentBuilder::new(model)
         .preamble(
             "
@@ -43,7 +44,8 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     let client = OpenAI::from_env()?;
-    let embedding_model = rig::model(client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let embedding_model =
+        rig::model(client.embedding(openai::TEXT_EMBEDDING_ADA_002, None)).erase();
 
     let mut builder = EmbeddingsBuilder::new(embedding_model.clone());
     for definition in sample_definitions() {

@@ -3,8 +3,9 @@
 //! Run it to see one agent produce a value that the next agent transforms.
 
 use anyhow::Result;
+use rig::operation::Completion;
 use rig::prelude::*;
-use rig::providers::openai::{self, OpenAI, wire::OpenAiWire};
+use rig::providers::openai::{self, OpenAI};
 
 const INPUT_PROMPT: &str = "Please generate a single whole integer that is 0 or 1";
 const RNG_PREAMBLE: &str =
@@ -12,19 +13,18 @@ const RNG_PREAMBLE: &str =
 const ADDER_PREAMBLE: &str =
     "Add 1000 to the number you receive, unless it is 0. Return only the final number.";
 
-type Gpt4 = Model<OpenAiWire>;
-
-fn build_rng_agent(model: Gpt4) -> rig::agent::Agent {
+fn build_rng_agent(model: impl Into<DynModel<Completion>>) -> rig::agent::Agent {
     AgentBuilder::new(model).preamble(RNG_PREAMBLE).build()
 }
 
-fn build_adder_agent(model: Gpt4) -> rig::agent::Agent {
+fn build_adder_agent(model: impl Into<DynModel<Completion>>) -> rig::agent::Agent {
     AgentBuilder::new(model).preamble(ADDER_PREAMBLE).build()
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let gpt4 = rig::model(OpenAI::from_env()?.completion(openai::GPT_4));
+    // One model serves both agents: erase it once, clone the handle.
+    let gpt4 = rig::model(OpenAI::from_env()?.completion(openai::GPT_4)).erase();
     let seed = build_rng_agent(gpt4.clone())
         .prompt(INPUT_PROMPT)
         .await?

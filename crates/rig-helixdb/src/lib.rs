@@ -127,7 +127,7 @@ impl HelixDBClient for HelixDB {
 /// );
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
-/// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());
+/// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model);
 /// # let _ = vector_store;
 /// # Ok(())
 /// # }

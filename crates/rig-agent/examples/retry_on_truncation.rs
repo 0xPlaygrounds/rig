@@ -180,8 +180,10 @@ impl AgentHook for GrowCapOnTruncation {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // One model serves both agents: erase it once, clone the handle.
+    let budgeted = Model::new(Budgeted, Budgeted).erase();
     // Starts far below what the answer costs, so the first attempts truncate.
-    let agent = AgentBuilder::new(Model::new(Budgeted, Budgeted))
+    let agent = AgentBuilder::new(budgeted.clone())
         .add_hook(GrowCapOnTruncation::new(8, 256))
         .build();
 
@@ -197,7 +199,7 @@ async fn main() -> Result<()> {
     // `max_tokens` are read from the same per-attempt carrier either way, so
     // the escalation below is identical to the one above.
     println!("streaming:");
-    let streaming_agent = AgentBuilder::new(Model::new(Budgeted, Budgeted))
+    let streaming_agent = AgentBuilder::new(budgeted)
         .add_hook(GrowCapOnTruncation::new(8, 256))
         .build();
     let mut stream = streaming_agent

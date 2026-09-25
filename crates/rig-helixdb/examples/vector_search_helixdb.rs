@@ -30,7 +30,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_model = Model::new(
         OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
         rig_reqwest::shared(),
-    );
+    )
+    .erase();
 
     let helixdb_client = HelixDB::new(None, Some(6969), None); // Uses default port 6969
     let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());

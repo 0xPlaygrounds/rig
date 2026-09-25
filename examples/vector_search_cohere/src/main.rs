@@ -75,7 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .embedding(cohere::EMBED_ENGLISH_V3, None)
             .with_input_type("search_query"),
     );
-    let embeddings = EmbeddingsBuilder::new(document_model.clone())
+    let embeddings = EmbeddingsBuilder::new(document_model)
         .documents(sample_documents())?
         .build()
         .await?;

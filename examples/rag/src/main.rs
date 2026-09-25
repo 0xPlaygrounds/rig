@@ -28,7 +28,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // One OpenAI config serves both: completions go to the Responses API,
     // embeddings to the shared REST surface.
     let openai_client = OpenAI::from_env()?;
-    let embedding_model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let embedding_model =
+        rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None)).erase();
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

@@ -71,7 +71,7 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 async fn main() -> Result<(), anyhow::Error> {
     let client = Ollama::new().with_base_url("http://localhost:11434");
 
-    let embedding_model = rig::model(client.embedding("nomic-embed-text", None));
+    let embedding_model = rig::model(client.embedding("nomic-embed-text", None)).erase();
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(sample_documents())?

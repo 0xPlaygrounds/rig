@@ -91,7 +91,7 @@ impl AgentHook for ToolLoggerHook {
 #[tokio::main]
 async fn main() -> Result<()> {
     let openai = OpenAI::from_env()?;
-    let model = rig::model(openai.completion(openai::GPT_4O));
+    let model = rig::model(openai.completion(openai::GPT_4O)).erase();
     let agent = rig::agent::AgentBuilder::new(model.clone())
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)

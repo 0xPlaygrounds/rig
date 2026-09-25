@@ -1,14 +1,23 @@
 //! A model erased to its operation: what a consumer stores when it holds
 //! any model of one operation without naming its wire and transport. A
-//! [`DynModel`] runs the same driver as the [`Model`] it was made from.
+//! [`DynModel`] runs the same driver as the [`Model`] it was made from. A
+//! model used by one consumer is passed as is; a model shared by several
+//! is erased once and the handle is cloned. A model the bus serves is
+//! reached through a `ModelHandle` in the agent runtime instead.
 //!
 //! ```no_run
-//! use rig_core::{DynModel, Model, operation::Completion, providers::openai::OpenAI};
+//! use rig_core::embeddings::EmbeddingsBuilder;
+//! use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
+//! use rig_core::{Model, providers::openai::{self, OpenAI}};
 //!
-//! # fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), rig_core::client::EnvError> {
-//! let model: DynModel<Completion> =
-//!     Model::new(OpenAI::from_env()?.completion("gpt-5.2"), http).erase();
-//! # let _ = model;
+//! # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+//! let model = Model::new(OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None), http).erase();
+//! let embeddings = EmbeddingsBuilder::new(model.clone())
+//!     .documents(["a document".to_owned()])?
+//!     .build()
+//!     .await?;
+//! let index = InMemoryVectorStore::from_documents(embeddings).index(model);
+//! # let _ = index;
 //! # Ok(())
 //! # }
 //! ```

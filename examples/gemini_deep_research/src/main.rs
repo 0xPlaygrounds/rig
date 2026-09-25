@@ -194,6 +194,8 @@ async fn main() -> Result<()> {
     let gemini = Gemini::from_env()?;
 
     let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
+    // The wire that opens an interaction, built once for either surface.
+    let interactions = rig::model(gemini.interactions(agent.as_str()));
 
     if use_streaming {
         println!("== Deep Research (streaming) ==");
@@ -206,7 +208,7 @@ async fn main() -> Result<()> {
             // the one already running by id. They are two different wires, so
             // the branches meet at the opened stream rather than at the model.
             let opened = if attempt == 0 {
-                rig::model(gemini.interactions(agent.as_str())).stream(request.clone())
+                interactions.stream(request.clone())
             } else if let Some(interaction_id) = state.interaction_id.as_deref() {
                 rig::model(gemini.interaction_resumed(interaction_id, None)).stream(request.clone())
             } else {
@@ -280,9 +282,7 @@ async fn main() -> Result<()> {
 
     println!("== Deep Research (background polling) ==");
     println!("Agent: {agent}");
-    let opened = rig::model(gemini.interactions(agent.as_str()))
-        .call(request.clone())
-        .await?;
+    let opened = interactions.call(request.clone()).await?;
     // rig normalizes the interaction id onto `response_id`, so opening a
     // background run needs no reach into `raw`.
     let Some(interaction_id) = opened.response_id else {

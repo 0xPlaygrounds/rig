@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     println!("Successfully loaded and chunked PDF documents");
 
     // Create embedding model
-    let model = rig::model(client.embedding("bge-m3", None));
+    let model = rig::model(client.embedding("bge-m3", None)).erase();
 
     // Create embeddings builder
     let mut builder = EmbeddingsBuilder::new(model.clone());

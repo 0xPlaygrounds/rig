@@ -24,8 +24,10 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), anyhow::Error> {
 //!     let openai = OpenAI::from_env()?;
-//!     let http = rig_reqwest::shared();
-//!     let model = rig_core::Model::new(openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None), http);
+//!     let model = rig_core::Model::new(
+//!         openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
+//!         rig_reqwest::shared(),
+//!     );
 //!
 //!     let client = Neo4jClient::from_config(
 //!         ConfigBuilder::default()

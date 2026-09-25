@@ -75,12 +75,15 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the Anthropic provider, on the default transport
     let anthropic_client = Anthropic::from_env()?;
+    // One model serves the extractor and the executor: erase it once, clone the handle.
+    let model =
+        rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)).erase();
     let agent = ReasoningAgent {
-        chain_of_thought_extractor: ExtractorBuilder::new(rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
+        chain_of_thought_extractor: ExtractorBuilder::new(model.clone())
             .append_preamble(CHAIN_OF_THOUGHT_PROMPT)
             .build(),
 
-        executor: AgentBuilder::new(rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
+        executor: AgentBuilder::new(model)
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely.

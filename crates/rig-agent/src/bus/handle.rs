@@ -49,7 +49,9 @@ pub struct Handle<F: Family> {
     _family: PhantomData<fn() -> F>,
 }
 
-/// A completion model: `complete`, `stream`, `capabilities`.
+/// A completion model the bus serves: `call`, `stream`, `capabilities`,
+/// `label`. Every call is dispatched, recorded and observed by the bus; a
+/// model held directly is a `rig_core::DynModel` instead.
 pub type ModelHandle = Handle<family::Completion>;
 /// A tool: `call`.
 pub type ToolHandle = Handle<family::Tool>;

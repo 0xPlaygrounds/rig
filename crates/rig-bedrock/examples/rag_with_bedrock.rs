@@ -32,7 +32,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let embedding_model = Model::new(
         Embeddings::new(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256)),
         runtime.clone(),
-    );
+    )
+    .erase();
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
