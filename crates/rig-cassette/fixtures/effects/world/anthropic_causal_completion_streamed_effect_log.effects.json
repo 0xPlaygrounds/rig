@@ -2,15 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,11 +18,27 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -67,7 +75,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -635,6 +643,17 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
+            "text": "Paris"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "Paris"
           }
         },

@@ -325,7 +325,10 @@ impl Embedded {
 }
 
 impl Fold<Embedding> for Embedded {
-    fn absorb(&mut self, reply: &crate::embeddings::EmbeddingResponse) -> Result<(), ProviderError> {
+    fn absorb(
+        &mut self,
+        reply: &crate::embeddings::EmbeddingResponse,
+    ) -> Result<(), ProviderError> {
         self.absorb_parts(
             reply.embeddings.iter().cloned(),
             reply.usage,

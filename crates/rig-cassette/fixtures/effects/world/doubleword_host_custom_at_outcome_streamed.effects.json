@@ -2,15 +2,23 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 11,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,44 +26,28 @@
         }
       },
       {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 14,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -63,15 +55,15 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 16,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 24,
+        "batch": 16,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -581,6 +573,17 @@
           "delta": {
             "delta": "text",
             "text": "2"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "42"
           }
         },
         {

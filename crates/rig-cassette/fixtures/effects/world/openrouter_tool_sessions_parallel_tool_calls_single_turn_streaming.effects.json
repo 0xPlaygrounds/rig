@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -64,7 +64,7 @@
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -99,15 +99,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -175,6 +167,14 @@
         }
       },
       {
+        "batch": 38,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 39,
         "id": 3,
         "kind": {
@@ -200,14 +200,6 @@
       },
       {
         "batch": 42,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 43,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -251,27 +243,19 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 49,
+        "batch": 51,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 53,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 53,
+        "batch": 51,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -1036,6 +1020,17 @@
           "delta": {
             "delta": "text",
             "text": "\"."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
           }
         },
         {

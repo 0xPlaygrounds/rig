@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -32,14 +24,6 @@
         }
       },
       {
-        "batch": 16,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 17,
         "id": 2,
         "kind": {
@@ -48,7 +32,15 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 18,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -541,6 +533,17 @@
           "delta": {
             "delta": "text",
             "text": " -3."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The result is -3."
           }
         },
         {

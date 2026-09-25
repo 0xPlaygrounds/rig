@@ -39,14 +39,14 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 16,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 22,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,21 +54,21 @@
         }
       },
       {
-        "batch": 21,
+        "batch": 22,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 23,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 29,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,21 +76,21 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 29,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 30,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 34,
+        "batch": 35,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -98,7 +98,15 @@
         }
       },
       {
-        "batch": 34,
+        "batch": 36,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -1478,6 +1486,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "checkpoint-complete"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "checkpoint-complete"
           }
         },

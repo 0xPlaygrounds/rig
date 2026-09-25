@@ -2,6 +2,14 @@
   "header": {
     "deliveries": [
       {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 7,
         "id": 0,
         "kind": {
@@ -11,14 +19,6 @@
       },
       {
         "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -120,15 +120,15 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 28,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 27,
+        "batch": 28,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -644,6 +644,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "42"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "42"
           }
         },

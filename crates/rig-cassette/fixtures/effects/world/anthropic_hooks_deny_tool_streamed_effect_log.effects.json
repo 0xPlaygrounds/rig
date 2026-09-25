@@ -2,6 +2,14 @@
   "header": {
     "deliveries": [
       {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 7,
         "id": 0,
         "kind": {
@@ -22,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -33,19 +41,11 @@
         }
       },
       {
-        "batch": 16,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 17,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 2
         }
       },
       {
@@ -61,7 +61,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -69,11 +69,27 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 20,
+        "batch": 21,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 22,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 22,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -618,6 +634,17 @@
           "delta": {
             "delta": "text",
             "text": "42**."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'm sorry, I was unable to use the add tool as it is currently disabled. However, 17 + 25 = **42**."
           }
         },
         {

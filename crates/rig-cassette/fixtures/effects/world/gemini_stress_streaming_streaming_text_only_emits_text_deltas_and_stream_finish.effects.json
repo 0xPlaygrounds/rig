@@ -2,23 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 5,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -137,6 +129,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "The sky is blue."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "The sky is blue."
           }
         },

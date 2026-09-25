@@ -62,11 +62,19 @@
         }
       },
       {
+        "batch": 22,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 23,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -170,7 +178,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -848,6 +856,17 @@
           "delta": {
             "delta": "text",
             "text": "."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The current signals are crimson-harbor and silver-orchard."
           }
         },
         {

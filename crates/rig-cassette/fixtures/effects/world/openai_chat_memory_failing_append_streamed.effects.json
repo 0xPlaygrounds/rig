@@ -17,22 +17,22 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 11,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 11,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -187,6 +187,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "ready"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "ready"
           }
         },

@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -66,14 +58,6 @@
         }
       },
       {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 19,
         "id": 0,
         "kind": {
@@ -82,7 +66,15 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -266,6 +258,17 @@
           "delta": {
             "delta": "text",
             "text": " and community."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Rust originated as a personal project by Graydon Hoare at Mozilla Research in 2006. Hoare's motivation stemmed from frustrations with C++'s memory safety issues and the challenges of writing concurrent software. He envisioned a language that offered performance comparable to C++, but with built-in safeguards against common programming errors like null pointer dereferences and data races. Early development was slow, with Hoare working on it primarily in his spare time, laying the groundwork for its unique ownership and borrowing system.\n\nMozilla officially sponsored the project in 2009, recognizing its potential to build safer and more performant browser components. This marked a significant turning point, bringing more resources and developers to the effort. In 2010, Rust was publicly announced and open-sourced, inviting community contributions. The early years involved significant experimentation and a complete rewrite of the compiler (from OCaml to Rust itself), solidifying its core principles of memory safety without garbage collection, concurrency, and performance.\n\nThe language steadily matured throughout the early 2010s, attracting a dedicated community of developers. Key features like the ownership system, traits, and pattern matching were refined. A major milestone was reached with the release of Rust 1.0 in May 2015, guaranteeing API stability and signaling its readiness for production use. This release was crucial for adoption, as it assured developers that their code would not break with future language updates.\n\nSince its 1.0 release, Rust has seen continuous growth and adoption across various domains. It has become a popular choice for systems programming, web assembly, embedded systems, and even server-side applications, lauded for its performance, reliability, and developer experience. The Rust Foundation, established in 2021, now stewards the language, ensuring its ongoing development and fostering its vibrant ecosystem and community."
           }
         },
         {

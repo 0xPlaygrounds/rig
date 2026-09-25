@@ -2,38 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 21,
         "id": 0,
         "kind": {
@@ -42,23 +10,15 @@
         }
       },
       {
-        "batch": 22,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 32,
+        "batch": 25,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -66,7 +26,63 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 30,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 43,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -320,6 +336,17 @@
           "id": "wire:msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The dominant non-background color is bright red."
           }
         },
         {

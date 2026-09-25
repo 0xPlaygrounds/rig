@@ -2,6 +2,22 @@
   "header": {
     "deliveries": [
       {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
         "batch": 7,
         "id": 0,
         "kind": {
@@ -22,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -30,29 +46,45 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 17,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 18,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 19,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
         }
       },
       {
@@ -60,7 +92,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
@@ -68,27 +100,11 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
+        "batch": 21,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -401,6 +417,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Let me calculate the sum right away!"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 660,
@@ -682,6 +709,17 @@
           "delta": {
             "delta": "text",
             "text": " **42**."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The dominant color is **red**, and 17 + 25 = **42**."
           }
         },
         {

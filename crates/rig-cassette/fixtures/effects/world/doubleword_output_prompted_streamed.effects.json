@@ -2,6 +2,14 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
         "batch": 5,
         "id": 0,
         "kind": {
@@ -22,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -38,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -62,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -86,14 +94,6 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 3
         }
       },
@@ -102,27 +102,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 20,
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -497,6 +481,17 @@
           "delta": {
             "delta": "text",
             "text": "}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A monthly gathering for Rust developers in Seattle to discuss projects, share knowledge, and network.\"}"
           }
         },
         {

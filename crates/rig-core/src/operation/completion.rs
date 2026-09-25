@@ -404,9 +404,7 @@ impl Opened {
                 Delta::Reasoning { .. } => Self::Reasoning,
                 Delta::ToolName { .. } | Delta::ToolArguments { .. } => Self::ToolCall,
             }),
-            StreamEvent::BlockEnd { .. } | StreamEvent::Final(_) | StreamEvent::Unknown(_) => {
-                None
-            }
+            StreamEvent::BlockEnd { .. } | StreamEvent::Final(_) | StreamEvent::Unknown(_) => None,
         }
     }
 }

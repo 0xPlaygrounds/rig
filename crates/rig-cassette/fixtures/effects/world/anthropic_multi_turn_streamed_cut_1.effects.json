@@ -2,223 +2,215 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 8,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 7
         }
       },
       {
-        "batch": 9,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 5
         }
       },
       {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 10,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 21,
+        "batch": 15,
         "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 23,
-        "id": 3,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 29,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 31,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 32,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 32,
-        "id": 4,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 34,
-        "id": 5,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 40,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 41,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 42,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 43,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 44,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 44,
-        "id": 6,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 46,
-        "id": 7,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 52,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 53,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 54,
-        "id": 8,
         "kind": {
           "delivery": "stream",
           "items": 8
         }
       },
       {
-        "batch": 55,
-        "id": 8,
+        "batch": 16,
+        "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
-        "batch": 55,
+        "batch": 16,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 17,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 23,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 24,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 25,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 26,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 27,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 27,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 28,
+        "id": 5,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 35,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 36,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 37,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 38,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 38,
+        "id": 6,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 40,
+        "id": 7,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 46,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 47,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 48,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 49,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 49,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -492,6 +484,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'll start by calling checkpoint_step with token=start."
           }
         },
         {
@@ -829,6 +832,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
           }
         },
         {
@@ -1228,6 +1242,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\"."
           }
         },
         {
@@ -1665,6 +1690,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\"."
           }
         },
         {
@@ -2129,6 +2165,17 @@
           "delta": {
             "delta": "text",
             "text": "-complete"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete"
           }
         },
         {

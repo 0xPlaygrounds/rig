@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,15 +26,15 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 10,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -183,6 +183,17 @@
           "delta": {
             "delta": "text",
             "text": " Jiro."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "A glarb-glarb is an ancient farming tool from planet Jiro."
           }
         },
         {

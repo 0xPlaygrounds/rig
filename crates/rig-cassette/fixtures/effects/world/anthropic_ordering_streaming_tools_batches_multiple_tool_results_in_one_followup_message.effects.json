@@ -2,11 +2,27 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
         }
       },
       {
@@ -22,56 +38,32 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 12,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -79,7 +71,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 19,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -87,7 +79,15 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 20,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 21,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -95,23 +95,7 @@
         }
       },
       {
-        "batch": 25,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 27,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
+        "batch": 21,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -433,6 +417,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'll call both tools simultaneously right now!"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 700,
@@ -750,6 +745,17 @@
           "delta": {
             "delta": "text",
             "text": "silver-orchard**."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**."
           }
         },
         {

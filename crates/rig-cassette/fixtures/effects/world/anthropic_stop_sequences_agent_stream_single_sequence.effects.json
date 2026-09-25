@@ -2,31 +2,23 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
-        "batch": 8,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -167,6 +159,17 @@
           "delta": {
             "delta": "text",
             "text": "\n"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "alpha\nbravo\n"
           }
         },
         {

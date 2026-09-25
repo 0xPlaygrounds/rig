@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 21,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,7 +17,7 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 24,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -25,7 +25,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 26,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -33,36 +33,36 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 35,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 23,
+        "batch": 36,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 24,
+        "batch": 37,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 34,
+        "batch": 47,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 52,
+        "batch": 66,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -70,7 +70,7 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 69,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -78,7 +78,7 @@
         }
       },
       {
-        "batch": 55,
+        "batch": 72,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -86,22 +86,22 @@
         }
       },
       {
-        "batch": 57,
+        "batch": 81,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 57,
+        "batch": 81,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 58,
+        "batch": 82,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -318,6 +318,17 @@
           "id": "wire:msg_090e23a73445605d006ab2b35c45b887d0950ba097db0b19b1",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_090e23a73445605d006ab2b35c45b887d0950ba097db0b19b1",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "ready"
           }
         },
         {
@@ -643,6 +654,17 @@
           "id": "wire:msg_090e23a73445605d006ab2b35db72087d0b33d1507d4ffcdf6",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_090e23a73445605d006ab2b35db72087d0b33d1507d4ffcdf6",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "again"
           }
         },
         {

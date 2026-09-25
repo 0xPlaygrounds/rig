@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -63,15 +63,15 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 21,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 20,
+        "batch": 21,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -567,6 +567,17 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
+            "text": "42"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "42"
           }
         },

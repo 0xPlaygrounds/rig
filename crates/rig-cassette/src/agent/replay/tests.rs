@@ -1193,35 +1193,45 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
             Reply::Stream(Box::pin(futures::stream::iter(self.0.clone())))
         }
     }
+    // The handler writes through the sink, as a bus handler does: the
+    // malformed input is the sink's in-band error item.
     let call = || BlockId::wire("call_1");
-    let items = vec![
-        Ok(StreamEvent::BlockStart {
-            id: call(),
-            kind: BlockKind::ToolCall,
-        }),
-        Ok(StreamEvent::BlockDelta {
-            id: call(),
-            delta: Delta::ToolName {
-                name: "lookup".to_owned(),
-            },
-        }),
-        Ok(StreamEvent::BlockDelta {
-            id: call(),
-            delta: Delta::ToolArguments {
-                arguments: "{not json".to_owned(),
-            },
-        }),
-        Ok(StreamEvent::BlockEnd {
-            id: call(),
-            end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Error)),
-            block: None,
-        }),
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "test",
-            rig_core::completion::Usage::default(),
-            serde_json::json!({}),
-        ))),
-    ];
+    let mut out = rig_core::operation::AdapterOutput::new();
+    out.push(Ok(StreamEvent::BlockStart {
+        id: call(),
+        kind: BlockKind::ToolCall,
+    }));
+    out.push(Ok(StreamEvent::BlockDelta {
+        id: call(),
+        delta: Delta::ToolName {
+            name: "lookup".to_owned(),
+        },
+    }));
+    out.push(Ok(StreamEvent::BlockDelta {
+        id: call(),
+        delta: Delta::ToolArguments {
+            arguments: "{not json".to_owned(),
+        },
+    }));
+    out.push(Ok(StreamEvent::BlockEnd {
+        id: call(),
+        end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Error)),
+        block: None,
+    }));
+    out.push(Ok(StreamEvent::Final(StreamFinal::new(
+        "test",
+        rig_core::completion::Usage::default(),
+        serde_json::json!({}),
+    ))));
+    let items: Vec<Result<StreamEvent, ErrorReport>> = out
+        .into_items()
+        .into_iter()
+        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
+        .collect();
+    assert!(
+        items.iter().any(|item| item.is_err()),
+        "the sink reports the malformed input in band: {items:?}"
+    );
     let key = HandlerKey::from("model");
     let (dispatcher, _, mut driver) = Bus::channel();
     let recorder = EffectLogRecorder::keeping_stream_events();

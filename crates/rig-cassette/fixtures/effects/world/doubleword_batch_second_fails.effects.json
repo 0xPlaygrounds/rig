@@ -2,7 +2,31 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -14,35 +38,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 15,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -50,24 +50,64 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 17,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 18,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 19,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 21,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -91,7 +131,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -99,7 +139,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -111,7 +151,7 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 28,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -120,78 +160,6 @@
       },
       {
         "batch": 28,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 30,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 32,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 33,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 34,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 35,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -934,6 +902,17 @@
           "delta": {
             "delta": "text",
             "text": "."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The harbor label is crimson-harbor and the orchard tool reported the error: the orchard lookup is broken."
           }
         },
         {

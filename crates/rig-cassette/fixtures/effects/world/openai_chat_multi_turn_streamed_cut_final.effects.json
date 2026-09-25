@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -14,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -26,14 +34,22 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -44,7 +60,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -52,7 +68,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -60,7 +76,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -76,7 +92,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -84,7 +100,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -96,79 +112,95 @@
         }
       },
       {
-        "batch": 20,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 20,
+        "batch": 19,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
+        "batch": 24,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 10
+        }
+      },
+      {
+        "batch": 25,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 25,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
         "batch": 26,
-        "id": 4,
+        "id": 5,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 30,
+        "id": 6,
         "kind": {
           "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 27,
-        "id": 4,
+        "batch": 31,
+        "id": 6,
         "kind": {
           "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 28,
-        "id": 4,
+        "batch": 32,
+        "id": 6,
         "kind": {
           "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 29,
-        "id": 4,
+        "batch": 33,
+        "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 30,
-        "id": 4,
+        "batch": 34,
+        "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 30,
-        "id": 4,
+        "batch": 35,
+        "id": 6,
         "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 31,
-        "id": 5,
-        "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -176,7 +208,7 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -184,57 +216,25 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 38,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 39,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 40,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 41,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 41,
+        "batch": 37,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 42,
+        "batch": 38,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 50,
+        "batch": 45,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -242,31 +242,23 @@
         }
       },
       {
-        "batch": 51,
+        "batch": 46,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 52,
+        "batch": 48,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 54,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 54,
+        "batch": 48,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -2053,6 +2045,17 @@
           "delta": {
             "delta": "text",
             "text": "plete"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "checkpoint-complete"
           }
         },
         {

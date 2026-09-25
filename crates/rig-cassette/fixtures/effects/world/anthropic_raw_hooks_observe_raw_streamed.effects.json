@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,15 +18,7 @@
         }
       },
       {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -150,6 +142,17 @@
           "delta": {
             "delta": "text",
             "text": " raw probe"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "agent raw probe"
           }
         },
         {

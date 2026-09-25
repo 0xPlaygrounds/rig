@@ -2,15 +2,31 @@
   "header": {
     "deliveries": [
       {
-        "batch": 17,
+        "batch": 28,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
-        "batch": 18,
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 32,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 33,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +34,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 48,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,112 +42,24 @@
         }
       },
       {
-        "batch": 36,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 36,
+        "batch": 48,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 37,
+        "batch": 49,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 37,
+        "batch": 49,
         "id": 2,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 61,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 63,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 64,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 65,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 66,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 67,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 68,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 69,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 70,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 71,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -139,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -147,11 +75,11 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 84,
+        "batch": 75,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -159,7 +87,87 @@
         }
       },
       {
-        "batch": 84,
+        "batch": 76,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 77,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 79,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 80,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 81,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 82,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 83,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 86,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 97,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 97,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -958,6 +966,17 @@
           "id": "wire:msg_08222f8fb1f447cc006ab2b3ba261887d099a5c8c41a91c500",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_08222f8fb1f447cc006ab2b3ba261887d099a5c8c41a91c500",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The lookup results are crimson-harbor and silver-orchard."
           }
         },
         {

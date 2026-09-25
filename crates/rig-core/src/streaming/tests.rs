@@ -49,14 +49,16 @@ fn opened(
             }
             futures::stream::iter(out.drain().collect::<Vec<_>>())
         })
-        .chain(futures::stream::iter(std::iter::from_fn(move || None).chain({
-            let at_eof = at_eof.clone();
-            std::iter::once(()).flat_map(move |()| {
-                let mut out = at_eof.lock().expect("sink");
-                out.finish();
-                out.drain().collect::<Vec<_>>()
-            })
-        })));
+        .chain(futures::stream::iter(
+            std::iter::from_fn(move || None).chain({
+                let at_eof = at_eof.clone();
+                std::iter::once(()).flat_map(move |()| {
+                    let mut out = at_eof.lock().expect("sink");
+                    out.finish();
+                    out.drain().collect::<Vec<_>>()
+                })
+            }),
+        ));
     CompletionStream::opened(
         CompletionFold::opened(provider, None),
         Box::pin(events.map(|item| item.map_err(|error| ErrorReport::from(&error)))),

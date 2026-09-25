@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -126,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -198,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -206,11 +198,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -246,14 +246,6 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 37,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
@@ -262,7 +254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -310,7 +302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
@@ -322,7 +314,47 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 46,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 49,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 50,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 53,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 53,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -795,6 +827,17 @@
           "delta": {
             "delta": "text",
             "text": "```"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
           }
         },
         {

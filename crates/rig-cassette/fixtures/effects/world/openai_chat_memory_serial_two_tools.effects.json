@@ -41,7 +41,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -71,18 +71,10 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 22,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -90,7 +82,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -114,7 +106,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -146,7 +138,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -186,7 +178,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -194,7 +186,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -234,26 +226,26 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 43,
+        "batch": 44,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 43,
+        "batch": 44,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 44,
+        "batch": 45,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -1005,6 +997,17 @@
           "delta": {
             "delta": "text",
             "text": "\"."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\"."
           }
         },
         {

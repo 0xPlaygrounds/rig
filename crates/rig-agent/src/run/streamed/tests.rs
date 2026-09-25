@@ -1806,7 +1806,10 @@ fn a_completed_key_takes_precedence_over_another_keys_pending_provider_id() {
         .collect();
     assert_eq!(
         texts,
-        vec![vec!["A".to_string(), "pending".to_string()], vec!["B".to_string()]]
+        vec![
+            vec!["A".to_string(), "pending".to_string()],
+            vec!["B".to_string()]
+        ]
     );
 }
 

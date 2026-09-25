@@ -333,13 +333,22 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
             }) => {
                 streamed_text.push_str(&text);
             }
+            // Only a block the provider announced whole (a wire-sent end, a
+            // restatement, a signature) is replayed as the provider's own;
+            // a boundary the adapter synthesized closes assembled deltas,
+            // which round-trip through the fallback below.
             Ok(StreamEvent::BlockEnd {
-                end: BlockClose::Reasoning { .. },
-                block: Some(AssistantContent::Reasoning(reasoning)),
+                end:
+                    BlockClose::Reasoning {
+                        reasoning,
+                        signature,
+                        wire_sent,
+                    },
+                block: Some(AssistantContent::Reasoning(block)),
                 ..
-            }) => {
+            }) if wire_sent || reasoning.is_some() || signature.is_some() => {
                 saw_reasoning_block = true;
-                assistant_content.push(AssistantContent::Reasoning(reasoning));
+                assistant_content.push(AssistantContent::Reasoning(block));
             }
             Ok(StreamEvent::BlockDelta {
                 delta: Delta::Reasoning { text },

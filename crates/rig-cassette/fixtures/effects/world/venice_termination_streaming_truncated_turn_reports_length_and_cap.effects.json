@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -46,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -130,7 +122,23 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 23,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -371,6 +379,17 @@
           "delta": {
             "delta": "text",
             "text": " from"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Maple trees are known for their vibrant fall foliage, which can range from"
           }
         },
         {

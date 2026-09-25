@@ -2,7 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 6
+        }
+      },
+      {
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,116 +18,36 @@
         }
       },
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 6,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 11,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 16
         }
       },
       {
-        "batch": 15,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 16,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 20,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 21,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
+        "batch": 11,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -771,6 +699,17 @@
           "delta": {
             "delta": "text",
             "text": "."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The results are crimson-harbor and silver-orchard."
           }
         },
         {
