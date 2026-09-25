@@ -21,7 +21,6 @@
 //!
 //! let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env());
 //! # let _ = model;
-//! # Ok::<(), rig_core::client::ProviderClientError>(())
 //! ```
 
 pub mod client;

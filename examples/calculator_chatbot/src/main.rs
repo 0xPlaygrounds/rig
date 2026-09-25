@@ -244,7 +244,7 @@ impl ToolEmbedding for Divide {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create the OpenAI provider, bound to the bundled transport
+    // Create the OpenAI provider, on the default transport
     let openai_client = OpenAI::from_env()?;
 
     // Create dynamic tools embeddings

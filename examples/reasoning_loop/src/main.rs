@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create the Anthropic provider, bound to the bundled transport
+    // Create the Anthropic provider, on the default transport
     let anthropic_client = Anthropic::from_env()?;
     let agent = ReasoningAgent {
         chain_of_thought_extractor: ExtractorBuilder::new(rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))

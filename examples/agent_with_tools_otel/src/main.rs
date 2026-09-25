@@ -144,7 +144,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with(otel_layer)
         .init();
 
-    // Create the OpenAI Responses provider, bound to the bundled transport
+    // Create the OpenAI Responses provider, on the default transport
     let openai_client = OpenAI::from_env()?;
 
     // Create agent with a single context prompt and two tools

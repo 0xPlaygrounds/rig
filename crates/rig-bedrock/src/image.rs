@@ -6,7 +6,6 @@
 //!
 //! let model = Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env());
 //! # let _ = model;
-//! # Ok::<(), rig_core::client::ProviderClientError>(())
 //! ```
 
 use crate::client::BedrockRuntime;

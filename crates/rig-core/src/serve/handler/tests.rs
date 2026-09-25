@@ -8,7 +8,7 @@ use crate::completion::CompletionResponse;
 use crate::streaming::StreamFinal;
 
 /// The events a completion outcome re-emits when a stream consumer asks for it.
-fn events_from_response(response: &CompletionResponse) -> Vec<Result<StreamEvent, ErrorReport>> {
+fn re_emitted_events(response: &CompletionResponse) -> Vec<Result<StreamEvent, ErrorReport>> {
     block_on(
         Reply::Outcome(Ok(Outcome::Completion(response.clone())))
             .into_stream()
@@ -92,7 +92,7 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             expected
         );
         assert_eq!(
-            serde_json::to_value(events_from_response(recorded)).expect("replay events"),
+            serde_json::to_value(re_emitted_events(recorded)).expect("replay events"),
             serde_json::to_value(&delivered).expect("delivered events"),
             "outcome-only replay must reconstruct the same image-bearing stream"
         );
@@ -238,7 +238,7 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
     let mut accumulator = crate::streaming::BlockAccumulator::new();
     let mut published = Vec::new();
     let events: Vec<Result<StreamEvent, ErrorReport>> = serde_json::from_value(
-        serde_json::to_value(events_from_response(&response)).expect("serialize events"),
+        serde_json::to_value(re_emitted_events(&response)).expect("serialize events"),
     )
     .expect("deserialize events");
     for event in events {
@@ -672,7 +672,7 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
     use crate::streaming::StreamEvent;
 
     let mut tap = StreamTap::new();
-    for event in events_from_response(&CompletionResponse::new(
+    for event in re_emitted_events(&CompletionResponse::new(
         vec![AssistantContent::Reasoning(Reasoning::new_with_signature(
             "thinking",
             Some("sig".to_owned()),

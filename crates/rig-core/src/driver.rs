@@ -167,17 +167,20 @@ where
 {
     /// Send `request` and fold the whole reply into the operation's
     /// response. A paged operation follows every page the reply names.
-    pub async fn call(&self, request: Request<W>) -> Result<Response<W>, ProviderError> {
-        self.unary(request, None).await
+    pub fn call(
+        &self,
+        request: Request<W>,
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
+        self.unary(request, None)
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
-    pub async fn call_observed(
+    pub fn call_observed(
         &self,
         request: Request<W>,
         observation: AdapterContext,
-    ) -> Result<Response<W>, ProviderError> {
-        self.unary(request, Some(observation)).await
+    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
+        self.unary(request, Some(observation))
     }
 
     async fn unary(

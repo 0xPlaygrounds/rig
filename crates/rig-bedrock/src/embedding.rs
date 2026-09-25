@@ -9,7 +9,6 @@
 //!     BedrockRuntime::from_env(),
 //! );
 //! # let _ = model;
-//! # Ok::<(), rig_core::client::ProviderClientError>(())
 //! ```
 
 use aws_smithy_types::Blob;
