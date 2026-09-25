@@ -828,19 +828,9 @@ impl AdapterOutput {
     }
 
     /// Emit a whole reply's parts as the events a stream sends for them: one
-    /// complete block per part, in order, an image as a whole image block.
-    pub fn content(&mut self, choice: &[crate::message::AssistantContent]) {
-        self.parts(choice, true);
-    }
-
-    /// [`Self::content`] for a completed turn relayed to a stream consumer:
-    /// an image travels as an unmodeled payload, as relayed streams have
-    /// always carried it.
-    pub fn relay(&mut self, choice: &[crate::message::AssistantContent]) {
-        self.parts(choice, false);
-    }
-
-    fn parts(&mut self, choice: &[crate::message::AssistantContent], image_blocks: bool) {
+    /// complete block per part, in order. `images` says how an image part
+    /// travels.
+    pub fn content(&mut self, choice: &[crate::message::AssistantContent], images: ImagePart) {
         use crate::message::AssistantContent;
 
         for (index, content) in choice.iter().enumerate() {
@@ -860,16 +850,16 @@ impl AdapterOutput {
                         .unwrap_or_else(|| BlockId::minted(MintKind::Reasoning, index));
                     self.reasoning_end(id, Some(reasoning.clone()), None, true);
                 }
-                AssistantContent::Image(image) if image_blocks => {
-                    self.push(Ok(StreamEvent::BlockEnd {
+                AssistantContent::Image(image) => match images {
+                    ImagePart::Block => self.push(Ok(StreamEvent::BlockEnd {
                         id: BlockId::minted(MintKind::Block, index),
                         end: BlockClose::Image(image.clone()),
                         block: None,
-                    }));
-                }
-                AssistantContent::Image(image) => match serde_json::to_value(image) {
-                    Ok(value) => self.unknown(crate::streaming::UnknownPayload::new(value)),
-                    Err(error) => self.error(crate::error::ProviderError::Json(error)),
+                    })),
+                    ImagePart::Unknown => match serde_json::to_value(image) {
+                        Ok(value) => self.unknown(UnknownPayload::new(value)),
+                        Err(error) => self.error(ProviderError::Json(error)),
+                    },
                 },
                 AssistantContent::ToolCall(call) => {
                     // The durable handle is separate from the assembly key and
@@ -892,10 +882,20 @@ impl AdapterOutput {
                     }
                     // Re-emission creates a fresh assembly occurrence; durable
                     // identity and provider handles are preserved on `end`.
-                    self.tool_call(BlockId::minted(MintKind::Tool, index), end);
+                    self.tool_end(BlockId::minted(MintKind::Tool, index), end);
                 }
             }
         }
+    }
+
+    /// Emit a whole `response` as the events a stream sends for it: its
+    /// message id, its parts and its terminal record.
+    pub fn response(&mut self, response: &CompletionResponse, images: ImagePart) {
+        if let Some(message_id) = &response.message_id {
+            self.message_id(message_id.clone());
+        }
+        self.content(&response.choice, images);
+        self.final_record(terminal_of(response));
     }
 
     /// The provider-assigned message id (a `Message` block start).
@@ -915,6 +915,32 @@ impl AdapterOutput {
     pub fn unknown(&mut self, payload: UnknownPayload) {
         self.push(Ok(StreamEvent::Unknown(payload)));
     }
+}
+
+/// How [`AdapterOutput::content`] emits an image part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImagePart {
+    /// Closed as a whole image block ([`BlockClose::Image`]): what a decoder
+    /// emits for a reply it reads itself.
+    Block,
+    /// Forwarded as an unknown payload: what a bus relay emits for a
+    /// completed turn, as relayed streams have always carried it.
+    Unknown,
+}
+
+/// The terminal record restating `response`'s metadata.
+fn terminal_of(response: &CompletionResponse) -> StreamFinal {
+    let mut terminal = StreamFinal::new(
+        response.provider.clone(),
+        response.usage,
+        response.raw.clone(),
+    )
+    .with_optional_finish_reason(response.finish_reason());
+    terminal.message_id = response.message_id.clone();
+    terminal.response_id = response.response_id.clone();
+    terminal.provider_request_id = response.provider_request_id.clone();
+    terminal.model = response.model.clone();
+    terminal
 }
 
 #[cfg(test)]

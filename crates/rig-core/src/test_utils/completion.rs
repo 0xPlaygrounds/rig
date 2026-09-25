@@ -478,7 +478,7 @@ impl Decoder<Completion, MockFrame> for MockDecoder {
         match frame {
             MockFrame::Response(response) => {
                 self.document = Some(response.raw.clone());
-                crate::serve::emit_response(&response, out);
+                out.response(&response, crate::operation::ImagePart::Block);
             }
             MockFrame::Event(event) => {
                 if let Err(error) = event.emit(out, &mut self.tool_ids) {

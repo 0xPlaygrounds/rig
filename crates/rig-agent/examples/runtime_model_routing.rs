@@ -20,7 +20,7 @@ use rig_agent::{
 use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::wire::{Decoder, Mode, Wire, WireEvent};
 use serde::Deserialize;
 
@@ -88,7 +88,7 @@ impl Decoder<Completion, AssistantContent> for Local {
 
     fn interpret(&mut self, answer: AssistantContent, out: &mut AdapterOutput) {
         out.message_id(format!("{}-message", self.provider));
-        out.content(&[answer]);
+        out.content(&[answer], ImagePart::Block);
         out.final_record(StreamFinal::new(
             self.provider,
             usage(self.total_tokens),

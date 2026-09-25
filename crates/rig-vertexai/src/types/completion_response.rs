@@ -7,7 +7,7 @@ use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
 };
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::StreamFinal;
@@ -69,7 +69,7 @@ impl Decoder<Completion, vertexai::model::GenerateContentResponse> for VertexDec
             Ok(choice) => choice,
             Err(error) => return out.error(error),
         };
-        out.content(&choice);
+        out.content(&choice, ImagePart::Block);
         let finish_reason = response
             .candidates
             .first()

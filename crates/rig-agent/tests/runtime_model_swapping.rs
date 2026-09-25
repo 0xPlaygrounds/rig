@@ -472,7 +472,7 @@ impl Decoder<Completion, FakeFrame> for FakeDecoder {
         match frame {
             FakeFrame::Whole(response) => {
                 self.document = Some(response.raw.clone());
-                rig_core::serve::emit_response(&response, out);
+                out.response(&response, rig_core::operation::ImagePart::Block);
             }
             FakeFrame::Event(event) => out.push(Ok(event)),
         }

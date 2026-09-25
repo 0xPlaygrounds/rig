@@ -15,11 +15,10 @@ use std::{
 use futures::{StreamExt, channel::oneshot};
 
 use crate::{
-    completion::CompletionResponse,
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
     operation::CompletionFold,
-    streaming::{StreamEvent, StreamEvents, StreamFinal},
+    streaming::{StreamEvent, StreamEvents},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -206,50 +205,6 @@ pub trait Observe: Send + Sync {
     fn patch(&mut self, kind: &EffectKind);
 }
 
-/// Re-emits completion content as stream events followed by `Final`. Images
-/// become unknown payloads; serialization failures become error items.
-pub(crate) fn events_from_response(
-    response: &CompletionResponse,
-) -> Vec<Result<StreamEvent, ErrorReport>> {
-    let mut out = crate::operation::AdapterOutput::new();
-    if let Some(message_id) = &response.message_id {
-        out.message_id(message_id.clone());
-    }
-    out.relay(&response.choice);
-    out.final_record(terminal_of(response));
-    // An item that failed to re-emit (an image that did not serialize) is
-    // delivered as the error it is, not dropped.
-    out.drain()
-        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
-        .collect()
-}
-
-/// Write completion content into `out` as stream events followed by `Final`,
-/// the way a test double's decoder answers with a whole response.
-#[cfg(any(test, feature = "test-utils"))]
-pub fn emit_response(response: &CompletionResponse, out: &mut crate::operation::AdapterOutput) {
-    if let Some(message_id) = &response.message_id {
-        out.message_id(message_id.clone());
-    }
-    out.content(&response.choice);
-    out.final_record(terminal_of(response));
-}
-
-/// The terminal record restating `response`'s metadata.
-fn terminal_of(response: &CompletionResponse) -> StreamFinal {
-    let mut terminal = StreamFinal::new(
-        response.provider.clone(),
-        response.usage,
-        response.raw.clone(),
-    )
-    .with_optional_finish_reason(response.finish_reason());
-    terminal.message_id = response.message_id.clone();
-    terminal.response_id = response.response_id.clone();
-    terminal.provider_request_id = response.provider_request_id.clone();
-    terminal.model = response.model.clone();
-    terminal
-}
-
 /// The one fold of a stream into the completion a unary consumer, or the
 /// record, holds: what a unary consumer runs over a streaming handler's
 /// events, what the driver's observer runs over a streaming dispatch, what
@@ -347,7 +302,15 @@ impl Reply {
         match self {
             Self::Stream(stream) => stream,
             Self::Outcome(outcome) => Box::pin(futures::stream::iter(match outcome {
-                Ok(Outcome::Completion(response)) => events_from_response(&response),
+                Ok(Outcome::Completion(response)) => {
+                    let mut out = crate::operation::AdapterOutput::new();
+                    out.response(&response, crate::operation::ImagePart::Unknown);
+                    // An item that failed to re-emit (an image that did not
+                    // serialize) is delivered as the error it is, not dropped.
+                    out.drain()
+                        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
+                        .collect()
+                }
                 Ok(other) => vec![Err(wrong_stream_answer(&other))],
                 Err(report) => vec![Err(report)],
             })),

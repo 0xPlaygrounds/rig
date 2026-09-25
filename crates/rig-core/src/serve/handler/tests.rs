@@ -3,6 +3,17 @@ use std::{sync::Mutex, task::Context};
 use futures::{StreamExt, executor::block_on, task::noop_waker_ref};
 
 use super::*;
+use crate::completion::CompletionResponse;
+use crate::streaming::StreamFinal;
+
+/// The events a completion outcome re-emits when a stream consumer asks for it.
+fn events_from_response(response: &CompletionResponse) -> Vec<Result<StreamEvent, ErrorReport>> {
+    block_on(
+        Reply::Outcome(Ok(Outcome::Completion(response.clone())))
+            .into_stream()
+            .collect(),
+    )
+}
 
 #[derive(Default)]
 struct Seen {

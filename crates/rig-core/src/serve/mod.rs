@@ -19,8 +19,6 @@ mod layer;
 mod recorder;
 mod writer;
 
-#[cfg(any(test, feature = "test-utils"))]
-pub use handler::emit_response;
 pub use handler::{
     Dispatch, ErasedHandler, HandlerFuture, Observe, Reply, Resolver, Serve, SinkClosed, StreamTap,
     cancelled, deferred, serve_inline, serve_inline_with, stream_truncated,

@@ -7,7 +7,7 @@ use crate::types::message::RigMessage;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::error::ProviderError;
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::StreamFinal;
@@ -294,7 +294,7 @@ fn whole(state: &mut StreamState, output: InternalConverseOutput, out: &mut Adap
         Ok(choice) => choice,
         Err(error) => return out.error(error),
     };
-    out.content(&choice);
+    out.content(&choice, ImagePart::Block);
     let usage = output.usage().map(normalize_usage).unwrap_or_default();
     let record = StreamFinal::new(PROVIDER_NAME, usage, serde_json::Value::Null)
         .with_optional_provider_request_id(output.request_id())

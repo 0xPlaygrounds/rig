@@ -11,7 +11,7 @@
 use serde_json::{Map, Value};
 
 use rig_core::driver::warn_unmodeled;
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming;
@@ -140,7 +140,7 @@ impl GrpcAdapter {
             Err(error) => return out.error(error.into()),
         }
         match super::completion::assistant_content(&response) {
-            Ok(choice) => out.content(&choice),
+            Ok(choice) => out.content(&choice, ImagePart::Block),
             Err(error) => return out.error(error),
         }
         out.final_record(terminal_record(&response, Value::Null));

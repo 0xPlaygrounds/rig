@@ -22,7 +22,7 @@ use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::operation::AdapterOutput;
+use rig_core::operation::{AdapterOutput, ImagePart};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::StreamFinal;
 use rig_core::wire::Mode;
@@ -389,7 +389,7 @@ impl rig_core::wire::Decoder<rig_core::operation::Completion, CandleFrame> for C
                     Ok(document) => self.document = Some(document),
                     Err(err) => return out.error(err.into()),
                 }
-                out.content(&inferred.choice);
+                out.content(&inferred.choice, ImagePart::Block);
                 GenerationEvent::Final(inferred.response)
             }
         };
