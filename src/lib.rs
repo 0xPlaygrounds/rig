@@ -5,8 +5,8 @@
 //! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
 //! carries the contextual tool API alongside the portable contracts, which are
 //! always available. `use rig::prelude::*;` brings in [`Model`], its
-//! [`Transport`](rig_core::driver::Transport), [`model`] and the common
-//! agent types.
+//! [`Transport`](rig_core::driver::Transport), [`model()`](fn@model) and the
+//! common agent types.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
 //! after their features wherever module naming allows:
@@ -21,7 +21,7 @@
 pub use rig_core::*;
 
 /// The bundled `reqwest` transport (`rig-reqwest`). A provider's wire and a
-/// transport make a [`Model`]; [`model`] pairs a wire with the process-wide
+/// transport make a [`Model`]; [`model()`](fn@model) pairs a wire with the process-wide
 /// default transport ([`rig_reqwest::shared`]). Without the feature, pair a
 /// wire with any `HttpClientExt` implementation through `Model::new`.
 #[cfg(feature = "reqwest")]
@@ -33,7 +33,7 @@ pub use rig_reqwest;
 ///
 /// Construction never fails. When the reqwest client cannot be built, every
 /// call on the model reports the build failure as
-/// [`ProviderError::Http`](rig_core::error::ProviderError::Http).
+/// [`ProviderError::Http`].
 ///
 /// ```no_run
 /// use rig::providers::openai::{self, OpenAI};
