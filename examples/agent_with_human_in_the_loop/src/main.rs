@@ -235,9 +235,7 @@ impl AgentHook for ApprovalHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = OpenAI::from_env()?
-        .bound()?
-        .agent(openai::GPT_4O)
+    let agent = AgentBuilder::new(rig::model(OpenAI::from_env()?.completion(openai::GPT_4O)))
         .preamble(
             "You are an operations assistant. Use the available tools to carry out the user's \
              request. Call one tool at a time and wait for its result before the next step.",

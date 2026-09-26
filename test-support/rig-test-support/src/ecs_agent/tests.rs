@@ -39,10 +39,10 @@ async fn expected_budget_failure_retains_completed_effects_and_run_identity() {
 }
 use rig_core::{
     completion::Usage,
-    test_utils::{MockCompletionModel, MockError, MockStreamEvent, mock_final},
+    test_utils::{MockCompletionModel, MockError, MockRelay, MockStreamEvent, mock_final},
 };
 
-fn stream(late_error: bool) -> MockCompletionModel {
+fn events(late_error: bool) -> Vec<MockStreamEvent> {
     let mut events = vec![
         MockStreamEvent::text("answer"),
         MockStreamEvent::FinalResponse(mock_final(Usage::default())),
@@ -50,26 +50,36 @@ fn stream(late_error: bool) -> MockCompletionModel {
     if late_error {
         events.push(MockStreamEvent::Error(MockError::provider("after final")));
     }
-    MockCompletionModel::from_stream_turns([events])
+    events
+}
+
+/// A relay of the scripted turn: a wire's driver stops at the terminal, so
+/// only a relayed stream carries an error past it.
+fn relayed(label: &str) -> MockRelay {
+    MockRelay::new(label, [events(true)])
 }
 
 #[tokio::test]
 async fn clean_stream_returns_final_answer() {
-    let mut ecs = EcsAgent::new(stream(false), "", 1);
+    let mut ecs = EcsAgent::new(
+        MockCompletionModel::from_stream_turns([events(false)]),
+        "",
+        1,
+    );
     assert_eq!(ecs.prompt("prompt", true).await, "answer");
 }
 
 #[tokio::test]
 #[should_panic(expected = "successful prompt must not contain stream error items")]
 async fn error_after_final_is_not_success() {
-    let mut ecs = EcsAgent::new(stream(true), "", 1);
+    let mut ecs = EcsAgent::serving(relayed, "", 1);
     ecs.prompt("prompt", true).await;
 }
 
 #[tokio::test]
 #[should_panic(expected = "successful prompt must not contain stream error items")]
 async fn error_after_final_without_recorded_events_is_not_success() {
-    let mut ecs = EcsAgent::for_golden(stream(true), "", false);
+    let mut ecs = EcsAgent::for_golden_serving(relayed, "", false);
     ecs.prompt("prompt", true).await;
 }
 

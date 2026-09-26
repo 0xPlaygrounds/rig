@@ -2,7 +2,7 @@
 
 use rig_core::client::{EnvError, env};
 use rig_core::error::EncodeError;
-use rig_core::operation::{One, Take};
+use rig_core::operation::{Events, Take};
 use rig_core::wire::{
     Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
     WireFrame,
@@ -19,7 +19,7 @@ impl Operation for Evaluation {
     type Event = Response;
     type Response = Response;
     type Capabilities = ();
-    type Output = One<Self>;
+    type Output = Events<Self>;
     type Fold = Take<Self>;
     type Telemetry = ();
     const NAME: &'static str = "evaluation";
@@ -27,12 +27,14 @@ impl Operation for Evaluation {
     fn is_terminal(_event: &Response) -> bool {
         true
     }
-    fn telemetry(_streaming: bool) {}
-    fn stamp_request_id(event: &mut Response, request_id: &Option<String>) {
-        event.provider_request_id.clone_from(request_id);
+    fn fold<W: Wire<Op = Self>>(_request: &Request, _wire: &W, _mode: Mode) -> Take<Self> {
+        Take::default()
     }
-    fn stamp_reply(response: &mut Response, reply: Reply) {
-        response.provider_request_id = reply.provider_request_id;
+    fn telemetry(_mode: Mode) {}
+    fn stamp_reply(response: &mut Response, reply: &Reply) {
+        response
+            .provider_request_id
+            .clone_from(&reply.provider_request_id);
     }
 }
 
@@ -83,18 +85,16 @@ impl Jev {
 
 impl Wire for Jev {
     type Op = Evaluation;
+    type Payload = Encoded;
+    type Frame = rig_core::wire::WireFrame;
     type Decoder = JevDecoder;
 
     fn name(&self) -> &str {
         "typesafeai"
     }
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
-    fn route(&self) -> Option<&str> {
-        Some("/v1/systemone")
-    }
-
     fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, EncodeError> {
         if self.token.is_empty() || self.model.trim().is_empty() {
             return Err(EncodeError::request(
@@ -119,9 +119,9 @@ impl Wire for Jev {
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(http::header::AUTHORIZATION, authorization)
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
-        let mut encoded = Encoded::new(request, Framing::Whole);
-        encoded.request_id_header = Some("x-typesafe-request-id");
-        Ok(encoded)
+        Ok(Encoded::new(request, Framing::Whole)
+            .with_request_id_header(Some("x-typesafe-request-id"))
+            .with_route(Some("/v1/systemone")))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {

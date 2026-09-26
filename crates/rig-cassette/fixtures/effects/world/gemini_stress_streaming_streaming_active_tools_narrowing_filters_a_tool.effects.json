@@ -36,7 +36,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -495,6 +495,17 @@
           "delta": {
             "delta": "text",
             "text": " - 7, as I do not have a subtraction tool."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I can compute 12 + 8 = 20. I cannot compute 30 - 7, as I do not have a subtraction tool."
           }
         },
         {

@@ -67,13 +67,13 @@
 //! is the one that reinstates it.
 
 use rig::error::ProviderError;
-use rig::image_generation::ImageGenerationModel;
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_image_params_cassette;
 use crate::cassettes;
+use rig::image_generation::ImageGenerationRequestBuilder;
 
 /// The cheapest currently-served image model — and the one `main` cannot use
 /// at all, because it falls outside the old `response_format` allowlist.
@@ -101,14 +101,16 @@ async fn unlisted_model_generates_without_response_format() {
     with_openai_image_params_cassette(
         "image_params_matrix/unlisted_model_generates_without_response_format",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let response = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "quality": "low" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "quality": "low" }))
+                        .build(),
+                )
                 .await
                 .expect("a model outside the old allowlist must be able to generate at all");
 
@@ -129,14 +131,16 @@ async fn allowlisted_model_still_generates() {
     with_openai_image_params_cassette(
         "image_params_matrix/allowlisted_model_still_generates",
         |client| async move {
-            let model = client.openai.image_generation(openai::GPT_IMAGE_1);
+            let model = rig::model(client.openai.image_generation(openai::GPT_IMAGE_1));
 
             let response = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "quality": "low" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "quality": "low" }))
+                        .build(),
+                )
                 .await
                 .expect("the previously-allowlisted path must be unchanged");
 
@@ -155,13 +159,15 @@ async fn retired_model_reaches_model_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/retired_model_reaches_model_validation",
         |client| async move {
-            let model = client.openai.image_generation(openai::DALL_E_3);
+            let model = rig::model(client.openai.image_generation(openai::DALL_E_3));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .build(),
+                )
                 .await
                 .expect_err("dall-e-3 is retired");
 
@@ -188,14 +194,16 @@ async fn additional_params_quality_reaches_the_api() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_quality_reaches_the_api",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let response = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "quality": "low", "background": "opaque" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "quality": "low", "background": "opaque" }))
+                        .build(),
+                )
                 .await
                 .expect("generation with caller parameters");
 
@@ -215,14 +223,16 @@ async fn additional_params_output_format_reaches_the_api() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_output_format_reaches_the_api",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let response = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "quality": "low", "output_format": "jpeg" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "quality": "low", "output_format": "jpeg" }))
+                        .build(),
+                )
                 .await
                 .expect("generation with caller parameters");
 
@@ -251,14 +261,16 @@ async fn completions_client_shares_the_fixed_body() {
     with_openai_image_params_cassette(
         "image_params_matrix/completions_client_shares_the_fixed_body",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let response = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "quality": "low" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "quality": "low" }))
+                        .build(),
+                )
                 .await
                 .expect("the chat-route image model must behave identically");
 
@@ -278,14 +290,16 @@ async fn additional_params_invalid_background_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_background_is_rejected",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "background": "rig-invalid" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "background": "rig-invalid" }))
+                        .build(),
+                )
                 .await
                 .expect_err("an invalid caller parameter must be rejected by OpenAI");
 
@@ -305,14 +319,16 @@ async fn additional_params_invalid_output_format_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_output_format_is_rejected",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "output_format": "rig-invalid" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "output_format": "rig-invalid" }))
+                        .build(),
+                )
                 .await
                 .expect_err("rejected parameter");
 
@@ -331,14 +347,16 @@ async fn additional_params_invalid_quality_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_quality_is_rejected",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "quality": "rig-invalid" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "quality": "rig-invalid" }))
+                        .build(),
+                )
                 .await
                 .expect_err("rejected parameter");
 
@@ -358,14 +376,16 @@ async fn additional_params_override_size() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_size",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "size": "3x3" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "size": "3x3" }))
+                        .build(),
+                )
                 .await
                 .expect_err("the overridden size must reach OpenAI and be rejected");
 
@@ -384,14 +404,16 @@ async fn additional_params_override_model() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_model",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "model": "rig-nonexistent-image-model" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "model": "rig-nonexistent-image-model" }))
+                        .build(),
+                )
                 .await
                 .expect_err("the overridden model must reach OpenAI and be rejected");
 
@@ -410,14 +432,16 @@ async fn additional_params_override_prompt() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_prompt",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "prompt": "" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "prompt": "" }))
+                        .build(),
+                )
                 .await
                 .expect_err("the overridden prompt must reach OpenAI and be rejected");
 
@@ -439,14 +463,16 @@ async fn caller_can_reinstate_response_format() {
     with_openai_image_params_cassette(
         "image_params_matrix/caller_can_reinstate_response_format",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "response_format": "b64_json" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "response_format": "b64_json" }))
+                        .build(),
+                )
                 .await
                 .expect_err("OpenAI rejects the reinstated field, which proves it was sent");
 
@@ -467,14 +493,16 @@ async fn unlisted_dated_snapshot_reaches_its_own_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/unlisted_dated_snapshot_reaches_its_own_validation",
         |client| async move {
-            let model = client.openai.image_generation("gpt-image-2-2026-04-21");
+            let model = rig::model(client.openai.image_generation("gpt-image-2-2026-04-21"));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "size": "3x3" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "size": "3x3" }))
+                        .build(),
+                )
                 .await
                 .expect_err("rejected on its own parameter, not on one rig added");
 
@@ -497,14 +525,16 @@ async fn chatgpt_image_latest_reaches_its_own_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/chatgpt_image_latest_reaches_its_own_validation",
         |client| async move {
-            let model = client.openai.image_generation("chatgpt-image-latest");
+            let model = rig::model(client.openai.image_generation("chatgpt-image-latest"));
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "quality": "rig-invalid" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "quality": "rig-invalid" }))
+                        .build(),
+                )
                 .await
                 .expect_err("rejected on its own parameter");
 
@@ -533,16 +563,20 @@ async fn response_format_is_rejected_before_the_model_is_looked_at() {
     with_openai_image_params_cassette(
         "image_params_matrix/response_format_is_rejected_before_the_model_is_looked_at",
         |client| async move {
-            let model = client
-                .openai
-                .image_generation("rig-nonexistent-image-model");
+            let model = rig::model(
+                client
+                    .openai
+                    .image_generation("rig-nonexistent-image-model"),
+            );
 
             let error = model
-                .image_generation_request(PROMPT)
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!({ "response_format": "b64_json" }))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new(PROMPT)
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!({ "response_format": "b64_json" }))
+                        .build(),
+                )
                 .await
                 .expect_err("both the field and the model are invalid");
 
@@ -567,14 +601,16 @@ async fn non_object_additional_params_are_a_no_op() {
     with_openai_image_params_cassette(
         "image_params_matrix/non_object_additional_params_are_a_no_op",
         |client| async move {
-            let model = client.openai.image_generation(UNLISTED_MODEL);
+            let model = rig::model(client.openai.image_generation(UNLISTED_MODEL));
 
             let error = model
-                .image_generation_request("")
-                .width(SIDE)
-                .height(SIDE)
-                .additional_params(json!("not-an-object"))
-                .send()
+                .call(
+                    ImageGenerationRequestBuilder::new("")
+                        .width(SIDE)
+                        .height(SIDE)
+                        .additional_params(json!("not-an-object"))
+                        .build(),
+                )
                 .await
                 .expect_err("the empty prompt still reaches OpenAI");
 

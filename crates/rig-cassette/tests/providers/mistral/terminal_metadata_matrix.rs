@@ -40,12 +40,13 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::CompletionModel;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::support::{BoundMistral, with_mistral_terminal_metadata_cassette_result};
+use super::support::with_mistral_terminal_metadata_cassette_result;
 use crate::support::assert_matches_recorded_document;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -120,10 +121,9 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
-    let mut builder = model
-        .completion_request(prompt(cell))
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = rig::model(client.completion(model_name(cell.model)));
+    let mut builder = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));
     if cell.shape == Shape::Tool {
@@ -132,9 +132,9 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
     let request = builder.build();
 
     let raw = match cell.transport {
-        Transport::Blocking => model.completion(request).await?.raw,
+        Transport::Blocking => model.call(request).await?.raw,
         Transport::Streaming => {
-            let mut stream = model.stream(request).await?;
+            let mut stream = model.stream(request)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(response) = item? {

@@ -1,6 +1,7 @@
 //! OpenAI-compatible configurations, dialect policies, and endpoint wires.
 //! A [`Dialect`](crate::providers::openai::wire::Dialect) selects request and response policies; [`OpenAI`] holds
-//! credentials and overrides. Bind an endpoint wire to a transport to execute it.
+//! credentials and overrides. Pair an endpoint wire with a transport in a
+//! [`Model`](crate::Model) to execute it.
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, Route, wire::OpenAiWire};
@@ -11,8 +12,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{Bound, HasEmbedding, HasModelListing, HasRerank, HasTranscription, HasVerify};
-use crate::wire::{HasCompletion, Secret};
+use crate::wire::Secret;
 
 use super::responses_api::SystemInstructionsPlacement;
 use super::responses_api::wire::Responses;
@@ -263,7 +263,7 @@ pub struct ModelWidth {
     /// The model identifier, as the `model` field spells it.
     pub model: &'static str,
     /// Default width reported when no width is requested, or `None` if unknown.
-    /// Unknown widths report zero through [`crate::embeddings::EmbeddingModel::ndims`].
+    /// Unknown widths report zero as the embedding model's `ndims`.
     pub default: Option<usize>,
     /// The widths a request may name.
     pub accepted: AcceptedWidths,
@@ -708,7 +708,8 @@ impl<'de> Deserialize<'de> for Dialect {
 
 /// Serializable provider configuration without a transport.
 /// Credentials are redacted and omitted from serialization. Construct endpoint
-/// wires and bind them through [`Bound`] to execute requests.
+/// wires and pair them with a transport in a [`Model`](crate::Model) to
+/// execute requests.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpenAI {
@@ -996,17 +997,17 @@ impl OpenAI {
     }
 
     /// The embeddings wire for `model`.
-    pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         Embeddings::new(self.clone(), model, ndims)
     }
 
     /// The rerank wire for `model`.
-    pub fn reranker(&self, model: impl Into<String>) -> Rerank {
+    pub fn rerank(&self, model: impl Into<String>) -> Rerank {
         Rerank::new(self.clone(), model)
     }
 
     /// The transcription wire for `model`.
-    pub fn transcriptions(&self, model: impl Into<String>) -> Transcriptions {
+    pub fn transcription(&self, model: impl Into<String>) -> Transcriptions {
         Transcriptions::new(self.clone(), model)
     }
 
@@ -1016,19 +1017,19 @@ impl OpenAI {
     }
 
     /// The credential-check wire.
-    pub fn verify_wire(&self) -> Verify {
+    pub fn verify(&self) -> Verify {
         Verify::new(self.clone())
     }
 
     /// The image-generation wire for `model`.
     #[cfg(feature = "image")]
-    pub fn images(&self, model: impl Into<String>) -> Images {
+    pub fn image_generation(&self, model: impl Into<String>) -> Images {
         Images::new(self.clone(), model)
     }
 
     /// The speech wire for `model`.
     #[cfg(feature = "audio")]
-    pub fn speech(&self, model: impl Into<String>) -> Speech {
+    pub fn audio_generation(&self, model: impl Into<String>) -> Speech {
         Speech::new(self.clone(), model)
     }
 
@@ -1169,86 +1170,6 @@ impl OpenAI {
             builder = builder.header("ChatGPT-Account-Id", account_id);
         }
         builder
-    }
-}
-
-/// Build completion wires using configured, model-specific, or dialect routing.
-impl HasCompletion for OpenAI {
-    type Wire = OpenAiWire;
-
-    fn completion(&self, model: impl Into<String>) -> OpenAiWire {
-        self.completion(model)
-    }
-}
-
-/// Explicit endpoint constructors that retain the bound transport.
-impl<H: Clone> Bound<OpenAI, H> {
-    /// The chat-completions wire for `model`, on this socket.
-    pub fn chat(&self, model: impl Into<String>) -> Bound<Chat, H> {
-        Bound::new(self.wire.chat(model), self.http.clone())
-    }
-
-    /// The Responses wire for `model`, on this socket.
-    pub fn responses(&self, model: impl Into<String>) -> Bound<Responses, H> {
-        Bound::new(self.wire.responses(model), self.http.clone())
-    }
-}
-
-impl HasEmbedding for OpenAI {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasRerank for OpenAI {
-    type Wire = Rerank;
-
-    fn rerank(&self, model: impl Into<String>) -> Rerank {
-        self.reranker(model)
-    }
-}
-
-impl HasTranscription for OpenAI {
-    type Wire = Transcriptions;
-
-    fn transcription(&self, model: impl Into<String>) -> Transcriptions {
-        self.transcriptions(model)
-    }
-}
-
-impl HasModelListing for OpenAI {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
-    }
-}
-
-impl HasVerify for OpenAI {
-    type Wire = Verify;
-
-    fn verify(&self) -> Verify {
-        self.verify_wire()
-    }
-}
-
-#[cfg(feature = "image")]
-impl crate::driver::HasImageGeneration for OpenAI {
-    type Wire = Images;
-
-    fn image_generation(&self, model: impl Into<String>) -> Images {
-        self.images(model)
-    }
-}
-
-#[cfg(feature = "audio")]
-impl crate::driver::HasAudioGeneration for OpenAI {
-    type Wire = Speech;
-
-    fn audio_generation(&self, model: impl Into<String>) -> Speech {
-        self.speech(model)
     }
 }
 

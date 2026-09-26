@@ -6,21 +6,23 @@
 //! status survive to the caller, on both the unary and streaming paths.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::error::ErrorReport;
 
 use super::super::support::with_venice_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn nonexistent_model_error_preserves_status_and_body() {
     with_venice_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion("venice-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let model = rig::model(client.completion("venice-nonexistent-rig-test"));
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             let error = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect_err("a nonexistent model should be a provider error");
 
@@ -50,12 +52,14 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_venice_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion("venice-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let model = rig::model(client.completion("venice-nonexistent-rig-test"));
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             // The SSE connection opens lazily, so the HTTP error may surface
             // either from `stream()` itself or as the first stream item.
-            let error = match model.stream(request).await {
+            let error = match model.stream(request) {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,

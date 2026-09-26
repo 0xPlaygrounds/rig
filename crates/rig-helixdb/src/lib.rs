@@ -9,7 +9,6 @@ use std::future::Future;
 
 use reqwest::{Client, StatusCode};
 use rig_core::{
-    embeddings::EmbeddingModel,
     vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -113,29 +112,29 @@ impl HelixDBClient for HelixDB {
 
 /// Vector store backed by HelixDB queries.
 ///
-/// Queries are embedded with the same model `M` that populated the store, so
+/// Queries are embedded with the same model that populated the store, so
 /// results are meaningless under another model. Use [`HelixDB`] for `C` unless
 /// another transport is needed.
 ///
 /// ```no_run
 /// use rig_core::providers::openai::wire::OpenAI;
-/// use rig_reqwest::prelude::*;
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
 /// # fn example() -> anyhow::Result<()> {
-/// let openai_model = OpenAI::from_env()?
-///     .bound()?
-///     .embedding("text-embedding-ada-002", None);
+/// let openai_model = rig_core::Model::new(
+///     OpenAI::from_env()?.embedding("text-embedding-ada-002", None),
+///     rig_reqwest::shared(),
+/// );
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
-/// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());
+/// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model);
 /// # let _ = vector_store;
 /// # Ok(())
 /// # }
 /// ```
-pub struct HelixDBVectorStore<C, M> {
+pub struct HelixDBVectorStore<C> {
     client: C,
-    model: M,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
 }
 
 pub type HelixDBFilter = Filter<serde_json::Value>;
@@ -173,10 +172,16 @@ struct VecResult {
     vec_docs: Vec<QueryResult>,
 }
 
-impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M> {
+impl<C> HelixDBVectorStore<C> {
     /// Creates a new HelixDB vector store.
-    pub fn new(client: C, model: M) -> Self {
-        Self { client, model }
+    pub fn new(
+        client: C,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
+    ) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 
     /// Returns the underlying HelixDB client.
@@ -185,7 +190,7 @@ impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M> {
     }
 }
 
-impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M>
+impl<C> HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
@@ -211,7 +216,7 @@ where
     }
 }
 
-impl<C, M: EmbeddingModel> InsertDocuments for HelixDBVectorStore<C, M>
+impl<C> InsertDocuments for HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
@@ -251,7 +256,7 @@ where
     }
 }
 
-impl<C, M: EmbeddingModel> VectorStoreIndex for HelixDBVectorStore<C, M>
+impl<C> VectorStoreIndex for HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,

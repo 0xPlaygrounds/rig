@@ -1,5 +1,5 @@
-//! Transport-boundary middleware for [`BoxedHttpClient`](super::BoxedHttpClient).
-//! Attach hooks with [`with_middleware`](super::BoxedHttpClient::with_middleware).
+//! Transport-boundary middleware for [`DynHttpClient`](super::DynHttpClient).
+//! Attach hooks with [`with_middleware`](super::DynHttpClient::with_middleware).
 //!
 //! ```
 //! use rig_core::http_client::middleware::HttpMiddleware;
@@ -15,7 +15,7 @@ use super::Result;
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
 /// Transport-boundary hooks applied by
-/// [`BoxedHttpClient`](super::BoxedHttpClient) around every request.
+/// [`DynHttpClient`](super::DynHttpClient) around every request.
 ///
 /// Methods default to no-ops. All header hooks run in attachment order, then
 /// all body hooks run in that order with the final headers and preceding body

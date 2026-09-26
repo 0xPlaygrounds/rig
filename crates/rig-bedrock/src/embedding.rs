@@ -1,10 +1,29 @@
+//! The Bedrock text-embedding wire over `InvokeModel`: one request per text.
+//!
+//! ```no_run
+//! use rig_bedrock::{client::BedrockRuntime, embedding::{AMAZON_TITAN_EMBED_TEXT_V2_0, Embeddings}};
+//! use rig_core::Model;
+//!
+//! let model = Model::new(
+//!     Embeddings::new(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256)),
+//!     BedrockRuntime::from_env(),
+//! );
+//! # let _ = model;
+//! ```
+
 use aws_smithy_types::Blob;
+use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::embeddings::{self, Embedding};
-use rig_core::error::ProviderError;
+use rig_core::error::{EncodeError, ProviderError};
+use rig_core::operation::{EmbeddingCapabilities, Events};
+use rig_core::providers::internal::wire;
+use rig_core::wire::{Decoder, Mode, Output, Sink, Wire};
+use rig_core::wire::{TypedEvent, WireEvent};
 use serde::{Deserialize, Serialize};
 
+use crate::client::BedrockRuntime;
 use crate::types::assistant_content::PROVIDER_NAME;
-use crate::{client::Client, types::errors::AwsSdkInvokeModelError};
+use crate::types::errors::AwsSdkInvokeModelError;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,112 +48,175 @@ pub use crate::completion::{
     COHERE_EMBED_MULTILINGUAL as COHERE_EMBED_MULTILINGUAL_V3,
 };
 
-#[derive(Clone)]
-pub struct EmbeddingModel {
-    client: Client,
-    model: String,
-    ndims: Option<usize>,
+/// The embedding endpoint for one model, at a caller-chosen width.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Embeddings {
+    pub model: String,
+    pub ndims: Option<usize>,
 }
 
-impl EmbeddingModel {
-    pub fn new(client: Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
+impl Embeddings {
+    pub fn new(model: impl Into<String>, ndims: Option<usize>) -> Self {
         Self {
-            client,
             model: model.into(),
             ndims,
         }
     }
+}
 
-    pub async fn document_to_embeddings(
-        &self,
-        request: EmbeddingRequest,
-    ) -> Result<EmbeddingResponse, ProviderError> {
-        let input_document = serde_json::to_string(&request).map_err(ProviderError::Json)?;
+/// One text's embedding request: the model, the text, and its body.
+pub struct EmbeddingBatch {
+    model: String,
+    texts: Vec<(String, String)>,
+}
 
-        let model_response = self
-            .client
-            .inner()
-            .await
-            .invoke_model()
-            .model_id(self.model.as_str())
-            .content_type("application/json")
-            .accept("application/json")
-            .body(Blob::new(input_document))
-            .send()
-            .await;
+/// One text's reply, or the failure that took its place. Bedrock embeds one
+/// text per request, and a failed text does not stop the rest.
+pub enum EmbeddingFrame {
+    Embedded {
+        document: String,
+        response: EmbeddingResponse,
+    },
+    Failed(ProviderError),
+}
 
-        let response = model_response
-            .map_err(|sdk_error| AwsSdkInvokeModelError(sdk_error).into())
-            .map_err(|e: ProviderError| e)?;
+impl Wire for Embeddings {
+    type Op = rig_core::operation::Embedding;
+    type Payload = EmbeddingBatch;
+    type Frame = EmbeddingFrame;
+    type Decoder = EmbeddingsDecoder;
 
-        let response_str = String::from_utf8(response.body.into_inner())
-            .map_err(|e| ProviderError::Response(e.to_string()))?;
+    fn name(&self) -> &str {
+        PROVIDER_NAME
+    }
 
-        let result: EmbeddingResponse =
-            serde_json::from_str(&response_str).map_err(ProviderError::Json)?;
+    fn id(&self) -> Option<&str> {
+        Some(&self.model)
+    }
 
-        Ok(result)
+    fn capabilities(&self) -> EmbeddingCapabilities {
+        EmbeddingCapabilities::new(1024, self.ndims.unwrap_or_default())
+    }
+
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<EmbeddingBatch, EncodeError> {
+        let texts = texts
+            .into_iter()
+            .map(|text| {
+                let body = serde_json::to_string(&EmbeddingRequest {
+                    input_text: text.clone(),
+                    dimensions: self.ndims.unwrap_or_default(),
+                    normalize: true,
+                })?;
+                Ok((text, body))
+            })
+            .collect::<Result<_, EncodeError>>()?;
+        Ok(EmbeddingBatch {
+            model: self.model.clone(),
+            texts,
+        })
+    }
+
+    fn decoder(&self, _mode: Mode) -> EmbeddingsDecoder {
+        EmbeddingsDecoder::default()
     }
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
-    fn max_documents(&self) -> usize {
-        1024
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims.unwrap_or_default()
-    }
-
-    async fn embed_texts_response(
+impl Transport<Embeddings> for BedrockRuntime {
+    fn send(
         &self,
-        documents: impl IntoIterator<Item = String> + Send,
-    ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality::<rig_core::operation::Embedding, _>(
-            PROVIDER_NAME,
-            &self.model,
-            async {
-                let documents: Vec<String> = documents.into_iter().collect();
+        batch: EmbeddingBatch,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<EmbeddingBatch, EmbeddingFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let runtime = self.clone();
+        // Every call completes inside the send, so the calls run under the
+        // attempt's span; sequential requests limit load against account
+        // quotas.
+        Ok(async move {
+            let client = runtime.inner().await.clone();
+            let mut frames = Vec::with_capacity(batch.texts.len());
+            for (document, body) in batch.texts {
+                let sent = client
+                    .invoke_model()
+                    .model_id(batch.model.as_str())
+                    .content_type("application/json")
+                    .accept("application/json")
+                    .body(Blob::new(body))
+                    .send()
+                    .await;
+                let reply = sent
+                    .map_err(|sdk_error| ProviderError::from(AwsSdkInvokeModelError(sdk_error)))
+                    .and_then(|response| {
+                        String::from_utf8(response.body.into_inner())
+                            .map_err(|error| ProviderError::Response(error.to_string()))
+                    })
+                    .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::Json));
+                frames.push(Ok(match reply {
+                    Ok(response) => EmbeddingFrame::Embedded { document, response },
+                    Err(error) => EmbeddingFrame::Failed(error),
+                }));
+            }
+            Opened::new(futures::stream::iter(frames))
+        })
+    }
+}
 
-                // Sequential requests limit concurrent load against account quotas.
-                let mut results = Vec::new();
-                let mut raw = Vec::new();
-                let mut usage = rig_core::completion::Usage::default();
-                let mut first_error = None;
-                for doc in documents {
-                    let request = EmbeddingRequest {
-                        input_text: doc.clone(),
-                        dimensions: self.ndims(),
-                        normalize: true,
-                    };
-                    match self.document_to_embeddings(request).await {
-                        Ok(response) => {
-                            let tokens = response.input_text_token_count as u64;
-                            usage += rig_core::completion::Usage {
-                                input_tokens: Some(tokens),
-                                total_tokens: Some(tokens),
-                                ..Default::default()
-                            };
-                            raw.push(serde_json::to_value(&response)?);
-                            results.push(Embedding {
-                                document: doc,
-                                vec: response.embedding,
-                            });
-                        }
-                        Err(err) => {
-                            first_error.get_or_insert(err);
-                        }
-                    }
-                }
+/// Collects every text's reply into one response; the first failure fails
+/// the batch once every text was sent.
+#[derive(Default)]
+pub struct EmbeddingsDecoder {
+    embeddings: Vec<Embedding>,
+    raw: Vec<serde_json::Value>,
+    usage: rig_core::completion::Usage,
+    failure: Option<ProviderError>,
+}
 
-                match first_error {
-                    None => Ok(embeddings::EmbeddingResponse::new(results, PROVIDER_NAME)
-                        .with_usage(usage)
-                        .with_raw(serde_json::Value::Array(raw))),
-                    Some(err) => Err(ProviderError::Response(err.to_string())),
-                }
-            },
-        )
-        .await
+impl Decoder<rig_core::operation::Embedding, EmbeddingFrame> for EmbeddingsDecoder {
+    type Event = EmbeddingFrame;
+
+    fn classify(&self, frame: EmbeddingFrame) -> WireEvent<EmbeddingFrame> {
+        wire::classify_typed_event(TypedEvent::Modeled(frame))
+    }
+
+    fn interpret(
+        &mut self,
+        frame: EmbeddingFrame,
+        out: &mut Events<rig_core::operation::Embedding>,
+    ) {
+        let EmbeddingFrame::Embedded { document, response } = frame else {
+            if let EmbeddingFrame::Failed(error) = frame {
+                self.failure.get_or_insert(error);
+            }
+            return;
+        };
+        let tokens = response.input_text_token_count as u64;
+        self.usage += rig_core::completion::Usage {
+            input_tokens: Some(tokens),
+            total_tokens: Some(tokens),
+            ..Default::default()
+        };
+        match serde_json::to_value(&response) {
+            Ok(raw) => self.raw.push(raw),
+            Err(error) => out.push(Err(error.into())),
+        }
+        self.embeddings.push(Embedding {
+            document,
+            vec: response.embedding,
+        });
+    }
+
+    fn finish(&mut self, out: &mut Output<rig_core::operation::Embedding>) {
+        out.push(match self.failure.take() {
+            None => Ok(embeddings::EmbeddingResponse::new(
+                std::mem::take(&mut self.embeddings),
+                PROVIDER_NAME,
+            )
+            .with_usage(self.usage)
+            .with_raw(serde_json::Value::Array(std::mem::take(&mut self.raw)))),
+            Some(error) => Err(ProviderError::Response(error.to_string())),
+        });
     }
 }

@@ -39,12 +39,12 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::CompletionModel;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_chat_stream_logprobs_cassette_result};
+use rig::completion::CompletionRequestBuilder;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -129,9 +129,8 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.openai.chat(model_name(cell.model));
-    let request = model
-        .completion_request(prompt(cell))
+    let model = rig::model(client.openai.chat(model_name(cell.model)));
+    let request = CompletionRequestBuilder::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell))
         .build();
@@ -141,7 +140,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // The provider-native chat-completions reply rides serialized on
             // `CompletionResponse::raw`; decode it to read the same fields the
             // old raw surface exposed directly.
-            let response = model.completion(request).await?;
+            let response = model.call(request).await?;
             let raw: openai::completion::CompletionResponse = serde_json::from_value(response.raw)?;
             let choice = raw
                 .choices
@@ -153,7 +152,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             }
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request).await?;
+            let mut stream = model.stream(request)?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
                 if let StreamEvent::Final(record) = item? {

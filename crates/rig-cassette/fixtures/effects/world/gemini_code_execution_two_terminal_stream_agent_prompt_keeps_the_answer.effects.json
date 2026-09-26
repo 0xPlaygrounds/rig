@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -160,6 +160,17 @@
           "delta": {
             "delta": "text",
             "text": "1112635269.\nThe second number is 63."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The first number is 121932631112635269.\nThe second number is 63."
           }
         },
         {

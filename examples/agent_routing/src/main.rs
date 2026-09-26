@@ -3,8 +3,7 @@
 //! Run it to see a classifier agent choose which second prompt should run.
 
 use anyhow::{Result, bail};
-use rig::driver::Bound;
-use rig::http_client::BoxedHttpClient;
+use rig::operation::Completion;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
@@ -14,15 +13,12 @@ const ROUTER_PREAMBLE: &str = "
     Return only the category.
 ";
 
-fn build_router_agent(openai: &Bound<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
-    openai
-        .agent(openai::GPT_4)
-        .preamble(ROUTER_PREAMBLE)
-        .build()
+fn build_router_agent(model: impl Into<DynModel<Completion>>) -> rig::agent::Agent {
+    AgentBuilder::new(model).preamble(ROUTER_PREAMBLE).build()
 }
 
-fn build_response_agent(openai: &Bound<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
-    openai.agent(openai::GPT_4).build()
+fn build_response_agent(model: impl Into<DynModel<Completion>>) -> rig::agent::Agent {
+    AgentBuilder::new(model).build()
 }
 
 fn follow_up_prompt(category: &str) -> Result<&'static str> {
@@ -36,16 +32,14 @@ fn follow_up_prompt(category: &str) -> Result<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let openai = OpenAI::from_env()?.bound()?;
-    let category = build_router_agent(&openai)
+    // One model serves both agents: erase it once, clone the handle.
+    let gpt4 = rig::model(OpenAI::from_env()?.completion(openai::GPT_4)).erase();
+    let category = build_router_agent(gpt4.clone())
         .prompt(INPUT_PROMPT)
         .await?
         .output;
     let follow_up = follow_up_prompt(category.trim())?;
-    let response = build_response_agent(&openai)
-        .prompt(follow_up)
-        .await?
-        .output;
+    let response = build_response_agent(gpt4).prompt(follow_up).await?.output;
 
     println!("Classifier chose: {}", category.trim());
     println!("Follow-up prompt: {follow_up}");

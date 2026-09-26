@@ -1,7 +1,5 @@
 //! Cassette-backed Venice streaming coverage.
 
-use rig::prelude::*;
-
 use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -10,8 +8,7 @@ use crate::support::{
 #[tokio::test]
 async fn streaming_smoke() {
     with_venice_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(DEFAULT_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
             .preamble(STREAMING_PREAMBLE)
             .build();
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();

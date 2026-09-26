@@ -1,7 +1,6 @@
 //! AWS Bedrock embeddings replay smoke test.
 
 use rig::bedrock;
-use rig::embeddings::EmbeddingModel;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
@@ -14,8 +13,9 @@ async fn embeddings_smoke() {
         let model = client.embedding(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
 
         let embeddings = model
-            .embed_texts([EMBEDDING_INPUT.to_string()])
+            .call(vec![EMBEDDING_INPUT.to_string()])
             .await
+            .map(|response| response.embeddings)
             .expect("embedding request should succeed");
 
         assert_eq!(embeddings.len(), 1);
@@ -35,8 +35,9 @@ async fn embeddings_batch_smoke() {
         let model = client.embedding(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
 
         let embeddings = model
-            .embed_texts(EMBEDDING_INPUTS.into_iter().map(str::to_string))
+            .call(EMBEDDING_INPUTS.into_iter().map(str::to_string).collect())
             .await
+            .map(|response| response.embeddings)
             .expect("batch embedding request should succeed");
 
         assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());

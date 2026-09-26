@@ -1,6 +1,5 @@
 //! Groq context smoke test.
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{GROQ, OpenAI};
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
@@ -10,16 +9,14 @@ use super::CONTEXT_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn context_smoke() {
-    let groq = OpenAI::from_env_with(&GROQ)
-        .expect("GROQ_API_KEY should be set")
-        .bound()
-        .expect("transport should build");
+    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(groq.agent(CONTEXT_MODEL), |builder, doc| {
-            builder.context(doc)
-        })
+        .fold(
+            rig::AgentBuilder::new(rig::model(groq.completion(CONTEXT_MODEL))),
+            |builder, doc| builder.context(doc),
+        )
         .build();
 
     let response = agent

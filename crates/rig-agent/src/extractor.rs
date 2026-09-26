@@ -1,14 +1,13 @@
 //! Typed extraction through an agent's `submit` output tool, with configurable retries.
 //!
 //! ```no_run
-//! use rig_agent::prelude::*;
-//! use rig_core::providers::openai::{self, OpenAI};
-//! use rig_reqwest::prelude::*;
+//! use rig_agent::extractor::ExtractorBuilder;
+//! use rig_core::{Model, providers::openai::{self, OpenAI}};
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person { name: String, age: u8 }
-//! let provider = OpenAI::from_env()?.bound()?;
-//! let extractor = provider.extractor::<Person>(openai::GPT_4O).retries(2).build();
+//! let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_4O), rig_reqwest::shared());
+//! let extractor = ExtractorBuilder::<Person>::new(model).retries(2).build();
 //! let person = extractor.extract("John is 30.").await?.output;
 //! # Ok(())
 //! # }
@@ -25,10 +24,7 @@ use rig_core::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-use crate::{
-    agent::{Agent, AgentBuilder, AgentHook, ModelRef, OutputMode, TypedRun},
-    completion::CompletionModel,
-};
+use crate::agent::{Agent, AgentBuilder, AgentHook, ModelRef, OutputMode, TypedRun};
 
 const SUBMIT_TOOL_NAME: &str = "submit";
 
@@ -50,16 +46,16 @@ where
 {
     /// Set a different default model for this extractor's subsequent runs.
     /// Use the model registered under `label` on the extractor's bus.
-    pub fn with_model_ref(mut self, label: impl Into<ModelRef>) -> Self {
-        self.agent.set_model_ref(label);
+    pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
+        self.agent.set_model_label(label);
         self
     }
 
     /// Register `model` on the extractor's bus and use it.
-    pub fn with_model<M>(mut self, model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn with_model(
+        mut self,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    ) -> Self {
         self.agent.set_model(model);
         self
     }
@@ -118,10 +114,7 @@ where
     T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// An extractor of `T` over `model`.
-    pub fn new<M>(model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn new(model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>) -> Self {
         Self::from_agent_builder(AgentBuilder::new(model))
     }
 

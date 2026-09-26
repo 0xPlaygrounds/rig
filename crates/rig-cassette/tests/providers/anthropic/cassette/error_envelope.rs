@@ -8,20 +8,22 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn nonexistent_model_error_preserves_status_and_body() {
     with_anthropic_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion("claude-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let model = rig::model(client.completion("claude-nonexistent-rig-test"));
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             let error = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect_err("a nonexistent model should be a provider error");
 
@@ -62,12 +64,14 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_anthropic_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion("claude-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let model = rig::model(client.completion("claude-nonexistent-rig-test"));
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             // The SSE connection opens lazily, so the HTTP error may surface
             // either from `stream()` itself or as the first stream item.
-            let error = match model.stream(request).await {
+            let error = match model.stream(request) {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
@@ -127,11 +131,13 @@ async fn nonexistent_model_error_preserves_response_headers() {
     with_anthropic_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion("claude-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let model = rig::model(client.completion("claude-nonexistent-rig-test"));
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
             let error = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect_err("a nonexistent model should be a provider error");
 
@@ -155,10 +161,12 @@ async fn nonexistent_model_streaming_error_preserves_response_headers() {
     with_anthropic_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion("claude-nonexistent-rig-test");
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let model = rig::model(client.completion("claude-nonexistent-rig-test"));
+            let request = CompletionRequestBuilder::new("Say hi.")
+                .max_tokens(16)
+                .build();
 
-            let error = match model.stream(request).await {
+            let error = match model.stream(request) {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,

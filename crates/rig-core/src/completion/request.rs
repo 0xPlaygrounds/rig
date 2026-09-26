@@ -3,7 +3,7 @@
 //! ```
 //! use rig_core::completion::CompletionRequestBuilder;
 //!
-//! let request = CompletionRequestBuilder::unbound("Who are you?")
+//! let request = CompletionRequestBuilder::new("Who are you?")
 //!     .preamble("You are a concise assistant.".to_owned())
 //!     .temperature(0.5)
 //!     .build();
@@ -13,8 +13,6 @@
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
-use crate::streaming::StreamingCompletionResponse;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -408,105 +406,6 @@ impl ProviderCapabilities {
     }
 }
 
-/// Generates buffered or streamed normalized completions. Provider-specific
-/// response data belongs in [`CompletionResponse::raw`]. Only
-/// [`Self::completion_request`] requires cloning; `Arc<M>` can share a model.
-pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
-    /// Generates a completion response for the given completion request.
-    fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend;
-
-    /// Streams a completion response for the given completion request.
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend;
-
-    /// Generates a completion with optional execution-local observation.
-    /// The default delegates without observations. Forwarding wrappers must
-    /// preserve the context to retain per-call identity across retries and tasks.
-    fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
-    {
-        self.completion(request)
-    }
-
-    /// Optionally observe a stream, retaining context through lazy startup and drop.
-    /// The default delegates to [`Self::stream`] without provider observations.
-    fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        self.stream(request)
-    }
-
-    /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self>
-    where
-        Self: Sized + Clone,
-    {
-        CompletionRequestBuilder::new(self.clone(), prompt)
-    }
-
-    /// Provider behavior a runtime should account for when preparing requests.
-    ///
-    /// The default is conservative; see [`ProviderCapabilities`]. Override
-    /// this to declare the capabilities a provider actually supports.
-    fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities::default()
-    }
-}
-
-/// Forwards model operations through shared ownership. Request builders clone
-/// the `Arc`, not the underlying model.
-impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
-    fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
-    {
-        (**self).completion(request)
-    }
-
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        (**self).stream(request)
-    }
-
-    fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
-    {
-        (**self).completion_with_context(request, context)
-    }
-
-    fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
-        (**self).stream_with_context(request, context)
-    }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        (**self).capabilities()
-    }
-}
-
 /// Struct representing a general completion request that can be sent to a completion model provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
@@ -555,9 +454,11 @@ impl CompletionRequest {
     /// content lists, or tool results with no content blocks. Empty strings,
     /// including system messages, are allowed.
     ///
-    /// Builder `send` and `stream` validate automatically. Call this before
-    /// invoking a [`CompletionModel`] directly. Response-content validation is
-    /// provider-specific and is not performed here.
+    /// The agent runtime validates the requests it prepares; call this
+    /// before [`Model::call`](crate::Model::call) or `stream` when the
+    /// history came from a caller.
+    /// Response-content validation is provider-specific and is not performed
+    /// here.
     pub fn validate_message_content(&self) -> Result<(), ProviderError> {
         if self.chat_history.is_empty() {
             return Err(ProviderError::Request(
@@ -709,24 +610,25 @@ fn merge_provider_tools_into_additional_params(
     Some(serde_json::Value::Object(params_map))
 }
 
-/// Builds completion requests, optionally retaining a model for dispatch.
-/// [`Self::build`] does not validate message content; `send` and `stream` do.
+/// Builds completion requests. [`Self::build`] does not validate message
+/// content; call [`CompletionRequest::validate_message_content`] before
+/// sending when the history came from a caller.
 ///
 /// ```no_run
-/// use rig_core::completion::{CompletionModel, CompletionRequestBuilder};
+/// use rig_core::{Model, completion::CompletionRequestBuilder, providers::openai::OpenAI};
 ///
-/// # async fn run(model: impl CompletionModel) -> Result<(), Box<dyn std::error::Error>> {
-/// let response = CompletionRequestBuilder::new(model, "Who are you?")
+/// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+/// let model = Model::new(OpenAI::from_env()?.completion("gpt-4o"), http);
+/// let request = CompletionRequestBuilder::new("Who are you?")
 ///     .temperature(0.5)
-///     .send()
-///     .await?;
+///     .build();
+/// let response = model.call(request).await?;
 /// # let _ = response;
 /// # Ok(())
 /// # }
 /// ```
-#[must_use = "a request builder does nothing until built or sent"]
-pub struct CompletionRequestBuilder<M = Unbound> {
-    model: M,
+#[must_use = "a request builder does nothing until built"]
+pub struct CompletionRequestBuilder {
     prompt: Message,
     request_model: Option<String>,
     preamble: Option<String>,
@@ -742,23 +644,10 @@ pub struct CompletionRequestBuilder<M = Unbound> {
     record_telemetry_content: bool,
 }
 
-/// The model slot of a request under assembly that has no model attached:
-/// the request is built with [`CompletionRequestBuilder::build`] and
-/// dispatched elsewhere (an agent dispatches it through its bus).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Unbound;
-
-impl CompletionRequestBuilder<Unbound> {
-    /// A builder with no model attached; `build` produces the request.
-    pub fn unbound(prompt: impl Into<Message>) -> Self {
-        Self::new(Unbound, prompt)
-    }
-}
-
-impl<M> CompletionRequestBuilder<M> {
-    pub fn new(model: M, prompt: impl Into<Message>) -> Self {
+impl CompletionRequestBuilder {
+    /// A builder for `prompt`, with no history, documents or tools.
+    pub fn new(prompt: impl Into<Message>) -> Self {
         Self {
-            model,
             prompt: prompt.into(),
             request_model: None,
             preamble: None,
@@ -903,12 +792,6 @@ impl<M> CompletionRequestBuilder<M> {
 
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
-        self.into_model_and_request().1
-    }
-
-    /// Moves out the model and constructs the request without cloning the model.
-    fn into_model_and_request(self) -> (M, CompletionRequest) {
-        let model = self.model;
         let mut chat_history = self.chat_history;
         let prompt = self.prompt;
         if let Some(preamble) = self.preamble {
@@ -946,7 +829,7 @@ impl<M> CompletionRequestBuilder<M> {
             self.provider_tools,
         );
 
-        let request = CompletionRequest {
+        CompletionRequest {
             model: self.request_model,
             chat_history,
             documents: self.documents,
@@ -957,8 +840,7 @@ impl<M> CompletionRequestBuilder<M> {
             additional_params,
             output_schema: self.output_schema,
             record_telemetry_content: self.record_telemetry_content,
-        };
-        (model, request)
+        }
     }
 }
 
@@ -978,22 +860,6 @@ pub(crate) fn shadowed_typed_fields<'a>(
         .filter(|(key, set)| *set && params.contains_key(*key))
         .map(|(key, _)| *key)
         .collect()
-}
-
-impl<M: CompletionModel> CompletionRequestBuilder<M> {
-    /// Sends the completion request to the completion model provider and returns the completion response.
-    pub async fn send(self) -> Result<CompletionResponse, ProviderError> {
-        let (model, request) = self.into_model_and_request();
-        request.validate_message_content()?;
-        model.completion(request).await
-    }
-
-    /// Stream the completion request
-    pub async fn stream(self) -> Result<StreamingCompletionResponse, ProviderError> {
-        let (model, request) = self.into_model_and_request();
-        request.validate_message_content()?;
-        model.stream(request).await
-    }
 }
 
 #[cfg(test)]

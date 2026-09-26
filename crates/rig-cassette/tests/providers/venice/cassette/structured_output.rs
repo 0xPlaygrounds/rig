@@ -1,7 +1,5 @@
 //! Cassette-backed Venice structured output coverage.
 
-use rig::prelude::*;
-
 // Recorded against `TOOL_MODEL`: Venice's `qwen3-5-9b` capacity for
 // `response_format: json_schema` requests answered 429 ("model is currently
 // overloaded") while its plain completions path stayed healthy.
@@ -15,13 +13,13 @@ async fn structured_output_smoke() {
     with_venice_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let response: SmokeStructuredOutput = client
-                .agent(TOOL_MODEL)
-                .build()
-                .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
-                .await
-                .expect("structured output prompt should succeed")
-                .output;
+            let response: SmokeStructuredOutput =
+                rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
+                    .build()
+                    .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
+                    .await
+                    .expect("structured output prompt should succeed")
+                    .output;
             assert_smoke_structured_output(&response);
         },
     )

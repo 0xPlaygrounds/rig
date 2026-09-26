@@ -3,17 +3,17 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, ToolDefinition};
-use rig::driver::Bound;
+use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 pub(super) async fn assert_strict_tool_call(
-    client: Bound<Anthropic>,
+    client: Anthropic,
     tool_name: &str,
     prompt: &str,
     parameters: serde_json::Value,
@@ -24,16 +24,17 @@ pub(super) async fn assert_strict_tool_call(
 }
 
 pub(super) async fn strict_tool_call_arguments(
-    client: Bound<Anthropic>,
+    client: Anthropic,
     tool_name: &str,
     prompt: &str,
     parameters: serde_json::Value,
 ) -> serde_json::Value {
-    let model = client
-        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-        .map_wire(|wire| wire.with_strict_tools());
-    let request = model
-        .completion_request(prompt)
+    let model = rig::model(
+        client
+            .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+            .with_strict_tools(),
+    );
+    let request = CompletionRequestBuilder::new(prompt)
         .preamble(
             "Call the supplied tool exactly once and follow the requested argument shape."
                 .to_string(),
@@ -48,7 +49,7 @@ pub(super) async fn strict_tool_call_arguments(
         .build();
 
     let response = model
-        .completion(request)
+        .call(request)
         .await
         .expect("strict-tools completion should succeed");
     let tool_calls = response
@@ -74,36 +75,37 @@ async fn strict_tools_opt_in_roundtrip() {
     with_anthropic_cassette(
         "messages_strict_tools/strict_tools_opt_in_roundtrip",
         |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
-            let request = model
-                .completion_request(
-                    "Call record_booking exactly once with passengers = 2 and cabin = economy.",
-                )
-                .preamble("Follow the tool-calling instruction exactly.".to_string())
-                .max_tokens(1024)
-                .tool_choice(ToolChoice::Required)
-                .tool(ToolDefinition {
-                    name: "record_booking".to_string(),
-                    description: "Record a passenger count and cabin class.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "passengers": { "type": "integer" },
-                            "cabin": {
-                                "type": "string",
-                                "enum": ["economy", "business"]
-                            }
-                        },
-                        "required": ["passengers", "cabin"],
-                        "additionalProperties": false
-                    }),
-                })
-                .build();
+            let model = rig::model(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .with_strict_tools(),
+            );
+            let request = CompletionRequestBuilder::new(
+                "Call record_booking exactly once with passengers = 2 and cabin = economy.",
+            )
+            .preamble("Follow the tool-calling instruction exactly.".to_string())
+            .max_tokens(1024)
+            .tool_choice(ToolChoice::Required)
+            .tool(ToolDefinition {
+                name: "record_booking".to_string(),
+                description: "Record a passenger count and cabin class.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "passengers": { "type": "integer" },
+                        "cabin": {
+                            "type": "string",
+                            "enum": ["economy", "business"]
+                        }
+                    },
+                    "required": ["passengers", "cabin"],
+                    "additionalProperties": false
+                }),
+            })
+            .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("strict-tools completion should succeed");
 

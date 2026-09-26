@@ -590,6 +590,10 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The harbor label is crimson-harbor, but the orchard lookup is broken."
           }
         },
         {
@@ -616,6 +620,15 @@
           "id": "minted:text:1",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "Eq0ECqoEAWkUfRPLQGONceQj2SbUxGi9lVrOauKEk3vPXylsiwUgC4j4dzf82c+bej1GnRojBXxWLtdFg7dMwLwr6Cewl1VswRPQTFEmmFH3laU01cytaOktotqFvDO5gzpKTImd/gNfSDvTJKa89nzWSakk+LE65cUNcTdyzUGWXKmRkyJ5WqYRneVruQV+X6MDYa/dzkdVTcfAfgkL58bu4Th4PQf09iV9H9lqtoRXKXUuQskRW4sAffsp8MQaIvFa38uR7qzFK4XVbfvNCZakBRJcH5a3g8q/mzOP7BikVKHQbFSV3ywUQsHuoACdcOBkvnKi1BIZfXJA3QBOXDuOR1CKOlaoNDKLuxZvu5pb5CaA4jzN2t5kFUbwhpsawIB0nXDAOKGcFhHYWWoy4lBhunFWtWmY/L6WgcvspLt20vVNlmE/oFUpM5a8wqt8sBne2BMLpJWoY++qPKDGsgrkbrpV3uZ9kQu577QsyYcFaBkWG/YLHjl/DfJB1zNxpvqhtE0yZVTEOTcyqBgakfOOBHu6YkVCjfFSSx1vaWtuZb7a7PLAh/kAUgMXgDpfcPahS+QzcSW0njxU5Rlsjwc5M9dKjjqMfGDp/dKK81KJ+o45PwtaCqgIK6Blb+0qd1y4M3Xs6VHILpHq6p8IdXQ6L3fd8AH8/srudFQaBALPlkUVNIFtS6/zhYV6D5vjI1R6KEU30yWxBtbCH/ngmwrfJ59dUjgyo9zYhR9dTZM="
+              }
+            }
           }
         },
         {

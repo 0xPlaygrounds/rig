@@ -4,7 +4,7 @@
 //! use rig_core::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let wire = Gemini::from_env()?.generate_content(GEMINI_2_5_FLASH);
+//! let wire = Gemini::from_env()?.completion(GEMINI_2_5_FLASH);
 //! # Ok(())
 //! # }
 //! ```
@@ -87,22 +87,23 @@ impl GenerateContent {
 
 impl Wire for GenerateContent {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = super::streaming::GenerateContentDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
     /// Select the telemetry operation for unary or streamed completion.
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
-            GenAiOperation::ChatStreaming
-        } else {
-            GenAiOperation::GenerateContent
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        match mode {
+            Mode::Unary => GenAiOperation::GenerateContent,
+            Mode::Streaming => GenAiOperation::ChatStreaming,
         }
     }
 

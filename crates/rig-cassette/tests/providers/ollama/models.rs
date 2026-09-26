@@ -1,14 +1,12 @@
 //! Ollama model listing smoke test.
 
-use rig::model::ModelLister;
-use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
 
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn list_models_smoke() {
-    let ollama = Ollama::new().bound().expect("transport should build");
-    let models = match ollama.models().list_all().await {
+    let ollama = Ollama::new();
+    let models = match rig::model(ollama.models()).call(()).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Ollama models should succeed\nDisplay: {error}\nDebug: {error:#?}")

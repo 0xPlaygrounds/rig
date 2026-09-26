@@ -44,7 +44,6 @@
 //!    looked identical.
 
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -614,9 +613,8 @@ fn an_unknown_conversational_endpoint_is_a_finding_not_a_skip() {
 // that were actually put on the wire. A literal would only prove that
 // `serde_json` is deterministic, which was never in doubt.
 
-use rig::completion::{CompletionModel as _, CompletionRequest, ToolDefinition};
+use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{Message, UserContent};
-use rig::prelude::*;
 use rig_core::test_utils::RecordingHttpClient;
 
 /// How many times each provider's request is serialized before the bytes are
@@ -763,7 +761,7 @@ macro_rules! determinism_test {
                 let model = $build;
                 // The response is intentionally unparseable; only the captured
                 // request matters, and it is captured before parsing.
-                let _ = model.completion(determinism_probe_request()).await;
+                let _ = model.call(determinism_probe_request()).await;
                 bodies.push(captured_body($provider, &$http));
             }
             assert_identical($provider, &bodies);
@@ -775,9 +773,11 @@ determinism_test!(
     anthropic_request_serialization_is_deterministic,
     "anthropic",
     |http| {
-        rig::providers::anthropic::wire::Anthropic::new("test-key")
-            .bind(http.clone())
-            .completion(rig::providers::anthropic::completion::CLAUDE_SONNET_4_6)
+        rig::Model::new(
+            rig::providers::anthropic::wire::Anthropic::new("test-key")
+                .completion(rig::providers::anthropic::completion::CLAUDE_SONNET_4_6),
+            http.clone(),
+        )
     }
 );
 
@@ -785,9 +785,11 @@ determinism_test!(
     openai_responses_request_serialization_is_deterministic,
     "openai/responses",
     |http| {
-        rig::providers::openai::OpenAI::new("test-key")
-            .bind(http.clone())
-            .completion(rig::providers::openai::GPT_4O)
+        rig::Model::new(
+            rig::providers::openai::OpenAI::new("test-key")
+                .completion(rig::providers::openai::GPT_4O),
+            http.clone(),
+        )
     }
 );
 
@@ -795,12 +797,14 @@ determinism_test!(
     openai_chat_request_serialization_is_deterministic,
     "openai/chat-completions",
     |http| {
-        rig::providers::openai::wire::OpenAI::with_key(
-            &rig::providers::openai::wire::OPENAI,
-            "test-key",
+        rig::Model::new(
+            rig::providers::openai::wire::OpenAI::with_key(
+                &rig::providers::openai::wire::OPENAI,
+                "test-key",
+            )
+            .completion(rig::providers::openai::GPT_4O),
+            http.clone(),
         )
-        .bind(http.clone())
-        .completion(rig::providers::openai::GPT_4O)
     }
 );
 
@@ -808,9 +812,11 @@ determinism_test!(
     gemini_request_serialization_is_deterministic,
     "gemini",
     |http| {
-        rig::providers::gemini::Gemini::new("test-key")
-            .bind(http.clone())
-            .completion(rig::providers::gemini::completion::GEMINI_2_5_FLASH)
+        rig::Model::new(
+            rig::providers::gemini::Gemini::new("test-key")
+                .completion(rig::providers::gemini::completion::GEMINI_2_5_FLASH),
+            http.clone(),
+        )
     }
 );
 
@@ -818,9 +824,11 @@ determinism_test!(
     cohere_request_serialization_is_deterministic,
     "cohere",
     |http| {
-        rig::providers::cohere::wire::Cohere::new("test-key")
-            .bind(http.clone())
-            .completion(rig::providers::cohere::COMMAND_A_03_2025)
+        rig::Model::new(
+            rig::providers::cohere::wire::Cohere::new("test-key")
+                .completion(rig::providers::cohere::COMMAND_A_03_2025),
+            http.clone(),
+        )
     }
 );
 
@@ -828,12 +836,14 @@ determinism_test!(
     deepseek_request_serialization_is_deterministic,
     "deepseek",
     |http| {
-        rig::providers::openai::wire::OpenAI::with_key(
-            &rig::providers::openai::wire::DEEPSEEK,
-            "test-key",
+        rig::Model::new(
+            rig::providers::openai::wire::OpenAI::with_key(
+                &rig::providers::openai::wire::DEEPSEEK,
+                "test-key",
+            )
+            .completion(rig::providers::deepseek::DEEPSEEK_V4_FLASH),
+            http.clone(),
         )
-        .bind(http.clone())
-        .completion(rig::providers::deepseek::DEEPSEEK_V4_FLASH)
     }
 );
 
@@ -841,12 +851,14 @@ determinism_test!(
     mistral_request_serialization_is_deterministic,
     "mistral",
     |http| {
-        rig::providers::openai::wire::OpenAI::with_key(
-            &rig::providers::openai::wire::MISTRAL,
-            "test-key",
+        rig::Model::new(
+            rig::providers::openai::wire::OpenAI::with_key(
+                &rig::providers::openai::wire::MISTRAL,
+                "test-key",
+            )
+            .completion(rig::providers::mistral::MISTRAL_SMALL),
+            http.clone(),
         )
-        .bind(http.clone())
-        .completion(rig::providers::mistral::MISTRAL_SMALL)
     }
 );
 
@@ -854,12 +866,14 @@ determinism_test!(
     openrouter_request_serialization_is_deterministic,
     "openrouter",
     |http| {
-        rig::providers::openai::wire::OpenAI::with_key(
-            &rig::providers::openai::wire::OPENROUTER,
-            "test-key",
+        rig::Model::new(
+            rig::providers::openai::wire::OpenAI::with_key(
+                &rig::providers::openai::wire::OPENROUTER,
+                "test-key",
+            )
+            .completion("openai/gpt-4o-mini"),
+            http.clone(),
         )
-        .bind(http.clone())
-        .completion("openai/gpt-4o-mini")
     }
 );
 
@@ -867,31 +881,37 @@ determinism_test!(
     groq_request_serialization_is_deterministic,
     "groq",
     |http| {
-        rig::providers::openai::wire::OpenAI::with_key(
-            &rig::providers::openai::wire::GROQ,
-            "test-key",
+        rig::Model::new(
+            rig::providers::openai::wire::OpenAI::with_key(
+                &rig::providers::openai::wire::GROQ,
+                "test-key",
+            )
+            .completion(rig::providers::groq::LLAMA_3_1_8B_INSTANT),
+            http.clone(),
         )
-        .bind(http.clone())
-        .completion(rig::providers::groq::LLAMA_3_1_8B_INSTANT)
     }
 );
 
 determinism_test!(xai_request_serialization_is_deterministic, "xai", |http| {
-    rig::providers::openai::OpenAI::with_key(&rig::providers::xai::DIALECT, "test-key")
-        .bind(http.clone())
-        .completion(rig::providers::xai::GROK_3_MINI)
+    rig::Model::new(
+        rig::providers::openai::OpenAI::with_key(&rig::providers::xai::DIALECT, "test-key")
+            .completion(rig::providers::xai::GROK_3_MINI),
+        http.clone(),
+    )
 });
 
 determinism_test!(
     venice_request_serialization_is_deterministic,
     "venice",
     |http| {
-        rig::providers::openai::wire::OpenAI::with_key(
-            &rig::providers::openai::wire::VENICE,
-            "test-key",
+        rig::Model::new(
+            rig::providers::openai::wire::OpenAI::with_key(
+                &rig::providers::openai::wire::VENICE,
+                "test-key",
+            )
+            .completion(rig::providers::venice::QWEN3_5_9B),
+            http.clone(),
         )
-        .bind(http.clone())
-        .completion(rig::providers::venice::QWEN3_5_9B)
     }
 );
 
@@ -899,12 +919,14 @@ determinism_test!(
     doubleword_request_serialization_is_deterministic,
     "doubleword",
     |http| {
-        rig::providers::openai::wire::OpenAI::with_key(
-            &rig::providers::openai::wire::DOUBLEWORD,
-            "test-key",
+        rig::Model::new(
+            rig::providers::openai::wire::OpenAI::with_key(
+                &rig::providers::openai::wire::DOUBLEWORD,
+                "test-key",
+            )
+            .completion(rig::providers::doubleword::QWEN3_5_9B),
+            http.clone(),
         )
-        .bind(http.clone())
-        .completion(rig::providers::doubleword::QWEN3_5_9B)
     }
 );
 
@@ -912,12 +934,14 @@ determinism_test!(
     perplexity_request_serialization_is_deterministic,
     "perplexity",
     |http| {
-        rig::providers::openai::wire::OpenAI::with_key(
-            &rig::providers::openai::wire::PERPLEXITY,
-            "test-key",
+        rig::Model::new(
+            rig::providers::openai::wire::OpenAI::with_key(
+                &rig::providers::openai::wire::PERPLEXITY,
+                "test-key",
+            )
+            .completion(rig::providers::perplexity::SONAR),
+            http.clone(),
         )
-        .bind(http.clone())
-        .completion(rig::providers::perplexity::SONAR)
     }
 );
 

@@ -118,6 +118,14 @@ pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// Boxed future type without `Send`, on browser wasm.
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+/// Boxed stream with `Send` on the same targets as [`WasmCompatSend`].
+pub type WasmBoxedStream<'a, T> = Pin<Box<dyn Stream<Item = T> + Send + 'a>>;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+/// Boxed stream type without `Send`, on browser wasm.
+pub type WasmBoxedStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
+
 /// Error returned by [`timeout`] when the future does not complete in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Elapsed;

@@ -1,13 +1,19 @@
 //! Provider code execution and retained stream text through native agent runs.
 use super::{code_execution_matrix as code, stream_terminal_matrix as terminal};
 use crate::{ecs_agent::EcsAgent, ecs_lifecycle, ecs_observation};
-use rig::{completion::CompletionModel, message::Message, providers::gemini};
+use rig::{message::Message, providers::gemini};
 use rig_ecs::{
     agent::{AdditionalParams, MaxTokens, Temperature},
     systems::RunCommands,
 };
 
-fn agent(model: impl CompletionModel + 'static, params: serde_json::Value) -> EcsAgent {
+fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
+    params: serde_json::Value,
+) -> EcsAgent {
     let mut ecs = ecs_lifecycle::agent(model, "");
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         Temperature(Some(0.0)),
@@ -22,7 +28,7 @@ async fn blocking_agent_prompt_answers_after_code_execution() {
     rig_test_support::goldens::world_golden_test(async {
 
     super::super::support::with_gemini_code_execution_cassette("code_execution_matrix/blocking_agent_prompt_answers_after_code_execution", |client| async move {
-        let mut ecs = agent(client.completion(gemini::completion::GEMINI_2_5_FLASH), code::code_execution_params());
+        let mut ecs = agent(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)), code::code_execution_params());
         let answer = ecs.prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.", false).await;
         assert!(code::states(&answer, "1048576"), "agent answer should carry the computed value, got {answer:?}");
     }).await;
@@ -39,7 +45,7 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
     rig_test_support::goldens::world_golden_test(async {
 
     super::super::support::with_gemini_code_execution_cassette("code_execution_matrix/streaming_agent_prompt_answers_after_code_execution", |client| async move {
-        let mut ecs = agent(client.completion(gemini::completion::GEMINI_2_5_FLASH), code::code_execution_params());
+        let mut ecs = agent(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)), code::code_execution_params());
         ecs_observation::install_observers(&mut ecs);
         ecs.prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.", true).await;
         let answer = &ecs_observation::observation(&ecs).all_streamed_text;
@@ -61,7 +67,7 @@ async fn blocking_code_execution_replayed_in_chat_history() {
                 "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
                 |client| async move {
                     let mut ecs = agent(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                         code::code_execution_params(),
                     );
                     let prompt =
@@ -111,7 +117,7 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
     rig_test_support::goldens::world_golden_test(async {
 
     super::super::support::with_gemini_stream_terminal_cassette("stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer", |client| async move {
-        let mut ecs = agent(client.completion(gemini::completion::GEMINI_2_5_FLASH), terminal::code_execution_params());
+        let mut ecs = agent(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)), terminal::code_execution_params());
         ecs_observation::install_observers(&mut ecs);
         ecs.prompt(terminal::TWO_ROUND_PROMPT, true).await;
         let answer = &ecs_observation::observation(&ecs).all_streamed_text;

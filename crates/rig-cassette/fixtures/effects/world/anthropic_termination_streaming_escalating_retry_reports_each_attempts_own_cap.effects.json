@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -53,7 +53,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -185,6 +185,17 @@
           "delta": {
             "delta": "text",
             "text": "\nbr"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "alpha\nbr"
           }
         },
         {
@@ -323,6 +334,17 @@
           "delta": {
             "delta": "text",
             "text": "\ndelta"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "alpha\nbravo\ncharlie\ndelta"
           }
         },
         {

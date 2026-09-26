@@ -83,7 +83,7 @@ fn serve_lookup(
         };
         match spec.nesting.child {
             NestedChild::Completion => {
-                let mut request = CompletionRequestBuilder::unbound(args.q.as_str())
+                let mut request = CompletionRequestBuilder::new(args.q.as_str())
                     .preamble(NESTED_PREAMBLE.to_owned());
                 if !spec.nesting.no_temperature {
                     request = request.temperature(0.0);

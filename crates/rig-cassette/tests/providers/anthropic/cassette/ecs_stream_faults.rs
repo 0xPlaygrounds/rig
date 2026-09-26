@@ -38,7 +38,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             "corpus_outcome/model_error_streamed",
             |client| async move {
                 let run = native_run(
-                    client.completion(CLAUDE_SONNET_4_6),
+                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
                     BASIC_PREAMBLE,
                     BASIC_PROMPT,
                     witness,

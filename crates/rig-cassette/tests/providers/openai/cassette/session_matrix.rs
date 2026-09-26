@@ -2,7 +2,6 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
-use rig::completion::CompletionModel;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -22,14 +21,23 @@ const CELL: Cell = Cell {
 fn models(
     client: OpenAiCassette,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<
+        rig::providers::openai::responses_api::wire::Responses,
+        rig::http_client::DynHttpClient,
+    >,
+    rig::Model<
+        rig::providers::openai::responses_api::wire::Responses,
+        rig::http_client::DynHttpClient,
+    >,
+    rig::Model<
+        rig::providers::openai::responses_api::wire::Responses,
+        rig::http_client::DynHttpClient,
+    >,
 ) {
     (
-        client.openai.responses("gpt-5-mini"),
-        client.openai.responses("gpt-5-mini"),
-        client.openai.responses("gpt-5.2"),
+        rig::model(client.openai.responses("gpt-5-mini")),
+        rig::model(client.openai.responses("gpt-5-mini")),
+        rig::model(client.openai.responses("gpt-5.2")),
     )
 }
 

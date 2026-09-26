@@ -1,6 +1,5 @@
 //! Cassette-backed OpenRouter provider selection scenarios.
 
-use rig::prelude::*;
 use rig::providers::openrouter::{MaxPrice, ProviderPreferences, ProviderSortStrategy};
 
 use crate::support::assert_nonempty_response;
@@ -49,8 +48,7 @@ async fn provider_selection_scenarios() {
             ];
 
             for (prompt, params) in scenarios {
-                let agent = client
-                    .agent(DEEPSEEK_V3_2)
+                let agent = rig::AgentBuilder::new(rig::model(client.completion(DEEPSEEK_V3_2)))
                     .preamble("You are a helpful assistant.")
                     .additional_params(params)
                     .build();

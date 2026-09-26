@@ -24,8 +24,10 @@ use std::path::PathBuf;
 /// instead of inheriting the core driver's exemption.
 const ALLOWED_POLICY_HOMES: &[&str] = &[
     // The one driver: `WireDriver` is where the policy table lives now, and
-    // `call`/`stream` are the only consumers of it.
+    // `Model::call`/`Model::stream` are the only consumers of it. The HTTP
+    // transport is the driver's framing half.
     "rig-core/src/driver.rs",
+    "rig-core/src/driver/http_transport.rs",
     // The trait definitions and the "write a provider" page: `Decoder`'s
     // contract names the variants it is defined over, and `WireFrame` — the
     // framed-but-undecoded payload the variants are about — is defined here.
@@ -33,7 +35,7 @@ const ALLOWED_POLICY_HOMES: &[&str] = &[
     "rig-core/src/providers/internal/wire.rs",
 ];
 
-/// Whether `path` is one of the three files [`ALLOWED_POLICY_HOMES`] names:
+/// Whether `path` is one of the files [`ALLOWED_POLICY_HOMES`] names:
 /// the exemption BOTH guards share.
 fn is_named_policy_home(path: &std::path::Path) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
@@ -475,7 +477,7 @@ fn every_triage_site_runs_on_the_single_policy_driver() {
         violations.is_empty(),
         "Unknown/Corrupt triage restated outside the driver (driver.rs) and \
          classify layer (wire.rs) — route it through WireDriver / \
-         run_wire_stream / triage_frame instead:\n{}",
+         triage_frame instead:\n{}",
         violations.join("\n")
     );
 }
@@ -543,13 +545,7 @@ const SINGLE_FILE_STREAMING_MODULES: &[&str] = &[
 ];
 
 /// Identifiers a file cannot mention without participating in wire handling.
-const WIRE_MACHINERY_MARKERS: &[&str] = &[
-    "WireEvent",
-    "WireDriver",
-    "WireFrame",
-    "run_wire_stream",
-    "triage_frame",
-];
+const WIRE_MACHINERY_MARKERS: &[&str] = &["WireEvent", "WireDriver", "WireFrame", "triage_frame"];
 
 fn is_serde_wall_target(path: &std::path::Path, shipped: &str) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
@@ -572,9 +568,16 @@ fn is_serde_wall_target(path: &std::path::Path, shipped: &str) -> bool {
     {
         return true;
     }
+    // A wire declaring the frame type its transport delivers names the type
+    // without handling a frame.
+    let machinery: String = shipped
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("type Frame ="))
+        .collect::<Vec<_>>()
+        .join("\n");
     WIRE_MACHINERY_MARKERS
         .iter()
-        .any(|marker| shipped.contains(marker))
+        .any(|marker| machinery.contains(marker))
 }
 
 /// One allowlist entry: `path suffix | line snippet | justification`.
@@ -1112,7 +1115,7 @@ fn serde_wall_scopes_by_machinery_content() {
         "crates/rig-core/src/providers/internal/openai_chat_completions_compatible.rs",
     );
     assert!(
-        is_serde_wall_target(compat, "use crate::driver::run_wire_stream;"),
+        is_serde_wall_target(compat, "use crate::driver::WireDriver;"),
         "a compat helper referencing the machinery must be scanned"
     );
     let future_helper = std::path::Path::new("crates/rig-core/src/providers/somegateway/sse.rs");
@@ -1310,7 +1313,7 @@ pub(super) fn gated_helper() -> u8 {
     7
 }
 
-fn after() { let _ = run_wire_stream(); }
+fn after() { let _ = drive_frames(); }
 
 #[cfg(test)]
 mod tests {
@@ -1322,7 +1325,7 @@ fn last() { let _ = triage_frame(); }
     let shipped = shipped_portion(source);
     assert!(shipped.contains("WireEvent::Unknown"), "{shipped}");
     assert!(
-        shipped.contains("run_wire_stream"),
+        shipped.contains("drive_frames"),
         "shipped code AFTER a gated helper must stay visible: {shipped}"
     );
     assert!(

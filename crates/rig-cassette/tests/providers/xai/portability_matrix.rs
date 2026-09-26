@@ -1,7 +1,6 @@
 //! xAI continues histories other wires produced on the Responses dialect:
 //! Anthropic-signed and Gemini-signed reasoning beside a tool exchange.
 
-use rig::completion::CompletionModel;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette;
@@ -12,10 +11,10 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(
-    client: rig::driver::Bound<rig::providers::openai::OpenAI>,
+    client: rig::providers::openai::OpenAI,
     cell: Cell,
-) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(source: Source) -> Cell {

@@ -1,21 +1,18 @@
 //! Cassette-backed Cohere tool-calling coverage.
 
-use rig::completion::{
-    AssistantContent, CompletionModel, FinishReason, ToolDefinition, message::ToolChoice,
-};
-use rig::prelude::*;
+use rig::completion::{AssistantContent, FinishReason, ToolDefinition, message::ToolChoice};
 
 use super::super::{
     CASSETTE_MODEL,
     support::{IntegerAdder, IntegerSubtract, with_cohere_cassette},
 };
 use crate::support::{TOOLS_PREAMBLE, TOOLS_PROMPT, assert_mentions_expected_number};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn tool_call_roundtrip() {
     with_cohere_cassette("tools/tool_call_roundtrip", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble(TOOLS_PREAMBLE)
             .tool(IntegerAdder)
             .tool(IntegerSubtract)
@@ -40,9 +37,8 @@ async fn required_tool_choice_is_accepted() {
     with_cohere_cassette(
         "tools/required_tool_choice_is_accepted",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request(TOOLS_PROMPT)
+            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let request = CompletionRequestBuilder::new(TOOLS_PROMPT)
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(ToolDefinition {
                     name: "subtract".to_string(),
@@ -60,7 +56,7 @@ async fn required_tool_choice_is_accepted() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("required tool choice should be accepted");
 
@@ -93,9 +89,8 @@ async fn required_tool_choice_selects_from_multiple_tools() {
     with_cohere_cassette(
         "tools/required_tool_choice_selects_from_multiple_tools",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Use the correct tool to calculate 9 - 4.")
+            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let request = CompletionRequestBuilder::new("Use the correct tool to calculate 9 - 4.")
                 .tool(rig::tool::tool_definition(&IntegerAdder))
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::Required)
@@ -103,7 +98,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
                 .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("REQUIRED with multiple tools should succeed");
             let tool_calls = response
@@ -132,16 +127,14 @@ async fn none_tool_choice_with_tools_returns_text() {
     with_cohere_cassette(
         "tools/none_tool_choice_with_tools_returns_text",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Calculate 9 - 4. Answer directly without calling a tool.")
+            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let request = CompletionRequestBuilder::new("Calculate 9 - 4. Answer directly without calling a tool.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::None)
-                .max_tokens(32)
-                .build();
+                .max_tokens(32).build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("NONE with tools should produce a direct response");
 
@@ -170,15 +163,13 @@ async fn none_tool_choice_without_tools_returns_text() {
     with_cohere_cassette(
         "tools/none_tool_choice_without_tools_returns_text",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Reply with the single word ready.")
+            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let request = CompletionRequestBuilder::new("Reply with the single word ready.")
                 .tool_choice(ToolChoice::None)
-                .max_tokens(16)
-                .build();
+                .max_tokens(16).build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("Cohere permits NONE without a tools parameter");
 
@@ -200,17 +191,17 @@ async fn strict_required_tool_choice_is_accepted() {
     with_cohere_cassette(
         "tools/strict_required_tool_choice_is_accepted",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Use the subtract tool to calculate 11 - 6.")
-                .tool(rig::tool::tool_definition(&IntegerSubtract))
-                .tool_choice(ToolChoice::Required)
-                .additional_params(serde_json::json!({"strict_tools": true}))
-                .max_tokens(128)
-                .build();
+            let model = rig::model(client.completion(CASSETTE_MODEL));
+            let request =
+                CompletionRequestBuilder::new("Use the subtract tool to calculate 11 - 6.")
+                    .tool(rig::tool::tool_definition(&IntegerSubtract))
+                    .tool_choice(ToolChoice::Required)
+                    .additional_params(serde_json::json!({"strict_tools": true}))
+                    .max_tokens(128)
+                    .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("strict_tools should compose with REQUIRED");
             let tool_call = response

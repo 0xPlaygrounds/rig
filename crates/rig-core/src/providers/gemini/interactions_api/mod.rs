@@ -47,21 +47,22 @@ impl Interactions {
 
 impl crate::wire::Wire for Interactions {
     type Op = crate::operation::Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = streaming::InteractionsDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
-            GenAiOperation::InteractionsStreaming
-        } else {
-            GenAiOperation::Interactions
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        match mode {
+            Mode::Unary => GenAiOperation::Interactions,
+            Mode::Streaming => GenAiOperation::InteractionsStreaming,
         }
     }
 
@@ -146,22 +147,23 @@ impl InteractionResume {
 
 impl crate::wire::Wire for InteractionResume {
     type Op = crate::operation::Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = streaming::InteractionsDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    /// The interaction names its own model; this wire addresses none.
-    fn model(&self) -> Option<&str> {
+    /// The interaction names its own model; this wire addresses no model id.
+    fn id(&self) -> Option<&str> {
         None
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
-            GenAiOperation::InteractionsStreaming
-        } else {
-            GenAiOperation::Interactions
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        match mode {
+            Mode::Unary => GenAiOperation::Interactions,
+            Mode::Streaming => GenAiOperation::InteractionsStreaming,
         }
     }
 

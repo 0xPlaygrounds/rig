@@ -1,119 +1,32 @@
-//! Runtime-independent completion events, response aggregation, and stream controls.
+//! Runtime-independent completion events, and [`Streamed`], the one stream
+//! every reply arrives as.
 //!
 //! ```
-//! use rig_core::streaming::PauseControl;
+//! use rig_core::streaming::{StreamEvent, StreamFinal};
+//! use rig_core::completion::Usage;
 //!
-//! let control = PauseControl::new();
-//! control.pause();
-//! assert!(control.is_paused());
-//! control.resume();
+//! let terminal = StreamEvent::Final(StreamFinal::new("mock", Usage::default(), serde_json::Value::Null));
+//! assert!(matches!(terminal, StreamEvent::Final(_)));
 //! ```
 
-mod accumulator;
 mod block_id;
 mod event;
 
-use futures::StreamExt as _;
-
 use crate::completion::{CompletionResponse, Usage};
+use crate::driver::{Step, record_request_id};
 use crate::error::ErrorReport;
 use crate::error::ProviderError;
 use crate::message::{AssistantContent, ToolResult};
-pub use accumulator::BlockAccumulator;
+use crate::operation::{AdapterOutput, Completion, CompletionFold};
+use crate::wasm_compat::WasmBoxedStream;
+use crate::wire::{Fold, Mode, Operation, Reply};
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
 pub use event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCallEnd};
-use futures::Stream;
-use futures::stream::{AbortHandle, Abortable};
-use futures::task::AtomicWaker;
+use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
-
-/// Mutable state borrowed for one event-folding step, shared by streaming
-/// responses and [`CompletionFold`](crate::operation::CompletionFold).
-pub(crate) struct FoldStep<'a> {
-    pub accumulator: &'a mut BlockAccumulator,
-    pub response: &'a mut Option<StreamFinal>,
-    pub message_id: &'a mut Option<String>,
-    pub provider: &'a mut String,
-    /// Whether the terminal record names the provider (a stream that came
-    /// over the bus) rather than the opener.
-    pub provider_from_terminal: bool,
-}
-
-/// What one fold step decided about an event.
-pub(crate) enum Absorbed {
-    /// Forward this event (possibly rewritten with the block it finalized).
-    Yield(StreamEvent),
-    /// The accumulator rejected it; the stream keeps consuming.
-    Failed(ErrorReport),
-    /// A duplicate terminal: the first one latched.
-    Skip,
-}
-
-/// Absorb one event into the fold.
-pub(crate) fn absorb(step: FoldStep<'_>, event: StreamEvent) -> Absorbed {
-    match event {
-        StreamEvent::BlockStart {
-            id,
-            kind: BlockKind::Message,
-        } => {
-            // The wire announced the assistant message's own id; it
-            // outranks the terminal record's.
-            if let Some(message_id) = id.wire_str() {
-                *step.message_id = Some(message_id.to_owned());
-            }
-            Absorbed::Yield(StreamEvent::BlockStart {
-                id,
-                kind: BlockKind::Message,
-            })
-        }
-        StreamEvent::Final(mut response) => {
-            // A second terminal is a provider defect; the first one latched.
-            if step.response.is_some() {
-                return Absorbed::Skip;
-            }
-            // Finish-reason reconciliation against the accumulator's
-            // authoritative view of completed calls, so a `stop` that was
-            // really a tool call reads the same on both surfaces.
-            response.finish_reason = response
-                .finish_reason
-                .map(|reason| reason.reconcile_with_output(step.accumulator.saw_tool_call()));
-            // An explicit message-id block keeps precedence; the terminal
-            // record only fills a gap.
-            if step.message_id.is_none() {
-                step.message_id.clone_from(&response.message_id);
-            }
-            if step.provider_from_terminal && !response.provider.is_empty() {
-                step.provider.clone_from(&response.provider);
-            }
-            *step.response = Some(response.clone());
-            Absorbed::Yield(StreamEvent::Final(response))
-        }
-        // Passed straight through; never folded into the aggregated choice.
-        StreamEvent::Unknown(value) => Absorbed::Yield(StreamEvent::Unknown(value)),
-        event => match step.accumulator.apply(&event) {
-            // A block end that finalized a block publishes it under the key
-            // its deltas carried.
-            Ok(Some((id, block))) => {
-                let StreamEvent::BlockEnd { end, .. } = event else {
-                    // Only ends finalize; the accumulator upholds it.
-                    return Absorbed::Yield(event);
-                };
-                Absorbed::Yield(StreamEvent::BlockEnd {
-                    id,
-                    end,
-                    block: Some(block),
-                })
-            }
-            Ok(None) => Absorbed::Yield(event),
-            // Malformed complete input surfaces in-band.
-            Err(error) => Absorbed::Failed(error),
-        },
-    }
-}
 
 /// Record `issuer` on every reasoning part of `choice` that names none.
 pub fn stamp_reasoning(choice: Vec<AssistantContent>, issuer: &str) -> Vec<AssistantContent> {
@@ -128,19 +41,19 @@ pub fn stamp_reasoning(choice: Vec<AssistantContent>, issuer: &str) -> Vec<Assis
         .collect()
 }
 
-/// The folded completion response: the aggregated choice, its reasoning
+/// The folded completion response: the collected choice, its reasoning
 /// stamped with `issuer`, plus the terminal record's usage and metadata,
 /// carrying `raw` as the provider's document for the turn. Usage reports no
 /// counter when the reply produced no terminal record.
 pub(crate) fn fold_finish(
-    mut accumulator: BlockAccumulator,
+    choice: Vec<AssistantContent>,
     terminal: Option<&StreamFinal>,
     message_id: Option<String>,
     provider: String,
     issuer: &str,
     raw: serde_json::Value,
 ) -> CompletionResponse {
-    let choice = stamp_reasoning(accumulator.finish(), issuer);
+    let choice = stamp_reasoning(choice, issuer);
     CompletionResponse::new(
         choice,
         terminal.map(|response| response.usage).unwrap_or_default(),
@@ -157,52 +70,6 @@ pub(crate) fn fold_finish(
     )
     .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
     .with_optional_model(terminal.and_then(|response| response.model.clone()))
-}
-
-/// Pause flag and single-consumer waker. Must not be shared across streams.
-struct PauseState {
-    paused: AtomicBool,
-    waker: AtomicWaker,
-}
-
-/// Control for pausing and resuming a streaming response
-#[derive(Clone)]
-pub struct PauseControl {
-    state: Arc<PauseState>,
-}
-
-impl PauseControl {
-    /// Create a pause controller in the running state.
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(PauseState {
-                paused: AtomicBool::new(false),
-                waker: AtomicWaker::new(),
-            }),
-        }
-    }
-
-    /// Pause polling of the public stream until [`PauseControl::resume`] is called.
-    pub fn pause(&self) {
-        self.state.paused.store(true, Ordering::Release);
-    }
-
-    /// Resume polling after a pause.
-    pub fn resume(&self) {
-        self.state.paused.store(false, Ordering::Release);
-        self.state.waker.wake();
-    }
-
-    /// Returns whether the stream is currently paused.
-    pub fn is_paused(&self) -> bool {
-        self.state.paused.load(Ordering::Acquire)
-    }
-}
-
-impl Default for PauseControl {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// Adapter-selected policy for tool arguments that fail to parse at an end event.
@@ -252,8 +119,8 @@ pub struct StreamFinal {
     /// Token usage reported by the provider for this streamed completion.
     /// A counter the provider did not report is `None`.
     pub usage: Usage,
-    /// Provider-reported finish reason. [`StreamingCompletionResponse`] reconciles
-    /// it with the completed tool calls before yielding the terminal event.
+    /// Provider-reported finish reason. The completion sink reconciles it
+    /// with the completed tool calls before the terminal event leaves it.
     #[serde(default)]
     pub finish_reason: Option<crate::completion::FinishReason>,
     /// Provider-assigned assistant message ID suitable for replay.
@@ -423,261 +290,204 @@ impl From<serde_json::Value> for UnknownPayload {
 #[cfg(test)]
 mod unknown_payload_tests;
 
-/// Adapter events with provider errors. [`StreamingCompletionResponse::stream`]
-/// converts errors to [`ErrorReport`] for consumers.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, ProviderError>> + Send>>;
+/// The one completion stream item type: what a [`CompletionStream`]
+/// yields, what a [`CompletionFold`] collects, what the bus carries.
+pub type StreamEvents =
+    crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, ErrorReport>>;
 
-/// The stream a provider hands to [`StreamingCompletionResponse::stream`]
-/// (browser wasm: `!Send` allowed).
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, ProviderError>>>>;
-
-/// The one stream item type: what [`StreamingCompletionResponse`] yields,
-/// what the accumulator applies, what the bus carries.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type StreamEvents = Pin<Box<dyn Stream<Item = Result<StreamEvent, ErrorReport>> + Send>>;
-
-/// The one stream item type (browser wasm: `!Send` allowed).
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type StreamEvents = Pin<Box<dyn Stream<Item = Result<StreamEvent, ErrorReport>>>>;
-
-pub struct StreamingCompletionResponse {
-    pub(crate) inner: Abortable<StreamEvents>,
-    pub(crate) abort_handle: AbortHandle,
-    pub(crate) pause_control: PauseControl,
-    /// Accumulates the streamed parts of the final aggregated choice.
-    accumulator: BlockAccumulator,
-    /// Stable descriptor name of the provider producing this stream.
-    ///
-    /// Known when the stream is opened rather than when it terminates, so a
-    /// stream that errors or is cancelled before its terminal record still
-    /// names its provider.
-    provider: String,
-    /// Whether the terminal record names the provider: a stream that came
-    /// over the bus ([`Self::from_events`]) is opened under the handler's
-    /// label, and the provider behind it is only known once its terminal
-    /// record arrives; a stream a provider opened ([`Self::stream`]) names
-    /// its provider up front.
-    provider_from_terminal: bool,
-    /// The issuer of this stream's reasoning when it is known before the
-    /// terminal record ([`Self::with_reasoning_issuer`]).
-    reasoning_issuer: Option<String>,
-    /// Prevents polling the inner stream after it ends.
+/// One reply as it arrives: its canonical events, and the fold that has
+/// seen each of them. It is what [`Model::stream`](crate::Model::stream)
+/// returns for every operation, and what a call drains.
+///
+/// Each event is stamped with what the transport reported about the reply
+/// (a completion's terminal record gets the request id), recorded on the
+/// call's span when streamed, and absorbed by the fold before it is
+/// yielded. A failure is an in-band error item. Stop polling to pause; drop
+/// the stream to cancel.
+pub struct Streamed<Op: Operation> {
+    steps: WasmBoxedStream<'static, Result<Step<Op>, ProviderError>>,
+    fold: Op::Fold,
+    mode: Mode,
+    span: tracing::Span,
+    /// What the transport reported so far: the provider, the latest page's
+    /// request id, and once the reply closed, its document.
+    reply: Reply,
     finished: bool,
-    /// The provider's normalized terminal record, `None` until the stream
-    /// yields it (and forever on truncation or a terminal error).
-    pub response: Option<StreamFinal>,
-    /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
-    pub message_id: Option<String>,
 }
 
-impl StreamingCompletionResponse {
-    /// Wrap a provider stream and initialize aggregation state.
-    ///
-    /// `provider` is the stable descriptor name of the provider producing the
-    /// stream; it is recorded up front so it is available even when the stream
-    /// never reaches its terminal record.
-    pub fn stream(provider: impl Into<String>, inner: StreamingResult) -> Self {
-        // The one place a provider's error half becomes the wire's: from
-        // here on every item is `Result<StreamEvent, ErrorReport>`.
-        let mapped: StreamEvents =
-            Box::pin(inner.map(|item| item.map_err(|error| ErrorReport::from(&error))));
-        Self {
-            provider_from_terminal: false,
-            ..Self::from_events(provider, mapped)
-        }
-    }
+/// A streamed completion.
+pub type CompletionStream = Streamed<Completion>;
 
-    /// Wraps normalized events without error conversion. Uses `provider` until
-    /// a terminal record supplies a nonempty provider name.
-    pub fn from_events(provider: impl Into<String>, inner: StreamEvents) -> Self {
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let abortable_stream = Abortable::new(inner, abort_registration);
-        let pause_control = PauseControl::new();
+impl<Op: Operation> Streamed<Op> {
+    /// The reply `steps` deliver under `span`, folded by `fold`.
+    pub(crate) fn new(
+        steps: WasmBoxedStream<'static, Result<Step<Op>, ProviderError>>,
+        fold: Op::Fold,
+        mode: Mode,
+        span: tracing::Span,
+        provider: impl Into<String>,
+    ) -> Self {
         Self {
-            inner: abortable_stream,
-            abort_handle,
-            pause_control,
-            accumulator: BlockAccumulator::new(),
-            provider: provider.into(),
-            provider_from_terminal: true,
-            reasoning_issuer: None,
+            steps,
+            fold,
+            mode,
+            span,
+            reply: Reply {
+                provider: provider.into(),
+                raw: serde_json::Value::Null,
+                provider_request_id: None,
+            },
             finished: false,
-            response: None,
-            message_id: None,
         }
     }
 
-    /// Stable descriptor name of the provider producing this stream.
-    pub fn provider(&self) -> &str {
-        &self.provider
+    /// What the fold has seen so far.
+    pub fn folded(&self) -> &Op::Fold {
+        &self.fold
     }
 
-    /// Name the issuer of this stream's reasoning up front, for a transport
-    /// or deployment of another provider's models, so a partial turn taken
-    /// before the terminal record records it too. The terminal record must
-    /// name the same issuer ([`StreamFinal::with_reasoning_issuer`]): once
-    /// it arrives, it is the one read.
-    pub fn with_reasoning_issuer(mut self, issuer: impl Into<String>) -> Self {
-        self.reasoning_issuer = Some(issuer.into());
-        self
-    }
-
-    /// The issuer this stream's reasoning records: the terminal record's
-    /// [`StreamFinal::issuer`] once it has arrived; before it, the issuer
-    /// named up front, else the provider that opened the stream. `None`
-    /// before the terminal of a stream rebuilt from events
-    /// ([`Self::from_events`]), whose opening label names a handler, not an
-    /// issuer: its reasoning is then of unknown provenance.
-    pub fn reasoning_issuer(&self) -> Option<&str> {
-        match &self.response {
-            Some(terminal) => Some(terminal.issuer()),
-            None => self
-                .reasoning_issuer
-                .as_deref()
-                .or((!self.provider_from_terminal).then_some(self.provider.as_str())),
+    /// The response the events seen so far fold into. Events not yet polled
+    /// are not part of it. A unary call's response is recorded on its span.
+    pub fn finish(self) -> Result<Op::Response, ProviderError> {
+        let response = self.fold.finish(self.reply)?;
+        if self.mode == Mode::Unary {
+            Op::record(&self.span, &response);
         }
+        Ok(response)
     }
 
-    /// Returns the accumulated choice without consuming it.
-    /// See [`BlockAccumulator::snapshot`] for unfinished and empty-part handling.
-    pub fn snapshot(&self) -> Vec<AssistantContent> {
-        self.accumulator.snapshot()
-    }
-
-    /// Consume the stream into the unary response shape: the aggregated
-    /// choice, the terminal record's usage and metadata, and the terminal
-    /// record's document as `raw`. A stream that produced no terminal
-    /// record is truncated per the emission contract and is refused: there
-    /// is no document to build a response from.
-    ///
-    /// Events not yet polled are not part of the choice: drain the stream
-    /// first when the whole turn is wanted.
-    pub fn finish(self) -> Result<CompletionResponse, ProviderError> {
-        let Some(terminal) = self.response.as_ref() else {
-            return Err(ProviderError::Response(
-                "provider stream ended without a terminal record; treating the turn as truncated"
-                    .to_owned(),
-            ));
-        };
-        let issuer = terminal.issuer().to_owned();
-        Ok(fold_finish(
-            self.accumulator,
-            Some(terminal),
-            self.message_id.clone(),
-            self.provider.clone(),
-            &issuer,
-            terminal.raw.clone(),
-        ))
-    }
-
-    /// Cancel the stream and immediately drop the provider's inner stream.
-    /// Cancellation is surfaced as normal stream termination.
-    ///
-    /// Cancelling also resumes a paused stream: a consumer parked on the
-    /// pause channel must observe the termination instead of waiting forever
-    /// for a resume that will never affect a stream that no longer exists.
-    pub fn cancel(&mut self) {
-        self.abort_handle.abort();
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let empty: StreamEvents = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
-        self.inner = Abortable::new(empty, abort_registration);
-        self.abort_handle = abort_handle;
-        self.pause_control.resume();
-    }
-
-    /// Pause stream polling.
-    pub fn pause(&self) {
-        self.pause_control.pause();
-    }
-
-    /// Resume stream polling after a pause.
-    pub fn resume(&self) {
-        self.pause_control.resume();
-    }
-
-    /// Returns whether the stream is currently paused.
-    pub fn is_paused(&self) -> bool {
-        self.pause_control.is_paused()
-    }
-
-    /// Returns terminal usage, or [`Usage::default`] before a terminal record.
-    /// Unreported counters remain `None`.
-    pub fn usage(&self) -> Usage {
-        self.response
-            .as_ref()
-            .map(|response| response.usage)
-            .unwrap_or_default()
-    }
-
-    /// Returns response identity. A message-start ID takes precedence over the
-    /// terminal message ID. Response and transport IDs require a terminal record.
-    pub fn identity(&self) -> crate::completion::ResponseIdentity {
-        crate::completion::ResponseIdentity {
-            message_id: self.message_id.clone(),
-            ..self
-                .response
-                .as_ref()
-                .map(StreamFinal::identity)
-                .unwrap_or_default()
+    /// Poll to the end, then finish: a call's response. The first error
+    /// fails it.
+    pub(crate) async fn drain(mut self) -> Result<Op::Response, ProviderError> {
+        while let Some(item) = futures::future::poll_fn(|cx| self.poll_step(cx)).await {
+            item?;
         }
+        self.finish()
     }
-}
 
-impl Stream for StreamingCompletionResponse {
-    type Item = Result<StreamEvent, ErrorReport>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let stream = self.get_mut();
-
-        // Do not poll the inner stream after termination.
-        if stream.finished {
-            return Poll::Ready(None);
-        }
-
-        if stream.is_paused() {
-            // Register before rechecking to avoid losing a concurrent resume.
-            // Parking without a self-wake prevents busy polling while paused.
-            stream.pause_control.state.waker.register(cx.waker());
-            if stream.is_paused() {
-                return Poll::Pending;
+    /// The one place a step is consumed: an opened page's request id goes
+    /// on the span, an event is stamped, recorded and absorbed, an error is
+    /// stamped with the request id, and the closed reply is kept.
+    fn poll_step(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Op::Event, ProviderError>>> {
+        while !self.finished {
+            let step = match self.steps.as_mut().poll_next(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(None) => {
+                    self.finished = true;
+                    break;
+                }
+                Poll::Ready(Some(step)) => step,
+            };
+            match step {
+                Ok(Step::Opened(page)) => {
+                    record_request_id(&self.span, page.request_id.as_deref());
+                    self.reply.provider_request_id = page.request_id;
+                }
+                Ok(Step::Event(mut event)) => {
+                    Op::stamp_event(&mut event, &self.reply);
+                    if self.mode == Mode::Streaming {
+                        Op::record_event(&self.span, &event);
+                    }
+                    return Poll::Ready(Some(self.fold.absorb(&event).map(|()| event)));
+                }
+                Ok(Step::Closed(reply)) => self.reply = reply,
+                Err(error) => {
+                    // An id an upstream constructor already attached wins:
+                    // it saw the reply.
+                    let error =
+                        error.with_provider_request_id(self.reply.provider_request_id.clone());
+                    record_request_id(&self.span, error.provider_request_id());
+                    return Poll::Ready(Some(Err(error)));
+                }
             }
         }
+        Poll::Ready(None)
+    }
+}
 
-        // Iterate over duplicate terminals without growing the stack.
+impl Streamed<Completion> {
+    /// A stream relayed over the bus under `label`, whose terminal record
+    /// names the provider behind it. Its events pass one completion sink as
+    /// they arrive, ended with [`Sink::finish`](crate::wire::Sink::finish) at
+    /// the end of the stream, so the relay yields canonical events whatever
+    /// the origin sent. Canonical events pass unchanged. Items past the
+    /// terminal pass through, except a second terminal, which is dropped. An
+    /// error item passes when it arrives, so the closes the end of the stream
+    /// adds follow it.
+    pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
+        let label = label.into();
+        let steps = Canonical {
+            events,
+            sink: AdapterOutput::new(),
+            ready: VecDeque::new(),
+            ended: false,
+        }
+        .map(|item| item.map(Step::Event));
+        Self::new(
+            Box::pin(steps),
+            CompletionFold::relayed(label.clone()),
+            Mode::Streaming,
+            tracing::Span::none(),
+            label,
+        )
+    }
+}
+
+/// Relayed items as one completion sink makes them canonical, drained as
+/// each arrives. An error item passes at once: a relay cannot tell a
+/// terminal failure from an in-band one, so the closes the end of the stream
+/// adds follow it, as they do after a decoder's in-band error.
+struct Canonical {
+    events: StreamEvents,
+    sink: AdapterOutput,
+    ready: VecDeque<Result<StreamEvent, ProviderError>>,
+    ended: bool,
+}
+
+impl Stream for Canonical {
+    type Item = Result<StreamEvent, ProviderError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
         loop {
-            return match Pin::new(&mut stream.inner).poll_next(cx) {
-                Poll::Pending => Poll::Pending,
+            if let Some(item) = this.ready.pop_front() {
+                return Poll::Ready(Some(item));
+            }
+            if this.ended {
+                return Poll::Ready(None);
+            }
+            match this.events.as_mut().poll_next(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Some(item)) => this
+                    .sink
+                    .push(item.map_err(|report| ProviderError::Relayed(Box::new(report)))),
                 Poll::Ready(None) => {
-                    stream.finished = true;
-                    Poll::Ready(None)
+                    this.ended = true;
+                    crate::wire::Sink::<Completion>::finish(&mut this.sink);
                 }
-                // Cancellation ends the stream without an error item; actual
-                // errors remain visible even if later events can recover.
-                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
-                Poll::Ready(Some(Ok(event))) => {
-                    let step = FoldStep {
-                        accumulator: &mut stream.accumulator,
-                        response: &mut stream.response,
-                        message_id: &mut stream.message_id,
-                        provider: &mut stream.provider,
-                        provider_from_terminal: stream.provider_from_terminal,
-                    };
-                    match absorb(step, event) {
-                        Absorbed::Yield(event) => Poll::Ready(Some(Ok(event))),
-                        // The stream keeps consuming, matching the
-                        // malformed-frame contract.
-                        Absorbed::Failed(error) => Poll::Ready(Some(Err(error))),
-                        Absorbed::Skip => continue,
-                    }
-                }
-            };
+            }
+            this.ready.extend(this.sink.drain());
         }
     }
 }
 
-// Test module
+// Nothing is pinned in place: the steps are boxed and the fold is only
+// ever reached through `&mut`.
+impl<Op: Operation> Unpin for Streamed<Op> {}
+
+impl<Op: Operation> Stream for Streamed<Op> {
+    type Item = Result<Op::Event, ErrorReport>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut()
+            .poll_step(cx)
+            .map(|item| item.map(|item| item.map_err(|error| ErrorReport::from(&error))))
+    }
+}
+
 #[cfg(test)]
 mod tests;
 

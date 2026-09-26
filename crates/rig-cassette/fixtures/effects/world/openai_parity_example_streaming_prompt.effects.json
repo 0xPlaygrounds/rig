@@ -78,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -432,6 +432,17 @@
           "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
           }
         },
         {

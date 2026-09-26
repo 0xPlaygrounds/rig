@@ -1,12 +1,11 @@
 //! Cassette-backed OpenAI Responses coverage for URL-backed PDF documents.
 //!
 //! Regression coverage for sending a `DocumentSourceKind::Url` PDF through
-//! `CompletionModel::completion()`: the request must carry `file_url` without
+//! `Model::call`: the request must carry `file_url` without
 //! the hardcoded `filename`, which the Responses API rejects alongside a URL
 //! with 400 `mutually_exclusive_parameters`.
 //! See <https://platform.openai.com/docs/guides/pdf-files>.
 use rig::message::{DocumentMediaType, Message, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
@@ -19,12 +18,11 @@ async fn url_pdf_document_prompt() {
     with_openai_cassette(
         "url_pdf_document/url_pdf_document_prompt",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble("You are a helpful assistant that analyzes documents.")
-                .temperature(0.0)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble("You are a helpful assistant that analyzes documents.")
+                    .temperature(0.0)
+                    .build();
 
             let response = agent
                 .prompt(Message::User {

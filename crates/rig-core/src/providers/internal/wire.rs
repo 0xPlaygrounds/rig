@@ -3,44 +3,13 @@
 //! become ignorable unknown events.
 //!
 //! ```
-//! use rig_core::providers::internal::wire::{classify_untyped_line, WireEvent};
+//! use rig_core::providers::internal::wire::classify_untyped_line;
+//! use rig_core::wire::WireEvent;
 //! let event = classify_untyped_line::<serde_json::Value>(b"{}");
 //! assert!(matches!(event, WireEvent::Known(_)));
 //! ```
 
-/// One classified wire frame.
-#[derive(Debug)]
-pub enum WireEvent<T> {
-    /// The frame carries a discriminator this client models and its payload
-    /// decoded fully.
-    Known(T),
-    /// Valid JSON not recognized by this classifier.
-    /// Drivers log structural metadata only and skip interpretation.
-    Unknown {
-        /// The unmodeled discriminator value.
-        event_type: String,
-        /// Full payload for raw passthrough, never warning logs. Debug is redacted.
-        value: crate::streaming::UnknownPayload,
-    },
-    /// Invalid JSON or a recognized frame that failed typed decoding.
-    /// Must not be demoted to `Unknown`.
-    Corrupt(serde_json::Error),
-}
-
-impl<T> WireEvent<T> {
-    /// Map the `Known` payload, preserving the classification.
-    ///
-    /// This is how an adapter layers a pure event-shape mapping on top of a
-    /// classifier without restating the triage: `Unknown` and `Corrupt` pass
-    /// through untouched, so policy stays with the driver.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> WireEvent<U> {
-        match self {
-            Self::Known(event) => WireEvent::Known(f(event)),
-            Self::Unknown { event_type, value } => WireEvent::Unknown { event_type, value },
-            Self::Corrupt(error) => WireEvent::Corrupt(error),
-        }
-    }
-}
+use crate::wire::{TypedEvent, WireEvent};
 
 /// Classify JSON by its top-level `tag` string.
 /// Unknown strings and non-object JSON produce `Unknown`. Known, missing, or
@@ -167,24 +136,6 @@ where
         Ok(event) => WireEvent::Known(event),
         Err(error) => WireEvent::Corrupt(error),
     }
-}
-
-/// Triage of one already-deserialized event from a typed-transport wire
-/// (an aws-sdk event stream, a prost/tonic gRPC stream, an in-process
-/// generation channel), for [`classify_typed_event`].
-#[derive(Debug)]
-pub enum TypedEvent<T> {
-    /// A variant this client models.
-    Modeled(T),
-    /// An unrecognized variant reported by the transport SDK.
-    Unrecognized {
-        /// Discriminator for the driver's warn log.
-        event_type: String,
-        /// Frame detail retained for raw passthrough, not warning logs.
-        detail: String,
-    },
-    /// SDK decode failure for a modeled event.
-    Malformed(String),
 }
 
 /// Map modeled SDK events to `Known`, unrecognized events to `Unknown`, and

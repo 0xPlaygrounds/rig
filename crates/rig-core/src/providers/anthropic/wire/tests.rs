@@ -35,7 +35,7 @@ const STREAMED: &str = concat!(
 );
 
 fn wire() -> Messages {
-    Anthropic::new("sk-test").messages("claude-haiku-4-5")
+    Anthropic::new("sk-test").completion("claude-haiku-4-5")
 }
 
 fn request() -> CompletionRequest {
@@ -73,10 +73,10 @@ fn fold(body: &str, mode: Mode) -> crate::completion::CompletionResponse {
         Mode::Unary => driver.push(WireFrame::Text(body.to_owned())),
     }
     driver.finish();
-    let mut fold = <Completion as crate::wire::Operation>::fold(&request());
+    let mut fold = <Completion as crate::wire::Operation>::fold(&request(), &wire, mode);
     for item in driver.drain() {
         let event = item.expect("the recorded reply decodes without an in-band error");
-        fold.absorb(event).expect("the fold accepts every event");
+        fold.absorb(&event).expect("the fold accepts every event");
     }
     Fold::<Completion>::finish(
         fold,
@@ -183,7 +183,7 @@ fn a_serialized_provider_never_carries_its_key() {
         &provider.api_key
     });
 
-    let wire = provider.messages("claude-haiku-4-5");
+    let wire = provider.completion("claude-haiku-4-5");
     let json = serde_json::to_string(&wire).expect("the wire serializes");
     assert!(!json.contains("sk-live-do-not-leak"));
     let restored: Messages = serde_json::from_str(&json).expect("the wire round-trips");
