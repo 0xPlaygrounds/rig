@@ -1,8 +1,10 @@
 //! Portable streaming types re-exported for classic runtime users.
 //!
 //! ```
-//! let fold = rig_agent::streaming::CompletionFold::default();
-//! assert!(fold.snapshot().is_empty());
+//! use rig_agent::streaming::{BlockId, MintKind, StreamEvent};
+//!
+//! let event = StreamEvent::text(BlockId::minted(MintKind::Text, 0), "hi");
+//! assert_eq!(event.name(), "BlockDelta");
 //! ```
 
 pub use rig_core::streaming::*;

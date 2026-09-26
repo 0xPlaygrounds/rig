@@ -4,6 +4,43 @@ use crate::message::AdditionalParams;
 use crate::message::ToolCallId;
 use crate::streaming::{MintKind, non_empty_id};
 
+/// The test-side views of the assembly: the choice so far, and the choice
+/// taken with every key reset.
+impl BlockAccumulator {
+    /// An empty accumulator.
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Clones the accumulated choice without changing state. Omits unfinished
+    /// tool calls and text with neither content nor metadata; retains open
+    /// reasoning. Repeated snapshots without new events are equal.
+    pub(super) fn snapshot(&self) -> Vec<AssistantContent> {
+        self.parts
+            .iter()
+            .filter(|part| Self::survives(part))
+            .cloned()
+            .collect()
+    }
+
+    /// Returns the same parts as [`Self::snapshot`] and resets all state.
+    /// A stream with no content produces an empty vector.
+    pub(super) fn finish(&mut self) -> Vec<AssistantContent> {
+        let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
+            .into_iter()
+            .filter(Self::survives)
+            .collect();
+        self.open_reasoning.clear();
+        self.finished_reasoning.clear();
+        self.text_ids.clear();
+        self.open_tool_inputs.clear();
+        self.finished_tools.clear();
+        self.saw_tool_call = false;
+        self.unclosed.clear();
+        parts
+    }
+}
+
 /// Test-side key syntax: legacy minted renderings decode to minted
 /// keys; anything else is wire-derived.
 fn pid(id: &str) -> BlockId {

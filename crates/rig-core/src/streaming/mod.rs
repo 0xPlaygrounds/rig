@@ -427,25 +427,6 @@ impl Streamed<Completion> {
     }
 }
 
-#[cfg(test)]
-impl Streamed<Completion> {
-    /// A stream `provider` opened over `items`, as the driver yields them,
-    /// with the reasoning `issuer` it names up front.
-    pub(crate) fn scripted(
-        provider: &str,
-        issuer: Option<&str>,
-        items: impl Stream<Item = Result<StreamEvent, ProviderError>> + Send + 'static,
-    ) -> Self {
-        Self::new(
-            Box::pin(items.map(|item| item.map(Step::Event))),
-            CompletionFold::opened(provider, issuer.map(str::to_owned), Mode::Streaming),
-            Mode::Streaming,
-            tracing::Span::none(),
-            provider,
-        )
-    }
-}
-
 // Nothing is pinned in place: the steps are boxed and the fold is only
 // ever reached through `&mut`.
 impl<Op: Operation> Unpin for Streamed<Op> {}

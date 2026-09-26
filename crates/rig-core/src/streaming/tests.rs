@@ -33,7 +33,7 @@ fn opened(
     provider: &str,
     events: impl futures::Stream<Item = Result<StreamEvent, ProviderError>> + Send + 'static,
 ) -> CompletionStream {
-    CompletionStream::scripted(provider, None, events)
+    crate::test_utils::scripted_stream(provider, None, events)
 }
 
 /// Script a provider's output through the same helpers adapters use, so

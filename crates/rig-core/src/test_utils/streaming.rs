@@ -341,3 +341,28 @@ impl MockStreamEvent {
         Ok(())
     }
 }
+
+/// A completion stream `provider` opened over `items`, as the driver yields
+/// them, with the reasoning `issuer` it names up front.
+#[cfg(test)]
+pub(crate) fn scripted_stream(
+    provider: &str,
+    issuer: Option<&str>,
+    items: impl futures::Stream<Item = Result<crate::streaming::StreamEvent, ProviderError>>
+    + Send
+    + 'static,
+) -> crate::streaming::CompletionStream {
+    use futures::StreamExt;
+
+    crate::streaming::Streamed::new(
+        Box::pin(items.map(|item| item.map(crate::driver::Step::Event))),
+        crate::operation::CompletionFold::opened(
+            provider,
+            issuer.map(str::to_owned),
+            crate::wire::Mode::Streaming,
+        ),
+        crate::wire::Mode::Streaming,
+        tracing::Span::none(),
+        provider,
+    )
+}

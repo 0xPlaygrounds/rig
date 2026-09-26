@@ -229,7 +229,7 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
 
     // A provider that opens its own stream knows the issuer up front.
     let opened = |provider: &str, issuer: Option<&str>, items: Items| {
-        CompletionStream::scripted(provider, issuer, futures::stream::iter(items))
+        crate::test_utils::scripted_stream(provider, issuer, futures::stream::iter(items))
     };
     let mut stream = opened(
         "aws_bedrock",

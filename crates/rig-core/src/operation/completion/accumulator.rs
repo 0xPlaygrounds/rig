@@ -67,12 +67,6 @@ struct OpenToolInput {
 const MAX_TOOL_INPUT_BYTES: usize = 32 * 1024 * 1024;
 
 impl BlockAccumulator {
-    /// An empty accumulator.
-    #[cfg(test)]
-    pub(super) fn new() -> Self {
-        Self::default()
-    }
-
     /// Fold one event into the accumulated choice.
     ///
     /// Returns the block a `BlockEnd` finalized, keyed by the block id it
@@ -694,36 +688,6 @@ impl BlockAccumulator {
                 self.open_tool_inputs.len() - 1
             }
         }
-    }
-
-    /// Clones the accumulated choice without changing state. Omits unfinished
-    /// tool calls and text with neither content nor metadata; retains open
-    /// reasoning. Repeated snapshots without new events are equal.
-    #[cfg(test)]
-    pub(super) fn snapshot(&self) -> Vec<AssistantContent> {
-        self.parts
-            .iter()
-            .filter(|part| Self::survives(part))
-            .cloned()
-            .collect()
-    }
-
-    /// Returns the same parts as [`Self::snapshot`] and resets all state.
-    /// A stream with no content produces an empty vector.
-    #[cfg(test)]
-    pub(super) fn finish(&mut self) -> Vec<AssistantContent> {
-        let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
-            .into_iter()
-            .filter(Self::survives)
-            .collect();
-        self.open_reasoning.clear();
-        self.finished_reasoning.clear();
-        self.text_ids.clear();
-        self.open_tool_inputs.clear();
-        self.finished_tools.clear();
-        self.saw_tool_call = false;
-        self.unclosed.clear();
-        parts
     }
 
     fn survives(part: &AssistantContent) -> bool {
