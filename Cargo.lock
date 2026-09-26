@@ -11134,6 +11134,7 @@ dependencies = [
  "anyhow",
  "axum 0.8.9",
  "hyper-util",
+ "reqwest 0.13.4",
  "rig",
  "rmcp",
  "schemars 1.2.1",
