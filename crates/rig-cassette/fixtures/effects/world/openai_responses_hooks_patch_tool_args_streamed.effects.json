@@ -2,11 +2,35 @@
   "header": {
     "deliveries": [
       {
+        "batch": 19,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -14,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -22,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -30,19 +54,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 27,
+        "batch": 32,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -50,37 +66,21 @@
         }
       },
       {
-        "batch": 28,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 40,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 40,
+        "batch": 32,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 41,
+        "batch": 33,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 55,
+        "batch": 44,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -88,7 +88,7 @@
         }
       },
       {
-        "batch": 57,
+        "batch": 46,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -96,7 +96,7 @@
         }
       },
       {
-        "batch": 71,
+        "batch": 50,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -104,7 +104,7 @@
         }
       },
       {
-        "batch": 71,
+        "batch": 50,
         "id": 2,
         "kind": {
           "delivery": "outcome"

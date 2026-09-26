@@ -166,8 +166,14 @@ The other commands:
   credentials, account ids, emails and home paths. It matches case-sensitively
   on whole tokens, and searches for every exported `*_API_KEY`, `*_TOKEN` and
   `*_SECRET` value literally.
-- `cassette goldens [--test TARGET]...` regenerates effect goldens from
-  replay and reverts churn that only touches `header.deliveries`.
+- `cassette goldens [--base REF] [--test TARGET]...` regenerates effect
+  goldens from replay and reverts churn that only touches
+  `header.deliveries`. A golden whose content changed keeps the delivery
+  batches it has at `REF` (default `HEAD`). Each batch's `items` grows by the
+  `block_end` events inserted into it: an inserted event counts toward the
+  batch that delivers the item after it, or the effect's last stream batch
+  when nothing follows it. It fails on an inserted event that is not a
+  `block_end` before a `final`, a stream error or the end of the stream.
 - `cassette cleanup [ledger.jsonl]` runs the cleanup pass on its own.
 
 The recorder refuses to write a fixture, and panics, in two cases:

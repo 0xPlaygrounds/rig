@@ -2,30 +2,22 @@
   "header": {
     "deliveries": [
       {
-        "batch": 1,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 7,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 8,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -33,7 +25,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"

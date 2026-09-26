@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,7 +17,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -25,7 +25,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"

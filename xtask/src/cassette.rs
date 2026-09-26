@@ -26,9 +26,10 @@ pub(crate) const USAGE: &str = "\
                               price every attempt in the ledger
   cassette scan [--base REF] [<fixture>...]
                               scan changed fixtures for credentials and account data
-  cassette goldens [--test TARGET]...
-                              regenerate effect goldens from replay and revert
-                              delivery-only churn
+  cassette goldens [--base REF] [--test TARGET]...
+                              regenerate effect goldens from replay, revert
+                              delivery-only churn and keep REF's (default HEAD)
+                              delivery batches
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";
 

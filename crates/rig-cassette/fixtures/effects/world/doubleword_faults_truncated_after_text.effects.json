@@ -14,19 +14,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 14
+          "items": 17
         }
       },
       {
-        "batch": 4,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 4,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
