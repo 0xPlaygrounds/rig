@@ -35,6 +35,7 @@ enum Step {
     Unknown,
     Final(Option<FinishReason>),
     Error(String),
+    EmptyMalformedInput(u8),
 }
 
 fn text_key(key: u8) -> BlockId {
@@ -110,6 +111,7 @@ fn step() -> impl Strategy<Value = Step> {
         ]
         .prop_map(Step::Final),
         "[a-z]{1,4}".prop_map(Step::Error),
+        (0u8..3).prop_map(Step::EmptyMalformedInput),
     ]
 }
 
@@ -171,6 +173,15 @@ fn apply(out: &mut AdapterOutput, step: Step) {
                 .with_optional_finish_reason(reason),
         ),
         Step::Error(message) => out.error(ProviderError::Provider(message)),
+        Step::EmptyMalformedInput(key) => out.error(ProviderError::MalformedToolInput(
+            crate::error::MalformedToolInput {
+                name: "lookup".to_owned(),
+                id: crate::message::ToolCallId::from_block(&tool_key(key)),
+                provider: None,
+                raw: String::new(),
+                error: "tool-call input exceeded the accumulation bound".to_owned(),
+            },
+        )),
     }
 }
 
@@ -216,8 +227,7 @@ fn copied(
 }
 
 /// `steps` through a sink, ended as the driver ends a reply.
-fn once(steps: Vec<Step>) -> Vec<Result<StreamEvent, ProviderError>> {
-    let mut out = AdapterOutput::new();
+fn once(mut out: AdapterOutput, steps: Vec<Step>) -> Vec<Result<StreamEvent, ProviderError>> {
     for step in steps {
         apply(&mut out, step);
     }
@@ -227,7 +237,7 @@ fn once(steps: Vec<Step>) -> Vec<Result<StreamEvent, ProviderError>> {
 
 /// Canonicalizing `steps`' items again changes nothing, relayed or not.
 fn assert_idempotent(steps: Vec<Step>) -> Vec<Result<StreamEvent, ProviderError>> {
-    let items = once(steps);
+    let items = once(AdapterOutput::new(), steps);
     for relayed in [true, false] {
         let twice = canonical(copied(&items, relayed));
         assert_eq!(comparable(&items), comparable(&twice), "relayed: {relayed}");
@@ -246,8 +256,10 @@ proptest! {
     fn canonicalizing_twice_is_canonicalizing_once(
         steps in proptest::collection::vec(step(), 0..24),
         relayed in any::<bool>(),
+        self_closing in any::<bool>(),
     ) {
-        let items = once(steps);
+        let out = if self_closing { AdapterOutput::self_closing() } else { AdapterOutput::new() };
+        let items = once(out, steps);
         let twice = canonical(copied(&items, relayed));
         prop_assert_eq!(comparable(&items), comparable(&twice));
     }
@@ -418,6 +430,34 @@ fn an_error_item_pushed_by_hand_finishes_the_call_it_reports() {
 #[test]
 fn a_relayed_error_item_pushed_by_hand_finishes_the_call_it_reports() {
     reported_error_ends_call(true);
+}
+
+mod relay_properties;
+
+/// Overflow of the first fragment leaves an empty buffer but still reports
+/// malformed input. Ordinary empty input parses as a parameterless call.
+#[test]
+fn an_oversized_first_fragment_reports_and_abandons_an_empty_buffer() {
+    let mut out = AdapterOutput::new();
+    out.tool_name(&tool_key(0), "lookup");
+    out.tool_arguments(&tool_key(0), "x".repeat(32 * 1024 * 1024 + 1));
+    out.tool_end(tool_key(0), ToolCallEnd::new(UnparseableToolInput::Error));
+    let items = out.into_items();
+    assert!(items.iter().any(|item| matches!(item,
+        Err(ProviderError::MalformedToolInput(input)) if input.raw.is_empty()
+    )));
+    for relayed in [false, true] {
+        let mut out = AdapterOutput::new();
+        for item in copied(&items, relayed) {
+            out.push(item);
+        }
+        out.tool_end(
+            tool_key(0),
+            ToolCallEnd::new(UnparseableToolInput::EmptyObject),
+        );
+        Sink::<Completion>::finish(&mut out);
+        assert_eq!(tool_calls(&out.into_items()), 0);
+    }
 }
 
 #[test]
