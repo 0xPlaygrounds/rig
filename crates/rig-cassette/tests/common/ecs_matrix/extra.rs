@@ -401,6 +401,9 @@ pub(crate) enum Cut {
     AfterTerminal,
 }
 
+/// How long each pass of a cancellation cell waits before the next.
+const SLOW_PASS: std::time::Duration = std::time::Duration::from_millis(5);
+
 #[derive(Resource)]
 struct CancelAt {
     cut: Cut,
@@ -484,10 +487,15 @@ pub(crate) async fn cancel_at<W, T>(
     let mut cell = *cell;
     cell.program.hooks = &[];
     let program = wire.program(&cell);
-    // The tool-call cut parks the stream at its first tool delta: a
-    // scripted stream would otherwise finish within the pass that
-    // published it, leaving nothing in flight to refuse the despawn.
-    let gate = (cut == Cut::FirstToolCallDelta).then_some(true);
+    // A delta cut parks the stream at its first delta of that kind: a
+    // scripted stream would otherwise finish within the pass that published
+    // it, or during a slow pass, leaving nothing in flight to refuse the
+    // despawn.
+    let gate = match cut {
+        Cut::FirstTextDelta => Some(false),
+        Cut::FirstToolCallDelta => Some(true),
+        Cut::AfterTerminal => None,
+    };
     let (mut app, agent, recorder, gates) = open_gated(wire, &cell, &program, gate);
     app.insert_resource(CancelAt { cut, done: false })
         .add_systems(
@@ -513,7 +521,9 @@ pub(crate) async fn cancel_at<W, T>(
             start.elapsed() < GUARD,
             "{cut:?}: the run was not cancelled"
         );
-        tokio::task::yield_now().await;
+        // Every pass is slow, as on a loaded machine: a stream the gate
+        // does not park delivers the rest of itself before the cut is seen.
+        tokio::time::sleep(SLOW_PASS).await;
     }
     assert!(
         matches!(
