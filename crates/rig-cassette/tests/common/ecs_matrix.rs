@@ -59,10 +59,8 @@ pub(crate) mod stream_delivery;
 #[path = "ecs_matrix/world.rs"]
 pub(crate) mod world;
 
-use rig_agent::completion::CompletionModel;
-
-use rig_core::driver::Bound;
-use rig_core::http_client::BoxedHttpClient;
+use rig_core::driver::Model;
+use rig_core::http_client::DynHttpClient;
 use rig_core::providers::anthropic::wire as anthropic;
 use rig_core::providers::gemini::completion as gemini;
 use rig_core::providers::openai::responses_api::wire as responses;
@@ -96,7 +94,11 @@ pub(crate) struct Wire<M> {
     pub(crate) additional_params: Option<fn() -> serde_json::Value>,
 }
 
-impl<M: CompletionModel + Clone + 'static> Wire<M> {
+impl<W, Tr> Wire<rig::driver::Model<W, Tr>>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    Tr: rig::driver::Transport<W>,
+{
     /// The cell's program on this wire.
     pub(crate) fn program(&self, cell: &Cell) -> Program {
         let mut program = cell.program;
@@ -126,7 +128,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     }
 
     /// The route model, for a cell that selects one.
-    pub(crate) fn route(&self) -> M {
+    pub(crate) fn route(&self) -> rig::driver::Model<W, Tr> {
         self.route.clone().expect("the wire names a route model")
     }
 
@@ -139,7 +141,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         let describe = |config: ProviderConfig,
                         model_id: &str,
                         api_key: &Secret,
-                        transport: &BoxedHttpClient| {
+                        transport: &DynHttpClient| {
             Some(WireBinding {
                 // The credential is the host's: the configuration that
                 // travels as data carries none, and the host supplies the
@@ -150,20 +152,20 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 transport: transport.clone(),
             })
         };
-        if let Some(bound) = model.downcast_ref::<Bound<anthropic::Messages, BoxedHttpClient>>() {
+        if let Some(bound) = model.downcast_ref::<Model<anthropic::Messages>>() {
             // ProviderConfig does not retain model-level cache and tool options.
             // Keep the original adapter when rebuilding would discard them.
-            if bound.wire != bound.wire.provider.messages(bound.wire.model.clone()) {
+            if bound.wire != bound.wire.provider.completion(bound.wire.model.clone()) {
                 return None;
             }
             return describe(
                 ProviderConfig::Anthropic(bound.wire.provider.clone()),
                 &bound.wire.model,
                 &bound.wire.provider.api_key,
-                &bound.http,
+                &bound.transport,
             );
         }
-        let chat = |wire: &openai::Chat, http: &BoxedHttpClient| {
+        let chat = |wire: &openai::Chat, http: &DynHttpClient| {
             if *wire != wire.provider.chat(wire.model.clone()) {
                 return None;
             }
@@ -174,7 +176,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 http,
             )
         };
-        let responses = |wire: &responses::Responses, http: &BoxedHttpClient| {
+        let responses = |wire: &responses::Responses, http: &DynHttpClient| {
             if *wire != wire.provider.responses(wire.model.clone()) {
                 return None;
             }
@@ -185,33 +187,27 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 http,
             )
         };
-        if let Some(bound) = model.downcast_ref::<Bound<openai::Chat, BoxedHttpClient>>() {
-            return chat(&bound.wire, &bound.http);
+        if let Some(bound) = model.downcast_ref::<Model<openai::Chat>>() {
+            return chat(&bound.wire, &bound.transport);
         }
-        if let Some(bound) = model.downcast_ref::<Bound<responses::Responses, BoxedHttpClient>>() {
-            return responses(&bound.wire, &bound.http);
+        if let Some(bound) = model.downcast_ref::<Model<responses::Responses>>() {
+            return responses(&bound.wire, &bound.transport);
         }
-        if let Some(bound) = model.downcast_ref::<Bound<openai::OpenAiWire, BoxedHttpClient>>() {
+        if let Some(bound) = model.downcast_ref::<Model<openai::OpenAiWire>>() {
             return match &bound.wire {
-                openai::OpenAiWire::Chat(wire) => chat(wire, &bound.http),
-                openai::OpenAiWire::Responses(wire) => responses(wire, &bound.http),
+                openai::OpenAiWire::Chat(wire) => chat(wire, &bound.transport),
+                openai::OpenAiWire::Responses(wire) => responses(wire, &bound.transport),
             };
         }
-        if let Some(bound) = model.downcast_ref::<Bound<gemini::GenerateContent, BoxedHttpClient>>()
-        {
-            if bound.wire
-                != bound
-                    .wire
-                    .provider
-                    .generate_content(bound.wire.model.clone())
-            {
+        if let Some(bound) = model.downcast_ref::<Model<gemini::GenerateContent>>() {
+            if bound.wire != bound.wire.provider.completion(bound.wire.model.clone()) {
                 return None;
             }
             return describe(
                 ProviderConfig::Gemini(bound.wire.provider.clone()),
                 &bound.wire.model,
                 &bound.wire.provider.api_key,
-                &bound.http,
+                &bound.transport,
             );
         }
         None
@@ -233,7 +229,7 @@ pub(crate) struct WireBinding {
     /// The head wire's key, supplied at construction by the host alone.
     pub(crate) api_key: String,
     /// The head wire's socket: what the host binds the rebuilt client to.
-    pub(crate) transport: BoxedHttpClient,
+    pub(crate) transport: DynHttpClient,
 }
 
 impl WireBinding {

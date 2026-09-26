@@ -1,8 +1,45 @@
 use super::*;
-use crate::error::{ErrorDetail, ErrorKind, ErrorReport};
+use crate::error::{ErrorDetail, ErrorKind, ErrorReport, ProviderError};
 use crate::message::AdditionalParams;
 use crate::message::ToolCallId;
 use crate::streaming::{MintKind, non_empty_id};
+
+/// The test-side views of the assembly: the choice so far, and the choice
+/// taken with every key reset.
+impl BlockAccumulator {
+    /// An empty accumulator.
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Clones the accumulated choice without changing state. Omits unfinished
+    /// tool calls and text with neither content nor metadata; retains open
+    /// reasoning. Repeated snapshots without new events are equal.
+    pub(super) fn snapshot(&self) -> Vec<AssistantContent> {
+        self.parts
+            .iter()
+            .filter(|part| Self::survives(part))
+            .cloned()
+            .collect()
+    }
+
+    /// Returns the same parts as [`Self::snapshot`] and resets all state.
+    /// A stream with no content produces an empty vector.
+    pub(super) fn finish(&mut self) -> Vec<AssistantContent> {
+        let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
+            .into_iter()
+            .filter(Self::survives)
+            .collect();
+        self.open_reasoning.clear();
+        self.finished_reasoning.clear();
+        self.text_ids.clear();
+        self.open_tool_inputs.clear();
+        self.finished_tools.clear();
+        self.saw_tool_call = false;
+        self.unclosed.clear();
+        parts
+    }
+}
 
 /// Test-side key syntax: legacy minted renderings decode to minted
 /// keys; anything else is wire-derived.
@@ -186,7 +223,7 @@ fn tool_end(
     accumulator: &mut BlockAccumulator,
     id: &str,
     end: ToolCallEnd,
-) -> Result<Option<ToolCall>, ErrorReport> {
+) -> Result<Option<ToolCall>, ProviderError> {
     Ok(accumulator
         .apply(&StreamEvent::BlockEnd {
             id: pid(id),
@@ -533,10 +570,10 @@ fn repeated_bare_ends_are_no_ops() {
     assert_eq!(accumulator.finish().len(), 1);
 }
 
-/// Only a bare end the adapter *synthesized* stays silent on `apply`; the
-/// part it closed is still in the choice.
+/// A bare end the adapter synthesized finalizes the part it closed, like
+/// any other end: the sink publishes it on that end.
 #[test]
-fn a_synthesized_bare_end_finalizes_silently() {
+fn a_synthesized_bare_end_finalizes_its_part() {
     let mut accumulator = BlockAccumulator::new();
     reasoning_delta(&mut accumulator, "reasoning-0", "A");
     let completed = accumulator
@@ -551,8 +588,8 @@ fn a_synthesized_bare_end_finalizes_silently() {
         })
         .expect("no error");
     assert!(
-        completed.is_none(),
-        "a synthesized bare end publishes nothing"
+        completed.is_some_and(|(_, part)| reasoning_texts(&[part]) == ["A"]),
+        "a synthesized bare end publishes the part it closed"
     );
     assert_eq!(reasoning_texts(&accumulator.finish()), vec!["A"]);
 }
@@ -788,8 +825,9 @@ fn error_mode_surfaces_malformed_input_as_a_typed_error() {
     tool_args_delta(&mut accumulator, "call_1", "{\"location\": not-json");
     let err = tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Error))
         .expect_err("malformed complete input must error");
-    assert_eq!(err.kind, ErrorKind::Response);
     assert!(err.to_string().contains("get_weather"));
+    let err = ErrorReport::from(&err);
+    assert_eq!(err.kind, ErrorKind::Response);
 
     let Some(ErrorDetail::MalformedToolInput(detail)) = err.detail else {
         panic!("malformed input must carry a typed detail");
@@ -816,8 +854,10 @@ fn malformed_input_detail_round_trips_through_serde() {
     let mut accumulator = BlockAccumulator::new();
     tool_name_delta(&mut accumulator, "call_1", "get_weather");
     tool_args_delta(&mut accumulator, "call_1", "{\"a\": \x01 \"b\"");
-    let err = tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Error))
-        .expect_err("malformed complete input must error");
+    let err = ErrorReport::from(
+        &tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Error))
+            .expect_err("malformed complete input must error"),
+    );
     let json = serde_json::to_string(&err).expect("report serializes");
     let back: ErrorReport = serde_json::from_str(&json).expect("report deserializes");
     assert_eq!(back, err);

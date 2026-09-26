@@ -3,7 +3,7 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: `CompletionModel::completion` serializes the value
+//! Raw capture is always on: `Model::call` serializes the value
 //! its inherent `raw_completion` returned — Cohere's own [`CompletionResponse`]
 //! — onto [`rig::completion::CompletionResponse::raw`] before `try_into`
 //! normalizes it. There is no opt-in and nothing about it reaches the wire;
@@ -37,7 +37,7 @@
 //! rig's `Stop`). Cohere's generation `id` is normalized into `response_id`,
 //! so it proves nothing about `raw` on its own.
 
-use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
+use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason};
 use rig::providers::cohere::completion::{CompletionResponse, FinishReason as CohereFinishReason};
 use serde::Deserialize;
 use serde_json::Value;
@@ -45,13 +45,13 @@ use serde_json::Value;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::raw_capture::capture_completion;
 use crate::support::{Observed, json_contains_key, normalized_without_raw};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: captured";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
@@ -94,9 +94,13 @@ async fn raw_roundtrips_cohere_completion_response() {
     with_cohere_cassette(
         "raw_capture_matrix/raw_roundtrips_cohere_completion_response",
         |client| async move {
-            capture_completion(client.completion(CASSETTE_MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;
@@ -160,9 +164,13 @@ async fn raw_exposes_billing_metadata() {
     with_cohere_cassette(
         "raw_capture_matrix/raw_exposes_billing_metadata",
         |client| async move {
-            capture_completion(client.completion(CASSETTE_MODEL), request, sink)
-                .await
-                .expect("completion should succeed");
+            capture_completion(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
         },
     )
     .await;

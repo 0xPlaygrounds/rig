@@ -1,7 +1,5 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
 
@@ -15,6 +13,7 @@ use crate::support::{
     assert_raw_stream_tool_call_precedes_text, assert_tool_call_precedes_later_text,
     collect_raw_stream_observation, collect_stream_final_response, collect_stream_observation,
 };
+use rig::completion::CompletionRequestBuilder;
 
 #[derive(Debug, Deserialize)]
 struct CassetteInteraction {
@@ -87,14 +86,13 @@ async fn streaming_tools_smoke() {
     with_openai_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble(STREAMING_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .default_max_turns(2)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble(STREAMING_TOOLS_PREAMBLE)
+                    .tool(Adder)
+                    .tool(Subtract)
+                    .default_max_turns(2)
+                    .build();
 
             let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
             let response = collect_stream_final_response(&mut stream)
@@ -110,9 +108,8 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 async fn example_streaming_with_tools() {
     with_openai_cassette("streaming_tools/example_streaming_with_tools", |client| async move {
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client
+            .openai.completion(openai::GPT_4O)))
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \
                  Use the tools provided to answer the user's question and answer in a full sentence.",
@@ -137,12 +134,11 @@ async fn responses_stream_preserves_tool_result_flow() {
     with_openai_cassette(
         "streaming_tools/responses_stream_preserves_tool_result_flow",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                    .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                    .tool(AlphaSignal)
+                    .build();
 
             let mut stream = agent
                 .prompt(ORDERED_TOOL_STREAM_PROMPT)
@@ -165,17 +161,14 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_openai_cassette(
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .tool(rig::tool::tool_definition(&AlphaSignal)).build();
 
             let first_turn = collect_raw_stream_observation(
                 model
                     .stream(request)
-                    .await
                     .expect("raw responses stream should start"),
             )
             .await;
@@ -201,19 +194,16 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
         )],
     };
-            let followup_request = model
-                .completion_request(
+            let followup_request = CompletionRequestBuilder::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
                 )
                 .preamble("Use the provided tool result and answer directly.".to_string())
                 .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+                .message(tool_result_message).build();
 
             let second_turn = collect_raw_stream_observation(
                 model
                     .stream(followup_request)
-                    .await
                     .expect("raw followup responses stream should start"),
             )
             .await;

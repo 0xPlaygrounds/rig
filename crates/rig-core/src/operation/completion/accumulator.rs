@@ -1,33 +1,21 @@
-//! Accumulates stream events into ordered assistant content without owning a
-//! transport. Authoritative end payloads replace assembled fragments; repeated
-//! tool ends are ignored until a new start or delta reopens the key.
-//!
-//! ```
-//! use rig_core::streaming::{BlockAccumulator, BlockId, MintKind, StreamEvent};
-//!
-//! # fn example() -> Result<(), rig_core::error::ErrorReport> {
-//! let mut accumulator = BlockAccumulator::new();
-//! accumulator.apply(&StreamEvent::text(BlockId::minted(MintKind::Text, 0), "Hi"))?;
-//! assert_eq!(accumulator.snapshot(), accumulator.finish());
-//! # Ok(())
-//! # }
-//! ```
+//! The block assembly behind [`AdapterOutput`](super::AdapterOutput): what
+//! each block end finalizes. Authoritative end payloads replace assembled
+//! fragments; repeated tool ends are ignored until a new start or delta
+//! reopens the key.
 
 use std::collections::{HashMap, HashSet};
 
-use crate::error::{ErrorDetail, ErrorKind, ErrorReport, MalformedToolInput};
+use crate::error::{MalformedToolInput, ProviderError};
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
 use crate::streaming::UnparseableToolInput;
-use crate::streaming::block_id::BlockId;
-use crate::streaming::event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCallEnd};
+use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent, ToolCallEnd};
 
-/// Accumulates the streamed parts of one assistant choice, in arrival order.
+/// Assembles the streamed parts of one assistant choice, in arrival order.
 ///
-/// Owns every aggregation decision the streaming surfaces make. Consumers
-/// feed events through [`BlockAccumulator::apply`] and read the choice with
-/// [`BlockAccumulator::snapshot`] or [`BlockAccumulator::finish`].
-#[derive(Default)]
-pub struct BlockAccumulator {
+/// Owns every assembly decision: the sink applies each event it emits and
+/// publishes what a block end finalized on that end.
+#[derive(Debug, Default)]
+pub(super) struct BlockAccumulator {
     /// Accumulated parts in insertion order.
     parts: Vec<AssistantContent>,
     /// Open reasoning entities: key → index in `parts`. Invariant: every
@@ -47,12 +35,22 @@ pub struct BlockAccumulator {
     /// Finalized tool keys, including adopted keys. Repeated ends cannot
     /// duplicate calls; new starts or deltas clear the corresponding key.
     finished_tools: HashSet<BlockId>,
-    /// Whether any completed tool call was recorded; the streaming
-    /// counterpart of the unary path's finish-reason reconciliation input.
+    /// Whether any completed tool call was recorded; the input of the
+    /// terminal's finish-reason reconciliation.
     saw_tool_call: bool,
+    /// Text and reasoning blocks not yet ended, in the order they opened.
+    unclosed: Vec<(BlockId, Unclosed)>,
+}
+
+/// The kind of a block that has not ended yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Unclosed {
+    Text,
+    Reasoning,
 }
 
 /// A tool call under fragment assembly.
+#[derive(Debug)]
 struct OpenToolInput {
     /// Assembly key: every fragment of one call carries this key.
     id: BlockId,
@@ -69,23 +67,19 @@ struct OpenToolInput {
 const MAX_TOOL_INPUT_BYTES: usize = 32 * 1024 * 1024;
 
 impl BlockAccumulator {
-    /// An empty accumulator.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Fold one event into the accumulated choice.
     ///
-    /// Returns the block a `BlockEnd` finalized for consumers, keyed by the
-    /// block id it must be published under (the assembly key a whole call
-    /// adopted, which can differ from the end event's own id), or `None`
-    /// when the event finalized nothing to publish. An `Err` is a malformed
-    /// complete tool input under [`UnparseableToolInput::Error`]; the
-    /// accumulator stays consistent and the stream keeps consuming.
-    pub fn apply(
+    /// Returns the block a `BlockEnd` finalized, keyed by the block id it
+    /// must be published under (the assembly key a whole call adopted,
+    /// which can differ from the end event's own id), or `None` when the
+    /// event finalized nothing: a dropped call, an empty text block, a bare
+    /// end for a key already finished. An `Err` is a malformed complete
+    /// tool input under [`UnparseableToolInput::Error`]; the accumulator
+    /// stays consistent and the stream keeps consuming.
+    pub(super) fn apply(
         &mut self,
         event: &StreamEvent,
-    ) -> Result<Option<(BlockId, AssistantContent)>, ErrorReport> {
+    ) -> Result<Option<(BlockId, AssistantContent)>, ProviderError> {
         match event {
             StreamEvent::BlockStart { id, kind } => {
                 match kind {
@@ -115,23 +109,22 @@ impl BlockAccumulator {
                 Ok(None)
             }
             StreamEvent::BlockEnd { id, end, .. } => match end {
-                BlockClose::Text => Ok(None),
+                BlockClose::Text => Ok(self.text_end(id)),
                 BlockClose::Reasoning {
                     reasoning,
                     signature,
-                    wire_sent,
-                } => {
-                    // Synthesized bare ends must not add completed-block events
-                    // that the provider never emitted.
-                    let authoritative = reasoning.is_some() || signature.is_some() || *wire_sent;
-                    let completed = self.reasoning_end(id, reasoning.clone(), signature.clone());
-                    Ok(completed
-                        .filter(|_| authoritative)
-                        .map(|reasoning| (id.clone(), AssistantContent::Reasoning(reasoning))))
-                }
+                    ..
+                } => Ok(self
+                    .reasoning_end(id, reasoning.clone(), signature.clone())
+                    .map(|reasoning| (id.clone(), AssistantContent::Reasoning(reasoning)))),
                 BlockClose::ToolCall(end) => Ok(self
                     .tool_end(id, end.clone())?
                     .map(|(id, call)| (id, AssistantContent::ToolCall(call)))),
+                BlockClose::Image(image) => {
+                    let image = AssistantContent::Image(image.clone());
+                    self.parts.push(image.clone());
+                    Ok(Some((id.clone(), image)))
+                }
             },
             StreamEvent::Final(_) | StreamEvent::Unknown(_) => Ok(None),
         }
@@ -144,9 +137,85 @@ impl BlockAccumulator {
         id: &BlockId,
         additional_params: Option<crate::message::AdditionalParams>,
     ) {
+        self.open(id, Unclosed::Text);
         if let Some(additional_params) = additional_params {
             self.text_additional_params(id, additional_params);
         }
+    }
+
+    /// The text block `id` as its end finalizes it, when it has content or
+    /// metadata. Later text under the same key extends it again.
+    fn text_end(&mut self, id: &BlockId) -> Option<(BlockId, AssistantContent)> {
+        self.close(id, Unclosed::Text);
+        let part = self.parts.get(*self.text_ids.get(id)?)?;
+        Self::survives(part).then(|| (id.clone(), part.clone()))
+    }
+
+    /// Record that the block `id` of `kind` is open, once.
+    fn open(&mut self, id: &BlockId, kind: Unclosed) {
+        if !self
+            .unclosed
+            .iter()
+            .any(|(open, open_kind)| open == id && *open_kind == kind)
+        {
+            self.unclosed.push((id.clone(), kind));
+        }
+    }
+
+    fn close(&mut self, id: &BlockId, kind: Unclosed) {
+        self.unclosed
+            .retain(|(open, open_kind)| !(open == id && *open_kind == kind));
+    }
+
+    /// The ends that close every text and reasoning block still open, in
+    /// the order the blocks opened. Tool calls are not among them: an
+    /// unfinished call never became a call.
+    pub(super) fn unclosed(&self) -> Vec<(BlockId, BlockClose)> {
+        self.unclosed
+            .iter()
+            .map(|(id, kind)| {
+                let end = match kind {
+                    Unclosed::Text => BlockClose::Text,
+                    Unclosed::Reasoning => BlockClose::Reasoning {
+                        reasoning: None,
+                        signature: None,
+                        wire_sent: false,
+                    },
+                };
+                (id.clone(), end)
+            })
+            .collect()
+    }
+
+    /// Whether `end` adds a reasoning part beside the one the key `id`
+    /// already finished, rather than completing or updating it: a whole
+    /// restatement, or a signature the finished part cannot take because it
+    /// is signed already.
+    pub(super) fn ends_a_sibling(&self, id: &BlockId, end: &BlockClose) -> bool {
+        let BlockClose::Reasoning {
+            reasoning,
+            signature,
+            ..
+        } = end
+        else {
+            return false;
+        };
+        if self.open_reasoning.contains_key(id) {
+            return false;
+        }
+        let Some(&index) = self.finished_reasoning.get(id) else {
+            return false;
+        };
+        reasoning.is_some()
+            || (signature.is_some()
+                && matches!(
+                    self.parts.get(index),
+                    Some(AssistantContent::Reasoning(reasoning))
+                        if reasoning.content.iter().any(|content| matches!(
+                            content,
+                            ReasoningContent::Text { signature: Some(_), .. }
+                        ))
+                ))
     }
 
     /// Append streamed text to the block identified by `id`, opening it if
@@ -176,6 +245,7 @@ impl BlockAccumulator {
 
     /// Index of the text block for `id`, opening one if unseen.
     fn ensure_text_block(&mut self, id: &BlockId) -> usize {
+        self.open(id, Unclosed::Text);
         if let Some(&index) = self.text_ids.get(id) {
             return index;
         }
@@ -236,6 +306,7 @@ impl BlockAccumulator {
         restatement: Option<Reasoning>,
         signature: Option<String>,
     ) -> Option<Reasoning> {
+        self.close(id, Unclosed::Reasoning);
         if let Some(index) = self.open_reasoning.remove(id) {
             if let Some(mut restatement) = restatement
                 && let Some(part) = self.parts.get_mut(index)
@@ -336,6 +407,7 @@ impl BlockAccumulator {
             content,
         });
         self.open_reasoning.insert(id.clone(), index);
+        self.open(id, Unclosed::Reasoning);
     }
 
     /// Register a new reasoning part at the current arrival position.
@@ -385,7 +457,7 @@ impl BlockAccumulator {
     }
 
     /// Whether any completed tool call was recorded on this stream.
-    pub fn saw_tool_call(&self) -> bool {
+    pub(super) fn saw_tool_call(&self) -> bool {
         self.saw_tool_call
     }
 
@@ -444,7 +516,7 @@ impl BlockAccumulator {
         &mut self,
         id: &BlockId,
         end: ToolCallEnd,
-    ) -> Result<Option<(BlockId, ToolCall)>, ErrorReport> {
+    ) -> Result<Option<(BlockId, ToolCall)>, ProviderError> {
         let position = self
             .open_tool_inputs
             .iter()
@@ -559,13 +631,7 @@ impl BlockAccumulator {
                             UnparseableToolInput::Error => {
                                 self.finished_tools.insert(id.clone());
                                 self.finished_tools.insert(published.clone());
-                                return Err(ErrorReport::new(
-                                    ErrorKind::Response,
-                                    format!(
-                                        "tool call `{name}` arrived with malformed JSON input: {err}"
-                                    ),
-                                )
-                                .with_detail(ErrorDetail::MalformedToolInput(
+                                return Err(ProviderError::MalformedToolInput(
                                     MalformedToolInput {
                                         name,
                                         id: durable_id,
@@ -573,7 +639,7 @@ impl BlockAccumulator {
                                         raw: buffer,
                                         error: err.to_string(),
                                     },
-                                )));
+                                ));
                             }
                             // A completion probe: the input may still be extended.
                             UnparseableToolInput::Keep => {
@@ -622,33 +688,6 @@ impl BlockAccumulator {
                 self.open_tool_inputs.len() - 1
             }
         }
-    }
-
-    /// Clones the accumulated choice without changing state. Omits unfinished
-    /// tool calls and text with neither content nor metadata; retains open
-    /// reasoning. Repeated snapshots without new events are equal.
-    pub fn snapshot(&self) -> Vec<AssistantContent> {
-        self.parts
-            .iter()
-            .filter(|part| Self::survives(part))
-            .cloned()
-            .collect()
-    }
-
-    /// Returns the same parts as [`Self::snapshot`] and resets all state.
-    /// A stream with no content produces an empty vector.
-    pub fn finish(&mut self) -> Vec<AssistantContent> {
-        let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
-            .into_iter()
-            .filter(Self::survives)
-            .collect();
-        self.open_reasoning.clear();
-        self.finished_reasoning.clear();
-        self.text_ids.clear();
-        self.open_tool_inputs.clear();
-        self.finished_tools.clear();
-        self.saw_tool_call = false;
-        parts
     }
 
     fn survives(part: &AssistantContent) -> bool {

@@ -10,7 +10,9 @@
 use super::*;
 use rig_core::{
     message::{ToolCall, ToolCallId, ToolFunction},
-    streaming::{BlockAccumulator, Delta, StreamEvent},
+    operation::{AdapterOutput, Completion, CompletionFold},
+    streaming::{Delta, StreamEvent},
+    wire::{Fold, Sink},
 };
 
 /// Return the successful event count before the first error, or the full length.
@@ -24,24 +26,38 @@ pub(super) fn validation_len(stream: &BusStreamed) -> usize {
         })
 }
 
-/// Resolve a delivered name's block to the final identity using core assembly.
+/// Resolve a delivered name's block to the final identity its end carried.
 /// The offset disambiguates a block identifier reused later in the stream.
 pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option<ToolCallId> {
     let block_id = match events.get(offset)? {
         StreamEvent::BlockDelta { id, .. } | StreamEvent::BlockEnd { id, .. } => id,
         _ => return None,
     };
-    let mut accumulator = BlockAccumulator::new();
-    for (index, event) in events.iter().enumerate() {
-        let completed = accumulator.apply(event).ok()?;
-        if index >= offset
-            && let Some((block, AssistantContent::ToolCall(call))) = completed
-            && &block == block_id
-        {
-            return Some(call.id);
-        }
+    events.iter().skip(offset).find_map(|event| match event {
+        StreamEvent::BlockEnd {
+            id,
+            block: Some(AssistantContent::ToolCall(call)),
+            ..
+        } if id == block_id => Some(call.id.clone()),
+        _ => None,
+    })
+}
+
+/// The assistant content `events` delivered, with the text and reasoning
+/// blocks still open closed where the stream stands: a block the model was
+/// writing when the prefix was cut is part of it. `None` when the prefix
+/// carries a defect.
+pub(super) fn delivered_prefix(events: &[StreamEvent]) -> Option<Vec<AssistantContent>> {
+    let mut sink = AdapterOutput::new();
+    for event in events {
+        sink.push(Ok(event.clone()));
     }
-    None
+    Sink::<Completion>::finish(&mut sink);
+    let mut fold = CompletionFold::default();
+    for item in sink.drain() {
+        fold.absorb(&item.ok()?).ok()?;
+    }
+    Some(fold.snapshot())
 }
 
 /// Publish invalid tool names from real delivered prefixes, before EOF.
@@ -148,22 +164,15 @@ pub fn discover_streamed_invalid_calls(
             }) {
                 continue;
             }
-            let mut accumulator = BlockAccumulator::new();
-            let mut valid_prefix = true;
-            for earlier in stream.events.iter().take(index) {
-                if accumulator.apply(earlier).is_err() {
-                    valid_prefix = false;
-                    break;
-                }
-            }
-            if !valid_prefix {
+            let Some(mut prefix) = stream.events.get(..index).and_then(delivered_prefix) else {
                 break;
-            }
-            let mut prefix = accumulator.snapshot();
-            let completed = match accumulator.apply(event) {
-                Ok(Some((_, AssistantContent::ToolCall(call)))) => Some(call),
-                Ok(_) => None,
-                Err(_) => break,
+            };
+            let completed = match event {
+                StreamEvent::BlockEnd {
+                    block: Some(AssistantContent::ToolCall(call)),
+                    ..
+                } => Some(call.clone()),
+                _ => None,
             };
             // Earlier repairs/ignores already took effect in the driver's
             // view, even while native execution waits for the final outcome.
@@ -218,3 +227,6 @@ pub fn discover_streamed_invalid_calls(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

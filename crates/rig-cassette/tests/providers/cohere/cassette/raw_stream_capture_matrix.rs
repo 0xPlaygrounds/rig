@@ -31,7 +31,7 @@
 //! only frame carrying usage and the finish reason, and it is what rig's
 //! terminal record is built from.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::providers::cohere::streaming::StreamingCompletionResponse;
 use rig::streaming::StreamFinal;
 use serde::Deserialize;
@@ -40,13 +40,13 @@ use serde_json::Value;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
 use crate::support::{Observed, json_contains_key};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
@@ -103,9 +103,13 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(CASSETTE_MODEL), request, sink)
-                .await
-                .expect("stream should open");
+            capture_text_and_sole_terminal(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should open");
         },
     )
     .await;
@@ -155,9 +159,13 @@ async fn raw_exposes_terminal_only_fields() {
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(CASSETTE_MODEL), request, sink)
-                .await
-                .expect("stream should open");
+            capture_text_and_sole_terminal(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink,
+            )
+            .await
+            .expect("stream should open");
         },
     )
     .await;

@@ -134,7 +134,8 @@ impl Chat {
             Mode::Unary => Framing::Whole,
         };
         Ok(Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+            .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_route(Some(self.provider.dialect.quirks.completion_path)))
     }
 
     /// The wire for `model` on `provider`, with every option off.
@@ -751,22 +752,23 @@ fn refuse_file_ids(request: &CompletionRequest) -> Result<(), EncodeError> {
 
 impl Wire for Chat {
     type Op = crate::operation::Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ChatDecoder;
 
     fn name(&self) -> &str {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
-        super::replay_issuers(&self.provider.dialect, model.unwrap_or(&self.model))
-    }
-
-    fn route(&self) -> Option<&str> {
-        Some(self.provider.dialect.quirks.completion_path)
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
+        Some(super::replay_issuers(
+            &self.provider.dialect,
+            model.unwrap_or(&self.model),
+        ))
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {

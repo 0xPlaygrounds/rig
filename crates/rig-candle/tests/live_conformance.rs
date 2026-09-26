@@ -8,12 +8,22 @@ use rig_agent::test_utils::{
     sequential_tools, streaming_structured_after_tool, streaming_tool, structured_after_tool,
     structured_extraction, tool_output_serialization, zero_argument_tool,
 };
-use rig_candle::{CandleModel, ModelArtifacts, ModelData};
-use rig_core::completion::CompletionModel;
+use rig_candle::{CandleCompletionResponse, CandleModel, Generation, ModelArtifacts, ModelData};
+use rig_core::Model;
+use rig_core::completion::CompletionRequest;
+use rig_core::completion::CompletionRequestBuilder;
 
 static MODEL: OnceLock<Result<CandleModel, String>> = OnceLock::new();
 
-fn model() -> Result<CandleModel, Box<dyn std::error::Error + Send + Sync>> {
+/// One unary completion's local response record, read off its `raw`.
+async fn raw_completion(
+    model: &Model<Generation, CandleModel>,
+    request: CompletionRequest,
+) -> Result<CandleCompletionResponse, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(serde_json::from_value(model.call(request).await?.raw)?)
+}
+
+fn model() -> Result<Model<Generation, CandleModel>, Box<dyn std::error::Error + Send + Sync>> {
     let result = MODEL.get_or_init(|| -> Result<CandleModel, String> {
         let directory = PathBuf::from(
             std::env::var_os("RIG_CANDLE_TEST_MODEL_DIR")
@@ -35,7 +45,10 @@ fn model() -> Result<CandleModel, Box<dyn std::error::Error + Send + Sync>> {
             .build()
             .map_err(|error| error.to_string())
     });
-    result.clone().map_err(Into::into)
+    result
+        .clone()
+        .map(|candle| Model::new(Generation, candle))
+        .map_err(Into::into)
 }
 
 fn print_report(report: &rig_agent::test_utils::ScenarioReport) {
@@ -64,15 +77,14 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
     let loaded_model = model()?;
 
     let simple = tokio::time::timeout(Duration::from_secs(300), async {
-        loaded_model
-            .raw_completion(
-                loaded_model
-                    .completion_request("Answer with only the capital of France.")
-                    .temperature(0.0)
-                    .max_tokens(32)
-                    .build(),
-            )
-            .await
+        raw_completion(
+            &loaded_model,
+            CompletionRequestBuilder::new("Answer with only the capital of France.")
+                .temperature(0.0)
+                .max_tokens(32)
+                .build(),
+        )
+        .await
     })
     .await??;
     if !simple.text.contains("Paris") {

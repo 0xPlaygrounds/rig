@@ -8,32 +8,33 @@ use redis::{
     vector_sets::{VAddOptions, VSimOptions, VectorAddInput, VectorSimilaritySearchInput},
 };
 use rig::{
-    embeddings::EmbeddingModel,
+    operation::Embedding,
     prelude::*,
     providers::openai::{self, wire::OpenAI},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-// This is the struct representing our vector store backend
-struct RedisVectorStore<E> {
+// This is the struct representing our vector store backend, over any
+// embedding model: the model is erased once at construction.
+struct RedisVectorStore {
     conn: MultiplexedConnection,
     key: String,
-    embedding_model: E,
+    embedding_model: DynModel<Embedding>,
 }
 
-impl<E: EmbeddingModel> RedisVectorStore<E> {
+impl RedisVectorStore {
     async fn new(
         redis_url: &str,
         key: &str,
-        embedding_model: E,
+        embedding_model: impl Into<DynModel<Embedding>>,
     ) -> Result<Self, redis::RedisError> {
         let client = Client::open(redis_url)?;
 
         Ok(Self {
             conn: client.get_multiplexed_async_connection().await?,
             key: key.to_string(),
-            embedding_model,
+            embedding_model: embedding_model.into(),
         })
     }
 
@@ -73,7 +74,7 @@ impl<E: EmbeddingModel> RedisVectorStore<E> {
     }
 }
 
-impl<E: EmbeddingModel + Send + Sync> VectorStoreIndex for RedisVectorStore<E> {
+impl VectorStoreIndex for RedisVectorStore {
     // Irrelevant for our program, but if we wanted to filter out query results
     // creating a simple 'RedisSearchFilter' would be the easiest way.
     // Alternatively, you can use vector_store::request::Filter as your filter DSL.
@@ -181,9 +182,9 @@ struct Document {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize the OpenAI embeddings provider from the environment
-    let openai_client = OpenAI::from_env()?.bound()?;
-    // Convert it to an EmbeddingModel
-    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let openai_client = OpenAI::from_env()?;
+    // Pair the embedding wire with the transport
+    let embedding_model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
 
     // Create the Redis vector store
     let mut store =

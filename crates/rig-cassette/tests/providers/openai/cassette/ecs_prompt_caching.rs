@@ -12,7 +12,8 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
             super::super::support::with_openai_completions_prompt_caching_cassette(
                 "prompt_caching/chat_completions_agent_loop",
                 |client| async move {
-                    let ecs = EcsAgent::new(client.chat(CACHE_MODEL), &probe().preamble, 1);
+                    let ecs =
+                        EcsAgent::new(rig::model(client.chat(CACHE_MODEL)), &probe().preamble, 1);
 
                     assert_cache_growth(ecs, &OPENAI_CACHE_SUPPORT, "chat completions agent loop")
                         .await;
@@ -43,8 +44,11 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
             super::super::support::with_openai_prompt_caching_cassette(
                 "prompt_caching/responses_agent_loop",
                 |client| async move {
-                    let mut ecs =
-                        EcsAgent::new(client.openai.completion(CACHE_MODEL), &probe().preamble, 1);
+                    let mut ecs = EcsAgent::new(
+                        rig::model(client.openai.completion(CACHE_MODEL)),
+                        &probe().preamble,
+                        1,
+                    );
                     ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)

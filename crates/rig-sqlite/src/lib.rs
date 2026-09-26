@@ -8,7 +8,7 @@
 //! `sqlite` feature is enabled.
 
 use rig_core::Embed;
-use rig_core::embeddings::{Embedding, EmbeddingModel};
+use rig_core::embeddings::Embedding;
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -341,8 +341,8 @@ fn sqlite_metadata_value(
 
 /// SQLite-backed storage for documents of type `T` and their embeddings.
 ///
-/// The store itself names no embedding model: construction only reads the
-/// model's dimensions, and searching requires an index created by
+/// The store itself names no embedding model: construction takes the vector
+/// width, and searching requires an index created by
 /// [`SqliteVectorStore::index`].
 #[derive(Clone)]
 pub struct SqliteVectorStore<T> {
@@ -409,25 +409,28 @@ impl<T> SqliteVectorStore<T>
 where
     T: SqliteVectorStoreTable + 'static,
 {
-    /// Creates a SQLite vector store using cosine similarity.
-    pub async fn new(
-        conn: Connection,
-        embedding_model: &impl EmbeddingModel,
-    ) -> Result<Self, VectorStoreError> {
-        Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
+    /// Creates a SQLite vector store using cosine similarity over vectors
+    /// of `ndims` dimensions.
+    ///
+    /// `ndims` must be the width of the model later handed to
+    /// [`Self::index`], read as `capabilities().ndims`; a store built at one
+    /// width and indexed with another returns meaningless results.
+    pub async fn new(conn: Connection, ndims: usize) -> Result<Self, VectorStoreError> {
+        Self::with_distance_metric(conn, ndims, SqliteDistanceMetric::default()).await
     }
 
     /// Creates a SQLite vector store with the requested distance metric.
     ///
     /// The metric is written into the sqlite-vec virtual table definition so
     /// candidate search uses the same metric as thresholding, ordering, and the
-    /// returned score values.
+    /// returned score values. `ndims` must be the width of the model later
+    /// handed to [`Self::index`], read as `capabilities().ndims`; a store built
+    /// at one width and indexed with another returns meaningless results.
     pub async fn with_distance_metric(
         conn: Connection,
-        embedding_model: &impl EmbeddingModel,
+        ndims: usize,
         distance_metric: SqliteDistanceMetric,
     ) -> Result<Self, VectorStoreError> {
-        let dims = embedding_model.ndims();
         let table_name = T::name();
         let embeddings_table_name = format!("{table_name}_embeddings");
         let embeddings_table_name_for_sql = embeddings_table_name.clone();
@@ -437,7 +440,7 @@ where
         let metadata_columns_for_schema_check = metadata_columns.clone();
         let distance_metric_name = distance_metric.vec0_name();
         let mut embeddings_columns =
-            format!("embedding float[{dims}] distance_metric={distance_metric_name}");
+            format!("embedding float[{ndims}] distance_metric={distance_metric_name}");
         for column in &metadata_columns {
             embeddings_columns.push_str(&format!(
                 ", {} {}",
@@ -547,7 +550,10 @@ where
         })
     }
 
-    pub fn index<M: EmbeddingModel>(self, model: M) -> SqliteVectorIndex<T, M> {
+    pub fn index(
+        self,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
+    ) -> SqliteVectorIndex<T> {
         SqliteVectorIndex::new(model, self)
     }
 
@@ -1453,7 +1459,6 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
-/// use rig_reqwest::prelude::*;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
@@ -1488,13 +1493,17 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// }
 ///
 /// let conn = Connection::open("vector_store.db").await?;
-/// let openai = OpenAI::new("YOUR_API_KEY").bound()?;
-/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None);
+/// let openai = OpenAI::new("YOUR_API_KEY");
+/// let model = rig_core::Model::new(
+///     openai.embedding(TEXT_EMBEDDING_ADA_002, None),
+///     rig_reqwest::shared(),
+/// )
+/// .erase();
 ///
 /// // Initialize vector store
 /// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(
 ///     conn,
-///     &model,
+///     model.capabilities().ndims,
 ///     SqliteDistanceMetric::Cosine,
 /// )
 /// .await?;
@@ -1533,26 +1542,29 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// # let _ = example();
 /// ```
 ///
-/// `M` must be the model whose embeddings populated the store; results are
-/// meaningless under another model.
-pub struct SqliteVectorIndex<T, M> {
+/// The model must be the one whose embeddings populated the store; results
+/// are meaningless under another model.
+pub struct SqliteVectorIndex<T> {
     store: SqliteVectorStore<T>,
-    embedding_model: M,
+    embedding_model: rig_core::DynModel<rig_core::operation::Embedding>,
 }
 
-impl<T, M: EmbeddingModel> SqliteVectorIndex<T, M>
+impl<T> SqliteVectorIndex<T>
 where
     T: SqliteVectorStoreTable,
 {
-    pub fn new(embedding_model: M, store: SqliteVectorStore<T>) -> Self {
+    pub fn new(
+        embedding_model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
+        store: SqliteVectorStore<T>,
+    ) -> Self {
         Self {
             store,
-            embedding_model,
+            embedding_model: embedding_model.into(),
         }
     }
 }
 
-impl<T, M: EmbeddingModel> SqliteVectorIndex<T, M>
+impl<T> SqliteVectorIndex<T>
 where
     T: SqliteVectorStoreTable,
 {
@@ -1915,7 +1927,7 @@ fn sqlite_id_value_to_string(index: usize, value: ValueRef<'_>) -> rusqlite::Res
     }
 }
 
-impl<T: SqliteVectorStoreTable, M: EmbeddingModel> VectorStoreIndex for SqliteVectorIndex<T, M> {
+impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     type Filter = SqliteSearchFilter;
 
     async fn top_n<D>(

@@ -14,7 +14,6 @@ use rig::agent::MultiTurnStreamItem;
 use rig::completion::PromptError;
 use rig::effect::{EffectFamily, Outcome};
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::{Delta, StreamEvent};
 use rig_cassette::agent::AgentReplayExt;
@@ -63,8 +62,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
         "corpus_outcome/cancel_after_tool_call_delta",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
                 .name("golden")
                 .preamble(NOTE_PREAMBLE)
                 .temperature(0.0)
@@ -106,8 +104,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
 async fn tool_error_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_outcome_cassette("corpus_outcome/tool_error", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -144,8 +141,7 @@ async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
         "corpus_outcome/tool_error_streamed",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -179,8 +175,7 @@ async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
 async fn model_error_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette_bogus_key("corpus_outcome/model_error", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)
@@ -213,8 +208,7 @@ async fn model_error_effect_log_is_the_golden_fixture() {
 async fn model_error_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette_bogus_key("corpus_outcome/model_error_streamed", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)
@@ -252,8 +246,7 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
         "corpus_outcome/max_turns_exhausted",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -288,8 +281,7 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
 async fn default_max_turns_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)

@@ -3,21 +3,12 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Text};
-use serde::{Deserialize, Serialize};
-
-use crate::types::message::RigMessage;
 
 use super::{
-    converse_output::{
-        ContentBlock, InternalConverseOutput, ReasoningContentBlock, StopReason, TokenUsage,
-    },
+    converse_output::{ContentBlock, ReasoningContentBlock, StopReason, TokenUsage},
     json::AwsDocument,
 };
 use rig_core::completion;
-use rig_core::telemetry::ProviderResponseExt;
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct AwsConverseOutput(pub InternalConverseOutput);
 
 /// Normalize Bedrock token counts into rig's usage record. Shared by the
 /// unary response path and the streaming terminal record.
@@ -33,56 +24,8 @@ pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
     }
 }
 
-impl ProviderResponseExt for AwsConverseOutput {
-    type Usage = completion::Usage;
-
-    fn response_id(&self) -> Option<&str> {
-        None // Bedrock Converse API doesn't return a response ID
-    }
-
-    fn response_model_name(&self) -> Option<&str> {
-        None // Bedrock doesn't echo model name in response
-    }
-
-    fn text_response(&self) -> Option<String> {
-        let output = self.0.output.as_ref()?;
-        let message = output.as_message().ok()?;
-        let response = message
-            .content
-            .iter()
-            .filter_map(|block| match block {
-                ContentBlock::Text(text) => Some(text.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if response.is_empty() {
-            None
-        } else {
-            Some(response)
-        }
-    }
-
-    fn usage(&self) -> Option<Self::Usage> {
-        self.0.usage().map(normalize_usage)
-    }
-}
-
 /// Stable descriptor name reported on normalized Bedrock responses.
 pub const PROVIDER_NAME: &str = "aws_bedrock";
-
-/// Convert a Converse output for `model` into a completion response whose
-/// reasoning records its issuer ([`reasoning_issuer`]).
-pub(crate) fn completion_response(
-    output: AwsConverseOutput,
-    model: &str,
-) -> Result<completion::CompletionResponse, ProviderError> {
-    let mut response: completion::CompletionResponse = output.try_into()?;
-    response.choice =
-        rig_core::streaming::stamp_reasoning(response.choice, reasoning_issuer(model));
-    Ok(response)
-}
 
 /// The issuer Bedrock's reasoning records for `model`. Anthropic documents
 /// Claude thinking signatures as valid across the Claude API, Bedrock and
@@ -108,51 +51,6 @@ pub fn map_stop_reason(stop_reason: &StopReason) -> completion::FinishReason {
             completion::FinishReason::ContentFilter
         }
         StopReason::Unknown(value) => completion::FinishReason::Other(value.to_string()),
-    }
-}
-
-impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
-    type Error = ProviderError;
-
-    fn try_from(value: AwsConverseOutput) -> Result<Self, Self::Error> {
-        // The provider's own document, captured before the output is
-        // consumed into normalized content.
-        let raw = serde_json::to_value(&value.0)?;
-        let message: RigMessage = value
-            .clone()
-            .0
-            .output
-            .ok_or(ProviderError::Provider(
-                "Model didn't return any output".into(),
-            ))?
-            .as_message()
-            .map_err(|_| {
-                ProviderError::Provider("Failed to extract message from converse output".into())
-            })?
-            .to_owned()
-            .try_into()?;
-
-        let choice = match message.0 {
-            completion::Message::Assistant { content, .. } => Ok(content),
-            _ => Err(ProviderError::Response(
-                "Converse output message was not an assistant message".to_owned(),
-            )),
-        }?;
-
-        let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
-
-        let finish_reason = map_stop_reason(&value.0.stop_reason);
-
-        // Bedrock's transport request id comes from the AWS SDK's response
-        // metadata (`x-amzn-RequestId`), captured when the SDK output was
-        // converted into `InternalConverseOutput`.
-        let provider_request_id = value.0.request_id().map(str::to_string);
-
-        Ok(
-            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME, raw)
-                .with_optional_provider_request_id(provider_request_id)
-                .with_finish_reason(finish_reason),
-        )
     }
 }
 
@@ -360,4 +258,4 @@ impl RigAssistantContent {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

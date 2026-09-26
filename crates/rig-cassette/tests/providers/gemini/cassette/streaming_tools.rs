@@ -1,8 +1,6 @@
 //! Gemini streaming tools coverage, including the migrated example path.
 
-use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
@@ -17,6 +15,7 @@ use crate::support::{
     assert_two_tool_roundtrip_contract, collect_stream_final_response, collect_stream_observation,
     zero_arg_tool_definition,
 };
+use rig::completion::CompletionRequestBuilder;
 
 fn streaming_tool_params() -> serde_json::Value {
     serde_json::to_value(AdditionalParameters::default().with_config(GenerationConfig::default()))
@@ -28,13 +27,14 @@ async fn streaming_tools_smoke() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(STREAMING_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .additional_params(streaming_tool_params())
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(STREAMING_TOOLS_PREAMBLE)
+            .tool(Adder)
+            .tool(Subtract)
+            .additional_params(streaming_tool_params())
+            .build();
 
             let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(3).stream();
             let response = collect_stream_final_response(&mut stream)
@@ -52,14 +52,13 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .additional_params(streaming_tool_params())
                 .build();
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -72,13 +71,14 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .additional_params(streaming_tool_params())
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(TWO_TOOL_STREAM_PREAMBLE)
+            .tool(AlphaSignal)
+            .tool(BetaSignal)
+            .additional_params(streaming_tool_params())
+            .build();
 
             let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(8).stream();
             let observation = collect_stream_observation(&mut stream).await;
@@ -98,12 +98,13 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/streaming_tools_emit_tool_call_before_later_text",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .additional_params(streaming_tool_params())
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+            .tool(AlphaSignal)
+            .additional_params(streaming_tool_params())
+            .build();
 
             let mut stream = agent
                 .prompt(ORDERED_TOOL_STREAM_PROMPT)
@@ -126,17 +127,18 @@ async fn example_streaming_with_tools() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/example_streaming_with_tools",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(
-                    "You are a calculator here to help the user perform arithmetic operations. \
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(
+                "You are a calculator here to help the user perform arithmetic operations. \
                      Use the tools provided to answer the user's question.",
-                )
-                .max_tokens(1024)
-                .tool(Adder)
-                .tool(Subtract)
-                .additional_params(streaming_tool_params())
-                .build();
+            )
+            .max_tokens(1024)
+            .tool(Adder)
+            .tool(Subtract)
+            .additional_params(streaming_tool_params())
+            .build();
 
             let mut stream = agent.prompt("Calculate 2 - 5").max_turns(3).stream();
             let response = collect_stream_final_response(&mut stream)

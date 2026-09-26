@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -32,15 +32,15 @@
         }
       },
       {
-        "batch": 4,
+        "batch": 5,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
-        "batch": 4,
+        "batch": 5,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -227,6 +227,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "premature text"
+          }
+        },
+        {
           "event": "final",
           "usage": {},
           "finish_reason": null,
@@ -406,6 +417,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "crimson-harbor"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "crimson-harbor"
           }
         },

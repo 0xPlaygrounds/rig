@@ -1,6 +1,5 @@
 //! Perplexity non-streaming completion cassette coverage.
 
-use rig::prelude::*;
 use rig::providers::perplexity;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
@@ -10,8 +9,7 @@ use super::super::support::with_perplexity_cassette;
 #[tokio::test]
 async fn completion_smoke() {
     with_perplexity_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(perplexity::SONAR)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(perplexity::SONAR)))
             .preamble(BASIC_PREAMBLE)
             .temperature(0.2)
             .build();
@@ -32,8 +30,7 @@ async fn completion_with_perplexity_options() {
     with_perplexity_cassette(
         "agent/completion_with_perplexity_options",
         |client| async move {
-            let agent = client
-                .agent(perplexity::SONAR)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(perplexity::SONAR)))
                 .preamble("Answer briefly and include the date or time context if relevant.")
                 .additional_params(serde_json::json!({
                     "return_related_questions": true,

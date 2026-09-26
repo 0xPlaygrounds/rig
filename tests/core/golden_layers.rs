@@ -196,10 +196,8 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
     driver
         .register_erased(
             model_key.clone(),
-            ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
-                "default", model,
-            ))
-            .layered(CancelStreamLayer),
+            ErasedHandler::new(rig::serve::adapters::ModelAdapter::new("default", model))
+                .layered(CancelStreamLayer),
         )
         .expect("a fresh key");
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();

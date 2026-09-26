@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -198,13 +197,14 @@ async fn request_overridden_by_hook_blocking() {
     with_anthropic_cassette(
         "request_override/request_overridden_by_hook_blocking",
         move |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble(PREAMBLE)
-                .tool(weather)
-                .tool(GetTime)
-                .add_hook(ForceWeatherOnlyOnFirstTurn)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+            ))
+            .preamble(PREAMBLE)
+            .tool(weather)
+            .tool(GetTime)
+            .add_hook(ForceWeatherOnlyOnFirstTurn)
+            .build();
 
             let response = agent
                 .prompt(PROMPT)
@@ -233,13 +233,14 @@ async fn request_overridden_by_hook_streaming() {
     with_anthropic_cassette(
         "request_override/request_overridden_by_hook_streaming",
         move |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble(PREAMBLE)
-                .tool(weather)
-                .tool(GetTime)
-                .add_hook(ForceWeatherOnlyOnFirstTurn)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+            ))
+            .preamble(PREAMBLE)
+            .tool(weather)
+            .tool(GetTime)
+            .add_hook(ForceWeatherOnlyOnFirstTurn)
+            .build();
 
             let mut stream = agent.prompt(PROMPT).max_turns(5).stream();
             let response = collect_stream_final_response(&mut stream)

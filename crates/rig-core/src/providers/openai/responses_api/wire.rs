@@ -78,7 +78,8 @@ impl Responses {
             Framing::Whole
         };
         let encoded = Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header);
+            .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_route(Some(self.provider.dialect.quirks.responses.path));
         Ok(if codex {
             encoded.with_relaxed_content_type()
         } else {
@@ -206,25 +207,23 @@ fn merge_instructions(instructions: &str, existing: Option<&str>) -> String {
 
 impl Wire for Responses {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ResponsesDecoder;
 
     fn name(&self) -> &str {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
-        crate::providers::openai::wire::replay_issuers(
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
+        Some(crate::providers::openai::wire::replay_issuers(
             &self.provider.dialect,
             model.unwrap_or(&self.model),
-        )
-    }
-
-    fn route(&self) -> Option<&str> {
-        Some(self.provider.dialect.quirks.responses.path)
+        ))
     }
 
     fn encode(
@@ -274,7 +273,7 @@ pub(crate) fn fold_body(
 ) -> Result<completion::CompletionResponse, crate::error::ProviderError> {
     use super::streaming::ResponsesEvent;
     use crate::operation::AdapterOutput;
-    use crate::wire::{Decoder, Fold, Operation, Reply, Sink};
+    use crate::wire::{Decoder, Fold, Mode, Reply, Sink};
 
     let reply = Reply {
         provider: provider.to_owned(),
@@ -285,9 +284,9 @@ pub(crate) fn fold_body(
     let mut out = AdapterOutput::new();
     decoder.interpret(ResponsesEvent::Whole(Box::new(response)), &mut out);
 
-    let mut fold = <Completion as Operation>::Fold::default();
+    let mut fold = crate::operation::CompletionFold::opened(provider, None, Mode::Unary);
     for item in Sink::<Completion>::drain(&mut out) {
-        fold.absorb(item?)?;
+        fold.absorb(&item?)?;
     }
     fold.finish(reply)
 }

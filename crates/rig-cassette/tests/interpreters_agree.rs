@@ -237,13 +237,12 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                 let executable = prepared.executable_tool_names.clone();
                 let allowed = prepared.allowed_tool_names.clone();
                 let request = prepared
-                    .apply(CompletionRequestBuilder::unbound(prompt))
+                    .apply(CompletionRequestBuilder::new(prompt))
                     .build();
-                let response =
-                    tokio::time::timeout(Duration::from_secs(5), model.complete(request))
-                        .await
-                        .expect("never hangs")
-                        .expect("the model");
+                let response = tokio::time::timeout(Duration::from_secs(5), model.call(request))
+                    .await
+                    .expect("never hangs")
+                    .expect("the model");
                 run.model_response(ModelTurn::new(
                     None,
                     response.choice,

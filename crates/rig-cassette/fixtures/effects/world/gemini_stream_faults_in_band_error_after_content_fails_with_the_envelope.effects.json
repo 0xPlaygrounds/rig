@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -20,7 +20,7 @@
     "stream_errors": {
       "0": [
         {
-          "item": 2,
+          "item": 3,
           "error": {
             "kind": "provider_response",
             "retryable": true,
@@ -127,6 +127,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "pong"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "pong"
           }
         }

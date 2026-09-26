@@ -67,8 +67,8 @@ async fn blocking_probe_observes_no_meaningful_prefix_cache() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_perplexity_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
-        let observation = run_cache_probe(&model, &probe()).await;
+        let model = rig::model(client.completion(CACHE_MODEL));
+        let observation = run_cache_probe(model, &probe()).await;
         assert_no_meaningful_prefix_cache(
             &observation,
             &PERPLEXITY_CACHE_SUPPORT,
@@ -87,8 +87,8 @@ async fn streaming_probe_observes_no_meaningful_prefix_cache() {
     with_perplexity_prompt_caching_cassette(
         "prompt_caching/streaming_probe",
         |client| async move {
-            let model = client.completion(CACHE_MODEL);
-            let observation = run_cache_probe_streaming(&model, &probe()).await;
+            let model = rig::model(client.completion(CACHE_MODEL));
+            let observation = run_cache_probe_streaming(model, &probe()).await;
             assert_no_meaningful_prefix_cache(
                 &observation,
                 &PERPLEXITY_CACHE_SUPPORT,

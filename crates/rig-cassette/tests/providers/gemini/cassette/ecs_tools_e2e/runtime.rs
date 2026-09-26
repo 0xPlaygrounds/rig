@@ -1,7 +1,7 @@
 //! Actual native history, completion count and aggregate run usage.
 
 use bevy_ecs::prelude::*;
-use rig::{completion::CompletionModel, effect::Outcome, message::Message};
+use rig::{effect::Outcome, message::Message};
 use rig_ecs::{
     agent::{DefaultMaxTurns, Run, Temperature, ToolPolicy, Usage, Utterance},
     bus::EffectOutcome,
@@ -23,8 +23,11 @@ impl NativeResponse {
     }
 }
 
-pub(super) fn configured(
-    model: impl CompletionModel + 'static,
+pub(super) fn configured<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     preamble: &str,
     default_max_turns: Option<usize>,
 ) -> EcsAgent {

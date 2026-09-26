@@ -1,5 +1,5 @@
 use rig_agent::prelude::*;
-use rig_gemini_grpc::Client;
+use rig_gemini_grpc::{GeminiGrpc, completion::GenerateContent};
 
 #[tracing::instrument(ret)]
 #[tokio::main]
@@ -9,12 +9,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Initialize the Google Gemini gRPC client
-    let client = Client::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
+    // Initialize the Google Gemini gRPC transport
+    let transport = GeminiGrpc::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
 
     // Create agent with a single context prompt
-    let agent = client
-        .agent("gemini-2.5-flash")
+    let model = Model::new(GenerateContent::new("gemini-2.5-flash"), transport);
+    let agent = AgentBuilder::new(model)
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         .build();

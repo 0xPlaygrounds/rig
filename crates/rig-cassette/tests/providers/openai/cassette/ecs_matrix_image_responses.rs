@@ -6,16 +6,15 @@
 //! driver is `tests/common/ecs_matrix/world.rs`). This file holds the
 //! scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
-use rig::completion::CompletionModel;
 use rig::providers::openai::GPT_5_MINI;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_5_MINI),
+        model: rig::model(client.openai.completion(GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,

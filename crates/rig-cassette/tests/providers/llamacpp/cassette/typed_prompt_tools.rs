@@ -10,7 +10,6 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
     OutcomeAction, OutcomeEvent,
 };
-use rig::prelude::*;
 use rig::tool::Tool;
 
 use super::super::cassette_support::*;
@@ -169,8 +168,7 @@ async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
 
         let call_count = Arc::new(AtomicUsize::new(0));
 
-        let agent = client
-            .agent(model)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(model)))
             .tool(WeatherTool::new(call_count.clone()))
             .preamble(
                 "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result.",
@@ -210,8 +208,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     with_llamacpp_cassette_result("typed_prompt_tools/prompt_typed_with_tool_call_roundtrip", |client| async move {
 
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
             .preamble(
                 "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
                  The only valid tool name is `weather`; never invent or call any other tool. \

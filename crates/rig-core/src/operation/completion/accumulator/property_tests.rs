@@ -1,7 +1,7 @@
 use super::*;
 use proptest::prelude::*;
 
-use crate::error::ErrorReport;
+use crate::error::ProviderError;
 
 fn split_fragments(payload: &str, points: &[usize]) -> Vec<String> {
     let chars: Vec<char> = payload.chars().collect();
@@ -79,7 +79,7 @@ fn tool_end(
     accumulator: &mut BlockAccumulator,
     key: &BlockId,
     end: ToolCallEnd,
-) -> Result<Option<ToolCall>, ErrorReport> {
+) -> Result<Option<ToolCall>, ProviderError> {
     Ok(accumulator
         .apply(&StreamEvent::BlockEnd {
             id: key.clone(),

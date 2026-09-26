@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
@@ -170,14 +169,15 @@ async fn multi_turn_streaming_tools() {
     super::super::support::with_anthropic_cassette(
         "multi_turn_streaming/multi_turn_streaming_tools",
         |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble("You must use tools for arithmetic.")
-                .tool(Add::new(add_calls.clone()))
-                .tool(Subtract::new(subtract_calls.clone()))
-                .tool(Multiply::new(multiply_calls.clone()))
-                .tool(Divide::new(divide_calls.clone()))
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+            ))
+            .preamble("You must use tools for arithmetic.")
+            .tool(Add::new(add_calls.clone()))
+            .tool(Subtract::new(subtract_calls.clone()))
+            .tool(Multiply::new(multiply_calls.clone()))
+            .tool(Divide::new(divide_calls.clone()))
+            .build();
 
             let mut stream = agent
                 .prompt(MULTI_TURN_STREAMING_PROMPT)

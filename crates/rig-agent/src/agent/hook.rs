@@ -1559,7 +1559,7 @@ impl AgentHook for HookStack {
 /// through their own [`Dispatcher`](crate::bus::Dispatcher).
 ///
 /// The lifetime constrains the view, not the request futures returned by
-/// [`dispatch`](Self::dispatch), [`complete`](Self::complete), or
+/// [`dispatch`](Self::dispatch), [`call`](Self::call), or
 /// [`top_n`](Self::top_n). Those futures own a single dispatch and can outlive
 /// the view. They do not retain permission to create further dispatches and
 /// do not drive the bus themselves. Await them within the hook while the run's
@@ -1641,16 +1641,13 @@ impl RunHandle<'_, rig_core::effect::family::Retrieve> {
 
 impl RunHandle<'_, rig_core::effect::family::Completion> {
     /// A unary completion.
-    pub fn complete(
-        &self,
-        request: rig_core::completion::CompletionRequest,
-    ) -> crate::bus::Completion {
-        self.inner.complete(request)
+    pub fn call(&self, request: rig_core::completion::CompletionRequest) -> crate::bus::Completion {
+        self.inner.call(request)
     }
 
     /// The model's label as the handler advertises it now.
-    pub fn model_ref(&self) -> ModelRef {
-        self.inner.model_ref()
+    pub fn label(&self) -> ModelRef {
+        self.inner.label()
     }
 }
 

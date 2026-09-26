@@ -1,7 +1,5 @@
 //! Cassette coverage for mistral.rs chat-completions streaming reasoning chunks.
 
-use rig::prelude::*;
-
 use crate::support::collect_stream_observation;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
@@ -11,7 +9,7 @@ async fn chat_completions_stream_emits_reasoning_and_text_incrementally() {
     with_mistralrs_completions_cassette(
         "streaming/chat_completions_stream_emits_reasoning_and_text_incrementally",
         |client| async move {
-            let agent = client.agent(model_name())
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(model_name())))
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(512)
                 .build();

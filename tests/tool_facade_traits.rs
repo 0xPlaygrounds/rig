@@ -109,54 +109,46 @@ fn portable_contract_paths_resolve() {
     assert_portable_facade::<PortableAdder>();
 }
 
-/// A single `use rig::prelude::*` provides `bound`, `completion`, `agent` and
-/// `extractor` — the whole construction surface from one import.
+/// A single `use rig::prelude::*` provides `model`, `Model` and
+/// `AgentBuilder`: a provider's wire on the default transport, and an agent
+/// over it.
 #[test]
 fn completion_client_single_import_surface() {
     use rig::prelude::*;
 
-    #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-    struct Extracted {
-        value: String,
-    }
-
-    // Binding a provider config to the bundled transport performs no network
-    // call, so all four spellings reachable through the single
-    // `rig::prelude::*` import run to completion offline. A regression in any
+    // Pairing a wire with the default transport performs no network call, so
+    // every spelling below runs to completion offline. A regression in any
     // of them fails here, not merely a signature change.
-    let bound = rig::providers::openai::wire::OpenAI::with_key(
+    let openai = rig::providers::openai::wire::OpenAI::with_key(
         &rig::providers::openai::wire::OPENAI,
         "test-key",
-    )
-    .bound()
-    .expect("the bundled transport builds");
-    let _model = bound.completion("gpt-4o");
-    let _agent = bound.agent("gpt-4o").build();
-    let _extractor = bound.extractor::<Extracted>("gpt-4o").build();
+    );
+    let _model = model(openai.completion("gpt-4o"));
+    let _explicit = Model::new(openai.completion("gpt-4o"), rig::rig_reqwest::shared());
+    let _agent = AgentBuilder::new(model(openai.completion("gpt-4o"))).build();
 }
 
 /// The same surface is reachable through explicit imports, without the
-/// prelude glob: `Bind`/`DefaultTransport` for construction and
-/// `AgentProviderExt` for the agent sugar.
+/// prelude glob, including the typed extractor.
 #[test]
 fn completion_provider_explicit_facade_import_surface() {
-    use rig::client::AgentProviderExt;
-    use rig_reqwest::client::DefaultTransport;
+    use rig::Model;
+    use rig::agent::AgentBuilder;
+    use rig::extractor::ExtractorBuilder;
 
     #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
     struct Extracted {
         value: String,
     }
 
-    let bound = rig::providers::openai::wire::OpenAI::with_key(
+    let openai = rig::providers::openai::wire::OpenAI::with_key(
         &rig::providers::openai::wire::OPENAI,
         "test-key",
-    )
-    .bound() // DefaultTransport
-    .expect("the bundled transport builds");
-    let _model = bound.completion("gpt-4o"); // Bound::completion
-    let _agent = bound.agent("gpt-4o").build(); // AgentProviderExt
-    let _extractor = bound.extractor::<Extracted>("gpt-4o").build(); // AgentProviderExt
+    );
+    let _model = Model::new(openai.completion("gpt-4o"), rig::rig_reqwest::shared());
+    let _agent = AgentBuilder::new(rig::model(openai.completion("gpt-4o"))).build();
+    let _extractor =
+        ExtractorBuilder::<Extracted>::new(rig::model(openai.completion("gpt-4o"))).build();
 }
 
 /// `use rig::prelude::*` still brings the classic contextual `Tool` and

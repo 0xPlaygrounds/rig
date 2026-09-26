@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 16,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,15 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,31 +26,15 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 21,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 22,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -50,7 +42,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -58,15 +50,15 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 32,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -320,6 +312,17 @@
           "id": "wire:msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The dominant non-background color is bright red."
           }
         },
         {

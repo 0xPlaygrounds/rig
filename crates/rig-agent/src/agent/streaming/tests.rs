@@ -9,7 +9,6 @@ use crate::agent::AgentBuilder;
 use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::run::{AgentRun, AgentRunStep};
-use crate::client::AgentProviderExt;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
 use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::run::transcript::tool_result_output;
@@ -26,7 +25,6 @@ use rig_core::message::{
     ToolResultContent, UserContent,
 };
 use rig_core::providers::anthropic;
-use rig_reqwest::client::DefaultTransport;
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -599,7 +597,7 @@ fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
 
 #[tokio::test]
 async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
-    let runner = AgentBuilder::new(MockCompletionModel::default())
+    let runner = AgentBuilder::new(MockCompletionModel::from_turns([]))
         .build()
         .prompt("go");
     let tool_snapshot = Arc::new(
@@ -928,12 +926,14 @@ async fn assert_stream_usage_recorded_on_chat_spans(
 
     for (chat_span, expected_usage) in chat_spans.into_iter().zip(expected_usages) {
         assert_eq!(chat_span.parent_id, Some(outer_span_id));
+        // The provider's streaming span adopts the agent's chat span and
+        // records its own operation onto it.
         assert_eq!(
             chat_span
                 .string_fields
                 .get("gen_ai.operation.name")
                 .map(String::as_str),
-            Some("chat")
+            Some("chat_streaming")
         );
         // A counter the provider did not report leaves its span field unset.
         let field = |name: &str| chat_span.fields.get(name).copied();
@@ -1387,7 +1387,7 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
     tracing::callsite::rebuild_interest_cache();
     spans.clear();
 
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call(
             "tool_call_1",
             "default_api",
@@ -4271,7 +4271,9 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
             .collect::<Vec<_>>(),
         vec!["first ", "beta", "second"]
     );
-    assert_eq!(completed_reasoning, 1);
+    // `rs_b`, which the script never ends, is closed before the terminal
+    // and carries its block like the restated first part.
+    assert_eq!(completed_reasoning, 2);
     assert_eq!(
         hook.observed(),
         vec![
@@ -5402,13 +5404,14 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 
     // Make streaming request WITHOUT an outer span so rig creates its own invoke_agent span
     // (rig reuses current span if one exists, so we need to ensure there's no current span)
-    let client = anthropic::wire::Anthropic::from_env()?.bound()?;
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-        .preamble("You are a helpful assistant.")
-        .temperature(0.1)
-        .max_tokens(100)
-        .build();
+    let agent = AgentBuilder::new(rig_core::Model::new(
+        anthropic::wire::Anthropic::from_env()?.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+        rig_reqwest::shared(),
+    ))
+    .preamble("You are a helpful assistant.")
+    .temperature(0.1)
+    .max_tokens(100)
+    .build();
 
     let mut stream = agent.prompt("Say 'hello world' and nothing else.").stream();
 
@@ -5459,13 +5462,14 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     use rig_core::message::Message;
 
-    let client = anthropic::wire::Anthropic::from_env()?.bound()?;
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
-        .preamble("You are a helpful assistant. Keep responses brief.")
-        .temperature(0.1)
-        .max_tokens(50)
-        .build();
+    let agent = AgentBuilder::new(rig_core::Model::new(
+        anthropic::wire::Anthropic::from_env()?.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+        rig_reqwest::shared(),
+    ))
+    .preamble("You are a helpful assistant. Keep responses brief.")
+    .temperature(0.1)
+    .max_tokens(50)
+    .build();
 
     // Send streaming request with history
     let empty_history: &[Message] = &[];

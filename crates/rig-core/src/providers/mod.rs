@@ -1,6 +1,7 @@
 //! Provider configurations, endpoint wires, and model identifiers.
 //!
-//! Bind a configured wire to a transport to execute requests. For serialized
+//! Pair a configured wire with a transport in a [`crate::Model`] to execute
+//! requests. For serialized
 //! provider selection, use [`registry::ProviderRef`] instead of a concrete type.
 //!
 //! ```no_run

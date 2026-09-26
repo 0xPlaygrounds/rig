@@ -537,6 +537,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The result of 2 - 5 is **-3**."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 786,

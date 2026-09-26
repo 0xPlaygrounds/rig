@@ -2,13 +2,12 @@
 //! `on_run_settled`, and durable scratchpad state, recorded against the live
 //! Gemini API.
 //!
-//! Every cell sends through a `BoxedHttpClient` carrying a `WireProbe`
+//! Every cell sends through a `DynHttpClient` carrying a `WireProbe`
 //! middleware, so one recorded exchange proves both the transport seam (the
 //! phases fired, the serialized body and response status were visible) and
 //! the hook-level lifecycle claims. All assertions hold in both cassette
 //! modes: on replay the same code paths run against the replay server.
 
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::support::with_gemini_lifecycle_cassette;
@@ -25,8 +24,11 @@ async fn middleware_phases_observe_a_unary_completion() {
     with_gemini_lifecycle_cassette(
         "lifecycle_matrix/middleware_unary",
         probe.clone(),
-        |client| async move {
-            let agent = client.agent(MODEL).preamble(BASIC_PREAMBLE).build();
+        |client, http| async move {
+            let agent =
+                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
+                    .preamble(BASIC_PREAMBLE)
+                    .build();
             let response = agent
                 .prompt(BASIC_PROMPT)
                 .await
@@ -46,12 +48,12 @@ async fn middleware_response_phase_precedes_stream_consumption() {
     with_gemini_lifecycle_cassette(
         "lifecycle_matrix/middleware_streaming",
         probe.clone(),
-        |client| async move {
-            let agent = client
-                .agent(MODEL)
-                .preamble(STREAMING_PREAMBLE)
-                .add_hook(settle_hook)
-                .build();
+        |client, http| async move {
+            let agent =
+                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
+                    .preamble(STREAMING_PREAMBLE)
+                    .add_hook(settle_hook)
+                    .build();
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             let (response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
@@ -77,12 +79,12 @@ async fn run_start_rewrite_reaches_the_provider() {
     with_gemini_lifecycle_cassette(
         "lifecycle_matrix/run_start_rewrite",
         WireProbe::default(),
-        |client| async move {
-            let agent = client
-                .agent(MODEL)
-                .preamble(BASIC_PREAMBLE)
-                .add_hook(agent_hook)
-                .build();
+        |client, http| async move {
+            let agent =
+                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
+                    .preamble(BASIC_PREAMBLE)
+                    .add_hook(agent_hook)
+                    .build();
             // The original prompt says nothing about pineapples; only the
             // pre-run rewrite can put the marker into the model's reply.
             let response = agent
@@ -107,13 +109,13 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
     with_gemini_lifecycle_cassette(
         "lifecycle_matrix/entry_log_order",
         WireProbe::default(),
-        |client| async move {
-            let agent = client
-                .agent(MODEL)
-                .preamble("You are a calculator. Use the add tool for arithmetic.")
-                .tool(Adder)
-                .add_hook(agent_hook)
-                .build();
+        |client, http| async move {
+            let agent =
+                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
+                    .preamble("You are a calculator. Use the add tool for arithmetic.")
+                    .tool(Adder)
+                    .add_hook(agent_hook)
+                    .build();
             let mut stream = agent
                 .prompt("What is 9 + 16? Use the add tool, then reply with just the number.")
                 .max_turns(3)
@@ -141,13 +143,13 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
     with_gemini_lifecycle_cassette(
         "lifecycle_matrix/run_settled_tool_run",
         WireProbe::default(),
-        |client| async move {
-            let agent = client
-                .agent(MODEL)
-                .preamble("You are a calculator. Use the add tool for arithmetic.")
-                .tool(Adder)
-                .add_hook(agent_hook)
-                .build();
+        |client, http| async move {
+            let agent =
+                rig::AgentBuilder::new(rig::Model::new(client.completion(MODEL), http.clone()))
+                    .preamble("You are a calculator. Use the add tool for arithmetic.")
+                    .tool(Adder)
+                    .add_hook(agent_hook)
+                    .build();
             let response = agent
                 .prompt("What is 7 + 15? Use the add tool, then reply with just the number.")
                 .max_turns(3)

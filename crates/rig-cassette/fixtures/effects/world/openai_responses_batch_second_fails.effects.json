@@ -2,76 +2,36 @@
   "header": {
     "deliveries": [
       {
-        "batch": 11,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 11
         }
       },
       {
         "batch": 12,
         "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 22,
-        "id": 0,
-        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 23,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 24,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 43,
+        "batch": 61,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -79,23 +39,7 @@
         }
       },
       {
-        "batch": 44,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 45,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 46,
+        "batch": 63,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -103,47 +47,7 @@
         }
       },
       {
-        "batch": 47,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 48,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 49,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 50,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 51,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 53,
+        "batch": 64,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -151,7 +55,7 @@
         }
       },
       {
-        "batch": 80,
+        "batch": 65,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -159,7 +63,31 @@
         }
       },
       {
-        "batch": 80,
+        "batch": 66,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 109,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 16
+        }
+      },
+      {
+        "batch": 174,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 174,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -1014,6 +942,17 @@
           "id": "wire:msg_01daa38ebaca9411006ab2b282e95887d0bba4d9afc7091c55",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_01daa38ebaca9411006ab2b282e95887d0bba4d9afc7091c55",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The harbor label is crimson-harbor and the orchard tool reported: the orchard lookup is broken."
           }
         },
         {

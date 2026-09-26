@@ -4,10 +4,9 @@
 use crate::bus_support;
 use bevy_reflect::TypePath;
 use rig_core::{
-    driver::Bind,
     effect::HandlerKey,
     providers::openai::wire::OpenAI,
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::{ErasedHandler, adapters::ModelAdapter},
     test_utils::RecordingHttpClient,
 };
 use rig_ecs::{
@@ -20,14 +19,11 @@ const BODY: &str = r#"{"id":"c","object":"chat.completion","created":0,"model":"
 
 fn handler(label: &str, token: &str, endpoint: &str) -> (ErasedHandler, RecordingHttpClient) {
     let http = RecordingHttpClient::new(BODY);
-    let model = OpenAI::new(token)
-        .with_base_url(endpoint)
-        .bind(http.clone())
-        .chat("model-x");
-    (
-        ErasedHandler::new(CompletionAdapter::new(label, model)),
-        http,
-    )
+    let model = rig_core::Model::new(
+        OpenAI::new(token).with_base_url(endpoint).chat("model-x"),
+        http.clone(),
+    );
+    (ErasedHandler::new(ModelAdapter::new(label, model)), http)
 }
 
 // Forward real execution while varying only the advertised contract.
@@ -100,7 +96,7 @@ fn direct_and_declarative_host_assembly_send_identical_requests() {
     let declarative = config.with_credential("host-token").completion_handler(
         "saved",
         "model-x",
-        rig_core::http_client::BoxedHttpClient::new(declarative_http.clone()),
+        rig_core::http_client::DynHttpClient::new(declarative_http.clone()),
     );
     for handler in [direct, declarative] {
         let mut app = bus_support::app();

@@ -313,6 +313,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "wire:msg_00b0f43c455ec3c1006ab2b3e0784087d0880914ecfd7efc61",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 65,

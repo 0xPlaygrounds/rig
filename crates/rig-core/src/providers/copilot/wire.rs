@@ -15,14 +15,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
-use crate::driver::{HasEmbedding, HasModelListing};
 use crate::error::EncodeError;
-use crate::model::{Model, ModelList};
+use crate::model::{ModelInfo, ModelList};
 use crate::operation::{Completion, ModelListing};
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// Copilot's embeddings wire is the shared one, pointed at Copilot by
-/// [`Copilot::embeddings`]; the editor envelope is the dialect's modality
+/// [`Copilot::embedding`]; the editor envelope is the dialect's modality
 /// hook.
 pub use crate::providers::openai::wire::Embeddings;
 use crate::providers::openai::wire::{
@@ -31,8 +30,7 @@ use crate::providers::openai::wire::{
 };
 use crate::telemetry::GenAiOperation;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 
 use super::{CopilotIntent, PROVIDER_NAME};
@@ -197,7 +195,7 @@ impl Copilot {
 
     /// Build an embedding wire with Copilot's editor headers and optional usage.
     /// Use `ndims` when supplied, otherwise the shared wire's model default.
-    pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         Embeddings::new(self.openai(), model, ndims)
     }
 
@@ -317,22 +315,20 @@ fn credential_of(provider: &OpenAI) -> Copilot {
 
 impl Wire for CopilotWire {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = OpenAiDecoder;
 
     fn name(&self) -> &str {
         self.wire.name()
     }
 
-    fn model(&self) -> Option<&str> {
-        self.wire.model()
+    fn id(&self) -> Option<&str> {
+        self.wire.id()
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
         self.wire.replay_issuers(model)
-    }
-
-    fn route(&self) -> Option<&str> {
-        self.wire.route()
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
@@ -350,15 +346,15 @@ impl Wire for CopilotWire {
         self.wire.capabilities()
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        self.wire.telemetry(streaming)
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        self.wire.telemetry(mode)
     }
 }
 
 /// Copilot's model-listing wire.
 ///
 /// `GET /models` answers with the whole catalogue, so
-/// [`Decoder::continuation`] keeps its default `None`.
+/// [`Decoder::cursor`] keeps its default `None`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// Which Copilot, and how to reach it.
@@ -392,14 +388,14 @@ pub struct ModelsReply {
 
 impl ModelsReply {
     /// The catalogue as normalized models.
-    pub fn into_models(self) -> Vec<Model> {
-        self.data.into_iter().map(Model::from).collect()
+    pub fn into_models(self) -> Vec<ModelInfo> {
+        self.data.into_iter().map(ModelInfo::from).collect()
     }
 }
 
-impl From<ModelEntry> for Model {
+impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        let mut model = Model::from_id(entry.id);
+        let mut model = ModelInfo::from_id(entry.id);
         model.name = entry.name;
         model.owned_by = entry.vendor;
         if let Some(capabilities) = entry.capabilities {
@@ -427,6 +423,8 @@ impl Decoder<ModelListing> for ModelsDecoder {
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -449,30 +447,6 @@ impl Wire for Models {
 
     fn decoder(&self, _mode: Mode) -> ModelsDecoder {
         ModelsDecoder
-    }
-}
-
-impl HasCompletion for Copilot {
-    type Wire = CopilotWire;
-
-    fn completion(&self, model: impl Into<String>) -> CopilotWire {
-        self.completion(model)
-    }
-}
-
-impl HasEmbedding for Copilot {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasModelListing for Copilot {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
     }
 }
 

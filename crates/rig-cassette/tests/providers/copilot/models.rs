@@ -22,12 +22,11 @@
 //! ```
 
 use crate::copilot::with_copilot_cassette;
-use rig::model::ModelLister;
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_copilot_cassette("models/list_models_smoke", |client| async move {
-        let models = match client.models().list_all().await {
+        let models = match rig::model(client.models()).call(()).await {
             Ok(models) => models,
             Err(error) => {
                 panic!("listing Copilot models should succeed\nDisplay: {error}\nDebug: {error:#?}")

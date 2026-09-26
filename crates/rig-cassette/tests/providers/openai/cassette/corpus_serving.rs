@@ -4,7 +4,6 @@
 //! `openai_tool_call_turns` golden's; the cassette is the same.
 
 use rig::effect::EffectFamily;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -23,9 +22,7 @@ const CHAIN_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 
 async fn two_turns_concurrency_two_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/tool_call_turns", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .name("golden")
             .preamble(CHAIN_PREAMBLE)
             .temperature(0.0)

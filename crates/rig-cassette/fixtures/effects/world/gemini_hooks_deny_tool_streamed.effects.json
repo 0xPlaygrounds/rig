@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -33,7 +33,7 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -41,7 +41,7 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -457,6 +457,10 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "42"
           }
         },
         {
@@ -483,6 +487,15 @@
           "id": "minted:text:1",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "EoMCCoACAWkUfRNMXJSl7Q0JjcLaY7e59eRIopCAkIIbgfd854TT3XnL4ZH+gC0/pbc+qSL3tktXe4FeAqMvO62X7xMFYfdXQ1FjP6KaxRY5vkyQVApb19yR/ZIfUWWnRrc5Ptk2yGD+2ai5S9c6yhe9HV6cNACg1vryYvxbEcKWcUUe89kWZAqLneBCcv1Wkhds6yCUEAqr+P4k15lXkhrkkrWOBGcre+ozo+lE2Ey6suH+wKGo0ut1IUKcaPXVrCDCEH7Vm8RUuPvacdo3S+Bd2d1pn9WYIGnl4B3E7OKleNdpMULn89bldezY61GX2XhvAWVDAY+oXCPTcjoCVutVEZirPA=="
+              }
+            }
           }
         },
         {

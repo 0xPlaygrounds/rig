@@ -1,7 +1,9 @@
-use rig_agent::{agent::AgentBuilder, prelude::*};
-use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
-use rig_core::driver::CompletionProvider;
+use rig_agent::agent::AgentBuilder;
+use rig_bedrock::client::BedrockRuntime;
+use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
 use rig_core::loaders::FileLoader;
+use rig_core::operation::Completion;
+use rig_core::{DynModel, Model};
 use tracing::info;
 
 mod common;
@@ -14,33 +16,28 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
+    // One model serves every demo: erase it once, clone the handle.
+    let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env()).erase();
+
     info!("Running basic agent");
-    basic().await?;
+    basic(model.clone()).await?;
 
     info!("\nRunning agent with tools");
-    tools().await?;
+    tools(model.clone()).await?;
 
     info!("\nRunning agent with loaders");
-    loaders().await?;
+    loaders(model.clone()).await?;
 
     info!("\nRunning agent with context");
-    context().await?;
+    context(model).await?;
 
     info!("\n\nAll agents ran successfully");
     Ok(())
 }
 
-fn client() -> Result<Client, anyhow::Error> {
-    Ok(Client::from_env()?)
-}
-
-fn partial_agent() -> Result<AgentBuilder, anyhow::Error> {
-    Ok(client()?.agent(AMAZON_NOVA_LITE))
-}
-
 /// Create an AWS Bedrock agent with a system prompt
-async fn basic() -> Result<(), anyhow::Error> {
-    let agent = partial_agent()?
+async fn basic(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
+    let agent = AgentBuilder::new(model)
         .preamble("Answer with json format only")
         .build();
 
@@ -51,8 +48,8 @@ async fn basic() -> Result<(), anyhow::Error> {
 }
 
 /// Create an AWS Bedrock with tools
-async fn tools() -> Result<(), anyhow::Error> {
-    let calculator_agent = partial_agent()?
+async fn tools(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
+    let calculator_agent = AgentBuilder::new(model)
         .preamble("You must only do math by using a tool.")
         .max_tokens(1024)
         .tool(common::Adder)
@@ -66,9 +63,7 @@ async fn tools() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn context() -> Result<(), anyhow::Error> {
-    let model = client()?.completion(AMAZON_NOVA_LITE);
-
+async fn context(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)
         .preamble("Answer the question")
@@ -92,9 +87,7 @@ async fn context() -> Result<(), anyhow::Error> {
 ///
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
 ///  context for the agent
-async fn loaders() -> Result<(), anyhow::Error> {
-    let model = client()?.completion(AMAZON_NOVA_LITE);
-
+async fn loaders(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
     // Load in all the rust examples
     let examples = FileLoader::with_glob("examples/*.rs")?
         .read_with_path()

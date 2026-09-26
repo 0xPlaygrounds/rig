@@ -2,23 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 5
         }
       },
       {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 9,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -146,6 +138,17 @@
           "delta": {
             "delta": "text",
             "text": " alignment causes the Moon to obscure the Sun from an Earthly perspective."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
           }
         },
         {

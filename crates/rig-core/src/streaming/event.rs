@@ -2,9 +2,9 @@
 //! Blocks share a [`BlockId`] across starts, deltas, and ends. A delta can
 //! implicitly open a block; an end can supply an authoritative payload.
 //!
-//! Adapters emit `block: None` on end events. The
-//! [`BlockAccumulator`](super::BlockAccumulator) fills it with finalized tool
-//! calls or reasoning while assembling the assistant response.
+//! Adapters emit `block: None` on end events. The completion sink
+//! ([`AdapterOutput`](crate::operation::AdapterOutput)) fills it with the
+//! block the end finalized.
 //!
 //! ```
 //! use rig_core::streaming::{BlockId, MintKind, StreamEvent};
@@ -45,12 +45,15 @@ pub enum StreamEvent {
         id: BlockId,
         /// What the wire said at the boundary.
         end: BlockClose,
-        /// The block as finalized by the accumulator, when the end
-        /// finalized one that consumers need whole (a completed tool call, a
-        /// completed reasoning item). `None` from an adapter; `None` from
-        /// the accumulator when the end finalized nothing (a dropped call, a
-        /// silent synthesized boundary) or when the block is text (its
-        /// deltas are the content).
+        /// The block as finalized: a completed text block, reasoning item,
+        /// tool call or image. `None` from an adapter; `None` from the sink
+        /// only when the end finalized nothing (a dropped call, an empty
+        /// text block, a repeated end). An end restates the block its id
+        /// currently names: a later end under the same id (a signature that
+        /// arrived after the block ended, more text under a reused text key)
+        /// carries the whole updated block, which replaces the earlier
+        /// statement. A start, or a reasoning or tool fragment, after an end
+        /// under that id begins a new block.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         block: Option<AssistantContent>,
     },
@@ -132,14 +135,16 @@ pub enum BlockClose {
         /// text.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
-        /// Whether the provider explicitly ended the block. Explicit ends yield
-        /// a completed block even when bare; synthesized bare ends yield `None`.
+        /// Whether the provider explicitly ended the block, rather than a
+        /// boundary the adapter or the sink synthesized.
         wire_sent: bool,
     },
-    /// A tool call's input ended: the accumulator finalizes the assembled
+    /// A tool call's input ended: the sink finalizes the assembled
     /// fragments, or the end's authoritative payload, into a completed
     /// call.
     ToolCall(ToolCallEnd),
+    /// A whole image the reply delivered at once; images have no deltas.
+    Image(crate::message::Image),
 }
 
 /// The end of a streamed tool call's input.

@@ -1,7 +1,6 @@
 //! AWS Bedrock extractor smoke tests inspired by the provider extractor tests.
 
 use rig::message::Message;
-use rig::prelude::*;
 
 use super::{
     BEDROCK_COMPLETION_MODEL, client,

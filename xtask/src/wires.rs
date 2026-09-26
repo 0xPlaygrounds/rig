@@ -10,8 +10,8 @@
 //! |---|---|
 //! | no `.await`, `async fn`, or `async` block | a provider owning its transport |
 //! | no `Arc`, `Box<dyn`, or `impl Future` in an `impl Wire` block | a wire that is not data |
-//! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `BoxedHttpClient` | the transport parameter returning |
-//! | no consumer-trait impl | a second way to be a model |
+//! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `DynHttpClient` | the transport parameter returning |
+//! | no `Transport` impl | a provider owning how its payloads are sent |
 //!
 //! `openai/responses_api/websocket.rs` is exempt because a session spans many
 //! turns over one connection rather than a single exchange. The credential
@@ -54,19 +54,6 @@ const CREDENTIAL_EXCHANGES: &[&str] = &[
     "chatgpt/auth/wasm.rs",
     // The request/send helpers both exchanges round-trip through.
     "internal/auth.rs",
-];
-
-/// The traits a consumer calls a model through. `driver::Bound` is the only
-/// implementation of each; providers contribute wires instead.
-const CONSUMER_TRAITS: &[&str] = &[
-    "CompletionModel",
-    "EmbeddingModel",
-    "ImageEmbeddingModel",
-    "TranscriptionModel",
-    "ImageGenerationModel",
-    "AudioGenerationModel",
-    "RerankModel",
-    "ModelLister",
 ];
 
 /// Run the check over `crates/rig-core/src/providers/`.
@@ -155,7 +142,7 @@ impl Wires {
     /// Rejects transport parameters, recognized by their bounds rather than
     /// their names: a parameter bounded by `HttpClientExt`, whether in its own
     /// bound list or the item's `where` clause, or defaulted to
-    /// `BoxedHttpClient`. Parameters without such a bound are ordinary data.
+    /// `DynHttpClient`. Parameters without such a bound are ordinary data.
     fn check_type_params(&mut self, kind: &str, ident: &syn::Ident, generics: &syn::Generics) {
         if self.session {
             return;
@@ -166,7 +153,7 @@ impl Wires {
             }
             self.report(&format!(
                 "`{kind} {ident}<{}>` — a wire holds no transport, and that parameter is \
-                 bounded by `HttpClientExt` or defaulted to `BoxedHttpClient`",
+                 bounded by `HttpClientExt` or defaulted to `DynHttpClient`",
                 parameter.ident
             ));
         }
@@ -224,7 +211,7 @@ fn source_text(node: &impl ToTokens) -> String {
 
 /// Whether `parameter` is the socket rather than parametric data: bounded by
 /// `HttpClientExt` in its own bounds or in `generics`' `where` clause, or
-/// defaulted to `BoxedHttpClient`.
+/// defaulted to `DynHttpClient`.
 fn is_transport_parameter(parameter: &syn::TypeParam, generics: &syn::Generics) -> bool {
     // Every bound stated for this parameter, wherever it was stated: the
     // inline list and each `where` predicate naming it are one bound set.
@@ -245,7 +232,7 @@ fn is_transport_parameter(parameter: &syn::TypeParam, generics: &syn::Generics) 
         || parameter
             .default
             .as_ref()
-            .is_some_and(|default| source_text(default).contains("BoxedHttpClient"))
+            .is_some_and(|default| source_text(default).contains("DynHttpClient"))
 }
 
 impl<'ast> Visit<'ast> for Wires {
@@ -294,9 +281,10 @@ impl<'ast> Visit<'ast> for Wires {
             .map(|segment| segment.ident.to_string());
 
         if let Some(name) = &implemented {
-            if CONSUMER_TRAITS.contains(&name.as_str()) {
+            if name == "Transport" {
                 self.report(&format!(
-                    "`impl {name} for {}` — the one implementation is `driver::Bound`",
+                    "`impl Transport for {}` — providers are wires; the HTTP transport is \
+                     `driver::http_transport`",
                     source_text(&item.self_ty)
                 ));
             }

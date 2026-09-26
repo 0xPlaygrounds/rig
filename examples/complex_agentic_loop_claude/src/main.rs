@@ -28,12 +28,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create the Anthropic provider
     let anthropic_api_key = env::var("ANTHROPIC_API_KEY")?;
-    let anthropic_client = Anthropic::new(&anthropic_api_key).bound()?;
+    let anthropic_client = Anthropic::new(&anthropic_api_key);
 
     // Create the embedding model for our vector store
     // We'll use OpenAI's embedding model for this example
-    let openai_client = openai::wire::OpenAI::from_env()?.bound()?;
-    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let openai_client = openai::wire::OpenAI::from_env()?;
+    let embedding_model =
+        rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None)).erase();
 
     // Create a knowledge base with sample entries
     let knowledge_entries = vec![
@@ -80,9 +81,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let vector_index = vector_store.index(embedding_model);
 
+    // One Claude model serves every agent below: erase it once, clone the handle.
+    let claude =
+        rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)).erase();
+
     // Create specialized research agent that will be used as a tool
-    let research_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let research_agent = AgentBuilder::new(claude.clone())
         .preamble(
             "You are a specialized research agent focused on environmental science and sustainability.
             Your role is to provide detailed, accurate information about climate change, renewable energy,
@@ -93,8 +97,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a data analysis agent that will be used as a tool
-    let analysis_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let analysis_agent = AgentBuilder::new(claude.clone())
         .preamble(
             "You are a data analysis agent specialized in interpreting environmental and sustainability data.
             When given data or statistics, you analyze trends, identify patterns, and draw meaningful conclusions.
@@ -105,8 +108,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a recommendation agent that will be used as a tool
-    let recommendation_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let recommendation_agent = AgentBuilder::new(claude.clone())
         .preamble(
             "You are a recommendation agent specialized in suggesting practical sustainability solutions.
             Based on research findings and analysis, you provide actionable recommendations for individuals,
@@ -118,8 +120,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create the main orchestrator agent that will use all the tools
-    let orchestrator_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let orchestrator_agent = AgentBuilder::new(claude)
         .preamble(
             "You are an environmental sustainability advisor that helps users understand complex environmental issues
             and find practical solutions. You have access to several specialized tools:

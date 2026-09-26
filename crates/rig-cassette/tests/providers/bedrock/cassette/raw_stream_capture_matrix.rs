@@ -4,9 +4,7 @@
 //! # The feature
 //!
 //! Capture is always on. The terminal record of every stream the seam yields
-//! carries `raw`: the value
-//! [`CompletionModel::raw_stream`](rig::bedrock::completion::CompletionModel::raw_stream)
-//! would have yielded as its `FinalResponse` — [`BedrockStreamingResponse`]:
+//! carries `raw`: the stream's terminal record, [`BedrockStreamingResponse`]:
 //! the `metadata` event's usage, the `messageStop` event's `stopReason` in
 //! Bedrock's own vocabulary, and the operation's AWS request id — serialized
 //! with `serde_json::to_value`. It is the terminal record only, and nothing
@@ -49,8 +47,6 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::bedrock;
 use rig::bedrock::streaming::BedrockStreamingResponse;
 use rig::bedrock::types::converse_output::StopReason;
-use rig::completion::CompletionModel as _;
-use rig::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -60,14 +56,14 @@ use crate::raw_capture::{
     assert_normalized_lacks, capture_sole_terminal, stream_normalized_without_raw,
 };
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &bedrock::completion::CompletionModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
         .build()
@@ -140,7 +136,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request, sink)
+            capture_sole_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -185,7 +181,7 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_bedrock_stop_reason",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request, sink)
+            capture_sole_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },

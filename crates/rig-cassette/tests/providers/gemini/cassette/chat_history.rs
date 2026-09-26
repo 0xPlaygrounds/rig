@@ -8,7 +8,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -116,18 +115,19 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
     super::super::support::with_gemini_cassette(
         "chat_history/chat_appends_reasoning_tool_turns_to_caller_history",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(4096)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
-                    }
-                }))
-                .default_max_turns(2)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+            .max_tokens(4096)
+            .tool(WeatherTool::new(call_count.clone()))
+            .additional_params(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
+                }
+            }))
+            .default_max_turns(2)
+            .build();
             let mut chat_history = Vec::<Message>::new();
 
             let result = agent
@@ -151,8 +151,7 @@ async fn five_turn_chat_history_stress_preserves_context_and_tools() {
     let add_count = Arc::new(AtomicUsize::new(0));
     let subtract_count = Arc::new(AtomicUsize::new(0));
     super::super::support::with_gemini_cassette("chat_history/five_turn_chat_history_stress_preserves_context_and_tools", |client| async move {
-    let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
+    let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
         .preamble(
             "You are running a deterministic Rig integration test. Preserve facts across turns. \
              When a prompt says to use a tool, call exactly that tool before answering. \
