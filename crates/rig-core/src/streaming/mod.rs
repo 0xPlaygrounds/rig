@@ -1,4 +1,5 @@
-//! Runtime-independent completion events and the stream that folds them.
+//! Runtime-independent completion events, and [`Streamed`], the one stream
+//! every reply arrives as.
 //!
 //! ```
 //! use rig_core::streaming::{StreamEvent, StreamFinal};
@@ -12,14 +13,16 @@ mod block_id;
 mod event;
 
 use crate::completion::{CompletionResponse, Usage};
+use crate::driver::{Step, record_request_id};
 use crate::error::ErrorReport;
 use crate::error::ProviderError;
 use crate::message::{AssistantContent, ToolResult};
-use crate::operation::CompletionFold;
-use crate::wire::Fold;
+use crate::operation::{Completion, CompletionFold};
+use crate::wasm_compat::WasmBoxedStream;
+use crate::wire::{Fold, Mode, Operation, Reply};
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
 pub use event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCallEnd};
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -286,73 +289,174 @@ impl From<serde_json::Value> for UnknownPayload {
 #[cfg(test)]
 mod unknown_payload_tests;
 
-/// The one stream item type: what [`CompletionStream`] yields, what a
-/// [`CompletionFold`] collects, what the bus carries.
+/// The one completion stream item type: what a [`CompletionStream`]
+/// yields, what a [`CompletionFold`] collects, what the bus carries.
 pub type StreamEvents =
     crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, ErrorReport>>;
 
-/// A completion reply's canonical events, and the fold that has seen them.
+/// One reply as it arrives: its canonical events, and the fold that has
+/// seen each of them. It is what [`Model::stream`](crate::Model::stream)
+/// returns for every operation, and what a call drains.
 ///
-/// The events are final as the completion sink made them: every
-/// [`StreamEvent::BlockEnd`] carries the block it finalized, the terminal's
-/// finish reason agrees with the completed tool calls, a stream carries one
-/// terminal, and a malformed block is an in-band [`ErrorReport`]. Each event
-/// is yielded after [`CompletionFold`] has seen it. Stop polling to pause;
-/// drop the stream to cancel.
-pub struct CompletionStream {
-    events: StreamEvents,
-    fold: CompletionFold,
+/// Each event is stamped with what the transport reported about the reply
+/// (a completion's terminal record gets the request id), recorded on the
+/// call's span when streamed, and absorbed by the fold before it is
+/// yielded. A failure is an in-band error item. Stop polling to pause; drop
+/// the stream to cancel.
+pub struct Streamed<Op: Operation> {
+    steps: WasmBoxedStream<'static, Result<Step<Op>, ProviderError>>,
+    fold: Op::Fold,
+    mode: Mode,
+    span: tracing::Span,
+    /// What the transport reported so far: the provider, the latest page's
+    /// request id, and once the reply closed, its document.
+    reply: Reply,
     finished: bool,
 }
 
-impl CompletionStream {
-    /// A stream whose provider is known when it opens.
-    pub(crate) fn opened(fold: CompletionFold, events: StreamEvents) -> Self {
+/// A streamed completion.
+pub type CompletionStream = Streamed<Completion>;
+
+impl<Op: Operation> Streamed<Op> {
+    /// The reply `steps` deliver under `span`, folded by `fold`.
+    pub(crate) fn new(
+        steps: WasmBoxedStream<'static, Result<Step<Op>, ProviderError>>,
+        fold: Op::Fold,
+        mode: Mode,
+        span: tracing::Span,
+        provider: impl Into<String>,
+    ) -> Self {
         Self {
-            events,
+            steps,
             fold,
+            mode,
+            span,
+            reply: Reply {
+                provider: provider.into(),
+                raw: serde_json::Value::Null,
+                provider_request_id: None,
+            },
             finished: false,
         }
     }
 
-    /// A stream relayed over the bus under `label`, whose terminal record
-    /// names the provider behind it.
-    pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
-        Self::opened(CompletionFold::relayed(label), events)
-    }
-
-    /// What the stream has folded so far.
-    pub fn folded(&self) -> &CompletionFold {
+    /// What the fold has seen so far.
+    pub fn folded(&self) -> &Op::Fold {
         &self.fold
     }
 
-    /// The assembled turn. A stream that yielded no terminal record is
-    /// truncated and is refused. Events not yet polled are not part of it.
-    pub fn finish(self) -> Result<CompletionResponse, ProviderError> {
-        self.fold.finish_stream()
+    /// The response the events seen so far fold into. Events not yet polled
+    /// are not part of it. A unary call's response is recorded on its span.
+    pub fn finish(self) -> Result<Op::Response, ProviderError> {
+        let response = self.fold.finish(self.reply)?;
+        if self.mode == Mode::Unary {
+            Op::record(&self.span, &response);
+        }
+        Ok(response)
+    }
+
+    /// Poll to the end, then finish: a call's response. The first error
+    /// fails it.
+    pub(crate) async fn drain(mut self) -> Result<Op::Response, ProviderError> {
+        while let Some(item) = futures::future::poll_fn(|cx| self.poll_step(cx)).await {
+            item?;
+        }
+        self.finish()
+    }
+
+    /// The one place a step is consumed: an opened page's request id goes
+    /// on the span, an event is stamped, recorded and absorbed, an error is
+    /// stamped with the request id, and the closed reply is kept.
+    fn poll_step(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Op::Event, ProviderError>>> {
+        while !self.finished {
+            let step = match self.steps.as_mut().poll_next(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(None) => {
+                    self.finished = true;
+                    break;
+                }
+                Poll::Ready(Some(step)) => step,
+            };
+            match step {
+                Ok(Step::Opened(page)) => {
+                    record_request_id(&self.span, page.request_id.as_deref());
+                    self.reply.provider_request_id = page.request_id;
+                }
+                Ok(Step::Event(mut event)) => {
+                    Op::stamp_event(&mut event, &self.reply);
+                    if self.mode == Mode::Streaming {
+                        Op::record_event(&self.span, &event);
+                    }
+                    return Poll::Ready(Some(self.fold.absorb(&event).map(|()| event)));
+                }
+                Ok(Step::Closed(reply)) => self.reply = reply,
+                Err(error) => {
+                    // An id an upstream constructor already attached wins:
+                    // it saw the reply.
+                    let error =
+                        error.with_provider_request_id(self.reply.provider_request_id.clone());
+                    record_request_id(&self.span, error.provider_request_id());
+                    return Poll::Ready(Some(Err(error)));
+                }
+            }
+        }
+        Poll::Ready(None)
     }
 }
 
-impl Stream for CompletionStream {
-    type Item = Result<StreamEvent, ErrorReport>;
+impl Streamed<Completion> {
+    /// A stream relayed over the bus under `label`, whose terminal record
+    /// names the provider behind it. Its events are canonical already: the
+    /// origin's sink made them so.
+    pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
+        let label = label.into();
+        let steps = events.map(|item| {
+            item.map(Step::Event)
+                .map_err(|report| ProviderError::Relayed(Box::new(report)))
+        });
+        Self::new(
+            Box::pin(steps),
+            CompletionFold::relayed(label.clone()),
+            Mode::Streaming,
+            tracing::Span::none(),
+            label,
+        )
+    }
+}
+
+#[cfg(test)]
+impl Streamed<Completion> {
+    /// A stream `provider` opened over `items`, as the driver yields them,
+    /// with the reasoning `issuer` it names up front.
+    pub(crate) fn scripted(
+        provider: &str,
+        issuer: Option<&str>,
+        items: impl Stream<Item = Result<StreamEvent, ProviderError>> + Send + 'static,
+    ) -> Self {
+        Self::new(
+            Box::pin(items.map(|item| item.map(Step::Event))),
+            CompletionFold::opened(provider, issuer.map(str::to_owned), Mode::Streaming),
+            Mode::Streaming,
+            tracing::Span::none(),
+            provider,
+        )
+    }
+}
+
+// Nothing is pinned in place: the steps are boxed and the fold is only
+// ever reached through `&mut`.
+impl<Op: Operation> Unpin for Streamed<Op> {}
+
+impl<Op: Operation> Stream for Streamed<Op> {
+    type Item = Result<Op::Event, ErrorReport>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let stream = self.get_mut();
-        if stream.finished {
-            return Poll::Ready(None);
-        }
-        match stream.events.as_mut().poll_next(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => {
-                stream.finished = true;
-                Poll::Ready(None)
-            }
-            Poll::Ready(Some(Err(error))) => Poll::Ready(Some(Err(error))),
-            Poll::Ready(Some(Ok(event))) => match stream.fold.absorb(&event) {
-                Ok(()) => Poll::Ready(Some(Ok(event))),
-                Err(error) => Poll::Ready(Some(Err(ErrorReport::from(&error)))),
-            },
-        }
+        self.get_mut()
+            .poll_step(cx)
+            .map(|item| item.map(|item| item.map_err(|error| ErrorReport::from(&error))))
     }
 }
 

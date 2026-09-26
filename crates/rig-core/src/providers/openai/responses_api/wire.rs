@@ -273,7 +273,7 @@ pub(crate) fn fold_body(
 ) -> Result<completion::CompletionResponse, crate::error::ProviderError> {
     use super::streaming::ResponsesEvent;
     use crate::operation::AdapterOutput;
-    use crate::wire::{Decoder, Fold, Operation, Reply, Sink};
+    use crate::wire::{Decoder, Fold, Mode, Reply, Sink};
 
     let reply = Reply {
         provider: provider.to_owned(),
@@ -284,7 +284,7 @@ pub(crate) fn fold_body(
     let mut out = AdapterOutput::new();
     decoder.interpret(ResponsesEvent::Whole(Box::new(response)), &mut out);
 
-    let mut fold = <Completion as Operation>::Fold::default();
+    let mut fold = crate::operation::CompletionFold::opened(provider, None, Mode::Unary);
     for item in Sink::<Completion>::drain(&mut out) {
         fold.absorb(&item?)?;
     }

@@ -76,12 +76,16 @@ where
             observation,
         };
         let http = self.clone();
-        let sending = match mode {
-            Mode::Unary => futures::future::Either::Left(async move {
-                exchange.install(&request, &declared);
-                exchange.unary(&http, request).await
-            }),
-            Mode::Streaming => {
+        // A whole reply has nothing to stream: it is read as a unary one is,
+        // so its document is a fact of the reply in both modes.
+        let sending = match (mode, framing) {
+            (Mode::Unary, _) | (Mode::Streaming, Framing::Whole) => {
+                futures::future::Either::Left(async move {
+                    exchange.install(&request, &declared);
+                    exchange.unary(&http, request).await
+                })
+            }
+            (Mode::Streaming, Framing::Sse | Framing::Ndjson) => {
                 let request = byte_request(request)?;
                 futures::future::Either::Right(async move {
                     // Unpolled streams must not report transport attempts.

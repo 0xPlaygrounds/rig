@@ -241,10 +241,17 @@ impl StreamTap {
         if let Err(error) = self.fold.absorb(event) {
             return Some(Err(ErrorReport::from(&error)));
         }
+        // A relayed stream's reply is its terminal record; the tap saw no
+        // transport.
+        let reply = crate::wire::Reply {
+            provider: String::new(),
+            raw: serde_json::Value::Null,
+            provider_request_id: None,
+        };
         matches!(event, StreamEvent::Final(_)).then(|| {
             std::mem::take(self)
                 .fold
-                .finish_stream()
+                .finish(reply)
                 .map(Outcome::Completion)
                 .map_err(|error| ErrorReport::from(&error))
         })

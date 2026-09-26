@@ -403,6 +403,10 @@ pub enum ProviderError {
     /// [`ErrorDetail::MalformedToolInput`].
     #[error("tool call `{}` arrived with malformed JSON input: {}", .0.name, .0.error)]
     MalformedToolInput(MalformedToolInput),
+    /// A failure a relay delivered as its report, such as a stream relayed
+    /// over the effect bus. It reports as the relayed report, unchanged.
+    #[error("{}", .0.message)]
+    Relayed(Box<ErrorReport>),
 }
 
 impl ProviderError {
@@ -446,6 +450,7 @@ impl ProviderError {
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
             | Self::CacheExpired { .. } => ErrorKind::ProviderResponse,
+            Self::Relayed(report) => report.kind,
         }
     }
 
@@ -457,6 +462,7 @@ impl ProviderError {
         match self {
             Self::Http(error) => transient_transport(error),
             Self::ProviderResponse(response) => response.is_retryable(),
+            Self::Relayed(report) => report.retryable,
             _ => false,
         }
     }
@@ -647,6 +653,9 @@ impl From<http::Error> for ProviderError {
 
 impl From<&ProviderError> for ErrorReport {
     fn from(error: &ProviderError) -> Self {
+        if let ProviderError::Relayed(report) = error {
+            return (**report).clone();
+        }
         let response = error.provider_response();
         ErrorReport {
             kind: error.kind(),

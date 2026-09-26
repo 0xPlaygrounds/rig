@@ -22,7 +22,7 @@ use crate::providers::openai::responses_api::{
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
 use crate::wire::WireFrame;
-use crate::wire::{Fold, Operation, Reply};
+use crate::wire::{Fold, Reply};
 use futures::StreamExt;
 use serde_json::{self, json};
 
@@ -308,7 +308,8 @@ fn folded_stream_events(
         raw: serde_json::to_value(raw_response)?,
         provider_request_id: raw_response.provider_request_id.clone(),
     };
-    let mut fold = <Completion as Operation>::Fold::default();
+    let mut fold =
+        crate::operation::CompletionFold::opened(provider, None, crate::wire::Mode::Unary);
     for event in events {
         fold.absorb(&event)?;
     }

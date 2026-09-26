@@ -18,12 +18,12 @@ use rig_core::completion::CompletionResponse;
 use rig_core::driver::WireDriver;
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, ToolResult, ToolResultContent, UserContent};
-use rig_core::operation::{Completion, CompletionFold};
+use rig_core::operation::Completion;
 use rig_core::providers::anthropic::wire::Anthropic;
 use rig_core::providers::gemini::Gemini;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::openai::wire::{DEEPSEEK, OpenAI};
-use rig_core::wire::{Fold, Mode, Reply, Wire, WireFrame};
+use rig_core::wire::{Fold, Mode, Operation, Reply, Wire, WireFrame};
 
 use super::{Dialect, response_tokens, string_values, unpaired_tool_calls};
 use crate::reasoning::{TOOL_SYSTEM_PROMPT, TOOL_USER_PROMPT, WeatherTool};
@@ -44,7 +44,8 @@ where
     let mut driver = WireDriver::new(wire.decoder(Mode::Unary));
     driver.push(WireFrame::Text(body.to_owned()));
     driver.finish();
-    let mut fold = CompletionFold::default();
+    let request = rig_core::completion::CompletionRequestBuilder::new("").build();
+    let mut fold = <Completion as Operation>::fold(&request, wire, Mode::Unary);
     for item in driver.drain() {
         fold.absorb(&item?)?;
     }

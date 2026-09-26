@@ -21,7 +21,7 @@ use crate::providers::openai::responses_api::wire::Responses;
 use crate::streaming::StreamEvent;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::WireFrame;
-use crate::wire::{Fold, Mode, Operation, Reply, Wire};
+use crate::wire::{Fold, Mode, Reply, Wire};
 use crate::ws_client::{
     BoxedWebSocketConnection, ConnectOptions, Frame, WebSocketClientExt, WebSocketConnection,
 };
@@ -722,7 +722,7 @@ fn fold_events(
     events: Vec<StreamEvent>,
     response: &CompletionResponse,
 ) -> Result<completion::CompletionResponse, ProviderError> {
-    let mut fold = <Completion as Operation>::Fold::default();
+    let mut fold = crate::operation::CompletionFold::opened(provider, None, Mode::Unary);
     for event in events {
         fold.absorb(&event)?;
     }

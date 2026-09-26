@@ -51,10 +51,36 @@ impl Operation for Completion {
     fn fold<W: crate::wire::Wire<Op = Self>>(
         request: &Self::Request,
         wire: &W,
-        _mode: Mode,
+        mode: Mode,
     ) -> Self::Fold {
         let issuer = wire.reasoning_issuer(request.model.as_deref().or(wire.id()));
-        CompletionFold::opened(wire.name(), issuer.map(str::to_owned))
+        CompletionFold::opened(wire.name(), issuer.map(str::to_owned), mode)
+    }
+
+    /// The transport request id reaches the terminal record, unless the
+    /// wire already put one there.
+    fn stamp_event(event: &mut Self::Event, reply: &Reply) {
+        if let StreamEvent::Final(terminal) = event
+            && terminal.provider_request_id.is_none()
+        {
+            terminal
+                .provider_request_id
+                .clone_from(&reply.provider_request_id);
+        }
+    }
+
+    /// A streamed call records the terminal record as it passes.
+    fn record_event(span: &tracing::Span, event: &Self::Event) {
+        if let StreamEvent::Final(terminal) = event {
+            span.record_response(
+                terminal
+                    .response_id
+                    .as_deref()
+                    .or(terminal.message_id.as_deref()),
+                terminal.model.as_deref(),
+                &terminal.usage,
+            );
+        }
     }
 
     fn telemetry(mode: Mode) -> Self::Telemetry {
@@ -157,8 +183,8 @@ impl Sink<Completion> for AdapterOutput {
 /// It collects what the sink already finalized: every block from its
 /// `BlockEnd`, in the order the blocks began, the message id and the
 /// terminal record. It assembles nothing, so a block still open is not in
-/// [`Self::snapshot`].
-#[derive(Default)]
+/// [`Self::snapshot`]. The default is the fold of a stream relayed under no
+/// label.
 pub struct CompletionFold {
     /// Finalized blocks in the order they began; `None` holds the place of
     /// a block that has not ended.
@@ -179,16 +205,35 @@ pub struct CompletionFold {
     /// The issuer of this reply's reasoning when a wire names it before the
     /// terminal record.
     reasoning_issuer: Option<String>,
+    /// What the reply's end means: a streamed reply without a terminal
+    /// record was truncated, while a whole one is the provider's answer.
+    mode: Mode,
+}
+
+impl Default for CompletionFold {
+    fn default() -> Self {
+        Self::relayed("")
+    }
 }
 
 impl CompletionFold {
-    /// The fold of a stream a wire opened, under its provider name and
-    /// the reasoning issuer it names up front.
-    pub(crate) fn opened(provider: impl Into<String>, reasoning_issuer: Option<String>) -> Self {
+    /// The fold of a reply a wire opened in `mode`, under its provider name
+    /// and the reasoning issuer it names up front.
+    pub(crate) fn opened(
+        provider: impl Into<String>,
+        reasoning_issuer: Option<String>,
+        mode: Mode,
+    ) -> Self {
         Self {
+            blocks: Vec::new(),
+            slots: HashMap::new(),
+            open_reasoning: HashSet::new(),
+            terminal: None,
+            message_id: None,
             provider: provider.into(),
+            provider_from_terminal: false,
             reasoning_issuer,
-            ..Self::default()
+            mode,
         }
     }
 
@@ -196,9 +241,8 @@ impl CompletionFold {
     /// names the provider behind it.
     pub(crate) fn relayed(label: impl Into<String>) -> Self {
         Self {
-            provider: label.into(),
             provider_from_terminal: true,
-            ..Self::default()
+            ..Self::opened(label, None, Mode::Streaming)
         }
     }
 
@@ -286,27 +330,6 @@ impl CompletionFold {
                 .or((!self.provider_from_terminal).then_some(self.provider.as_str())),
         }
     }
-
-    /// The streamed turn: the collected choice with the terminal record's
-    /// usage, metadata and document as `raw`. A stream that produced no
-    /// terminal record is truncated and is refused.
-    pub(crate) fn finish_stream(self) -> Result<CompletionResponse, ProviderError> {
-        let Some(terminal) = self.terminal.as_ref() else {
-            return Err(ProviderError::Response(
-                "provider stream ended without a terminal record; treating the turn as truncated"
-                    .to_owned(),
-            ));
-        };
-        let issuer = terminal.issuer().to_owned();
-        Ok(crate::streaming::fold_finish(
-            self.snapshot(),
-            Some(terminal),
-            self.message_id.clone(),
-            self.provider.clone(),
-            &issuer,
-            terminal.raw.clone(),
-        ))
-    }
 }
 
 impl Fold<Completion> for CompletionFold {
@@ -365,23 +388,47 @@ impl Fold<Completion> for CompletionFold {
         Ok(())
     }
 
+    /// A whole reply carries its document as `raw` and names the reply's
+    /// provider. A streamed one carries the terminal record's document and
+    /// names the provider that opened it (the terminal's, for a relayed
+    /// stream); without a terminal record it was truncated and is refused.
     fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
-        // The buffered reply's document is the response's `raw`, not the
-        // terminal record's: the wire decoded the whole body at once.
-        let issuer = self
-            .terminal
-            .as_ref()
-            .map_or(reply.provider.clone(), |terminal| {
-                terminal.issuer().to_owned()
-            });
-        let response = crate::streaming::fold_finish(
-            self.snapshot(),
-            self.terminal.as_ref(),
-            self.message_id,
-            reply.provider,
-            &issuer,
-            reply.raw,
-        );
+        let choice = self.snapshot();
+        let response = match self.mode {
+            Mode::Unary => {
+                let issuer = self
+                    .terminal
+                    .as_ref()
+                    .map_or(reply.provider.clone(), |terminal| {
+                        terminal.issuer().to_owned()
+                    });
+                crate::streaming::fold_finish(
+                    choice,
+                    self.terminal.as_ref(),
+                    self.message_id,
+                    reply.provider,
+                    &issuer,
+                    reply.raw,
+                )
+            }
+            Mode::Streaming => {
+                let Some(terminal) = self.terminal.as_ref() else {
+                    return Err(ProviderError::Response(
+                        "provider stream ended without a terminal record; treating the turn \
+                         as truncated"
+                            .to_owned(),
+                    ));
+                };
+                crate::streaming::fold_finish(
+                    choice,
+                    Some(terminal),
+                    self.message_id,
+                    self.provider,
+                    terminal.issuer(),
+                    terminal.raw.clone(),
+                )
+            }
+        };
         // The terminal's own id wins; the reply headers only fill a gap.
         if response.provider_request_id.is_none() {
             Ok(response.with_optional_provider_request_id(reply.provider_request_id))

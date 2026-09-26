@@ -1,7 +1,7 @@
 //! Calls a model. A [`Model`] pairs a [`Wire`] (what to send and how to read
-//! the reply) with a [`Transport`] (how the payload travels). Its `call`
-//! folds a whole reply and its `stream` yields a completion's events; both
-//! run the one private driver, so the two modes share every step. The
+//! the reply) with a [`Transport`] (how the payload travels). Its `stream`
+//! yields any operation's events as a [`Streamed`], and its `call` is that
+//! stream in unary mode, drained; both run the one private driver. The
 //! `_observed` twins take the observation context a bus records under.
 //!
 //! ```no_run
@@ -24,14 +24,11 @@ use futures::StreamExt;
 
 use crate::error::ProviderError;
 use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
-use crate::operation::{Completion, CompletionFold};
 use crate::providers::internal::wire::WireEvent;
-use crate::streaming::{CompletionStream, StreamEvent};
-use crate::telemetry::SpanCombinator;
+use crate::streaming::Streamed;
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
-    Decoder, Fold, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire,
-    WireFrame,
+    Decoder, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire, WireFrame,
 };
 
 mod dyn_model;
@@ -153,14 +150,22 @@ impl Observation {
     }
 }
 
-/// One step of a reply: the opened reply's transport request id, an event,
-/// or the folded response of a unary call.
+/// One step of a reply, as the driver delivers it in both modes: each page
+/// opens, its events follow, and the reply closes once.
 pub(crate) enum Step<Op: Operation> {
-    /// Exactly once, first, and only for a streamed call.
-    Opened(Option<String>),
+    /// A page opened: what the transport reported about it. First, once
+    /// per page.
+    Opened(Page),
     Event(Op::Event),
-    /// Exactly once, last, and only for a unary call.
-    Done(Op::Response),
+    /// The reply is complete: its aggregated document and transport facts.
+    /// Last, once.
+    Closed(Reply),
+}
+
+/// What the transport reported about one opened page.
+pub(crate) struct Page {
+    /// The provider's transport request id, when the reply carried one.
+    pub(crate) request_id: Option<String>,
 }
 
 impl<W, T> Model<W, T>
@@ -169,7 +174,8 @@ where
     T: Transport<W>,
 {
     /// Send `request` and fold the whole reply into the operation's
-    /// response. A paged operation follows every page the reply names.
+    /// response: [`Self::stream`] in unary mode, drained. A paged operation
+    /// follows every page the reply names.
     pub fn call(
         &self,
         request: Request<W>,
@@ -186,57 +192,55 @@ where
         self.unary(request, Some(observation))
     }
 
-    async fn unary(
+    /// Open a streamed reply. Encoding errors, and requests the transport
+    /// cannot stream, return here; every later failure arrives in-band.
+    /// Nothing is sent until the stream is first polled.
+    pub fn stream(&self, request: Request<W>) -> Result<Streamed<W::Op>, ProviderError> {
+        self.streamed(request, Mode::Streaming, None)
+    }
+
+    /// [`Self::stream`], with the attempt observed under `observation`.
+    pub fn stream_observed(
+        &self,
+        request: Request<W>,
+        observation: AdapterContext,
+    ) -> Result<Streamed<W::Op>, ProviderError> {
+        self.streamed(request, Mode::Streaming, Some(observation))
+    }
+
+    pub(crate) async fn unary(
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,
     ) -> Result<Response<W>, ProviderError> {
-        let span = self.span(&request, Mode::Unary);
-        let result = self.fold(request, observation, &span).await;
-        if let Err(error) = &result {
-            record_request_id(&span, error.provider_request_id());
-        }
-        let response = result?;
+        let response = self
+            .streamed(request, Mode::Unary, observation)?
+            .drain()
+            .await?;
         <W::Op as Operation>::accept(&self.wire.capabilities(), self.wire.name(), &response)?;
         Ok(response)
     }
 
-    /// The driver's steps for `request` in `mode`, with the span they run
-    /// under, boxed so a [`DynModel`] can carry them.
-    pub(crate) fn steps(
+    /// The one entry to the driver: the call's span, the operation's fold
+    /// for the reply, and the driver's steps, in `mode`.
+    pub(crate) fn streamed(
         &self,
         request: Request<W>,
         mode: Mode,
         observation: Option<AdapterContext>,
-    ) -> Result<
-        (
-            tracing::Span,
-            WasmBoxedStream<'static, Result<Step<W::Op>, ProviderError>>,
-        ),
-        ProviderError,
-    > {
+    ) -> Result<Streamed<W::Op>, ProviderError> {
         let span = self.span(&request, mode);
+        let fold = <W::Op as Operation>::fold(&request, &self.wire, mode);
         let steps = self.run(request, mode, observation, span.clone())?;
-        Ok((span, Box::pin(steps)))
-    }
-
-    async fn fold(
-        &self,
-        request: Request<W>,
-        observation: Option<AdapterContext>,
-        span: &tracing::Span,
-    ) -> Result<Response<W>, ProviderError> {
-        let steps = self.run(request, Mode::Unary, observation, span.clone())?;
-        futures::pin_mut!(steps);
-        while let Some(step) = steps.next().await {
-            if let Step::Done(response) = step? {
-                return Ok(response);
+        // A streamed reply decodes under the call's span; a unary one sends
+        // under it (see `run`).
+        let steps: WasmBoxedStream<'static, _> = match mode {
+            Mode::Unary => Box::pin(steps),
+            Mode::Streaming => {
+                Box::pin(tracing_futures::Instrument::instrument(steps, span.clone()))
             }
-        }
-        Err(ProviderError::Response(format!(
-            "{} reply ended before the transport delivered it whole",
-            <W::Op as Operation>::NAME
-        )))
+        };
+        Ok(Streamed::new(steps, fold, mode, span, self.wire.name()))
     }
 
     fn span(&self, request: &Request<W>, mode: Mode) -> tracing::Span {
@@ -278,8 +282,9 @@ where
     }
 
     /// The driver: encode, send each page through the transport, decode its
-    /// frames, and yield the events (streaming) or the folded response
-    /// (unary). Encoding and send refusals return before any stream exists.
+    /// frames, and yield each page's opening, its events, and the closed
+    /// reply. It never folds. Encoding and send refusals return before any
+    /// stream exists.
     fn run(
         &self,
         request: Request<W>,
@@ -295,7 +300,6 @@ where
     > {
         let wire = self.wire.clone();
         let transport = self.transport.clone();
-        let mut fold = <W::Op as Operation>::fold(&request, &wire, mode);
         let mut request = request;
         <W::Op as Operation>::scope_to_wire(&mut request, &wire);
         let payload = wire.encode(request, mode)?;
@@ -337,69 +341,75 @@ where
                 let route = route.unwrap_or_default();
                 let mut driver = WireDriver::<W::Op, _, W::Frame>::observed(wire.decoder(mode), slot.clone());
                 let mut frames = frames;
+                yield Ok(Step::Opened(Page { request_id: page_request_id.clone() }));
 
-                if mode == Mode::Streaming {
-                    yield Ok(Step::Opened(page_request_id));
-                    while let Some(frame) = frames.next().await {
-                        match frame {
-                            Ok(frame) => driver.push(frame),
-                            Err(error) => driver.fail(error),
+                let mut failed = false;
+                match mode {
+                    // Each frame's events leave as it decodes; a failure is
+                    // in-band, and the reply ends at its terminal.
+                    Mode::Streaming => {
+                        while let Some(frame) = frames.next().await {
+                            match frame {
+                                Ok(frame) => driver.push(frame),
+                                Err(error) => driver.fail(error),
+                            }
+                            for item in driver.drain() {
+                                failed |= item.is_err();
+                                yield item.map(Step::Event);
+                            }
+                            if driver.done() {
+                                break;
+                            }
                         }
+                        driver.finish();
                         for item in driver.drain() {
+                            failed |= item.is_err();
                             yield item.map(Step::Event);
                         }
-                        if driver.done() {
+                    }
+                    // A unary page is read whole: EOF is a complete answer,
+                    // every frame is projected even after the terminal, and
+                    // the first failure, enriched with what the transport
+                    // reported, fails the call.
+                    Mode::Unary => {
+                        let mut transport_failure = None;
+                        while let Some(frame) = frames.next().await {
+                            match frame {
+                                Ok(frame) => driver.push(frame),
+                                Err(error) => {
+                                    transport_failure = Some(error);
+                                    break;
+                                }
+                            }
+                        }
+                        if let Some(error) = transport_failure {
+                            let error = <W::Op as Operation>::with_route(error, wire.name(), &route);
+                            if let Some(slot) = &slot {
+                                slot.fail(&error);
+                            }
+                            yield Err(error);
                             return;
                         }
-                    }
-                    driver.finish();
-                    for item in driver.drain() {
-                        yield item.map(Step::Event);
-                    }
-                    return;
-                }
-
-                // A unary page is read whole: EOF is a complete answer, and
-                // every frame is projected even after the terminal.
-                let mut failed = None;
-                while let Some(frame) = frames.next().await {
-                    match frame {
-                        Ok(frame) => driver.push(frame),
-                        Err(error) => {
-                            failed = Some(error);
-                            break;
+                        driver.finish();
+                        for item in driver.drain() {
+                            match item {
+                                Ok(event) => yield Ok(Step::Event(event)),
+                                Err(error) => {
+                                    let error = <W::Op as Operation>::with_route(error, wire.name(), &route)
+                                        .with_provider_status(status)
+                                        .with_provider_request_id(page_request_id.clone())
+                                        .with_response_headers(headers);
+                                    if let Some(slot) = &slot {
+                                        slot.fail(&error);
+                                    }
+                                    yield Err(error);
+                                    return;
+                                }
+                            }
                         }
                     }
                 }
-                if let Some(error) = failed {
-                    let error = <W::Op as Operation>::with_route(error, wire.name(), &route);
-                    if let Some(slot) = &slot {
-                        slot.fail(&error);
-                    }
-                    yield Err(error);
-                    return;
-                }
-                driver.finish();
-                let mut failure = None;
-                for item in driver.drain() {
-                    let absorbed = item.and_then(|event| fold.absorb(&event));
-                    if let Err(error) = absorbed {
-                        failure = Some(error);
-                        break;
-                    }
-                }
-                if let Some(error) = failure {
-                    let error = <W::Op as Operation>::with_route(error, wire.name(), &route)
-                        .with_provider_status(status)
-                        .with_provider_request_id(page_request_id.clone())
-                        .with_response_headers(headers);
-                    if let Some(slot) = &slot {
-                        slot.fail(&error);
-                    }
-                    yield Err(error);
-                    return;
-                }
-                if let Some(slot) = &slot {
+                if !failed && let Some(slot) = &slot {
                     slot.finish(AdapterEnding::Decoded);
                 }
 
@@ -451,110 +461,13 @@ where
             } else {
                 documents.pop().unwrap_or(serde_json::Value::Null)
             };
-            let reply = Reply {
+            yield Ok(Step::Closed(Reply {
                 provider: wire.name().to_owned(),
                 raw,
-                provider_request_id: request_id.clone(),
-            };
-            match fold.finish(reply) {
-                Ok(response) => {
-                    <W::Op as Operation>::record(&span, &response);
-                    record_request_id(&span, request_id.as_deref());
-                    yield Ok(Step::Done(response));
-                }
-                Err(error) => yield Err(error),
-            }
+                provider_request_id: request_id,
+            }));
         })
     }
-}
-
-impl<W, T> Model<W, T>
-where
-    W: Wire<Op = Completion>,
-    T: Transport<W>,
-{
-    /// Open a streamed completion. Encoding errors, and requests the
-    /// transport cannot stream, return here; every later failure arrives
-    /// in-band. Nothing is sent until the stream is first polled.
-    pub fn stream(
-        &self,
-        request: crate::completion::CompletionRequest,
-    ) -> Result<CompletionStream, ProviderError> {
-        self.streamed(request, None)
-    }
-
-    /// [`Self::stream`], with the attempt observed under `observation`.
-    pub fn stream_observed(
-        &self,
-        request: crate::completion::CompletionRequest,
-        observation: AdapterContext,
-    ) -> Result<CompletionStream, ProviderError> {
-        self.streamed(request, Some(observation))
-    }
-
-    fn streamed(
-        &self,
-        request: crate::completion::CompletionRequest,
-        observation: Option<AdapterContext>,
-    ) -> Result<CompletionStream, ProviderError> {
-        let issuer = self
-            .wire
-            .reasoning_issuer(request.model.as_deref().or(self.wire.id()))
-            .map(str::to_owned);
-        let (span, steps) = self.steps(request, Mode::Streaming, observation)?;
-        Ok(completion_stream(span, self.wire.name(), issuer, steps))
-    }
-}
-
-/// The completion stream over the driver's streamed steps: events under
-/// `span`, the terminal record and errors stamped with the transport request
-/// id, folded under `provider` and the reasoning `issuer` named up front.
-pub(crate) fn completion_stream(
-    span: tracing::Span,
-    provider: &str,
-    issuer: Option<String>,
-    steps: impl futures::Stream<Item = Result<Step<Completion>, ProviderError>>
-    + WasmCompatSend
-    + 'static,
-) -> CompletionStream {
-    // The transport request id read off the reply's headers is stamped
-    // onto the terminal record and onto errors; an id an upstream
-    // constructor already attached wins, since it saw the reply.
-    let mut request_id: Option<String> = None;
-    let recorder = span.clone();
-    let events = tracing_futures::Instrument::instrument(steps, span).filter_map(move |step| {
-        futures::future::ready(match step {
-            Ok(Step::Opened(id)) => {
-                record_request_id(&recorder, id.as_deref());
-                request_id = id;
-                None
-            }
-            Ok(Step::Event(mut event)) => {
-                if let StreamEvent::Final(terminal) = &mut event {
-                    if terminal.provider_request_id.is_none() {
-                        terminal.provider_request_id = request_id.clone();
-                    }
-                    recorder.record_response(
-                        terminal
-                            .response_id
-                            .as_deref()
-                            .or(terminal.message_id.as_deref()),
-                        terminal.model.as_deref(),
-                        &terminal.usage,
-                    );
-                }
-                Some(Ok::<StreamEvent, _>(event))
-            }
-            Ok(Step::Done(_)) => None,
-            Err(error) => {
-                let error = error.with_provider_request_id(request_id.clone());
-                record_request_id(&recorder, error.provider_request_id());
-                Some(Err(crate::error::ErrorReport::from(&error)))
-            }
-        })
-    });
-    let fold = CompletionFold::opened(provider, issuer);
-    CompletionStream::opened(fold, Box::pin(events))
 }
 
 /// Drives classified frames through an operation decoder. Known frames are
@@ -779,7 +692,7 @@ fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
 const MAX_CONTINUATION_PAGES: usize = 1000;
 
 /// Record the transport request id on the call's span, success or failure.
-fn record_request_id(span: &tracing::Span, request_id: Option<&str>) {
+pub(crate) fn record_request_id(span: &tracing::Span, request_id: Option<&str>) {
     if let Some(request_id) = request_id
         && !span.is_disabled()
     {

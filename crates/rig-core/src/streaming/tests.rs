@@ -33,10 +33,7 @@ fn opened(
     provider: &str,
     events: impl futures::Stream<Item = Result<StreamEvent, ProviderError>> + Send + 'static,
 ) -> CompletionStream {
-    CompletionStream::opened(
-        CompletionFold::opened(provider, None),
-        Box::pin(events.map(|item| item.map_err(|error| ErrorReport::from(&error)))),
-    )
+    CompletionStream::scripted(provider, None, events)
 }
 
 /// Script a provider's output through the same helpers adapters use, so
