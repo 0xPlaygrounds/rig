@@ -33,7 +33,7 @@ use fastembed::{InitOptionsUserDefined, TextEmbedding, UserDefinedEmbeddingModel
 use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::embeddings;
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::operation::{Embedding, EmbeddingCapabilities, One};
+use rig_core::operation::{Embedding, EmbeddingCapabilities, Events};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::wire::{Decoder, Mode, Sink, Wire};
 
@@ -195,7 +195,7 @@ impl Decoder<Embedding, (Vec<String>, Vec<Vec<f32>>)> for FastembedDecoder {
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, (texts, vectors): Self::Event, out: &mut One<Embedding>) {
+    fn interpret(&mut self, (texts, vectors): Self::Event, out: &mut Events<Embedding>) {
         let embeddings = texts
             .into_iter()
             .zip(vectors)

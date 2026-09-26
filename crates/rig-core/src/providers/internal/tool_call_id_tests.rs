@@ -16,7 +16,7 @@ fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
         crate::driver::WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
     driver.push(WireFrame::Text(body.clone()));
     driver.finish();
-    let mut fold = <Completion as Operation>::fold(&crate::completion::CompletionRequest {
+    let request = crate::completion::CompletionRequest {
         model: None,
         chat_history: vec![crate::message::Message::user("probe")],
         documents: Vec::new(),
@@ -27,7 +27,8 @@ fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-    });
+    };
+    let mut fold = <Completion as Operation>::fold(&request, wire, crate::wire::Mode::Unary);
     for item in driver.drain() {
         fold.absorb(&item.expect("the reply decodes without an in-band error"))
             .expect("the fold accepts every event");

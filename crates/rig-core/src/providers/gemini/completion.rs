@@ -100,11 +100,10 @@ impl Wire for GenerateContent {
     }
 
     /// Select the telemetry operation for unary or streamed completion.
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
-            GenAiOperation::ChatStreaming
-        } else {
-            GenAiOperation::GenerateContent
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        match mode {
+            Mode::Unary => GenAiOperation::GenerateContent,
+            Mode::Streaming => GenAiOperation::ChatStreaming,
         }
     }
 

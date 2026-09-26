@@ -20,7 +20,7 @@ use crate::streaming::{
     ToolCallEnd, UnknownPayload,
 };
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Fold, Operation, Reply, Sink};
+use crate::wire::{Fold, Mode, Operation, Reply, Sink};
 
 mod accumulator;
 
@@ -48,11 +48,19 @@ impl Operation for Completion {
         matches!(event, StreamEvent::Final(_))
     }
 
-    fn telemetry(streaming: bool) -> Self::Telemetry {
-        if streaming {
-            GenAiOperation::ChatStreaming
-        } else {
-            GenAiOperation::Chat
+    fn fold<W: crate::wire::Wire<Op = Self>>(
+        request: &Self::Request,
+        wire: &W,
+        _mode: Mode,
+    ) -> Self::Fold {
+        let issuer = wire.reasoning_issuer(request.model.as_deref().or(wire.id()));
+        CompletionFold::opened(wire.name(), issuer.map(str::to_owned))
+    }
+
+    fn telemetry(mode: Mode) -> Self::Telemetry {
+        match mode {
+            Mode::Unary => GenAiOperation::Chat,
+            Mode::Streaming => GenAiOperation::ChatStreaming,
         }
     }
 

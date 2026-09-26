@@ -205,8 +205,8 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.capabilities())
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        on_route!(self, wire => wire.telemetry(streaming))
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        on_route!(self, wire => wire.telemetry(mode))
     }
 }
 

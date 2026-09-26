@@ -233,7 +233,7 @@ fn cases() -> Vec<Value> {
             let span = Completion::span(
                 "prov",
                 Some("model"),
-                Completion::telemetry(false),
+                Completion::telemetry(Mode::Unary),
                 &request,
             );
             let response = CompletionResponse::new(vec![], usage(), "prov", Value::Null)
@@ -264,7 +264,7 @@ fn cases() -> Vec<Value> {
         let span = Embedding::span(
             "prov",
             Some("model"),
-            Embedding::telemetry(false),
+            Embedding::telemetry(Mode::Unary),
             &vec!["a".to_owned()],
         );
         let response = EmbeddingResponse::new(vec![], "prov")
@@ -278,7 +278,12 @@ fn cases() -> Vec<Value> {
             query: "q".into(),
             documents: vec!["d".into()],
         };
-        let span = Rerank::span("prov", Some("model"), Rerank::telemetry(false), &request);
+        let span = Rerank::span(
+            "prov",
+            Some("model"),
+            Rerank::telemetry(Mode::Unary),
+            &request,
+        );
         let response = RerankResponse::new(vec![], "prov")
             .with_response_id("rr_id")
             .with_model("rr_model")
@@ -297,7 +302,7 @@ fn cases() -> Vec<Value> {
         let span = Transcription::span(
             "prov",
             Some("model"),
-            Transcription::telemetry(false),
+            Transcription::telemetry(Mode::Unary),
             &request,
         );
         let response = TranscriptionResponse::new("text", "prov")

@@ -31,18 +31,19 @@ pub use modality::{
 };
 pub use verify::{Verify, VerifyDecoder};
 
-/// The sink of an operation whose reply is one event.
-pub struct One<Op: Operation> {
+/// The sink every operation but [`Completion`] uses: the events a decoder
+/// pushed, in order.
+pub struct Events<Op: Operation> {
     items: Vec<Result<Op::Event, ProviderError>>,
 }
 
-impl<Op: Operation> Default for One<Op> {
+impl<Op: Operation> Default for Events<Op> {
     fn default() -> Self {
         Self { items: Vec::new() }
     }
 }
 
-impl<Op: Operation> Sink<Op> for One<Op> {
+impl<Op: Operation> Sink<Op> for Events<Op> {
     type Laws = ();
 
     fn push(&mut self, item: Result<Op::Event, ProviderError>) {
@@ -59,7 +60,8 @@ impl<Op: Operation> Sink<Op> for One<Op> {
 }
 
 /// Retains the first event and ignores later events. Finishing without an
-/// event returns a decode error; otherwise reply metadata is stamped on the response.
+/// event returns a decode error; otherwise reply metadata is stamped on the
+/// response.
 ///
 /// The fold sees events by reference, so it clones the one event it keeps,
 /// once per reply.
@@ -92,7 +94,7 @@ where
                 ProviderError::Response(format!("{} reply carried no payload", Op::NAME))
             })?
             .into();
-        Op::stamp_reply(&mut response, reply);
+        Op::stamp_reply(&mut response, &reply);
         Ok(response)
     }
 }

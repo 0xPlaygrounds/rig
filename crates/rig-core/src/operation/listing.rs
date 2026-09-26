@@ -6,10 +6,10 @@
 //! assert_eq!(ModelListing::NAME, "model_listing");
 //! ```
 
-use super::One;
+use super::Events;
 use crate::error::ProviderError;
 use crate::model::{ModelInfo, ModelList};
-use crate::wire::{Fold, Operation, Reply};
+use crate::wire::{Fold, Mode, Operation, Reply, Wire};
 
 /// Lists provider models, concatenating the pages a reply's
 /// [`Decoder::cursor`](crate::wire::Decoder::cursor) names.
@@ -21,7 +21,7 @@ impl Operation for ModelListing {
     type Event = ModelList;
     type Response = ModelList;
     type Capabilities = ();
-    type Output = One<Self>;
+    type Output = Events<Self>;
     type Fold = ModelListingFold;
     type Telemetry = ();
 
@@ -31,7 +31,11 @@ impl Operation for ModelListing {
         true
     }
 
-    fn telemetry(_streaming: bool) -> Self::Telemetry {}
+    fn fold<W: Wire<Op = Self>>(_request: &Self::Request, _wire: &W, _mode: Mode) -> Self::Fold {
+        ModelListingFold::default()
+    }
+
+    fn telemetry(_mode: Mode) -> Self::Telemetry {}
 
     fn with_route(error: ProviderError, provider: &str, path: &str) -> ProviderError {
         crate::model::listing::with_route(error, provider, path)

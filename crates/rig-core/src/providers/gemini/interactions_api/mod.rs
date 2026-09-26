@@ -59,11 +59,10 @@ impl crate::wire::Wire for Interactions {
         Some(&self.model)
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
-            GenAiOperation::InteractionsStreaming
-        } else {
-            GenAiOperation::Interactions
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        match mode {
+            Mode::Unary => GenAiOperation::Interactions,
+            Mode::Streaming => GenAiOperation::InteractionsStreaming,
         }
     }
 
@@ -161,11 +160,10 @@ impl crate::wire::Wire for InteractionResume {
         None
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        if streaming {
-            GenAiOperation::InteractionsStreaming
-        } else {
-            GenAiOperation::Interactions
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        match mode {
+            Mode::Unary => GenAiOperation::Interactions,
+            Mode::Streaming => GenAiOperation::InteractionsStreaming,
         }
     }
 

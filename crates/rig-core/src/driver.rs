@@ -191,7 +191,7 @@ where
         request: Request<W>,
         observation: Option<AdapterContext>,
     ) -> Result<Response<W>, ProviderError> {
-        let span = self.span(&request, false);
+        let span = self.span(&request, Mode::Unary);
         let result = self.fold(request, observation, &span).await;
         if let Err(error) = &result {
             record_request_id(&span, error.provider_request_id());
@@ -215,7 +215,7 @@ where
         ),
         ProviderError,
     > {
-        let span = self.span(&request, mode == Mode::Streaming);
+        let span = self.span(&request, mode);
         let steps = self.run(request, mode, observation, span.clone())?;
         Ok((span, Box::pin(steps)))
     }
@@ -239,11 +239,11 @@ where
         )))
     }
 
-    fn span(&self, request: &Request<W>, streaming: bool) -> tracing::Span {
+    fn span(&self, request: &Request<W>, mode: Mode) -> tracing::Span {
         <W::Op as Operation>::span(
             self.wire.name(),
             self.wire.id(),
-            self.wire.telemetry(streaming),
+            self.wire.telemetry(mode),
             request,
         )
     }
@@ -295,7 +295,7 @@ where
     > {
         let wire = self.wire.clone();
         let transport = self.transport.clone();
-        let mut fold = <W::Op as Operation>::fold(&request);
+        let mut fold = <W::Op as Operation>::fold(&request, &wire, mode);
         let mut request = request;
         <W::Op as Operation>::scope_to_wire(&mut request, &wire);
         let payload = wire.encode(request, mode)?;

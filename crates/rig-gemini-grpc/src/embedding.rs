@@ -17,7 +17,7 @@ pub const EMBEDDING_004: &str = "text-embedding-004";
 use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::embeddings;
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::operation::{Embedding, EmbeddingCapabilities, One};
+use rig_core::operation::{Embedding, EmbeddingCapabilities, Events};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::wire::{Decoder, Mode, Output, Sink, Wire};
 
@@ -142,7 +142,7 @@ impl Decoder<Embedding, (String, proto::EmbedContentResponse)> for EmbeddingsDec
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, (document, response): Self::Event, _out: &mut One<Embedding>) {
+    fn interpret(&mut self, (document, response): Self::Event, _out: &mut Events<Embedding>) {
         match response.embedding {
             Some(embedding) => self.embeddings.push(embeddings::Embedding {
                 document,

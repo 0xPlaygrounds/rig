@@ -15,7 +15,7 @@ use aws_smithy_types::Blob;
 use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::embeddings::{self, Embedding};
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::operation::{EmbeddingCapabilities, One};
+use rig_core::operation::{EmbeddingCapabilities, Events};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::wire::{Decoder, Mode, Output, Sink, Wire};
 use serde::{Deserialize, Serialize};
@@ -180,7 +180,11 @@ impl Decoder<rig_core::operation::Embedding, EmbeddingFrame> for EmbeddingsDecod
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, frame: EmbeddingFrame, out: &mut One<rig_core::operation::Embedding>) {
+    fn interpret(
+        &mut self,
+        frame: EmbeddingFrame,
+        out: &mut Events<rig_core::operation::Embedding>,
+    ) {
         let EmbeddingFrame::Embedded { document, response } = frame else {
             if let EmbeddingFrame::Failed(error) = frame {
                 self.failure.get_or_insert(error);
