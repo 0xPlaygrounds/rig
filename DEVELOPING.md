@@ -118,10 +118,10 @@ than on its own PR; that tradeoff is deliberate.
 
 - The `local` nextest profile (`cargo nextest run --profile local`) is the
   inner loop: no retries, and it stops at the first failure. Its default
-  filter skips the Docker-backed service suites (`rig-service-tests`) and the
-  two tests that shell out to a nested Cargo build
+  filter skips the service suites (`rig-service-tests`, mostly Docker-backed)
+  and the two tests that shell out to a nested Cargo build
   (`portable_tool_facade_is_feature_additive`, `binary(macro_hygiene)`). CI
-  runs all of them.
+  runs all of them. Add `--ignore-default-filter` to run one by hand.
 - The dev profile keeps line tables for workspace code, so backtraces still
   show file and line, and emits no debuginfo for dependencies. For a debugger
   session, add
@@ -138,8 +138,9 @@ required by `.config/nextest.toml`; 0.9.91 or newer honours its test
 priorities, and older versions warn and run every test in default order),
 Clippy, rustfmt, protoc, Docker for the storage suites, Node,
 wasm-bindgen-test-runner at the lock file's `wasm-bindgen` version, and Python
-3.12+ for the floor checker and its isolation tests. The planner probes for what the selected checks need before
-compiling anything; a missing tool is a failed run.
+3.12+ for the floor checker and its isolation tests. The planner probes for
+what the selected checks need before compiling anything; a missing tool is a
+failed run.
 
 ## Hosted CI
 
@@ -163,7 +164,7 @@ compiling anything; a missing tool is a failed run.
   - rust-cache runs at job level everywhere so a failed or cancelled job
     saves nothing, and warms are never cancelled mid-build.
 
-Where the cassette-backed tests live:
+Where the tests live:
 
 - Every cassette-backed test source lives in `crates/rig-cassette`: the
   provider targets, the ECS/corpus parity cells inside them, the cache-prefix

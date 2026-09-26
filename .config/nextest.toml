@@ -1,8 +1,7 @@
-# The `local` profile's `default-filter` needs nextest 0.9.77 (changelog
-# 0.9.77: "`default-set` is now `default-filter`"). An older nextest would warn
-# about the unknown key and run the Docker suites, so it is required. Test
-# priorities need 0.9.91; older versions warn and ignore the `priority` keys
-# below, so they still run every test, just in default order.
+# `default-filter` below arrived in 0.9.77 (changelog: "`default-set` is now
+# `default-filter`"); an older nextest would ignore it and run the Docker suites.
+# Versions before 0.9.91 warn, ignore the `priority` keys and run tests in
+# default order.
 [nextest-version]
 required = "0.9.77"
 recommended = "0.9.91"
@@ -25,10 +24,8 @@ retries = 2
 filter = 'test(telemetry::) + test(span_safety_net::)'
 retries = 0
 
-# The inner loop (`cargo nextest run --profile local`, `cargo xtask verify
-# --quick`): no retries, stop at the first failure. It skips the
-# Docker-backed service suites (`rig-service-tests`) and the two tests that
-# shell out to a nested Cargo build. CI still runs all of them.
+# The inner loop: skips the service suites (`rig-service-tests`, mostly
+# Docker-backed) and the two nested-Cargo tests above. CI still runs all of them.
 [profile.local]
 retries = 0
 fail-fast = true

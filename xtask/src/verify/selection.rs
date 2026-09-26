@@ -518,9 +518,8 @@ pub(super) struct Quick {
 
 /// The features a quick run enables: a target's `required-features`, or for a
 /// whole package the union over its targets, so `--all-targets` skips none of
-/// them. The provider suites gate every cell on exactly those features. Wider
-/// sets are CI's: `--all-features` on the facade builds every companion crate,
-/// and elsewhere adds a second TLS stack or an ONNX runtime download.
+/// them. That is the smallest set that builds every affected test, whereas
+/// `--all-features` on the facade builds every companion crate.
 fn required_features(package: &Value, target: Option<&str>) -> BTreeSet<String> {
     package["targets"]
         .as_array()
@@ -703,7 +702,7 @@ pub(super) fn quick(
     }
     if !out.is_empty() {
         deferred.push(
-            "the checked packages' formatting, Clippy, doctests, WASM builds and other feature sets"
+            "the checked packages' formatting, Clippy, doctests, WASM builds, other feature sets, and the service suites and nested-Cargo guards the local nextest profile skips"
                 .into(),
         );
     }

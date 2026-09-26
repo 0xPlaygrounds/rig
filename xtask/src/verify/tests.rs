@@ -13,7 +13,7 @@ fn metadata() -> Value {
         {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
         {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"features":{"default":[],"agent":[],"ecs":[],"http":[],"bedrock":["http"]},"targets":[{"name":"anthropic","kind":["test"],"required-features":["http","agent","ecs"]},{"name":"openai","kind":["test"],"required-features":["http","agent","ecs"]},{"name":"verify","kind":["test"],"required-features":["agent","ecs"]},{"name":"world_replay","kind":["test"],"required-features":["agent","ecs"]},{"name":"world_replay_world","kind":["test"],"required-features":["ecs"]}]},
         {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
-        {"name":"rig-core","manifest_path":"/repo/crates/rig-core/Cargo.toml","dependencies":[],"features":{"default":["derive"],"derive":[],"pdf":[]},"targets":[{"name":"rig_core","kind":["lib"]},{"name":"macro_hygiene","kind":["test"]}]},
+        {"name":"rig-core","manifest_path":"/repo/crates/rig-core/Cargo.toml","dependencies":[],"features":{"default":["derive"],"derive":[],"pdf":[]},"targets":[{"name":"rig_core","kind":["lib"]}]},
         {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[{"name":"rig-core"}],"features":{"assets":[]},"targets":[{"name":"rig_ecs","kind":["lib"]},{"name":"run_wasm","kind":["test"],"required-features":["assets"]}]},
         {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
         {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
@@ -1062,4 +1062,22 @@ fn quick_without_a_base_lists_no_ci_ids() {
     )
     .unwrap();
     assert!(quick.ci.is_none());
+}
+
+#[test]
+fn quick_lists_path_shared_and_facade_inputs_instead_of_building_them() {
+    // The minimal runner compiles cassette's verification sources by path.
+    let q = quick(&["crates/rig-cassette/tests/world_replay.rs"]);
+    assert_eq!(
+        quick_ids(&q),
+        BTreeSet::from(["provider-world_replay".into()])
+    );
+    assert!(listed(&q, "rig-cassette-minimal"));
+    // A facade test module that is not a target has no owner to build.
+    let q = quick(&["tests/core/mod.rs"]);
+    assert!(q.plan.is_empty());
+    assert_eq!(
+        q.deferred,
+        ["tests/core/mod.rs: no owning package or test target"]
+    );
 }
