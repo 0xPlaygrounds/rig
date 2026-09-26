@@ -11,13 +11,11 @@ Additionally, please ensure that if you are submitting a bug ticket (ie, somethi
 
 ## Pull Requests
 
-Contributions are always encouraged and welcome. Before creating a pull request, create a new issue that tracks that pull request describing the problem in more detail. Pull request descriptions should include information about its implementation, especially if it makes changes to existing abstractions.
+Contributions are always encouraged and welcome. Pull request descriptions should include information about its implementation, especially if it makes changes to existing abstractions.
 
-PRs should be small and focused and should avoid interacting with multiple facets of the library. This may result in a larger PR being split into two or more smaller PRs. Commit messages should follow the [Conventional Commit](https://conventionalcommits.org/en/v1.0.0) format (prefixing with `feat`, `fix`, etc.) as this integrates into our auto-releases via a [release-plz](https://github.com/MarcoIeni/release-plz) Github action.
+Commit messages should follow the [Conventional Commit](https://conventionalcommits.org/en/v1.0.0) format (prefixing with `feat`, `fix`, etc.) as this integrates into our auto-releases via a [release-plz](https://github.com/MarcoIeni/release-plz) Github action.
 
 Do not edit `CHANGELOG.md`, `crates/*/CHANGELOG.md` or `MIGRATING.md` in a pull request; CI fails the PR if you do. Put changelog bullets and migration notes in the PR description under `## Changelog` and `## Migration` (the PR template has both); the release PR regenerates both files from them.
-
-Unless the PR is for something minor (ie a typo), please ensure that an issue has been opened for the feature or work you would like to contribute beforehand. By opening an issue, a discussion can be held beforehand on scoping the work effectively and ensuring that the work is in line with the vision for Rig. Without any linked issues, your PR may be liable to be closed if we (the maintainers) do not feel that your PR is within scope for the library.
 
 It is also highly suggested to comment on issues you're interested in working on. By doing so, it allows others to see that something is being worked on and therefore avoids frustrating situations, such as multiple contributors opening a PR for the same issue. In such a case, any duplicate PRs will be closed unless it is clear that the original contributor is unable to continue the work.
 
