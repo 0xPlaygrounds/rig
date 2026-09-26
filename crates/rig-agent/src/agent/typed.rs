@@ -265,10 +265,10 @@ macro_rules! forward_runner_setters {
         }
 
         /// Erase and set a typed default model for this run.
-        pub fn using_model_value<M>(mut self, model: M) -> Self
-        where
-            M: $crate::completion::CompletionModel + 'static,
-        {
+        pub fn using_model_value(
+            mut self,
+            model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
+        ) -> Self {
             self.runner = self.runner.using_model_value(model);
             self
         }

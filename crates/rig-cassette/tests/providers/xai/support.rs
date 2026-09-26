@@ -1,6 +1,4 @@
 use futures::FutureExt;
-use rig::driver::Bound;
-use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::xai;
 use std::future::Future;
@@ -8,7 +6,7 @@ use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<OpenAI>) {
+async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "xai",
@@ -17,16 +15,14 @@ async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound
     )
     .await;
     let client = OpenAI::with_key(&xai::DIALECT, cassette.api_key("XAI_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("xAI client should build");
+        .with_base_url(cassette.base_url());
 
     (cassette, client)
 }
 
 pub(super) async fn with_xai_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
@@ -41,7 +37,7 @@ pub(super) async fn with_xai_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = xai_cassette(spec).await;
@@ -52,7 +48,7 @@ where
 /// Bogus-key variant for recording real 401s (rig#2314 error matrix).
 pub(super) async fn with_xai_cassette_bogus_key<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -65,9 +61,7 @@ where
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let client = OpenAI::with_key(&xai::DIALECT, "xai-invalid-edge-matrix-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("xAI client should build");
+        .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
@@ -85,7 +79,7 @@ pub(super) async fn with_xai_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = xai_cassette(spec).await;

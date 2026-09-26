@@ -1,6 +1,5 @@
 //! Cohere streaming smoke test.
 
-use rig::prelude::*;
 use rig::providers::cohere::{self, wire::Cohere};
 
 use crate::support::{
@@ -10,12 +9,8 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires COHERE_API_KEY"]
 async fn streaming_smoke() {
-    let cohere = Cohere::from_env()
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
-    let agent = cohere
-        .agent(cohere::COMMAND_A_03_2025)
+    let cohere = Cohere::from_env().expect("config should build from env");
+    let agent = rig::AgentBuilder::new(rig::model(cohere.completion(cohere::COMMAND_A_03_2025)))
         .preamble(STREAMING_PREAMBLE)
         .build();
 

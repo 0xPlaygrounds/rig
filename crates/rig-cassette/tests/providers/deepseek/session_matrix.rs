@@ -1,10 +1,10 @@
 //! Reasoning across a session boundary on DeepSeek: see
 //! `rig_test_support::history_survival::sessions`.
 
-use super::support::{BoundDeepSeek, with_deepseek_cassette};
-use rig::completion::CompletionModel;
+use super::support::with_deepseek_cassette;
 
 use crate::history_survival::sessions::{self, Cell};
+use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "thinking": { "type": "enabled" } }))
@@ -18,16 +18,16 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: BoundDeepSeek,
+    client: OpenAI,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
 ) {
     (
-        client.completion("deepseek-v4-flash"),
-        client.completion("deepseek-v4-flash"),
-        client.completion("deepseek-v4-pro"),
+        rig::model(client.completion("deepseek-v4-flash")),
+        rig::model(client.completion("deepseek-v4-flash")),
+        rig::model(client.completion("deepseek-v4-pro")),
     )
 }
 

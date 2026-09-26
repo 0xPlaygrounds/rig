@@ -25,7 +25,7 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
                     let (ping, manifest, labels, echo) = complex_tools(&log);
                     let mut agent = {
                         let mut ecs = EcsAgent::new(
-                            client.completion(SESSION_MODEL),
+                            rig::model(client.completion(SESSION_MODEL)),
                             COMPLEX_SESSION_PREAMBLE,
                             10,
                         );
@@ -84,7 +84,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                     let (ping, manifest, labels, echo) = complex_tools(&log);
                     let mut agent = {
                         let mut ecs = EcsAgent::new(
-                            client.completion(SESSION_MODEL),
+                            rig::model(client.completion(SESSION_MODEL)),
                             COMPLEX_SESSION_PREAMBLE,
                             1,
                         );
@@ -155,7 +155,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
                 |client| async move {
                     let mut agent = {
                         let mut ecs = EcsAgent::new(
-                            client.completion(SESSION_MODEL),
+                            rig::model(client.completion(SESSION_MODEL)),
                             TWO_TOOL_STREAM_PREAMBLE,
                             5,
                         );
@@ -219,7 +219,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
                 |client| async move {
                     let mut agent = {
                         let mut ecs = EcsAgent::new(
-                            client.completion(SESSION_MODEL),
+                            rig::model(client.completion(SESSION_MODEL)),
                             TWO_TOOL_STREAM_PREAMBLE,
                             1,
                         );
@@ -267,7 +267,7 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
         "agent_tool_sessions/multimodal_image_input_mixed_text_ordering",
         |client| async move {
             let mut agent = EcsAgent::new(
-                client.completion(VISION_MODEL),
+                rig::model(client.completion(VISION_MODEL)),
                 "You answer image questions concisely and directly.",
                 1,
             );

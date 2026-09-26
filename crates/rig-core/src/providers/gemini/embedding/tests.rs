@@ -24,17 +24,17 @@ fn test_model_default_ndims_lookup() {
 fn ndims_defaults_from_the_model_identifier() {
     let gemini = Gemini::new("test_key");
 
-    assert_eq!(gemini.embeddings(EMBEDDING_001, None).ndims, 3072);
-    assert_eq!(gemini.embeddings(EMBEDDING_004, None).ndims, 768);
+    assert_eq!(gemini.embedding(EMBEDDING_001, None).ndims, 3072);
+    assert_eq!(gemini.embedding(EMBEDDING_004, None).ndims, 768);
     // A model this build has never heard of still gets a dimensionality.
-    assert_eq!(gemini.embeddings("some-future-model", None).ndims, 768);
+    assert_eq!(gemini.embedding("some-future-model", None).ndims, 768);
 }
 
 #[test]
 fn an_explicit_ndims_outranks_the_models_default() {
     let gemini = Gemini::new("test_key");
 
-    assert_eq!(gemini.embeddings(EMBEDDING_001, Some(256)).ndims, 256);
+    assert_eq!(gemini.embedding(EMBEDDING_001, Some(256)).ndims, 256);
 }
 
 /// `crates/rig-cassette/fixtures/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s
@@ -58,7 +58,7 @@ fn recorded_documents() -> Vec<String> {
 #[test]
 fn the_batch_request_is_the_recorded_one() {
     let encoded = Gemini::new("test-key")
-        .embeddings(EMBEDDING_001, None)
+        .embedding(EMBEDDING_001, None)
         .encode(
             vec!["Hello, world!".to_owned(), "Goodbye, world!".to_owned()],
             Mode::Unary,
@@ -89,7 +89,7 @@ fn the_batch_request_is_the_recorded_one() {
 
 #[test]
 fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
-    let wire = Gemini::new("test-key").embeddings(EMBEDDING_001, Some(256));
+    let wire = Gemini::new("test-key").embedding(EMBEDDING_001, Some(256));
     let mut driver =
         WireDriver::<crate::operation::Embedding, _>::new(wire.decoder(crate::wire::Mode::Unary));
     driver.push(WireFrame::Text(RECORDED_REPLY.to_owned()));

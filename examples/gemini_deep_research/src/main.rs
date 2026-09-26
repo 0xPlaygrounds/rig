@@ -1,8 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, CompletionRequestBuilder};
-use rig::driver::Bound;
-use rig::prelude::*;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::interactions_api::{
     AgentConfig, Content, Interaction, InteractionStatus, Step, ThinkingSummaries,
@@ -59,7 +57,7 @@ fn deep_research_request(
         );
     }
 
-    Ok(CompletionRequestBuilder::unbound(prompt.into())
+    Ok(CompletionRequestBuilder::new(prompt.into())
         .additional_params(serde_json::Value::Object(params))
         .build())
 }
@@ -104,16 +102,14 @@ fn print_interaction_result(interaction: &Interaction) {
 /// provider's own lifecycle fields — `status`, `steps` — are read back out of
 /// `raw` by deserializing Gemini's own type.
 async fn poll_until_terminal(
-    gemini: &Bound<Gemini>,
+    gemini: &Gemini,
     interaction_id: &str,
     request: &CompletionRequest,
 ) -> Result<Interaction> {
-    let model = gemini
-        .clone()
-        .map_wire(|gemini| gemini.interaction(interaction_id));
+    let model = rig::model(gemini.interaction(interaction_id));
 
     loop {
-        let response = model.completion(request.clone()).await?;
+        let response = model.call(request.clone()).await?;
         let interaction: Interaction = serde_json::from_value(response.raw)?;
         if interaction.is_terminal() {
             return Ok(interaction);
@@ -195,7 +191,7 @@ async fn main() -> Result<()> {
 
     let use_streaming = std::env::args().any(|arg| arg == "--stream");
     let agent = deep_research_agent();
-    let gemini = Gemini::from_env()?.bound()?;
+    let gemini = Gemini::from_env()?;
 
     let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
 
@@ -210,17 +206,9 @@ async fn main() -> Result<()> {
             // the one already running by id. They are two different wires, so
             // the branches meet at the opened stream rather than at the model.
             let opened = if attempt == 0 {
-                gemini
-                    .clone()
-                    .map_wire(|gemini| gemini.interactions(agent.as_str()))
-                    .stream(request.clone())
-                    .await
+                rig::model(gemini.interactions(agent.as_str())).stream(request.clone())
             } else if let Some(interaction_id) = state.interaction_id.as_deref() {
-                gemini
-                    .clone()
-                    .map_wire(|gemini| gemini.interaction_resumed(interaction_id, None))
-                    .stream(request.clone())
-                    .await
+                rig::model(gemini.interaction_resumed(interaction_id, None)).stream(request.clone())
             } else {
                 eprintln!("Stream closed before an interaction id was received.");
                 break;
@@ -258,11 +246,9 @@ async fn main() -> Result<()> {
 
             // Official Deep Research guidance recommends checking the background
             // interaction status before reconnecting a dropped/expired stream.
-            let probe = gemini
-                .clone()
-                .map_wire(|gemini| gemini.interaction(interaction_id.as_str()));
+            let probe = rig::model(gemini.interaction(interaction_id.as_str()));
             let interaction: Interaction =
-                serde_json::from_value(probe.completion(request.clone()).await?.raw)?;
+                serde_json::from_value(probe.call(request.clone()).await?.raw)?;
             if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
                 print_interaction_result(&interaction);
@@ -294,10 +280,8 @@ async fn main() -> Result<()> {
 
     println!("== Deep Research (background polling) ==");
     println!("Agent: {agent}");
-    let opened = gemini
-        .clone()
-        .map_wire(|gemini| gemini.interactions(agent.as_str()))
-        .completion(request.clone())
+    let opened = rig::model(gemini.interactions(agent.as_str()))
+        .call(request.clone())
         .await?;
     // rig normalizes the interaction id onto `response_id`, so opening a
     // background run needs no reach into `raw`.

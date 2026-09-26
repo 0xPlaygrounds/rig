@@ -4,7 +4,6 @@
 //! under `crates/rig-cassette/fixtures/cassettes/openai/corpus_output/`.
 
 use rig::effect::{EffectFamily, EffectKind};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;
@@ -35,9 +34,7 @@ fn tool_names(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
 async fn tool_unary_effect_log_is_the_golden_fixture() {
     with_openai_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)
@@ -62,9 +59,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
     with_openai_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)

@@ -7,7 +7,6 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{Delta, StreamEvent};
 use rig_cassette::agent::AgentReplayExt;
@@ -22,9 +21,7 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 async fn chat_baseline_effect_log_is_the_golden_fixture() {
     with_openai_corpus_delta_cassette("corpus_delta/chat_baseline", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = client
-            .chat
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.chat.completion(openai::GPT_4O)))
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)

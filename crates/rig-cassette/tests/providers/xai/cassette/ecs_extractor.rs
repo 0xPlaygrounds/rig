@@ -9,7 +9,7 @@ async fn extractor_smoke() {
         async {
             with_xai_cassette("extractor/extractor_smoke", |client| async move {
                 let mut extractor = EcsExtractor::<SmokePerson>::new(
-                    client.completion(xai::GROK_3_MINI),
+                    rig::model(client.completion(xai::GROK_3_MINI)),
                     None,
                     None,
                 );

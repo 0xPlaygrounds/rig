@@ -3,7 +3,7 @@
 //! The streaming sibling of `rig-agent`'s `model_conformance`: each scenario
 //! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
 //! streaming path — bytes → decode → normalize → aggregated
-//! [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse)
+//! [`CompletionStream`](crate::streaming::CompletionStream)
 //! — and asserts the [`StreamFinal`] contract
 //! table documented on that type. Scenarios state the contract; a per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells
@@ -25,6 +25,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use futures::future::BoxFuture;
 
+use crate::completion::CompletionRequestBuilder;
 use crate::error::ProviderError;
 use crate::streaming::BlockId;
 use crate::{
@@ -681,7 +682,7 @@ type DriveFn = Box<
 /// One provider's full streaming pipeline over scripted wire chunks.
 ///
 /// The closure builds a fresh provider client over a scripted HTTP double
-/// (`SequencedStreamingHttpClient`), opens `CompletionModel::stream`, drains
+/// (`SequencedStreamingHttpClient`), opens `Model::stream`, drains
 /// it, and returns everything the consumer observed.
 pub struct WireDriver {
     /// Stable descriptor name of the provider under test.
@@ -1646,22 +1647,24 @@ fn assert_reasoning_tool_reasoning(
 /// Per-provider wire fixtures for the shared scenario set.
 pub mod fixtures {
     use super::*;
-    use crate::completion::CompletionModel;
+    use crate::driver::{Model, Transport};
+    use crate::operation::Completion;
     use crate::test_utils::SequencedStreamingHttpClient;
+    use crate::wire::Wire;
     use serde_json::json;
 
     /// Drain a full normalized stream into everything the consumer observed.
     /// Public so provider-crate conformance suites (the typed-event wires)
     /// can reuse it in their drivers.
-    pub async fn drain(mut stream: crate::streaming::StreamingCompletionResponse) -> DrainedStream {
+    pub async fn drain(mut stream: crate::streaming::CompletionStream) -> DrainedStream {
         let mut items = Vec::new();
         while let Some(item) = stream.next().await {
             items.push(item);
         }
         let drained = DrainedStream {
             items,
-            choice: stream.snapshot(),
-            response: stream.response.clone(),
+            choice: stream.folded().snapshot(),
+            response: stream.folded().terminal().cloned(),
         };
         // Every fixture and cassette that drains through this helper runs
         // the lifecycle validator — the prose invariants as one executable
@@ -1674,10 +1677,14 @@ pub mod fixtures {
     /// wire threads the context it is handed: the trace must show the
     /// request it sent and how the attempt closed, or the wire has silently
     /// taken the context-discarding default.
-    pub async fn drain_observed<M: CompletionModel>(
-        model: &M,
+    pub async fn drain_observed<W, T>(
+        model: &Model<W, T>,
         request: crate::completion::CompletionRequest,
-    ) -> Result<DrainedStream, ProviderError> {
+    ) -> Result<DrainedStream, ProviderError>
+    where
+        W: Wire<Op = Completion>,
+        T: Transport<W>,
+    {
         let log = std::sync::Arc::new(crate::observe::ObservationLog::default());
         let context = crate::observe::AdapterContext::new(
             log.clone(),
@@ -1686,7 +1693,7 @@ pub mod fixtures {
         );
         // A stream that fails to open still sent (or failed to send) a
         // request: the facts are asserted before the error propagates.
-        let drained = match model.stream_with_context(request, Some(context)).await {
+        let drained = match model.stream_observed(request, context) {
             Ok(stream) => Ok(drain(stream).await),
             Err(error) => Err(error),
         };
@@ -1739,14 +1746,17 @@ pub mod fixtures {
     /// Every byte-wire conformance driver is this walk; since the wire
     /// unification they differ only in which wire they name, so the walk is
     /// written once and each family supplies its own `bind`.
-    fn byte_driver<M: CompletionModel + Clone + 'static>(
+    fn byte_driver<W>(
         provider: &'static str,
-        bind: fn(SequencedStreamingHttpClient) -> M,
-    ) -> WireDriver {
+        bind: fn(SequencedStreamingHttpClient) -> Model<W, SequencedStreamingHttpClient>,
+    ) -> WireDriver
+    where
+        W: Wire<Op = Completion, Payload = crate::wire::Encoded, Frame = crate::wire::WireFrame>,
+    {
         WireDriver::new(provider, move |chunks| {
             Box::pin(async move {
                 let model = bind(SequencedStreamingHttpClient::new(byte_chunks(chunks)?));
-                let request = model.completion_request("hello").build();
+                let request = CompletionRequestBuilder::new("hello").build();
                 drain_observed(&model, request).await
             })
         })
@@ -1779,14 +1789,14 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("openai", |transport| {
-                crate::driver::Bind::bind(
+                crate::driver::Model::new(
                     crate::providers::openai::wire::OpenAI::with_key(
                         &crate::providers::openai::wire::OPENAI,
                         "test-key",
-                    ),
+                    )
+                    .chat("gpt-4o"),
                     transport,
                 )
-                .chat("gpt-4o")
             })
         }
 
@@ -1885,11 +1895,10 @@ pub mod fixtures {
         /// The driver alone, for the reasoning-specific scenarios.
         pub fn driver() -> WireDriver {
             byte_driver("openai", |transport| {
-                crate::driver::Bind::bind(
-                    crate::providers::openai::OpenAI::new("test-key"),
+                crate::driver::Model::new(
+                    crate::providers::openai::OpenAI::new("test-key").responses("gpt-5.4"),
                     transport,
                 )
-                .responses("gpt-5.4")
             })
         }
 
@@ -2129,7 +2138,7 @@ pub mod fixtures {
         /// is re-parsed after the fact and merged with the terminal response
         /// body, per content kind.
         ///
-        /// Drives the *real* entry — `CompletionModel::completion` on the
+        /// Drives the *real* entry — `Model::call` on the
         /// ChatGPT wire whose HTTP double answers the `/responses` POST with
         /// the scripted SSE body — so the scenario exercises the buffered
         /// fold itself rather than a mirrored copy of it (#2258 review, F8
@@ -2137,17 +2146,17 @@ pub mod fixtures {
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
-                    let model = crate::driver::Bind::bind(
+                    let model = crate::driver::Model::new(
                         crate::providers::openai::OpenAI::with_key(
                             &crate::providers::chatgpt::DIALECT,
                             "test-token",
                         )
-                        .with_account_id("account-id"),
+                        .with_account_id("account-id")
+                        .responses("gpt-5.4"),
                         crate::test_utils::RecordingHttpClient::new(body),
-                    )
-                    .responses("gpt-5.4");
-                    let request = model.completion_request("hello").build();
-                    let response = model.completion(request).await?;
+                    );
+                    let request = CompletionRequestBuilder::new("hello").build();
+                    let response = model.call(request).await?;
                     Ok(response.choice)
                 })
             })
@@ -2281,11 +2290,12 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("gemini", |transport| {
-                crate::driver::Bind::bind(
-                    crate::providers::gemini::Gemini::new("test-key"),
+                crate::driver::Model::new(
+                    crate::providers::gemini::Gemini::new("test-key").completion(
+                        crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
+                    ),
                     transport,
                 )
-                .completion(crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05)
             })
         }
 
@@ -2413,7 +2423,7 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("gemini", |transport| {
-                crate::driver::Bind::bind(
+                crate::driver::Model::new(
                     crate::providers::gemini::Gemini::new("test-key")
                         .interactions("gemini-2.5-pro"),
                     transport,
@@ -2537,11 +2547,11 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("anthropic", |transport| {
-                crate::driver::Bind::bind(
-                    crate::providers::anthropic::wire::Anthropic::new("test-key"),
+                crate::driver::Model::new(
+                    crate::providers::anthropic::wire::Anthropic::new("test-key")
+                        .completion(crate::providers::anthropic::completion::CLAUDE_SONNET_4_6),
                     transport,
                 )
-                .completion(crate::providers::anthropic::completion::CLAUDE_SONNET_4_6)
             })
         }
 
@@ -2653,11 +2663,11 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("cohere", |transport| {
-                crate::driver::Bind::bind(
-                    crate::providers::cohere::wire::Cohere::new("test-key"),
+                crate::driver::Model::new(
+                    crate::providers::cohere::wire::Cohere::new("test-key")
+                        .completion(crate::providers::cohere::COMMAND_R_08_2024),
                     transport,
                 )
-                .completion(crate::providers::cohere::COMMAND_R_08_2024)
             })
         }
 
@@ -2765,8 +2775,10 @@ pub mod fixtures {
 
         fn driver() -> WireDriver {
             byte_driver("ollama", |transport| {
-                crate::driver::Bind::bind(crate::providers::ollama::wire::Ollama::new(), transport)
-                    .completion("llama3.2")
+                crate::driver::Model::new(
+                    crate::providers::ollama::wire::Ollama::new().completion("llama3.2"),
+                    transport,
+                )
             })
         }
 

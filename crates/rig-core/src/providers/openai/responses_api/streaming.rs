@@ -91,7 +91,7 @@ impl StreamingCompletionResponse {
 /// baked-in `"openai"` would mislabel them.
 ///
 /// The finish reason is left exactly as the provider reported it;
-/// [`crate::streaming::StreamingCompletionResponse`] applies the tool-call
+/// [`crate::streaming::CompletionStream`] applies the tool-call
 /// reconciliation afterwards, using the calls the stream actually emitted.
 ///
 /// The native record is serialized onto [`StreamFinal::raw`]; a

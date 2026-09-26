@@ -34,12 +34,14 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
-use super::support::{BoundMistral, with_mistral_request_shape_cassette_result};
+use super::support::with_mistral_request_shape_cassette_result;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -108,10 +110,7 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
     let mut params = json!({
         "tool_choice": match cell.tool_policy {
             ToolPolicy::Auto => "auto",
@@ -123,8 +122,7 @@ fn request(
         params["response_format"] = json!({ "type": "json_object" });
     }
 
-    model
-        .completion_request(prompt(cell))
+    CompletionRequestBuilder::new(prompt(cell))
         .tool(tool_definition())
         .additional_params(params)
         .max_tokens(64)
@@ -148,11 +146,11 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = rig::model(client.completion(model_name(cell.model)));
     let observation = match cell.transport {
         Transport::Blocking => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(cell)).await?;
             let calls = response
                 .choice
                 .iter()
@@ -170,7 +168,7 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation)
             }
         }
         Transport::Streaming => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item? {

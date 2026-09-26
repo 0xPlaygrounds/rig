@@ -42,7 +42,7 @@
 //! must keep the wire spelling and the terminal must report the upgrade.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
 use rig::streaming::{StreamEvent, StreamFinal};
@@ -53,6 +53,7 @@ use serde_json::Value;
 use super::super::support::with_gemini_cassette;
 use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
 use crate::support::{Adder, Observed, json_contains_key};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "gemini";
 
@@ -64,18 +65,17 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: streame
 /// A prompt the forced-tool cell can only satisfy by calling `add`.
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).temperature(0.0).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .temperature(0.0)
+        .build()
 }
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
 /// `allowedFunctionNames`), so the recorded stream carries a `functionCall`.
-fn forced_tool_request(
-    model: &(impl CompletionModel + Clone),
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn forced_tool_request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(TOOL_PROMPT)
         .temperature(0.0)
         .tool(rig::tool::tool_definition(&Adder))
         .tool_choice(ToolChoice::Specific {
@@ -99,11 +99,14 @@ struct Drained {
 /// helper parks. The sole-terminal claim it makes is the same one
 /// [`capture_text_and_sole_terminal`](crate::raw_capture::capture_text_and_sole_terminal)
 /// makes for this file's text-only cells.
-async fn drain_stream(
-    model: &(impl CompletionModel + Clone),
+async fn drain_stream<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: &rig_core::driver::Model<W, T>,
     request: rig::completion::CompletionRequest,
 ) -> Drained {
-    let mut stream = model.stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request).expect("stream should open");
     let mut terminal = None;
     let mut tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
@@ -206,7 +209,7 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(MODEL), request, sink)
+            capture_text_and_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("stream should open");
         },
@@ -255,7 +258,7 @@ async fn raw_exposes_terminal_only_fields() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(MODEL), request, sink)
+            capture_text_and_sole_terminal(rig::model(client.completion(MODEL)), request(), sink)
                 .await
                 .expect("stream should open");
         },
@@ -309,8 +312,8 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call",
         |client| async move {
-            let model = client.completion(MODEL);
-            sink.put(drain_stream(&model, forced_tool_request(&model)).await);
+            let model = rig::model(client.completion(MODEL));
+            sink.put(drain_stream(&model, forced_tool_request()).await);
         },
     )
     .await;

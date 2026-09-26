@@ -5,19 +5,18 @@
 //! `tests/common/ecs_matrix/extra.rs`; this file holds the scenario
 //! literals and the wire's models.
 
-use rig::completion::CompletionModel;
-
-use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
+use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{
     Wire, cells,
     extra::{Approval, ErrorProbe, batch_hold, despawn_waits_for_the_stream, error_facts},
 };
+use rig::providers::openai::OpenAI;
 
-fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.completion("deepseek-chat"),
-        route: Some(client.completion("deepseek-reasoner")),
+        model: rig::model(client.completion("deepseek-chat")),
+        route: Some(rig::model(client.completion("deepseek-reasoner"))),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -47,7 +46,7 @@ async fn error_facts_unary() {
             "wire_shape_matrix/chat_completion_rejects_an_unknown_model_with_the_provider_body",
             |client| async move {
                 error_facts(
-                    client.completion("deepseek-v9-nonexistent"),
+                    rig::model(client.completion("deepseek-v9-nonexistent")),
                     ErrorProbe {
                         prompt: "hi",
                         max_tokens: Some(8),
@@ -79,7 +78,7 @@ async fn error_facts_streamed() {
     crate::goldens::capture_world_programs(async {
         with_deepseek_cassette("corpus_matrix/error_facts_streamed", |client| async move {
             error_facts(
-                client.completion("deepseek-v9-nonexistent"),
+                rig::model(client.completion("deepseek-v9-nonexistent")),
                 ErrorProbe {
                     prompt: "hi",
                     max_tokens: Some(8),

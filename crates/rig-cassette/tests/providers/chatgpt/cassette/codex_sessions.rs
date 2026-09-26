@@ -8,14 +8,14 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::completion::CompletionRequestBuilder;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::tool::Tool;
 
@@ -98,8 +98,7 @@ async fn sequential_tool_calls_nonstreaming() {
     with_chatgpt_cassette(
         "codex_sessions/sequential_tool_calls_nonstreaming",
         |client| async move {
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -170,8 +169,7 @@ async fn sequential_tool_calls_streaming() {
     with_chatgpt_cassette(
         "codex_sessions/sequential_tool_calls_streaming",
         |client| async move {
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -217,8 +215,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
     with_chatgpt_cassette(
         "codex_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |client| async move {
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -278,8 +275,7 @@ async fn parallel_tool_calls_single_turn_streaming() {
     with_chatgpt_cassette(
         "codex_sessions/parallel_tool_calls_single_turn_streaming",
         |client| async move {
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -303,18 +299,18 @@ async fn long_history_replay_nonstreaming() {
     with_chatgpt_cassette(
         "codex_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = rig::model(client.completion(chatgpt::GPT_5_4));
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool call so the follow-up can echo
             // its call_id back, the way a caller-owned history would.
-            let first_request = model
-                .completion_request("Look up the harbor label with the tool.")
-                .preamble(preamble.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let first_request =
+                CompletionRequestBuilder::new("Look up the harbor label with the tool.")
+                    .preamble(preamble.to_string())
+                    .tool(rig::tool::tool_definition(&AlphaSignal))
+                    .build();
             let first_response = model
-                .completion(first_request)
+                .call(first_request)
                 .await
                 .expect("first turn should succeed");
             let tool_call = first_response
@@ -334,38 +330,37 @@ async fn long_history_replay_nonstreaming() {
             // roundtrip. The tool call is re-tagged with a local item ID (not
             // the provider's `fc_...` ID) — the request must still be accepted
             // because non-native IDs are omitted and calls pair by call_id.
-            let request = model
-                .completion_request(
-                    "In one short sentence: what is my favorite color, and what was the \
+            let request = CompletionRequestBuilder::new(
+                "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
-                )
-                .preamble(preamble.to_string())
-                .message(Message::user(
-                    "My favorite color is teal. Please remember it.",
-                ))
-                .message(Message::assistant("Noted - your favorite color is teal."))
-                .message(Message::user("Now look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::tool_call_with_call_id(
-                        "history_tool_1",
-                        call_id.clone(),
-                        AlphaSignal::NAME,
-                        serde_json::json!({}),
-                    )],
-                })
-                .message(Message::from(UserContent::tool_result_with_call_id(
+            )
+            .preamble(preamble.to_string())
+            .message(Message::user(
+                "My favorite color is teal. Please remember it.",
+            ))
+            .message(Message::assistant("Noted - your favorite color is teal."))
+            .message(Message::user("Now look up the harbor label with the tool."))
+            .message(Message::Assistant {
+                id: None,
+                content: vec![AssistantContent::tool_call_with_call_id(
                     "history_tool_1",
-                    call_id,
+                    call_id.clone(),
                     AlphaSignal::NAME,
-                    vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-                )))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                    serde_json::json!({}),
+                )],
+            })
+            .message(Message::from(UserContent::tool_result_with_call_id(
+                "history_tool_1",
+                call_id,
+                AlphaSignal::NAME,
+                vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+            )))
+            .message(Message::assistant("The harbor label is crimson-harbor."))
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("long history replay should be accepted by the Responses API");
 
@@ -403,8 +398,7 @@ async fn reasoning_session_two_tool_calls_streaming() {
         "codex_sessions/reasoning_session_two_tool_calls_streaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(6000)
                 .tool(WeatherTool::new(call_count.clone()))
@@ -474,8 +468,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
     with_chatgpt_cassette(
         "codex_sessions/usage_accumulates_across_streaming_multi_turn",
         |client| async move {
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .build();

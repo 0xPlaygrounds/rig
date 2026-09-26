@@ -1,10 +1,60 @@
 use super::*;
 use google_cloud_aiplatform_v1 as vertexai;
+use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
+use rig_core::driver::{Model, Observation, Opened, Transport};
+
+/// Answers every request with one scripted SDK reply.
+#[derive(Clone)]
+pub(crate) struct Reply(vertexai::model::GenerateContentResponse);
+
+impl Transport<crate::completion::GenerateContent> for Reply {
+    fn send(
+        &self,
+        _payload: crate::completion::VertexRequest,
+        _mode: rig_core::wire::Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<
+            Output = Opened<
+                crate::completion::VertexRequest,
+                vertexai::model::GenerateContentResponse,
+            >,
+        >
+        + Send
+        + 'static
+        + use<>,
+        ProviderError,
+    > {
+        let reply = self.0.clone();
+        Ok(async move { Opened::new(futures::stream::iter([Ok(reply)])) })
+    }
+}
+
+/// The reply as the unary endpoint answers it.
+pub(crate) trait Complete {
+    fn complete(self) -> Result<CompletionResponse, ProviderError>;
+}
+
+impl Complete for vertexai::model::GenerateContentResponse {
+    fn complete(self) -> Result<CompletionResponse, ProviderError> {
+        let model = Model::new(
+            crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH),
+            Reply(self),
+        );
+        futures::executor::block_on(model.call(CompletionRequestBuilder::new("hello").build()))
+    }
+}
+
+pub(crate) fn complete(
+    response: vertexai::model::GenerateContentResponse,
+) -> Result<CompletionResponse, ProviderError> {
+    response.complete()
+}
 use rig_core::message::{
     AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
 };
 
-fn create_text_response(text: &str) -> VertexGenerateContentOutput {
+fn create_text_response(text: &str) -> vertexai::model::GenerateContentResponse {
     let part = vertexai::model::Part::new().set_text(text.to_string());
     let content = vertexai::model::Content::new()
         .set_role("model")
@@ -12,19 +62,17 @@ fn create_text_response(text: &str) -> VertexGenerateContentOutput {
     let candidate = vertexai::model::Candidate::new()
         .set_content(content)
         .set_finish_reason(vertexai::model::candidate::FinishReason::Stop);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    VertexGenerateContentOutput(response)
+    vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
 fn create_parts_response(
     parts: impl IntoIterator<Item = vertexai::model::Part>,
-) -> VertexGenerateContentOutput {
+) -> vertexai::model::GenerateContentResponse {
     let content = vertexai::model::Content::new()
         .set_role("model")
         .set_parts(parts);
     let candidate = vertexai::model::Candidate::new().set_content(content);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    VertexGenerateContentOutput(response)
+    vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
 fn inline_data_part(mime_type: &str, data: Vec<u8>) -> vertexai::model::Part {
@@ -38,7 +86,7 @@ fn inline_data_part(mime_type: &str, data: Vec<u8>) -> vertexai::model::Part {
 fn create_tool_call_response(
     function_name: &str,
     args: serde_json::Value,
-) -> VertexGenerateContentOutput {
+) -> vertexai::model::GenerateContentResponse {
     let serde_json::Value::Object(struct_args) = args else {
         panic!("Expected JSON object for Struct conversion")
     };
@@ -52,14 +100,13 @@ fn create_tool_call_response(
     let candidate = vertexai::model::Candidate::new()
         .set_content(content)
         .set_finish_reason(vertexai::model::candidate::FinishReason::Stop);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    VertexGenerateContentOutput(response)
+    vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
 fn create_signed_tool_call_response(
     function_name: &str,
     signature: &[u8],
-) -> VertexGenerateContentOutput {
+) -> vertexai::model::GenerateContentResponse {
     let function_call = vertexai::model::FunctionCall::new()
         .set_name(function_name.to_string())
         .set_args(serde_json::Map::new());
@@ -70,15 +117,14 @@ fn create_signed_tool_call_response(
         .set_role("model")
         .set_parts([part]);
     let candidate = vertexai::model::Candidate::new().set_content(content);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    VertexGenerateContentOutput(response)
+    vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
 #[test]
 fn test_tool_call_response_captures_thought_signature() {
     let raw = b"\x00\x01\x02thinking-sig\xff";
     let response: CompletionResponse = create_signed_tool_call_response("add", raw)
-        .try_into()
+        .complete()
         .unwrap();
     match response.choice.first() {
         Some(AssistantContent::ToolCall(tc)) => {
@@ -92,7 +138,7 @@ fn test_tool_call_response_captures_thought_signature() {
 fn test_tool_call_response_without_signature_is_none() {
     let response: CompletionResponse =
         create_tool_call_response("add", serde_json::json!({"x": 1}))
-            .try_into()
+            .complete()
             .unwrap();
     match response.choice.first() {
         Some(AssistantContent::ToolCall(tc)) => assert_eq!(tc.signature, None),
@@ -113,7 +159,7 @@ fn test_thought_text_response_captures_thought_signature() {
     let candidate = vertexai::model::Candidate::new().set_content(content);
     let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
 
-    let response: CompletionResponse = VertexGenerateContentOutput(response).try_into().unwrap();
+    let response: CompletionResponse = response.complete().unwrap();
 
     match response.choice.first() {
         Some(AssistantContent::Reasoning(reasoning)) => {
@@ -131,7 +177,7 @@ fn test_thought_text_response_captures_thought_signature() {
 #[test]
 fn test_text_response_conversion() {
     let vertex_output = create_text_response("Hello, world!");
-    let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
+    let completion_response: Result<CompletionResponse, _> = vertex_output.complete();
 
     assert!(completion_response.is_ok());
     let response = completion_response.unwrap();
@@ -150,7 +196,7 @@ fn test_tool_call_response_conversion() {
         "y": 3
     });
     let vertex_output = create_tool_call_response("add", args.clone());
-    let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
+    let completion_response: Result<CompletionResponse, _> = vertex_output.complete();
 
     assert!(completion_response.is_ok());
     let response = completion_response.unwrap();
@@ -179,7 +225,7 @@ fn inline_image_response_converts_raw_bytes_to_base64_with_mime_type() {
     let raw = vec![0, 1, 2, 255];
     let response: CompletionResponse =
         create_parts_response([inline_data_part("image/png", raw.clone())])
-            .try_into()
+            .complete()
             .expect("image response should convert");
 
     match response.choice.first() {
@@ -200,7 +246,7 @@ fn mixed_text_and_image_response_preserves_part_order() {
         inline_data_part("image/jpeg", raw.clone()),
         vertexai::model::Part::new().set_text("after"),
     ])
-    .try_into()
+    .complete()
     .expect("mixed response should convert");
 
     let contents: Vec<_> = response.choice.iter().collect();
@@ -222,7 +268,7 @@ fn mixed_text_and_thought_image_response_keeps_only_visible_text_in_order() {
         inline_data_part("image/png", vec![1, 2, 3]).set_thought(true),
         vertexai::model::Part::new().set_text("after"),
     ])
-    .try_into()
+    .complete()
     .expect("thought image should be skipped");
 
     let contents: Vec<_> = response.choice.iter().collect();
@@ -233,7 +279,7 @@ fn mixed_text_and_thought_image_response_keeps_only_visible_text_in_order() {
 
 #[test]
 fn thought_image_only_response_fails_without_visible_assistant_content() {
-    let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+    let result = complete(create_parts_response([inline_data_part(
         "image/png",
         vec![1, 2, 3],
     )
@@ -254,7 +300,7 @@ fn thought_image_only_response_fails_without_visible_assistant_content() {
 #[test]
 fn inline_audio_and_non_image_media_are_rejected() {
     for mime_type in ["audio/wav", "application/pdf", "application/octet-stream"] {
-        let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+        let result = complete(create_parts_response([inline_data_part(
             mime_type,
             vec![0],
         )]));
@@ -269,7 +315,7 @@ fn inline_audio_and_non_image_media_are_rejected() {
 #[test]
 fn inline_gif_and_svg_images_are_rejected() {
     for mime_type in ["image/gif", "image/svg+xml"] {
-        let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+        let result = complete(create_parts_response([inline_data_part(
             mime_type,
             vec![0],
         )]));
@@ -288,7 +334,7 @@ fn inline_gif_and_svg_images_are_rejected() {
 #[test]
 fn signed_inline_image_is_rejected() {
     let part = inline_data_part("image/png", vec![0]).set_thought_signature(vec![1, 2, 3]);
-    let result = CompletionResponse::try_from(create_parts_response([part]));
+    let result = complete(create_parts_response([part]));
     let Err(error) = result else {
         panic!("signed inline image must fail")
     };
@@ -298,15 +344,15 @@ fn signed_inline_image_is_rejected() {
 
 #[test]
 fn test_usage_metadata_conversion() {
-    let mut response = create_text_response("test").0;
+    let mut response = create_text_response("test");
     let usage_metadata = vertexai::model::generate_content_response::UsageMetadata::new()
         .set_prompt_token_count(10)
         .set_candidates_token_count(20)
         .set_total_token_count(30);
     response = response.set_usage_metadata(usage_metadata);
 
-    let vertex_output = VertexGenerateContentOutput(response);
-    let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
+    let vertex_output = response;
+    let completion_response: Result<CompletionResponse, _> = vertex_output.complete();
 
     assert!(completion_response.is_ok());
     let response = completion_response.unwrap();
@@ -319,14 +365,14 @@ fn test_usage_metadata_conversion() {
 fn test_empty_response_error() {
     // Create a response with no candidates
     let response = vertexai::model::GenerateContentResponse::new();
-    let vertex_output = VertexGenerateContentOutput(response);
-    let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
+    let vertex_output = response;
+    let completion_response: Result<CompletionResponse, _> = vertex_output.complete();
 
     assert!(completion_response.is_err());
 }
 
 /// The load-bearing property behind `CompletionResponse::raw` for Vertex
-/// AI: the captured value is `serde_json::to_value(&VertexGenerateContentOutput)`
+/// AI: the captured value is `serde_json::to_value(&vertexai::model::GenerateContentResponse)`
 /// — the SDK response as `raw_completion` returns it — and a consumer must
 /// be able to read it back as the same type and get the same JSON.
 /// Vertex has no cassette harness, so this is the unit-form pin: the
@@ -358,7 +404,7 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
         .set_model_version("gemini-2.5-flash-001")
         .set_response_id("resp-vertex-1")
         .set_usage_metadata(usage_metadata);
-    let raw = VertexGenerateContentOutput(response);
+    let raw = response;
 
     let value = serde_json::to_value(&raw).expect("serialize");
     assert_eq!(value["modelVersion"], "gemini-2.5-flash-001");
@@ -369,17 +415,18 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
     assert_eq!(value["candidates"][0]["safetyRatings"][0]["category"], 3);
     assert_eq!(value["candidates"][0]["finishReason"], 1);
 
-    let back: VertexGenerateContentOutput =
+    let back: vertexai::model::GenerateContentResponse =
         serde_json::from_value(value.clone()).expect("deserialize");
     assert_eq!(
         serde_json::to_value(&back).expect("re-serialize"),
         value,
-        "the capture must read back into VertexGenerateContentOutput and re-serialize identically"
+        "the capture must read back into GenerateContentResponse and re-serialize identically"
     );
-    assert_eq!(back.0, raw.0);
+    assert_eq!(back, raw);
 
-    let original: CompletionResponse = raw.try_into().expect("original converts");
-    let restored: CompletionResponse = back.try_into().expect("restored converts");
+    let original: CompletionResponse = raw.clone().complete().expect("original converts");
+    assert_eq!(original.raw, value, "the response's raw is the capture");
+    let restored: CompletionResponse = back.complete().expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
     assert_eq!(restored.finish_reason(), original.finish_reason());
     assert_eq!(restored.model, original.model);
@@ -396,7 +443,7 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
 #[test]
 fn multiple_missing_call_ids_are_distinct_and_repeatable() {
     let convert = || {
-        CompletionResponse::try_from(create_parts_response((0..3).map(|i| {
+        complete(create_parts_response((0..3).map(|i| {
             vertexai::model::Part::new().set_function_call(
                 vertexai::model::FunctionCall::new()
                     .set_name("same")
@@ -453,12 +500,10 @@ fn id_less_calls_in_one_turn_mint_distinct_handles_by_position() {
                 call(),
             ]);
         let candidate = vertexai::model::Candidate::new().set_content(content);
-        VertexGenerateContentOutput(
-            vertexai::model::GenerateContentResponse::new().set_candidates([candidate]),
-        )
+        vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
     };
-    let first = CompletionResponse::try_from(build()).expect("converts");
-    let again = CompletionResponse::try_from(build()).expect("converts");
+    let first = complete(build()).expect("converts");
+    let again = complete(build()).expect("converts");
     assert_eq!(first.choice, again.choice, "a re-run yields the same ids");
     let ids: Vec<_> = first
         .choice
@@ -491,7 +536,7 @@ fn answer_text_signature_is_kept_and_replayed_on_its_part() {
         .set_parts([part]);
     let candidate = vertexai::model::Candidate::new().set_content(content);
     let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    let response: CompletionResponse = VertexGenerateContentOutput(response).try_into().unwrap();
+    let response: CompletionResponse = response.complete().unwrap();
 
     let Some(AssistantContent::Text(text)) = response.choice.first() else {
         panic!("the answer text: {:?}", response.choice);

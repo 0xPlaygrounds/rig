@@ -13,13 +13,13 @@ async fn generated_image_as_user_content() {
         "image_input_matrix/generated_image_as_user_content",
         |client| async move {
             let bytes = image_inputs::generate(
-                &client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE),
+                &rig::model(client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE)),
                 None,
                 None,
             )
             .await;
             image_inputs::as_user_content(
-                &client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                &rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 &bytes,
                 None,
             )
@@ -39,13 +39,13 @@ async fn generated_image_as_tool_result() {
         "image_input_matrix/generated_image_as_tool_result",
         |client| async move {
             let bytes = image_inputs::generate(
-                &client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE),
+                &rig::model(client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE)),
                 None,
                 None,
             )
             .await;
             image_inputs::as_tool_result(
-                &client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
+                &rig::model(client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW)),
                 &bytes,
                 None,
             )

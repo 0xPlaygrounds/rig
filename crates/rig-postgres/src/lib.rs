@@ -9,7 +9,7 @@ use std::{fmt::Display, fmt::Write as _, ops::RangeInclusive};
 
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, SqlCondition, VectorSearchRequest},
@@ -22,9 +22,9 @@ use sqlx::{PgPool, Postgres, postgres::PgArguments, query::QueryAs};
 use uuid::Uuid;
 
 /// Vector store over a Postgres table. Queries are embedded with the same model
-/// `M` that populated the table, so results are meaningless under another model.
-pub struct PostgresVectorStore<M> {
-    model: M,
+/// that populated the table, so results are meaningless under another model.
+pub struct PostgresVectorStore {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     pg_pool: PgPool,
     documents_table: String,
     distance_function: PgVectorDistanceFunction,
@@ -221,22 +221,25 @@ impl SearchResult {
     }
 }
 
-impl<M: EmbeddingModel> PostgresVectorStore<M> {
+impl PostgresVectorStore {
     pub fn new(
-        model: M,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         pg_pool: PgPool,
         documents_table: Option<String>,
         distance_function: PgVectorDistanceFunction,
     ) -> Self {
         Self {
-            model,
+            model: model.into(),
             pg_pool,
             documents_table: documents_table.unwrap_or_else(|| String::from("documents")),
             distance_function,
         }
     }
 
-    pub fn with_defaults(model: M, pg_pool: PgPool) -> Self {
+    pub fn with_defaults(
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
+        pg_pool: PgPool,
+    ) -> Self {
         Self::new(model, pg_pool, None, PgVectorDistanceFunction::Cosine)
     }
 
@@ -357,7 +360,7 @@ fn render_search_query(
     (query, params)
 }
 
-impl<M: EmbeddingModel> InsertDocuments for PostgresVectorStore<M> {
+impl InsertDocuments for PostgresVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -388,7 +391,7 @@ impl<M: EmbeddingModel> InsertDocuments for PostgresVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<M> {
+impl VectorStoreIndex for PostgresVectorStore {
     type Filter = PgSearchFilter;
 
     /// Returns up to `samples` documents as `(distance, id, document)` ordered by

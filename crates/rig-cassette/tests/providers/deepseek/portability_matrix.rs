@@ -1,18 +1,18 @@
 //! DeepSeek continues histories other wires produced: Anthropic-signed,
 //! OpenAI-encrypted and Gemini-signed reasoning beside a tool exchange.
 
-use rig::completion::CompletionModel;
 use rig::providers::deepseek;
 
-use super::support::{BoundDeepSeek, with_deepseek_cassette};
+use super::support::with_deepseek_cassette;
 use crate::history_survival::portability::{Cell, Source};
+use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundDeepSeek, cell: Cell) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(source: Source) -> Cell {

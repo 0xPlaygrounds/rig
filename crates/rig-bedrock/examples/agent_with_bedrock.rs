@@ -1,6 +1,7 @@
-use rig_agent::{agent::AgentBuilder, prelude::*};
-use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
-use rig_core::driver::CompletionProvider;
+use rig_agent::agent::AgentBuilder;
+use rig_bedrock::client::BedrockRuntime;
+use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
+use rig_core::Model;
 use rig_core::loaders::FileLoader;
 use tracing::info;
 
@@ -30,12 +31,15 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn client() -> Result<Client, anyhow::Error> {
-    Ok(Client::from_env()?)
+fn model() -> Result<Model<Converse, BedrockRuntime>, anyhow::Error> {
+    Ok(Model::new(
+        Converse::new(AMAZON_NOVA_LITE),
+        BedrockRuntime::from_env(),
+    ))
 }
 
 fn partial_agent() -> Result<AgentBuilder, anyhow::Error> {
-    Ok(client()?.agent(AMAZON_NOVA_LITE))
+    Ok(AgentBuilder::new(model()?))
 }
 
 /// Create an AWS Bedrock agent with a system prompt
@@ -67,7 +71,7 @@ async fn tools() -> Result<(), anyhow::Error> {
 }
 
 async fn context() -> Result<(), anyhow::Error> {
-    let model = client()?.completion(AMAZON_NOVA_LITE);
+    let model = model()?;
 
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)
@@ -93,7 +97,7 @@ async fn context() -> Result<(), anyhow::Error> {
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
 ///  context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
-    let model = client()?.completion(AMAZON_NOVA_LITE);
+    let model = model()?;
 
     // Load in all the rust examples
     let examples = FileLoader::with_glob("examples/*.rs")?

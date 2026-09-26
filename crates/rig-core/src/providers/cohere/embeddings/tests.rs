@@ -3,21 +3,21 @@ use crate::error::ProviderError;
 
 #[tokio::test]
 async fn embeddings_non_success_preserves_status_and_body() {
-    use crate::embeddings::EmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None),
         http_client,
-    )
-    .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    );
 
     let error = model
-        .embed_texts(["hello".to_string()])
+        .call(vec!["hello".to_string()])
         .await
+        .map(|response| response.embeddings)
         .expect_err("should fail with non-success status");
 
     assert!(matches!(error, ProviderError::ProviderResponse(_)));
@@ -34,20 +34,20 @@ async fn embeddings_non_success_preserves_status_and_body() {
 /// failure about missing embeddings.
 #[tokio::test]
 async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
-    use crate::embeddings::EmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key")
+            .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None),
         http_client,
-    )
-    .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    );
 
     let error = model
-        .embed_texts(["hello".to_string()])
+        .call(vec!["hello".to_string()])
         .await
+        .map(|response| response.embeddings)
         .expect_err("should fail with provider error envelope");
 
     let ProviderError::ProviderResponse(stored) = &error else {
@@ -117,41 +117,66 @@ fn image_data_url_rejects_unsupported_and_oversized_inputs() {
 /// opens a socket.
 #[tokio::test]
 async fn image_batches_are_fully_validated_before_any_request() {
-    use crate::embeddings::ImageEmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::default();
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
         http_client.clone(),
-    )
-    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    );
 
     let error = model
-        .embed_images([b"\x89PNG\r\n\x1a\n".to_vec(), b"not an image".to_vec()])
+        .call(vec![
+            b"\x89PNG\r\n\x1a\n".to_vec(),
+            b"not an image".to_vec(),
+        ])
         .await
+        .map(|response| response.embeddings)
         .expect_err("invalid batch should fail before transport");
 
     assert!(matches!(error, ProviderError::Request(_)));
     assert!(http_client.requests().is_empty());
 }
 
+/// No images encode to an empty batch: nothing is sent, and the fold finds
+/// no payload, the response failure it has always been.
+#[tokio::test]
+async fn an_empty_image_batch_sends_nothing_and_is_a_response_failure() {
+    use crate::test_utils::RecordingHttpClient;
+
+    let http_client = RecordingHttpClient::default();
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        http_client.clone(),
+    );
+
+    let error = model
+        .call(Vec::<Vec<u8>>::new())
+        .await
+        .map(|response| response.embeddings)
+        .expect_err("an empty batch has no payload to fold");
+
+    assert!(
+        matches!(&error, ProviderError::Response(message) if message == "embedding reply carried no payload"),
+        "{error:?}"
+    );
+    assert!(http_client.requests().is_empty());
+}
+
 #[tokio::test]
 async fn image_embeddings_non_success_preserves_status_and_body() {
-    use crate::embeddings::ImageEmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
         http_client,
-    )
-    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    );
 
     let error = model
-        .embed_image(b"\x89PNG\r\n\x1a\n")
+        .call(vec![b"\x89PNG\r\n\x1a\n".to_vec()])
         .await
         .expect_err("should fail with non-success status");
 
@@ -167,19 +192,17 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
 /// answer a 200 with the same envelope — and preserves it the same way.
 #[tokio::test]
 async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
-    use crate::embeddings::ImageEmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
-    let model = crate::driver::Bound::new(
-        crate::providers::cohere::Cohere::new("test-key"),
+    let model = crate::driver::Model::new(
+        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
         http_client,
-    )
-    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+    );
 
     let error = model
-        .embed_image(b"\x89PNG\r\n\x1a\n")
+        .call(vec![b"\x89PNG\r\n\x1a\n".to_vec()])
         .await
         .expect_err("should fail with provider error envelope");
 

@@ -1,4 +1,5 @@
 use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
+use crate::completion::CompletionRequestBuilder;
 use crate::message::AssistantContent;
 use crate::{http_client, provider_response};
 
@@ -351,12 +352,10 @@ fn usage_sum_keeps_a_reported_counter_when_the_other_side_is_absent() {
 }
 
 use super::*;
-use crate::test_utils::MockCompletionModel;
 
 #[test]
 fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
-    let default_request =
-        CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt").build();
+    let default_request = CompletionRequestBuilder::new("completion prompt").build();
     assert!(!default_request.record_telemetry_content);
 
     let default_json = serde_json::to_value(&default_request).expect("serialize request");
@@ -368,10 +367,9 @@ fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
         serde_json::from_value(default_json).expect("deserialize default request");
     assert!(!default_roundtrip.record_telemetry_content);
 
-    let opt_in_request =
-        CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
-            .record_content_telemetry(true)
-            .build();
+    let opt_in_request = CompletionRequestBuilder::new("completion prompt")
+        .record_content_telemetry(true)
+        .build();
     assert!(opt_in_request.record_telemetry_content);
 
     let opt_in_json = serde_json::to_value(&opt_in_request).expect("serialize opt-in request");
@@ -437,7 +435,7 @@ fn test_document(id: &str, text: &str) -> Document {
 
 #[test]
 fn message_telemetry_includes_normalized_documents() {
-    let builder = CompletionRequestBuilder::new(MockCompletionModel::default(), "prompt")
+    let builder = CompletionRequestBuilder::new("prompt")
         .preamble("system".to_string())
         .message(Message::user("history"))
         .document(test_document("doc1", "static context secret"));
@@ -571,11 +569,10 @@ fn test_normalize_documents_without_documents() {
 
 #[test]
 fn preamble_builder_funnels_to_system_message() {
-    let request =
-        CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-            .preamble("System prompt".to_string())
-            .message(Message::user("History"))
-            .build();
+    let request = CompletionRequestBuilder::new(Message::user("Prompt"))
+        .preamble("System prompt".to_string())
+        .message(Message::user("History"))
+        .build();
 
     let history = request.chat_history.into_iter().collect::<Vec<_>>();
     assert_eq!(history.len(), 3);
@@ -589,11 +586,10 @@ fn preamble_builder_funnels_to_system_message() {
 
 #[test]
 fn build_places_documents_after_preamble_system_message() {
-    let request =
-        CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-            .preamble("System prompt".to_string())
-            .document(test_document("doc1", "Document text."))
-            .build();
+    let request = CompletionRequestBuilder::new(Message::user("Prompt"))
+        .preamble("System prompt".to_string())
+        .document(test_document("doc1", "Document text."))
+        .build();
 
     assert_eq!(request.documents.len(), 1);
 
@@ -610,14 +606,13 @@ fn build_places_documents_after_preamble_system_message() {
 
 #[test]
 fn build_places_documents_after_leading_system_messages_before_prior_history() {
-    let request =
-        CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-            .message(Message::system("System one"))
-            .message(Message::system("System two"))
-            .message(Message::user("Earlier user turn"))
-            .message(Message::assistant("Earlier assistant turn"))
-            .document(test_document("doc1", "Document text."))
-            .build();
+    let request = CompletionRequestBuilder::new(Message::user("Prompt"))
+        .message(Message::system("System one"))
+        .message(Message::system("System two"))
+        .message(Message::user("Earlier user turn"))
+        .message(Message::assistant("Earlier assistant turn"))
+        .document(test_document("doc1", "Document text."))
+        .build();
 
     let history = request.chat_history_with_documents();
     let history = history.iter().collect::<Vec<_>>();
@@ -638,11 +633,10 @@ fn build_places_documents_after_leading_system_messages_before_prior_history() {
 
 #[test]
 fn build_without_documents_keeps_message_order_unchanged() {
-    let request =
-        CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-            .message(Message::system("System prompt"))
-            .message(Message::user("Earlier user turn"))
-            .build();
+    let request = CompletionRequestBuilder::new(Message::user("Prompt"))
+        .message(Message::system("System prompt"))
+        .message(Message::user("Earlier user turn"))
+        .build();
 
     let history = request.chat_history.iter().collect::<Vec<_>>();
     assert_eq!(history.len(), 3);
@@ -895,15 +889,14 @@ mod additional_params_precedence {
     /// than replacing it; `None` clears, like every other folded setter.
     #[test]
     fn additional_params_merges_and_none_clears() {
-        let model = crate::test_utils::MockCompletionModel::text("x");
-        let request = crate::completion::CompletionRequestBuilder::new(model.clone(), "p")
+        let request = crate::completion::CompletionRequestBuilder::new("p")
             .additional_params(json!({"a": 1}))
             .additional_params(json!({"b": 2}))
             .temperature(None)
             .build();
         assert_eq!(request.additional_params, Some(json!({"a": 1, "b": 2})));
         assert_eq!(request.temperature, None);
-        let cleared = crate::completion::CompletionRequestBuilder::new(model, "p")
+        let cleared = crate::completion::CompletionRequestBuilder::new("p")
             .additional_params(json!({"a": 1}))
             .additional_params(None)
             .additional_params(json!({"b": 2}))

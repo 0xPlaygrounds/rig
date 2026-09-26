@@ -4,7 +4,6 @@ use anyhow::Result;
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
 };
-use rig::prelude::*;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -156,15 +155,15 @@ impl AgentHook for PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build")
-        .agent(TOOL_MODEL)
-        .preamble("You are a helpful assistant that can read files using different methods.")
-        .tool(ReadFileHead)
-        .tool(ReadFileTail)
-        .build();
+    let agent = rig::AgentBuilder::new(rig::model(
+        OpenAI::from_env_with(&MISTRAL)
+            .expect("MISTRAL_API_KEY should be set")
+            .completion(TOOL_MODEL),
+    ))
+    .preamble("You are a helpful assistant that can read files using different methods.")
+    .tool(ReadFileHead)
+    .tool(ReadFileTail)
+    .build();
 
     let call_count = Arc::new(AtomicUsize::new(0));
     let last_result = Arc::new(Mutex::new(None));
@@ -194,15 +193,15 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build")
-        .agent(TOOL_MODEL)
-        .preamble("You are a helpful assistant that can read files using different methods.")
-        .tool(ReadFileHead)
-        .tool(ReadFileTail)
-        .build();
+    let agent = rig::AgentBuilder::new(rig::model(
+        OpenAI::from_env_with(&MISTRAL)
+            .expect("MISTRAL_API_KEY should be set")
+            .completion(TOOL_MODEL),
+    ))
+    .preamble("You are a helpful assistant that can read files using different methods.")
+    .tool(ReadFileHead)
+    .tool(ReadFileTail)
+    .build();
 
     let call_count = Arc::new(AtomicUsize::new(0));
     let last_result = Arc::new(Mutex::new(None));

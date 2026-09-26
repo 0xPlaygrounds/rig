@@ -1,9 +1,7 @@
 //! Gemini streaming coverage, including the migrated example path.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
@@ -14,6 +12,7 @@ use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
     collect_stream_final_response_and_provider_final,
 };
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn streaming_smoke() {
@@ -28,14 +27,15 @@ async fn streaming_smoke() {
     let additional_params = AdditionalParameters::default().with_config(thinking_config);
 
     super::super::support::with_gemini_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
-            .preamble(STREAMING_PREAMBLE)
-            .additional_params(
-                serde_json::to_value(additional_params)
-                    .expect("Gemini thinking config should serialize"),
-            )
-            .build();
+        let agent = rig::AgentBuilder::new(rig::model(
+            client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
+        ))
+        .preamble(STREAMING_PREAMBLE)
+        .additional_params(
+            serde_json::to_value(additional_params)
+                .expect("Gemini thinking config should serialize"),
+        )
+        .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let (response, provider_final): (_, StreamFinal) =
@@ -63,12 +63,13 @@ async fn example_streaming_prompt() {
     super::super::support::with_gemini_cassette(
         "streaming/example_streaming_prompt",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
-                .preamble("Be precise and concise.")
-                .temperature(0.5)
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
+            ))
+            .preamble("Be precise and concise.")
+            .temperature(0.5)
+            .additional_params(serde_json::to_value(params).expect("params should serialize"))
+            .build();
 
             let mut stream = agent
                 .prompt("When and where and what type is the next solar eclipse?")
@@ -88,12 +89,11 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_exposes_finish_reason_and_model_version",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Reply with exactly: final metadata ok")
+            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let request = CompletionRequestBuilder::new("Reply with exactly: final metadata ok")
                 .temperature(0.0)
                 .build();
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;
@@ -142,12 +142,12 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_handles_terminal_finish_reason_chunk",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Reply with exactly: contentless final metadata ok")
-                .temperature(0.0)
-                .build();
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+            let request =
+                CompletionRequestBuilder::new("Reply with exactly: contentless final metadata ok")
+                    .temperature(0.0)
+                    .build();
+            let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;

@@ -4,20 +4,21 @@
 //! `provider_request_id` is `None` by design. This fixture is the recorded
 //! proof of that absence.
 
-use rig::completion::CompletionModel;
-
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn nonstreaming_request_id_is_none_by_design() {
     with_cohere_cassette(
         "response_identity/nonstreaming_request_id_is_none_by_design",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .max_tokens(32)
-                .send()
+                .call(
+                    CompletionRequestBuilder::new("Reply with exactly: identity probe")
+                        .max_tokens(32)
+                        .build(),
+                )
                 .await
                 .expect("completion should succeed");
 
@@ -40,12 +41,13 @@ async fn streaming_request_id_is_none_by_design() {
     with_cohere_cassette(
         "response_identity/streaming_request_id_is_none_by_design",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let model = rig::model(client.completion(CASSETTE_MODEL));
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .max_tokens(32)
-                .stream()
-                .await
+                .stream(
+                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                        .max_tokens(32)
+                        .build(),
+                )
                 .expect("stream should open");
 
             let mut terminal = None;

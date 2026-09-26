@@ -5,12 +5,10 @@
 //! cassettes are read-only here.
 
 use super::*;
-use crate::completion::{CompletionModel, CompletionRequest};
-use crate::driver::Bound;
-use crate::embeddings::EmbeddingModel as _;
+use crate::completion::CompletionRequest;
 use crate::message::Message;
-use crate::model::ModelLister as _;
 use crate::test_utils::RecordingHttpClient;
+use crate::wire::Wire;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use bytes::Bytes;
 
@@ -72,7 +70,9 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<String> {
 }
 
 /// The request one `encode` produced, for the envelope assertions.
-fn encoded(wire: &impl Wire<Op = Completion>) -> http::Request<Body> {
+fn encoded(
+    wire: &impl Wire<Op = Completion, Payload = crate::wire::Encoded>,
+) -> http::Request<Body> {
     let mut encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
@@ -408,11 +408,11 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
 #[tokio::test]
 async fn the_chat_route_folds_its_recorded_turn() {
     let body = cassette_body("agent/completion_smoke.yaml", "then");
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         copilot().completion(super::super::GPT_4O),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .call(prompt())
     .await
     .expect("the recorded chat body folds");
 
@@ -431,11 +431,11 @@ async fn the_chat_route_folds_its_recorded_turn() {
 #[tokio::test]
 async fn the_responses_route_folds_its_recorded_turn() {
     let body = cassette_body("routing/codex_models_route_through_responses.yaml", "then");
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         copilot().completion(super::super::GPT_5_3_CODEX),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .call(prompt())
     .await
     .expect("the recorded responses body folds");
 
@@ -462,11 +462,11 @@ async fn a_contentless_reasoning_item_survives_the_fold() {
         "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml",
         "then",
     );
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         copilot().completion(super::super::GPT_5_3_CODEX),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .call(prompt())
     .await
     .expect("the recorded responses body folds");
 
@@ -494,15 +494,19 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
         "Streaming responses arrive incrementally instead of all at once.".to_owned(),
         "Embeddings turn text into numeric vectors for similarity search.".to_owned(),
     ];
-    let bound = Bound::new(
-        copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None),
+    let bound = crate::driver::Model::new(
+        copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None),
         RecordingHttpClient::new(Bytes::from(body)),
     );
-    assert_eq!(bound.ndims(), 1536, "the width defaults from the model");
-    assert_eq!(bound.max_documents(), 1024);
+    assert_eq!(
+        bound.wire.capabilities().ndims,
+        1536,
+        "the width defaults from the model"
+    );
+    assert_eq!(bound.wire.capabilities().max_documents, 1024);
 
     let response = bound
-        .embed_texts_response(documents.clone())
+        .call(documents.clone())
         .await
         .expect("the recorded embeddings body folds");
     assert_eq!(response.provider, PROVIDER_NAME);
@@ -516,7 +520,7 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
 /// `"dimensions":1536` for a caller who named none.
 #[test]
 fn the_embeddings_request_sends_the_resolved_width() {
-    let wire = copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None);
+    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
     let mut encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
@@ -528,7 +532,7 @@ fn the_embeddings_request_sends_the_resolved_width() {
     assert_eq!(body["model"], serde_json::json!("text-embedding-3-small"));
 
     // The legacy Ada model accepts no width at all.
-    let ada = copilot().embeddings(super::super::TEXT_EMBEDDING_ADA_002, None);
+    let ada = copilot().embedding(super::super::TEXT_EMBEDDING_ADA_002, None);
     let mut encoded = ada
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
@@ -545,7 +549,7 @@ fn the_embeddings_request_sends_the_resolved_width() {
 /// answers a request without the envelope, regardless of the body.
 #[test]
 fn the_embeddings_route_carries_copilots_editor_envelope() {
-    let wire = copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None);
+    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
     let mut encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
@@ -587,11 +591,11 @@ fn the_embeddings_route_carries_copilots_editor_envelope() {
 #[tokio::test]
 async fn the_model_listing_folds_its_recorded_catalogue() {
     let body = cassette_body("models/list_models_smoke.yaml", "then");
-    let models = Bound::new(
+    let models = crate::driver::Model::new(
         copilot().models(),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .list_all()
+    .call(())
     .await
     .expect("the recorded catalogue folds");
 

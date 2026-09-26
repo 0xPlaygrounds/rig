@@ -6,7 +6,6 @@
 //! streaming call, before the stream is consumed. Requires `ANTHROPIC_API_KEY`.
 
 use anyhow::{Context, Result};
-use rig::driver::Bind;
 use rig::http_client::{BoxedHttpClient, HeaderMap, HeaderValue, HttpMiddleware, Method, Uri};
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -80,11 +79,12 @@ async fn main() -> Result<()> {
     let http_client = BoxedHttpClient::new(rig::http_client::ReqwestClient::default())
         .with_middleware(WireLogger);
 
-    let agent = Anthropic::new(api_key)
-        .bind(http_client)
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-        .preamble("You are a helpful assistant.")
-        .build();
+    let agent = AgentBuilder::new(Model::new(
+        Anthropic::new(api_key).completion(anthropic::completion::CLAUDE_SONNET_4_6),
+        http_client,
+    ))
+    .preamble("You are a helpful assistant.")
+    .build();
 
     let response = agent.prompt("What is 2 + 2?").await?.output;
     println!("Response: {response}");

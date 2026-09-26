@@ -201,7 +201,7 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 | a tool call's context (beside the effect) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's `Dispatch` context; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
 | a handler | an entity with `Bound { key, descriptor }` (immutable: every change is an insert) and a `Name`; the erased handler in the `NonSend` `HandlerTable`, marked by `Handler` on the same entity; `HandlerIndex` (key → entity), kept exact by `Bound`'s hooks |
 | the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
-| host model assembly | provider-specific constructors or optional rig-core registry configuration → `CompletionModel` → `CompletionAdapter` → `Handlers::register_erased`; no provider recipe or credential resolver in ECS |
+| host model assembly | provider-specific constructors or optional rig-core registry configuration → `Model` → `ModelAdapter` → `Handlers::register_erased`; no provider recipe or credential resolver in ECS |
 | restoration requirements | `Checkpoint::requirements()` exposes saved descriptors; `Checkpoint::validate(&World)` validates saved data before host construction |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |

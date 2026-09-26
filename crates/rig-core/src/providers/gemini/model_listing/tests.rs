@@ -216,7 +216,9 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
 
     let mut first = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
     let mut listed = ids(&mut first, PAGE_ONE);
-    let continuation = first.continuation().expect("page one named a cursor");
+    let cursor = first.cursor().expect("page one named a cursor");
+    let continuation = wire.page(&cursor).expect("the next page encodes");
+    let continuation = &continuation.requests[0];
     assert_eq!(continuation.uri().path(), "/v1beta/models");
     assert_eq!(
         continuation.uri().query(),
@@ -235,7 +237,7 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
         ],
     );
     assert!(
-        second.continuation().is_none(),
+        second.cursor().is_none(),
         "a page naming no cursor ends the listing",
     );
 }

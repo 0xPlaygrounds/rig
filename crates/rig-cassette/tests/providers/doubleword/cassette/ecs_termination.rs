@@ -29,7 +29,11 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
                 with_doubleword_cassette(
                     "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
                     |client| async move {
-                        let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                        let mut ecs = EcsAgent::new(
+                            rig::model(client.completion(MODEL)),
+                            CONCISE_PREAMBLE,
+                            1,
+                        );
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             Temperature(Some(0.0)),
                             MaxTokens(Some(TINY_CAP)),
@@ -87,7 +91,11 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
                 with_doubleword_cassette(
                     "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
                     |client| async move {
-                        let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                        let mut ecs = EcsAgent::new(
+                            rig::model(client.completion(MODEL)),
+                            CONCISE_PREAMBLE,
+                            1,
+                        );
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             Temperature(Some(0.0)),
                             MaxTokens(Some(TINY_CAP)),
@@ -135,7 +143,11 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
                 with_doubleword_cassette(
                     "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
                     |client| async move {
-                        let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                        let mut ecs = EcsAgent::new(
+                            rig::model(client.completion(MODEL)),
+                            CONCISE_PREAMBLE,
+                            1,
+                        );
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             Temperature(Some(0.0)),
                             MaxTokens(Some(ROOMY_CAP)),
@@ -183,7 +195,11 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
                 with_doubleword_cassette(
                     "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
                     |client| async move {
-                        let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                        let mut ecs = EcsAgent::new(
+                            rig::model(client.completion(MODEL)),
+                            CONCISE_PREAMBLE,
+                            1,
+                        );
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             Temperature(Some(0.0)),
                             MaxTokens(Some(ROOMY_CAP)),
@@ -225,7 +241,8 @@ async fn blocking_tool_turn_reports_tool_calls() {
                 with_doubleword_cassette(
                     "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
                     |client| async move {
-                        let mut ecs = EcsAgent::new(client.completion(MODEL), TOOL_PREAMBLE, 1);
+                        let mut ecs =
+                            EcsAgent::new(rig::model(client.completion(MODEL)), TOOL_PREAMBLE, 1);
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             Temperature(Some(0.0)),
                             MaxTokens(Some(ROOMY_CAP)),
@@ -278,7 +295,8 @@ async fn streaming_tool_turn_reports_tool_calls() {
                 with_doubleword_cassette(
                     "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
                     |client| async move {
-                        let mut ecs = EcsAgent::new(client.completion(MODEL), TOOL_PREAMBLE, 1);
+                        let mut ecs =
+                            EcsAgent::new(rig::model(client.completion(MODEL)), TOOL_PREAMBLE, 1);
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             Temperature(Some(0.0)),
                             MaxTokens(Some(ROOMY_CAP)),
@@ -327,7 +345,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
         with_doubleword_cassette(
             "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
-                let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), CONCISE_PREAMBLE, 1);
                 ecs.app.world_mut().entity_mut(ecs.agent).insert((
                     Temperature(Some(0.0)),
                     MaxTokens(Some(64)),
@@ -378,7 +396,7 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
         with_doubleword_cassette(
             "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
-                let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
+                let mut ecs = EcsAgent::new(rig::model(client.completion(MODEL)), CONCISE_PREAMBLE, 1);
                 ecs.app.world_mut().entity_mut(ecs.agent).insert((
                     Temperature(Some(0.0)),
                     MaxTokens(Some(64)),

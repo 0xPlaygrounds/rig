@@ -6,13 +6,13 @@
 //! # Example
 //!
 //! ```no_run
-//! use rig_reqwest::prelude::*;
 //! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
 //! # fn example() -> anyhow::Result<()> {
-//! let openai = openai::wire::OpenAI::from_env()?.bound()?;
-//! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+//! let openai = openai::wire::OpenAI::from_env()?;
+//! let http = rig_reqwest::shared();
+//! let embedding_model = rig_core::Model::new(openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None), http);
 //!
 //! let vector_store = VectorizeVectorStore::new(
 //!     embedding_model,
@@ -34,7 +34,6 @@ pub use client::{
 };
 
 use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
-use rig_core::embeddings::EmbeddingModel;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::wasm_compat::WasmCompatSend;
@@ -50,31 +49,31 @@ impl From<VectorizeError> for VectorStoreError {
 
 /// Vector store backed by a Cloudflare Vectorize index.
 ///
-/// Queries are embedded with the same model `M` that populated the index, so
+/// Queries are embedded with the same model that populated the index, so
 /// results are meaningless under another model.
 #[derive(Debug, Clone)]
-pub struct VectorizeVectorStore<M> {
-    model: M,
+pub struct VectorizeVectorStore {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     client: VectorizeClient,
 }
 
-impl<M: EmbeddingModel> VectorizeVectorStore<M> {
+impl VectorizeVectorStore {
     /// Creates a store over the named index, authenticating with a Cloudflare API
     /// token. Inserting documents additionally requires write permission.
     pub fn new(
-        model: M,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         account_id: impl Into<String>,
         index_name: impl Into<String>,
         api_token: impl Into<String>,
     ) -> Self {
         Self {
-            model,
+            model: model.into(),
             client: VectorizeClient::new(account_id, index_name, api_token),
         }
     }
 }
 
-impl<M: EmbeddingModel> VectorizeVectorStore<M> {
+impl VectorizeVectorStore {
     /// Embeds the query and returns matches at or above any request threshold.
     /// Errors before querying when the filter uses an unsupported operation.
     async fn query_matches(
@@ -106,7 +105,7 @@ impl<M: EmbeddingModel> VectorizeVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for VectorizeVectorStore<M> {
+impl VectorStoreIndex for VectorizeVectorStore {
     type Filter = VectorizeFilter;
 
     /// Returns matches as `(score, vector id, metadata)`. A match without
@@ -140,7 +139,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for VectorizeVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> InsertDocuments for VectorizeVectorStore<M> {
+impl InsertDocuments for VectorizeVectorStore {
     /// Upserts one vector per embedding, storing the document as metadata under a
     /// fresh identifier, in batches of a thousand vectors.
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(

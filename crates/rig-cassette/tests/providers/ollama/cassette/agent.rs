@@ -3,8 +3,6 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::prelude::*;
-
 use super::super::support::with_ollama_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -13,8 +11,7 @@ const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn completion_smoke() {
     with_ollama_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
             .preamble(BASIC_PREAMBLE)
             .additional_params(serde_json::json!({ "think": false }))
             .build();
@@ -44,8 +41,7 @@ async fn completion_smoke() {
 #[tokio::test]
 async fn completion_respects_max_tokens() {
     with_ollama_cassette("agent/max_tokens", |client| async move {
-        let agent = client
-            .agent(MODEL)
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
             .preamble(BASIC_PREAMBLE)
             // Small enough to truncate the answer well before the model would
             // stop on its own, so the budget is what ends generation.

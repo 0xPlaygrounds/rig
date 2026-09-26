@@ -12,7 +12,7 @@
 //!
 //! let chat = github.completion(copilot::GPT_4O);
 //! let codex = github.completion(copilot::GPT_5_3_CODEX);
-//! let embeddings = github.embeddings(copilot::TEXT_EMBEDDING_3_SMALL, None);
+//! let embeddings = github.embedding(copilot::TEXT_EMBEDDING_3_SMALL, None);
 //! let catalogue = github.models();
 //! # let _ = (chat, codex, embeddings, catalogue);
 //! # Ok(())

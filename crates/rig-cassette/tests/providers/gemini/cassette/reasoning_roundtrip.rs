@@ -10,7 +10,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 async fn streaming() {
     with_gemini_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.completion("gemini-2.5-flash"),
+            rig::model(client.completion("gemini-2.5-flash")),
             Some(serde_json::json!({
                 "generationConfig": {
                     "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }
@@ -26,7 +26,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_gemini_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion("gemini-2.5-flash"),
+            rig::model(client.completion("gemini-2.5-flash")),
             Some(serde_json::json!({
                 "generationConfig": {
                     "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }
@@ -42,7 +42,7 @@ async fn nonstreaming() {
 async fn reasoning_delta_hook_streaming() {
     with_gemini_cassette("reasoning_delta_hook/streaming", |client| async move {
         reasoning::run_reasoning_delta_hook_streaming(
-            client.completion("gemini-2.5-flash"),
+            rig::model(client.completion("gemini-2.5-flash")),
             serde_json::json!({
                 "generationConfig": {
                     "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }

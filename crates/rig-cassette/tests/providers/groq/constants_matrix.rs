@@ -28,12 +28,12 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
-use rig::completion::CompletionModel;
-use rig::model::ModelLister;
 use rig::providers::groq;
 
-use super::support::{BoundGroq, with_groq_cassette_result};
+use super::support::with_groq_cassette_result;
 use crate::support::{assert_nonempty_response, assistant_text_response};
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const PROMPT: &str = "Reply with the single word OK.";
 
@@ -52,7 +52,7 @@ async fn catalog_lists_current_constants() -> Result<()> {
     with_groq_cassette_result(
         "constants_matrix/catalog_lists_current_constants",
         |client| async move {
-            let models = client.models().list_all().await?;
+            let models = rig::model(client.models()).call(()).await?;
             let served: Vec<&str> = models.data.iter().map(|model| model.id.as_str()).collect();
             let missing: Vec<&str> = PUBLIC_CONSTANTS
                 .iter()
@@ -69,10 +69,10 @@ async fn catalog_lists_current_constants() -> Result<()> {
     .await
 }
 
-async fn assert_completion_smoke(client: BoundGroq, model_id: &str) -> Result<()> {
-    let model = client.completion(model_id);
-    let request = model.completion_request(PROMPT).max_tokens(64).build();
-    let response = model.completion(request).await?;
+async fn assert_completion_smoke(client: OpenAI, model_id: &str) -> Result<()> {
+    let model = rig::model(client.completion(model_id));
+    let request = CompletionRequestBuilder::new(PROMPT).max_tokens(64).build();
+    let response = model.call(request).await?;
     let text = assistant_text_response(&response.choice)
         .ok_or_else(|| anyhow::anyhow!("{model_id} should answer with text"))?;
     assert_nonempty_response(&text);

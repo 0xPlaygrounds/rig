@@ -53,7 +53,7 @@ async fn fail_resolution_returns_unknown_tool_call() {
         "agent_run_recovery/fail_resolution_returns_unknown_tool_call",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -96,7 +96,7 @@ async fn repair_renames_tool_call_and_executes_it() {
             // `sum` is registered alongside `add` so the post-repair wire
             // history references a tool Gemini saw advertised.
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "sum"],
                 None,
@@ -181,7 +181,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
         "agent_run_recovery/skip_suppresses_every_call_in_the_turn",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -273,7 +273,7 @@ async fn retry_with_exhausted_budget_fails_with_unknown_tool_call() {
         "agent_run_recovery/retry_with_exhausted_budget_fails_with_unknown_tool_call",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -303,7 +303,7 @@ async fn repair_to_disallowed_name_fails_with_unknown_tool_call() {
         "agent_run_recovery/repair_to_disallowed_name_fails_with_unknown_tool_call",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),

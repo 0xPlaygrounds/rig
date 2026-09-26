@@ -30,7 +30,6 @@ use rig::agent::{
     OutcomeEvent, RequestPatch, StreamingError,
 };
 use rig::completion::Document;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
@@ -258,14 +257,15 @@ async fn lifecycle_and_scratchpad_thread_across_multi_turn_blocking() {
     with_gemini_cassette(
         "hook_stress/lifecycle_and_scratchpad_thread_across_multi_turn_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .tool(subtract)
+            .build();
 
             let response = agent
                 .prompt(
@@ -367,16 +367,17 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
     with_gemini_cassette(
         "hook_stress/request_patch_injects_context_and_narrows_active_tools_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a helpful assistant. Use a tool for any arithmetic. Consult the \
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(
+                "You are a helpful assistant. Use a tool for any arithmetic. Consult the \
                      provided context for any facts you are asked about.",
-                )
-                .tool(add)
-                .tool(subtract)
-                .build();
+            )
+            .tool(add)
+            .tool(subtract)
+            .build();
 
             let response = agent
                 // Spelled out as two labelled output lines because this run is now
@@ -443,17 +444,18 @@ async fn chained_arg_rewrite_then_result_redaction_blocking() {
     with_gemini_cassette(
         "hook_stress/chained_arg_rewrite_then_result_redaction_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(
-                    "You are a calculator assistant. You MUST use the add tool for the addition. \
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(
+                "You are a calculator assistant. You MUST use the add tool for the addition. \
                      After the tool result is available, report the exact tool result text \
                      verbatim as your final answer.",
-                )
-                .temperature(0.0)
-                .tool(add)
-                .build();
+            )
+            .temperature(0.0)
+            .tool(add)
+            .build();
 
             let response = agent
                 .prompt("Use the add tool to add 2 and 2, then report the exact tool result.")
@@ -523,14 +525,15 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
     with_gemini_cassette(
         "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .tool(subtract)
+            .build();
 
             let mut stream = agent
                 .prompt(
@@ -644,8 +647,7 @@ async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
     with_gemini_cassette(
         "hook_stress/multi_tool_workflow_pairs_calls_and_results_per_turn_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
                 .name("stress-agent")
                 .preamble(
                     "You are a calculator assistant. You MUST use the provided tools for every \
@@ -719,8 +721,7 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
     with_gemini_cassette(
         "hook_stress/skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
                 .name("stress-agent")
                 .preamble(
                     "You are a calculator assistant. You MUST use the provided tools for every \
@@ -797,15 +798,16 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
         "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .record_to(recorder.clone())
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(add)
+            .tool(subtract)
+            .record_to(recorder.clone())
+            .build();
             let mut stream = agent
                 .prompt(
                     "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \

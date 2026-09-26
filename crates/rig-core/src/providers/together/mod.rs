@@ -9,7 +9,7 @@
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let together = OpenAI::from_env_with(&TOGETHER)?;
-//! let embedding = together.embeddings(together::BGE_BASE_EN_V1_5, None);
+//! let embedding = together.embedding(together::BGE_BASE_EN_V1_5, None);
 //! let chat = together.chat(together::MIXTRAL_8X7B_INSTRUCT_V0_1);
 //! # let _ = (embedding, chat);
 //! # Ok(())

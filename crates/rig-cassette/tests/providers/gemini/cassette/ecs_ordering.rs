@@ -23,7 +23,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
                 "streaming_tools/streaming_tools_emit_tool_call_before_later_text",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                         ORDERED_TOOL_STREAM_PREAMBLE,
                         1,
                     );
@@ -72,7 +72,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
         "streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
         |client| async move {
             let mut ecs = EcsAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 TWO_TOOL_STREAM_PREAMBLE,
                 1,
             );

@@ -140,6 +140,8 @@ pub enum BlockClose {
     /// fragments, or the end's authoritative payload, into a completed
     /// call.
     ToolCall(ToolCallEnd),
+    /// A whole image the reply delivered at once; images have no deltas.
+    Image(crate::message::Image),
 }
 
 /// The end of a streamed tool call's input.

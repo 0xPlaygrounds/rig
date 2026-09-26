@@ -20,11 +20,11 @@ use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
 use crate::agent::run::OutputMode;
 use crate::agent::streaming::{MultiTurnStreamItem, StreamingError};
-use crate::completion::{CompletionModel, FinishReason, Message, PromptError, Usage};
+use crate::completion::{FinishReason, Message, PromptError, Usage};
 use crate::streaming::{Delta, StreamEvent, StreamedUserContent};
 use crate::test_utils::{
-    MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
-    MockSubtractTool, MockToolError, MockTurn, mock_final,
+    MockAddTool, MockBarrierTool, MockCompletionModel, MockFrame, MockOperationArgs, MockScript,
+    MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, MockWire, mock_final,
 };
 use crate::tool::{
     Tool, ToolContext, ToolExecutionError, ToolSet,
@@ -325,7 +325,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
     }
 
     let hook = IdentityHook::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("reply")
         .with_message_id("msg_1")
         .with_response_id("resp_1")
         .with_provider_request_id("req_1")]))
@@ -354,7 +354,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
 /// error and never a fabricated value.
 #[tokio::test]
 async fn absent_identity_metadata_stays_none() {
-    let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")]))
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("reply")]))
         .build()
         .prompt(Message::user("prompt"))
         .run()
@@ -374,7 +374,7 @@ async fn absent_identity_metadata_stays_none() {
 #[tokio::test]
 async fn failed_attempt_error_carries_its_own_request_id() {
     let hook = TurnIdentityHook::default();
-    let error = AgentBuilder::new(MockCompletionModel::new([
+    let error = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 2, "y": 3}))
             .with_provider_request_id("req-success-1"),
         MockTurn::provider_response_error(
@@ -467,7 +467,7 @@ fn stream_final_with_ids(request_id: &str, response_id: &str) -> MockStreamEvent
 #[tokio::test]
 async fn model_turn_finished_identity_blocking_tool_only_and_text() {
     let hook = TurnIdentityHook::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3}))
             .with_provider_request_id("req-turn-1")
             .with_response_id("resp-turn-1"),
@@ -623,7 +623,7 @@ async fn retried_turn_reports_the_retried_attempts_own_identity() {
     }
 
     let hook = RetryOnceCapturingIdentity::default();
-    AgentBuilder::new(MockCompletionModel::new([
+    AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("first attempt").with_provider_request_id("req-attempt-1"),
         MockTurn::text("second attempt").with_provider_request_id("req-attempt-2"),
     ]))
@@ -744,7 +744,7 @@ async fn hook_events_carry_raw_blocking() {
     let payload = raw_payload("blocking");
 
     let hook = RawCaptureHook::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("reply").with_raw(payload.clone())
     ]))
     .add_hook(hook.clone())
@@ -806,7 +806,7 @@ async fn completion_calls_carry_each_attempts_own_raw_blocking() {
     assert_ne!(first, second);
 
     let hook = RawCaptureHook::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3})).with_raw(first.clone()),
         MockTurn::text("5").with_raw(second.clone()),
     ]))
@@ -933,7 +933,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_blocking() {
     let second = raw_payload("attempt-2");
 
     let hook = RetryOnceCapturingRaw::default();
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("first attempt").with_raw(first.clone()),
         MockTurn::text("second attempt").with_raw(second.clone()),
     ]))
@@ -1030,7 +1030,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
 #[tokio::test]
 async fn response_scoped_id_is_not_promoted_into_history() {
     let prompt = Message::user("prompt");
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("reply").with_response_id("chatcmpl-123")
     ]))
     .build()
@@ -1053,7 +1053,7 @@ async fn response_scoped_id_is_not_promoted_into_history() {
 #[tokio::test]
 async fn message_id_is_promoted_into_history() {
     let prompt = Message::user("prompt");
-    let response = AgentBuilder::new(MockCompletionModel::new([
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([
         MockTurn::text("reply").with_message_id("msg_abc")
     ]))
     .build()
@@ -1076,15 +1076,37 @@ async fn message_id_is_promoted_into_history() {
 /// The streamed `CompletionResponse` carries the same canonical fields the
 /// blocking driver reports: the prompt, the assembled content, the usage
 /// and the provider message id.
+/// An agent builder over a bus whose default model relays `turns`
+/// verbatim, items past the terminal included: a wire's driver stops at the
+/// terminal, so only a relayed stream can deliver them.
+fn relayed(
+    turns: impl IntoIterator<Item = impl IntoIterator<Item = MockStreamEvent>>,
+) -> AgentBuilder {
+    let (dispatcher, registrar, mut driver) = crate::bus::Bus::channel();
+    driver
+        .register(
+            "model:relay",
+            rig_core::test_utils::MockRelay::new("relay", turns),
+        )
+        .expect("register");
+    tokio::spawn(driver);
+    AgentBuilder::over_bus(
+        dispatcher,
+        registrar,
+        "relay",
+        rig_core::effect::HandlerKey::from("model:relay"),
+    )
+}
+
 #[tokio::test]
 async fn streaming_completion_response_receives_canonical_fields() {
     let prompt = Message::user("canonical prompt");
     let hook = CanonicalResponseHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = relayed([[
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-canonical"),
-    ]]))
+    ]])
     .add_hook(hook.clone())
     .build()
     .prompt(prompt.clone())
@@ -1127,11 +1149,11 @@ async fn streaming_completion_response_without_provider_message_id_reports_none(
 #[tokio::test]
 async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = relayed([[
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-after-final"),
-    ]]))
+    ]])
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
@@ -1268,11 +1290,11 @@ async fn streaming_model_turn_stop_preserves_completed_provider_final() {
 #[tokio::test]
 async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = relayed([[
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::error("post-final failure"),
-    ]]))
+    ]])
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
@@ -1322,11 +1344,11 @@ async fn visible_assistant_items_after_final_are_rejected() {
 
     for (case, visible_item) in cases {
         let hook = FinishLifecycleHook::default();
-        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+        let mut stream = relayed([vec![
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
             visible_item,
-        ]]))
+        ]])
         .add_hook(hook.clone())
         .build()
         .prompt("canonical prompt")
@@ -1366,11 +1388,11 @@ async fn visible_assistant_items_after_final_are_rejected() {
 #[tokio::test]
 async fn visible_item_after_non_emittable_final_is_rejected() {
     let hook = FinishLifecycleHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+    let mut stream = relayed([[
         MockStreamEvent::reasoning("think"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::text("late text"),
-    ]]))
+    ]])
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
@@ -2505,14 +2527,14 @@ mod span_safety_net {
     use crate::agent::{
         AgentBuilder, HookContext, MultiTurnStreamItem, OutcomeAction, OutcomeEvent,
     };
-    use crate::completion::{
-        CompletionModel, CompletionRequest, CompletionResponse, PromptError, Usage,
-    };
+    use crate::completion::{CompletionRequest, PromptError, Usage};
     use crate::streaming::StreamEvent;
-    use crate::streaming::StreamingCompletionResponse;
-    use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
+    use crate::test_utils::{
+        MockAddTool, MockCompletionModel, MockDecoder, MockFrame, MockScript, MockStreamEvent,
+        MockTurn, MockWire,
+    };
     use crate::tool::{ToolContext, ToolExecutionError};
-    use rig_core::telemetry::{GenAiOperation, SpanBuilder};
+    use rig_core::driver::{Model, Observation, Opened, Transport};
 
     use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
 
@@ -2654,33 +2676,58 @@ mod span_safety_net {
         ])
     }
 
+    /// The mock wire under a fixture provider and model name, so the
+    /// driver's provider span carries both.
     #[derive(Clone)]
-    struct CompletionTelemetryModel {
-        inner: MockCompletionModel,
+    struct FixtureWire;
+
+    impl rig_core::wire::Wire for FixtureWire {
+        type Op = rig_core::operation::Completion;
+        type Payload = CompletionRequest;
+        type Frame = MockFrame;
+        type Decoder = MockDecoder;
+
+        fn name(&self) -> &str {
+            "fixture-provider"
+        }
+
+        fn model(&self) -> Option<&str> {
+            Some("fixture-model")
+        }
+
+        fn encode(
+            &self,
+            request: CompletionRequest,
+            mode: rig_core::wire::Mode,
+        ) -> Result<CompletionRequest, rig_core::error::EncodeError> {
+            MockWire.encode(request, mode)
+        }
+
+        fn decoder(&self, mode: rig_core::wire::Mode) -> MockDecoder {
+            MockWire.decoder(mode)
+        }
     }
 
-    impl CompletionModel for CompletionTelemetryModel {
-        async fn completion(
+    impl Transport<FixtureWire> for MockScript {
+        fn send(
             &self,
-            request: CompletionRequest,
-        ) -> Result<CompletionResponse, ProviderError> {
-            let span =
-                SpanBuilder::new("fixture-provider", "fixture-model", GenAiOperation::Chat).build();
-            self.inner.completion(request).instrument(span).await
+            payload: CompletionRequest,
+            mode: rig_core::wire::Mode,
+            observation: Option<Observation>,
+        ) -> Result<
+            impl Future<Output = Opened<CompletionRequest, MockFrame>>
+            + rig_core::wasm_compat::WasmCompatSend
+            + 'static
+            + use<>,
+            ProviderError,
+        > {
+            Transport::<MockWire>::send(self, payload, mode, observation)
         }
+    }
 
-        async fn stream(
-            &self,
-            request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse, ProviderError> {
-            let span = SpanBuilder::new(
-                "fixture-provider",
-                "fixture-model",
-                GenAiOperation::ChatStreaming,
-            )
-            .build();
-            self.inner.stream(request).instrument(span).await
-        }
+    /// A model that answers `text` under the fixture provider's telemetry.
+    fn fixture_telemetry_model(text: &str) -> Model<FixtureWire, MockScript> {
+        Model::new(FixtureWire, MockCompletionModel::text(text).transport)
     }
 
     /// Register the blocking driver's span callsites against the scoped
@@ -3091,18 +3138,12 @@ mod span_safety_net {
         });
         let _default = tracing::subscriber::set_default(subscriber);
 
-        let warm = AgentBuilder::new(CompletionTelemetryModel {
-            inner: MockCompletionModel::text("warm"),
-        })
-        .build();
+        let warm = AgentBuilder::new(fixture_telemetry_model("warm")).build();
         let _ = warm.prompt("warm").await;
         tracing::callsite::rebuild_interest_cache();
         captured.clear();
 
-        let agent = AgentBuilder::new(CompletionTelemetryModel {
-            inner: MockCompletionModel::text("done"),
-        })
-        .build();
+        let agent = AgentBuilder::new(fixture_telemetry_model("done")).build();
         let response = agent.prompt("hello").await.expect("prompt should succeed");
         assert_eq!(response.output, "done");
 
@@ -6041,26 +6082,30 @@ impl Tool for SecondGenerationTool {
 
 /// Pauses the first provider call after its request has been built. Tests
 /// replace the live registry while that request is in flight, then let the
-/// model return a call that is valid only for the advertised generation.
+/// script return a call that is valid only for the advertised generation.
 #[derive(Clone)]
-struct PausingCompletionModel {
-    inner: MockCompletionModel,
+struct PausingScript {
+    inner: MockScript,
     request_started: Arc<Notify>,
     release_response: Arc<Notify>,
     requests: Arc<AtomicU32>,
 }
 
-impl PausingCompletionModel {
-    fn new(inner: MockCompletionModel) -> (Self, Arc<Notify>, Arc<Notify>) {
+impl PausingScript {
+    /// `inner`'s script behind the pause, as a model.
+    fn model(
+        inner: MockCompletionModel,
+    ) -> (rig_core::Model<MockWire, Self>, Arc<Notify>, Arc<Notify>) {
         let request_started = Arc::new(Notify::new());
         let release_response = Arc::new(Notify::new());
+        let script = Self {
+            inner: inner.transport,
+            request_started: request_started.clone(),
+            release_response: release_response.clone(),
+            requests: Arc::new(AtomicU32::new(0)),
+        };
         (
-            Self {
-                inner,
-                request_started: request_started.clone(),
-                release_response: release_response.clone(),
-                requests: Arc::new(AtomicU32::new(0)),
-            },
+            rig_core::Model::new(inner.wire, script),
             request_started,
             release_response,
         )
@@ -6083,21 +6128,32 @@ impl PausingCompletionModel {
     }
 }
 
-impl CompletionModel for PausingCompletionModel {
-    async fn completion(
+impl rig_core::driver::Transport<MockWire> for PausingScript {
+    fn send(
         &self,
-        request: crate::completion::CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, rig_core::error::ProviderError> {
-        self.inspect_and_pause(&request).await;
-        self.inner.completion(request).await
-    }
-
-    async fn stream(
-        &self,
-        request: crate::completion::CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, rig_core::error::ProviderError> {
-        self.inspect_and_pause(&request).await;
-        self.inner.stream(request).await
+        payload: crate::completion::CompletionRequest,
+        mode: rig_core::wire::Mode,
+        observation: Option<rig_core::driver::Observation>,
+    ) -> Result<
+        impl Future<Output = rig_core::driver::Opened<crate::completion::CompletionRequest, MockFrame>>
+        + rig_core::wasm_compat::WasmCompatSend
+        + 'static
+        + use<>,
+        rig_core::error::ProviderError,
+    > {
+        let this = self.clone();
+        Ok(async move {
+            this.inspect_and_pause(&payload).await;
+            match rig_core::driver::Transport::<MockWire>::send(
+                &this.inner,
+                payload,
+                mode,
+                observation,
+            ) {
+                Ok(sending) => sending.await,
+                Err(error) => rig_core::driver::Opened::failed(error),
+            }
+        })
     }
 }
 
@@ -6112,7 +6168,7 @@ fn one_hook_instance_attaches_to_distinct_completion_models() {
     let _mock_agent = AgentBuilder::new(MockCompletionModel::default())
         .add_hook(hook.clone())
         .build();
-    let (other_model, _, _) = PausingCompletionModel::new(MockCompletionModel::default());
+    let (other_model, _, _) = PausingScript::model(MockCompletionModel::default());
     let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
 }
 
@@ -6302,7 +6358,7 @@ async fn blocking_turn_dispatches_the_registry_generation_it_advertised() {
         ),
         MockTurn::text("done"),
     ]);
-    let (model, request_started, release_response) = PausingCompletionModel::new(inner);
+    let (model, request_started, release_response) = PausingScript::model(inner);
     let runner = AgentBuilder::new(model)
         .tool_server_handle(handle.clone())
         .build()
@@ -6347,7 +6403,7 @@ async fn streaming_turn_dispatches_the_registry_generation_it_advertised() {
             .iter()
             .map(|turn| turn.as_stream_events(StreamShape::Complete)),
     );
-    let (model, request_started, release_response) = PausingCompletionModel::new(inner);
+    let (model, request_started, release_response) = PausingScript::model(inner);
     let runner = AgentBuilder::new(model)
         .tool_server_handle(handle.clone())
         .build()

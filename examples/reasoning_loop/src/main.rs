@@ -1,4 +1,5 @@
 use rig::error::ProviderError;
+use rig::extractor::ExtractorBuilder;
 use rig::prelude::*;
 use rig::{
     agent::Agent,
@@ -72,16 +73,14 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create the Anthropic provider, bound to the bundled transport
-    let anthropic_client = Anthropic::from_env()?.bound()?;
+    // Create the Anthropic provider, on the default transport
+    let anthropic_client = Anthropic::from_env()?;
     let agent = ReasoningAgent {
-        chain_of_thought_extractor: anthropic_client
-            .extractor(anthropic::completion::CLAUDE_SONNET_4_6)
+        chain_of_thought_extractor: ExtractorBuilder::new(rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
             .append_preamble(CHAIN_OF_THOUGHT_PROMPT)
             .build(),
 
-        executor: anthropic_client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+        executor: AgentBuilder::new(rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)))
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely.

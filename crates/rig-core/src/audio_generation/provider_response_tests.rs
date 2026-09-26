@@ -1,4 +1,4 @@
-use super::*;
+use crate::error::ProviderError;
 use crate::{http_client, provider_response};
 use http::StatusCode;
 

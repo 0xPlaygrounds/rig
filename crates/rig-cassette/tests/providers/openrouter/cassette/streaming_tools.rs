@@ -4,9 +4,7 @@
 //! `reasoning_details` of type `reasoning.encrypted` (`openai/o4-mini` with
 //! `reasoning.effort: high` + `include_reasoning: true`). Re-record them with:
 //! `RIG_PROVIDER_TEST_MODE=record OPENROUTER_API_KEY=... cargo test -p rig --all-features --test openrouter stream_encrypted_reasoning -- --test-threads=1`
-use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
-use rig::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -21,14 +19,14 @@ use crate::support::{
 };
 
 use super::super::{TOOL_MODEL, support::with_openrouter_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_openrouter_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = client
-                .agent(TOOL_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -61,7 +59,7 @@ struct EncryptedReasoningObservation {
 }
 
 async fn observe_stream(
-    stream: &mut rig::streaming::StreamingCompletionResponse,
+    stream: &mut rig::streaming::CompletionStream,
 ) -> EncryptedReasoningObservation {
     use futures::StreamExt;
     use rig::streaming::{Delta, StreamEvent};
@@ -136,21 +134,19 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
     with_openrouter_cassette(
         "streaming_tools/stream_encrypted_reasoning_reaches_the_choice",
         |client| async move {
-            let model = client.completion(ENCRYPTED_REASONING_MODEL);
+            let model = rig::model(client.completion(ENCRYPTED_REASONING_MODEL));
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
-            let request = model
-                .completion_request(crate::reasoning::TOOL_USER_PROMPT)
+            let request = CompletionRequestBuilder::new(crate::reasoning::TOOL_USER_PROMPT)
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
                 .max_tokens(4096)
                 .tool(tool_definition)
                 .additional_params(serde_json::json!({
                     "reasoning": { "effort": "high" },
                     "include_reasoning": true
-                }))
-                .build();
+                })).build();
 
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
             let observation = observe_stream(&mut stream).await;
             assert!(
                 observation.errors.is_empty(),
@@ -178,7 +174,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                 "the recorded turn carries encrypted reasoning_details; the stream must emit them as reasoning blocks"
             );
 
-            let aggregated = encrypted_blocks_in_choice(&stream.snapshot());
+            let aggregated = encrypted_blocks_in_choice(&stream.folded().snapshot());
             assert_eq!(
                 aggregated, streamed,
                 "every streamed encrypted reasoning block must reach the aggregated choice"
@@ -207,7 +203,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
     with_openrouter_cassette(
         "streaming_tools/stream_encrypted_reasoning_survives_into_the_next_turn",
         |client| async move {
-            let model = client.completion(ENCRYPTED_REASONING_MODEL);
+            let model = rig::model(client.completion(ENCRYPTED_REASONING_MODEL));
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
             let reasoning_params = serde_json::json!({
@@ -215,15 +211,13 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 "include_reasoning": true
             });
 
-            let request = model
-                .completion_request(crate::reasoning::TOOL_USER_PROMPT)
+            let request = CompletionRequestBuilder::new(crate::reasoning::TOOL_USER_PROMPT)
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
                 .max_tokens(4096)
                 .tool(tool_definition.clone())
-                .additional_params(reasoning_params.clone())
-                .build();
+                .additional_params(reasoning_params.clone()).build();
 
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = model.stream(request).expect("stream should start");
             let first_turn = observe_stream(&mut stream).await;
             assert!(
                 first_turn.errors.is_empty(),
@@ -231,7 +225,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 first_turn.errors
             );
 
-            let aggregated = encrypted_blocks_in_choice(&stream.snapshot());
+            let aggregated = encrypted_blocks_in_choice(&stream.folded().snapshot());
             assert!(
                 !aggregated.is_empty(),
                 "first turn should aggregate the encrypted reasoning block"
@@ -247,8 +241,8 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // The whole choice — reasoning block included — is what a caller
             // replays as history.
             let assistant_message = Message::Assistant {
-                id: stream.message_id.clone(),
-                content: stream.snapshot(),
+                id: stream.folded().message_id().map(str::to_owned),
+                content: stream.folded().snapshot(),
             };
             let tool_result_message = Message::User {
         content: vec![UserContent::tool_result_for(
@@ -259,19 +253,16 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
         )],
     };
 
-            let followup = model
-                .completion_request("Summarize the weather using the tool result.")
+            let followup = CompletionRequestBuilder::new("Summarize the weather using the tool result.")
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
                 .max_tokens(4096)
                 .tool(tool_definition)
                 .additional_params(reasoning_params)
                 .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+                .message(tool_result_message).build();
 
             let mut followup_stream = model
                 .stream(followup)
-                .await
                 .expect("follow-up stream should start");
             let second_turn = observe_stream(&mut followup_stream).await;
 
@@ -294,19 +285,15 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_openrouter_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion(TOOL_MODEL);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
+            let model = rig::model(client.completion(TOOL_MODEL));
+            let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .build();
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
-                    .await
-                    .expect("raw stream should start"),
+                model.stream(request).expect("raw stream should start"),
             )
             .await;
 
@@ -324,17 +311,14 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_openrouter_cassette(
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let model = client.completion(TOOL_MODEL);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let model = rig::model(client.completion(TOOL_MODEL));
+            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .tool(rig::tool::tool_definition(&AlphaSignal)).build();
 
             let first_turn = collect_raw_stream_observation(
                 model
                     .stream(request)
-                    .await
                     .expect("raw stream should start"),
             )
             .await;
@@ -359,19 +343,16 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
         )],
     };
-            let followup_request = model
-                .completion_request(
+            let followup_request = CompletionRequestBuilder::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
                 )
                 .preamble("Use the provided tool result and answer directly.".to_string())
                 .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+                .message(tool_result_message).build();
 
             let second_turn = collect_raw_stream_observation(
                 model
                     .stream(followup_request)
-                    .await
                     .expect("raw followup stream should start"),
             )
             .await;

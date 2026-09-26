@@ -42,12 +42,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Route the configuration to Chat Completions once; the agent follows.
-    let agent = OpenAI::from_env()?
-        .with_route(Route::Chat)
-        .bound()?
-        .agent(openai::GPT_4O)
-        .preamble("You are a helpful assistant")
-        .build();
+    let agent = AgentBuilder::new(rig::model(
+        OpenAI::from_env()?
+            .with_route(Route::Chat)
+            .completion(openai::GPT_4O),
+    ))
+    .preamble("You are a helpful assistant")
+    .build();
 
     let res = agent.prompt("Hello world!").await?.output;
 

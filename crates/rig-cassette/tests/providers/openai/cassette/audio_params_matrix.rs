@@ -52,11 +52,11 @@
 //! covers the merge itself, including overriding each derived key and a
 //! non-object payload — shapes that need no network at all.
 
-use rig::audio_generation::AudioGenerationModel;
 use rig::providers::openai;
 use serde_json::json;
 
 use super::super::support::with_openai_audio_cassette;
+use rig::audio_generation::AudioGenerationRequestBuilder;
 
 const TEXT: &str = "hello";
 const VOICE: &str = "alloy";
@@ -78,13 +78,13 @@ async fn default_body_returns_mp3() {
     with_openai_audio_cassette(
         "audio_params_matrix/default_body_returns_mp3",
         |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .send()
-                .await
-                .expect("speech synthesis should succeed");
+            let response = rig::Model::new(
+                client.openai.audio_generation(openai::TTS_1),
+                client.http.clone(),
+            )
+            .call(AudioGenerationRequestBuilder::new(TEXT, VOICE).build())
+            .await
+            .expect("speech synthesis should succeed");
 
             assert_eq!(container(&response.audio), "mp3");
         },
@@ -97,14 +97,17 @@ async fn response_format_wav_changes_the_container() {
     with_openai_audio_cassette(
         "audio_params_matrix/response_format_wav_changes_the_container",
         |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "response_format": "wav" }))
-                .send()
-                .await
-                .expect("speech synthesis should succeed");
+            let response = rig::Model::new(
+                client.openai.audio_generation(openai::TTS_1),
+                client.http.clone(),
+            )
+            .call(
+                AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                    .additional_params(json!({ "response_format": "wav" }))
+                    .build(),
+            )
+            .await
+            .expect("speech synthesis should succeed");
 
             assert_eq!(
                 container(&response.audio),
@@ -121,14 +124,17 @@ async fn response_format_flac_changes_the_container() {
     with_openai_audio_cassette(
         "audio_params_matrix/response_format_flac_changes_the_container",
         |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "response_format": "flac" }))
-                .send()
-                .await
-                .expect("speech synthesis should succeed");
+            let response = rig::Model::new(
+                client.openai.audio_generation(openai::TTS_1),
+                client.http.clone(),
+            )
+            .call(
+                AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                    .additional_params(json!({ "response_format": "flac" }))
+                    .build(),
+            )
+            .await
+            .expect("speech synthesis should succeed");
 
             assert_eq!(container(&response.audio), "flac");
         },
@@ -144,14 +150,17 @@ async fn instructions_reach_the_tts_model() {
     with_openai_audio_cassette(
         "audio_params_matrix/instructions_reach_the_tts_model",
         |client| async move {
-            let response = client
-                .openai
-                .audio_generation("gpt-4o-mini-tts")
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "instructions": "Speak slowly and warmly." }))
-                .send()
-                .await
-                .expect("speech synthesis should succeed");
+            let response = rig::Model::new(
+                client.openai.audio_generation("gpt-4o-mini-tts"),
+                client.http.clone(),
+            )
+            .call(
+                AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                    .additional_params(json!({ "instructions": "Speak slowly and warmly." }))
+                    .build(),
+            )
+            .await
+            .expect("speech synthesis should succeed");
 
             assert!(!response.audio.is_empty());
         },
@@ -170,14 +179,17 @@ async fn completions_client_shares_the_fixed_body() {
     with_openai_audio_cassette(
         "audio_params_matrix/completions_client_shares_the_fixed_body",
         |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "response_format": "wav" }))
-                .send()
-                .await
-                .expect("speech synthesis should succeed");
+            let response = rig::Model::new(
+                client.openai.audio_generation(openai::TTS_1),
+                client.http.clone(),
+            )
+            .call(
+                AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                    .additional_params(json!({ "response_format": "wav" }))
+                    .build(),
+            )
+            .await
+            .expect("speech synthesis should succeed");
 
             assert_eq!(container(&response.audio), "wav");
         },
@@ -191,14 +203,17 @@ async fn additional_params_can_override_voice() {
     with_openai_audio_cassette(
         "audio_params_matrix/additional_params_can_override_voice",
         |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!({ "voice": "nova" }))
-                .send()
-                .await
-                .expect("speech synthesis should succeed");
+            let response = rig::Model::new(
+                client.openai.audio_generation(openai::TTS_1),
+                client.http.clone(),
+            )
+            .call(
+                AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                    .additional_params(json!({ "voice": "nova" }))
+                    .build(),
+            )
+            .await
+            .expect("speech synthesis should succeed");
 
             assert!(!response.audio.is_empty());
         },
@@ -212,14 +227,17 @@ async fn non_object_additional_params_are_a_no_op() {
     with_openai_audio_cassette(
         "audio_params_matrix/non_object_additional_params_are_a_no_op",
         |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .audio_generation_request(TEXT, VOICE)
-                .additional_params(json!("not-an-object"))
-                .send()
-                .await
-                .expect("speech synthesis should succeed");
+            let response = rig::Model::new(
+                client.openai.audio_generation(openai::TTS_1),
+                client.http.clone(),
+            )
+            .call(
+                AudioGenerationRequestBuilder::new(TEXT, VOICE)
+                    .additional_params(json!("not-an-object"))
+                    .build(),
+            )
+            .await
+            .expect("speech synthesis should succeed");
 
             assert_eq!(container(&response.audio), "mp3");
         },

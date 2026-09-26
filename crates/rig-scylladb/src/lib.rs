@@ -6,7 +6,7 @@
 
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{
@@ -31,11 +31,11 @@ use uuid::Uuid;
 
 /// Vector store backed by a ScyllaDB table.
 ///
-/// Queries are embedded with the same model `M` that populated the table, so
+/// Queries are embedded with the same model that populated the table, so
 /// results are meaningless under another model. Every search reads the matching
 /// rows and ranks them client-side.
-pub struct ScyllaDbVectorStore<M> {
-    model: M,
+pub struct ScyllaDbVectorStore {
+    model: rig_core::BoxedModel<rig_core::operation::Embedding>,
     pub session: Arc<Session>,
     keyspace: String,
     table: String,
@@ -178,7 +178,7 @@ impl DynamicSearchFilter for ScyllaSearchFilter {
     }
 }
 
-impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
+impl ScyllaDbVectorStore {
     /// Creates a store, creating the keyspace and table when absent and
     /// preparing the fixed statements.
     ///
@@ -186,7 +186,7 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
     /// `keyspace` and `table` are spliced into every statement verbatim.
     /// `dimensions` is the vector width insertion enforces.
     pub async fn new(
-        model: M,
+        model: impl Into<rig_core::BoxedModel<rig_core::operation::Embedding>>,
         session: Session,
         keyspace: &str,
         table: &str,
@@ -241,7 +241,7 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
             .map_err(VectorStoreError::datastore)?;
 
         Ok(Self {
-            model,
+            model: model.into(),
             session,
             keyspace: keyspace.to_string(),
             table: table.to_string(),
@@ -414,7 +414,7 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> InsertDocuments for ScyllaDbVectorStore<M> {
+impl InsertDocuments for ScyllaDbVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -450,7 +450,7 @@ impl<M: EmbeddingModel> InsertDocuments for ScyllaDbVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for ScyllaDbVectorStore<M> {
+impl VectorStoreIndex for ScyllaDbVectorStore {
     type Filter = ScyllaSearchFilter;
 
     /// Returns matches as `(cosine similarity, row id, document)`. Scoring reads

@@ -11,7 +11,7 @@ use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::sync::{Arc, Mutex};
 
 use futures::FutureExt;
-use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition};
+use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolCall, ToolResultContent, UserContent};
 use serde_json::{Value, json};
 
@@ -104,7 +104,7 @@ async fn cleaned<F: Future<Output = ()>>(client: &OpenAiCassette, resources: &Cr
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
-    let config = &client.openai.wire;
+    let config = &client.openai;
     let http = reqwest::Client::new();
     let mut failures = Vec::new();
     for path in paths {
@@ -178,7 +178,7 @@ async fn stored_chain_with_tool_call() {
         |client| async move {
             let resources = Created::default();
             cleaned(&client, &resources, async {
-                let model = client.openai.responses(MODEL);
+                let model = rig::model(client.openai.responses(MODEL));
                 let stored = |previous: Option<&str>| {
                     let mut params = json!({ "store": true, "reasoning": { "effort": "low" } });
                     if let Some(previous) = previous {
@@ -188,7 +188,7 @@ async fn stored_chain_with_tool_call() {
                 };
 
                 let first = model
-                    .completion(request(
+                    .call(request(
                         vec![Message::user(
                             "Use lookup_code to get the code of record alpha. Do not guess.",
                         )],
@@ -202,7 +202,7 @@ async fn stored_chain_with_tool_call() {
                 let call = only_call(&first.choice);
 
                 let second = model
-                    .completion(request(
+                    .call(request(
                         vec![answer(&call)],
                         vec![lookup_tool()],
                         stored(Some(&first_id)),
@@ -216,7 +216,7 @@ async fn stored_chain_with_tool_call() {
                 assert!(text(&second.choice).contains(CODE), "{:?}", second.choice);
 
                 let third = model
-                    .completion(request(
+                    .call(request(
                         vec![Message::user(
                             "Repeat the code you reported, exactly, and nothing else.",
                         )],
@@ -272,7 +272,7 @@ async fn stored_then_stateless_mid_conversation() {
         |client| async move {
             let resources = Created::default();
             cleaned(&client, &resources, async {
-                let model = client.openai.responses(MODEL);
+                let model = rig::model(client.openai.responses(MODEL));
                 let params = |previous: Option<&str>, store: bool| {
                     let mut params = json!({
                         "store": store,
@@ -288,7 +288,7 @@ async fn stored_then_stateless_mid_conversation() {
                     Message::user("Use lookup_code to get the code of record alpha. Do not guess.");
 
                 let first = model
-                    .completion(request(
+                    .call(request(
                         vec![prompt.clone()],
                         vec![lookup_tool()],
                         params(None, true),
@@ -301,7 +301,7 @@ async fn stored_then_stateless_mid_conversation() {
                 let tool_answer = answer(&call);
 
                 let second = model
-                    .completion(request(
+                    .call(request(
                         vec![tool_answer.clone()],
                         vec![lookup_tool()],
                         params(Some(&first_id), true),
@@ -325,7 +325,7 @@ async fn stored_then_stateless_mid_conversation() {
                     Message::user("Repeat the code you reported, exactly, and nothing else."),
                 ];
                 let third = model
-                    .completion(request(history, vec![lookup_tool()], params(None, false)))
+                    .call(request(history, vec![lookup_tool()], params(None, false)))
                     .await
                     .expect("turn three continues statelessly from the full history");
                 assert!(text(&third.choice).contains(CODE), "{:?}", third.choice);
@@ -369,7 +369,7 @@ async fn file_id_chain() {
     with_openai_cassette("stateful_chain_matrix/file_id_chain", |client| async move {
         let resources = Created::default();
         cleaned(&client, &resources, async {
-            let config = &client.openai.wire;
+            let config = &client.openai;
             let bytes = std::fs::read(crate::support::PDF_FIXTURE_PATH).expect("fixture PDF");
             let form = reqwest::multipart::Form::new()
                 .text("purpose", "user_data")
@@ -408,10 +408,10 @@ async fn file_id_chain() {
                     UserContent::text("What is the title on the first page? Answer briefly."),
                 ],
             };
-            let model = client.openai.responses("gpt-4.1-mini");
+            let model = rig::model(client.openai.responses("gpt-4.1-mini"));
             let params = json!({ "store": false });
             let first = model
-                .completion(request(vec![document.clone()], vec![], params.clone()))
+                .call(request(vec![document.clone()], vec![], params.clone()))
                 .await
                 .expect("turn one reads the file by id");
             let history = vec![
@@ -423,7 +423,7 @@ async fn file_id_chain() {
                 Message::user("How many pages does the attached PDF have? Answer with a number."),
             ];
             let second = model
-                .completion(request(history, vec![], params))
+                .call(request(history, vec![], params))
                 .await
                 .expect("turn two still reads the file by id");
             assert!(

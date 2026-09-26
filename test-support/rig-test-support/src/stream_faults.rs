@@ -28,8 +28,6 @@ use rig_agent::agent::StreamingError;
 
 use rig_agent::agent::StreamingResult;
 
-use rig_agent::completion::CompletionModel;
-
 use rig_agent::completion::PromptError;
 
 use rig_core::effect::EffectFamily;
@@ -696,13 +694,32 @@ impl NativeRun {
 /// with an agent-level budget of two turns; `configure` shapes the agent
 /// before the run is spawned.
 pub async fn native_run(
-    model: impl CompletionModel + 'static,
+    model: impl Into<rig_core::BoxedModel<rig_core::operation::Completion>>,
     preamble: &str,
     prompt: &str,
     witness: bool,
     configure: impl FnOnce(&mut EcsAgent),
 ) -> NativeRun {
-    let mut ecs = EcsAgent::new(model, preamble, 2);
+    let model: rig_core::BoxedModel<rig_core::operation::Completion> = model.into();
+    native_run_serving(
+        |label| rig_core::serve::adapters::ModelAdapter::new(label, model),
+        preamble,
+        prompt,
+        witness,
+        configure,
+    )
+    .await
+}
+
+/// [`native_run`] over the model handler `serve` builds for the model label.
+pub async fn native_run_serving<S: rig_core::serve::Serve + 'static>(
+    serve: impl FnOnce(&str) -> S,
+    preamble: &str,
+    prompt: &str,
+    witness: bool,
+    configure: impl FnOnce(&mut EcsAgent),
+) -> NativeRun {
+    let mut ecs = EcsAgent::serving(serve, preamble, 2);
     configure(&mut ecs);
     let trace = witness.then(|| witnessed(&mut ecs.app));
     let run = ecs

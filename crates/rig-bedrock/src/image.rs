@@ -1,104 +1,149 @@
-use crate::client::Client;
+//! The Bedrock text-to-image wire over `InvokeModel`.
+//!
+//! ```no_run
+//! use rig_bedrock::{client::BedrockRuntime, image::{AMAZON_NOVA_CANVAS, Images}};
+//! use rig_core::Model;
+//!
+//! let model = Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env());
+//! # let _ = model;
+//! ```
+
+use crate::client::BedrockRuntime;
 use crate::types::assistant_content::PROVIDER_NAME;
 use crate::types::errors::AwsSdkInvokeModelError;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
-use rig_core::error::ProviderError;
-use rig_core::image_generation::{
-    self, ImageGenerationRequest, ImageGenerationResponse, NormalizeImageGenerationResponse,
-};
+use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::error::{EncodeError, ProviderError};
+use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
+use rig_core::operation::{ImageGeneration, One};
+use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::wire::{Decoder, Mode, Sink, Wire};
 
 pub use crate::completion::{
     AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,
     STABILITY_STABLE_IMAGE_ULTRA_1_0,
 };
 
-#[derive(Clone)]
-pub struct ImageGenerationModel {
-    pub(crate) client: Client,
+/// The image-generation endpoint for one model.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Images {
     pub model: String,
 }
 
-impl ImageGenerationModel {
-    pub fn new(client: Client, model: impl Into<String>) -> Self {
+impl Images {
+    pub fn new(model: impl Into<String>) -> Self {
         Self {
-            client,
             model: model.into(),
         }
     }
 }
 
-impl ImageGenerationModel {
-    /// Perform the generation and return Bedrock's native
-    /// [`TextToImageResponse`] instead of the normalized
-    /// [`ImageGenerationResponse`]. Same request, transport, parser, and error
-    /// path as [`image_generation::ImageGenerationModel::image_generation`].
-    pub async fn raw_image_generation(
-        &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<TextToImageResponse, ProviderError> {
-        self.raw_image_generation_with_request_id(generation_request)
-            .await
-            .map(|(response, _)| response)
+/// One `InvokeModel` request: the model and its JSON body.
+pub struct InvokeModel {
+    model: String,
+    body: String,
+}
+
+impl Wire for Images {
+    type Op = ImageGeneration;
+    type Payload = InvokeModel;
+    type Frame = Vec<u8>;
+    type Decoder = ImagesDecoder;
+
+    fn name(&self) -> &str {
+        PROVIDER_NAME
     }
 
-    /// [`Self::raw_image_generation`] plus the AWS request id
-    /// (`x-amzn-RequestId`) from the SDK's response metadata, when present.
-    pub async fn raw_image_generation_with_request_id(
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    fn encode(
         &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<(TextToImageResponse, Option<String>), ProviderError> {
-        let request = TextToImageGeneration::new(generation_request.prompt)
-            .width(generation_request.width)
-            .height(generation_request.height);
+        request: ImageGenerationRequest,
+        _mode: Mode,
+    ) -> Result<InvokeModel, EncodeError> {
+        let request = TextToImageGeneration::new(request.prompt)
+            .width(request.width)
+            .height(request.height);
+        Ok(InvokeModel {
+            model: self.model.clone(),
+            body: serde_json::to_string(&request)?,
+        })
+    }
 
-        let body = serde_json::to_string(&request)?;
-        let model_response = self
-            .client
-            .inner()
-            .await
-            .invoke_model()
-            .model_id(self.model.as_str())
-            .content_type("application/json")
-            .accept("application/json")
-            .body(Blob::new(body))
-            .send()
-            .await
-            .map_err(|sdk_error| Into::<ProviderError>::into(AwsSdkInvokeModelError(sdk_error)))?;
-
-        let provider_request_id =
-            aws_sdk_bedrockruntime::operation::RequestId::request_id(&model_response)
-                .map(str::to_string);
-
-        let response_str = String::from_utf8(model_response.body.into_inner())
-            .map_err(|e| ProviderError::Response(e.to_string()))?;
-
-        let result: TextToImageResponse = serde_json::from_str(&response_str)
-            .map_err(|e| ProviderError::Response(e.to_string()))?;
-
-        Ok((result, provider_request_id))
+    fn decoder(&self, _mode: Mode) -> ImagesDecoder {
+        ImagesDecoder::default()
     }
 }
 
-impl image_generation::ImageGenerationModel for ImageGenerationModel {
-    async fn image_generation(
+impl Transport<Images> for BedrockRuntime {
+    fn send(
         &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<ImageGenerationResponse, ProviderError> {
-        rig_core::telemetry::instrument_modality::<rig_core::operation::ImageGeneration, _>(
-            PROVIDER_NAME,
-            &self.model,
-            async {
-                let (response, provider_request_id) = self
-                    .raw_image_generation_with_request_id(generation_request)
-                    .await?;
-                let captured = serde_json::to_value(&response)?;
-                Ok(response
-                    .normalize(PROVIDER_NAME)?
-                    .with_optional_provider_request_id(provider_request_id)
-                    .with_raw(captured))
-            },
-        )
-        .await
+        payload: InvokeModel,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<InvokeModel, Vec<u8>>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let runtime = self.clone();
+        Ok(async move {
+            let sent = runtime
+                .inner()
+                .await
+                .invoke_model()
+                .model_id(payload.model.as_str())
+                .content_type("application/json")
+                .accept("application/json")
+                .body(Blob::new(payload.body))
+                .send()
+                .await;
+            match sent {
+                Ok(response) => {
+                    let request_id =
+                        aws_sdk_bedrockruntime::operation::RequestId::request_id(&response)
+                            .map(str::to_owned);
+                    Opened {
+                        request_id,
+                        ..Opened::new(futures::stream::iter([Ok(response.body.into_inner())]))
+                    }
+                }
+                Err(sdk_error) => Opened::failed(AwsSdkInvokeModelError(sdk_error).into()),
+            }
+        })
+    }
+}
+
+/// Decodes the one `TextToImageResponse` an image request returns.
+#[derive(Default)]
+pub struct ImagesDecoder {
+    document: Option<serde_json::Value>,
+}
+
+impl Decoder<ImageGeneration, Vec<u8>> for ImagesDecoder {
+    type Event = Vec<u8>;
+
+    fn classify(&self, body: Vec<u8>) -> WireEvent<Vec<u8>> {
+        wire::classify_typed_event(TypedEvent::Modeled(body))
+    }
+
+    fn interpret(&mut self, body: Vec<u8>, out: &mut One<ImageGeneration>) {
+        let decoded = String::from_utf8(body)
+            .map_err(|error| ProviderError::Response(error.to_string()))
+            .and_then(|body| {
+                serde_json::from_str::<TextToImageResponse>(&body)
+                    .map_err(|error| ProviderError::Response(error.to_string()))
+            })
+            .and_then(|response| {
+                self.document = Some(serde_json::to_value(&response)?);
+                response.normalize(PROVIDER_NAME)
+            });
+        out.push(decoded);
+    }
+
+    fn document(&self) -> Option<serde_json::Value> {
+        self.document.clone()
     }
 }

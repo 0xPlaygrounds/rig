@@ -5,7 +5,6 @@
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
-    prelude::*,
     providers::cohere::{self, Cohere},
     vector_store::{
         VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
@@ -63,15 +62,19 @@ fn print_matches(matches: &[SearchMatch]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let cohere_client = Cohere::from_env()?.bound()?;
+    let cohere_client = Cohere::from_env()?;
     // Cohere scores a document and a query differently, so the two wires
     // differ only in the `input_type` they send.
-    let document_model = cohere_client
-        .embedding(cohere::EMBED_ENGLISH_V3, None)
-        .map_wire(|wire| wire.with_input_type("search_document"));
-    let search_model = cohere_client
-        .embedding(cohere::EMBED_ENGLISH_V3, None)
-        .map_wire(|wire| wire.with_input_type("search_query"));
+    let document_model = rig::model(
+        cohere_client
+            .embedding(cohere::EMBED_ENGLISH_V3, None)
+            .with_input_type("search_document"),
+    );
+    let search_model = rig::model(
+        cohere_client
+            .embedding(cohere::EMBED_ENGLISH_V3, None)
+            .with_input_type("search_query"),
+    );
     let embeddings = EmbeddingsBuilder::new(document_model.clone())
         .documents(sample_documents())?
         .build()
