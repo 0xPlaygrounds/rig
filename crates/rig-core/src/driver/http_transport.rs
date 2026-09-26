@@ -37,8 +37,9 @@ where
             relaxed_content_type,
             route,
         } = payload;
-        // No streamed operation sends a batch: a batch exists for providers
-        // that take one item per request, and those are all unary.
+        // A stream is one exchange: a payload that carries a batch (a
+        // provider taking a bounded number of items per request) is called
+        // whole instead.
         if mode == Mode::Streaming && requests.len() != 1 {
             return Err(ProviderError::Request(
                 format!(

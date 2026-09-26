@@ -48,10 +48,12 @@ pub enum StreamEvent {
         /// The block as finalized: a completed text block, reasoning item,
         /// tool call or image. `None` from an adapter; `None` from the sink
         /// only when the end finalized nothing (a dropped call, an empty
-        /// text block, a repeated end). A later end under the same id
-        /// restates the whole block as updated (a signature that arrived
-        /// after the block ended, more text under a reused key), so a
-        /// collector replaces the earlier statement rather than adding one.
+        /// text block, a repeated end). An end restates the block its id
+        /// currently names: a later end under the same id (a signature that
+        /// arrived after the block ended, more text under a reused text key)
+        /// carries the whole updated block, which replaces the earlier
+        /// statement. A start, or a reasoning or tool fragment, after an end
+        /// under that id begins a new block.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         block: Option<AssistantContent>,
     },
