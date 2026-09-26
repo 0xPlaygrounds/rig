@@ -249,7 +249,7 @@ mapping, so authorization failures do not become recreation loops.
 context)`; `Model::call` and `Model::stream` record nothing. Request builders
 and request literals contain only provider request data.
 
-Bus-backed `ModelHandle::complete_observed` and `ModelHandle::stream_observed`
+Bus-backed `ModelHandle::call_observed` and `ModelHandle::stream_observed`
 take the same context. `ModelAdapter` forwards `Dispatch::adapter_context`;
 explicit caller context takes precedence over Recorder/Observe context for
 that invocation, including through handler layers. It is never serialized into
