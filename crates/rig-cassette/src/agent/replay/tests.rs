@@ -810,6 +810,114 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
     );
 }
 
+/// A log kept before ends carried their blocks replays its text. Its text
+/// end carries no block, or the text is still open at the terminal. The
+/// replay re-emits those items verbatim, and a relay and a re-record fold
+/// them to the recorded outcome, because each canonicalizes what it folds.
+#[tokio::test]
+async fn a_log_kept_before_ends_carried_their_blocks_replays_its_text() {
+    use rig_core::streaming::CompletionStream;
+
+    let recorder = EffectLogRecorder::keeping_stream_events();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver
+        .register(
+            "model",
+            ModelAdapter::new(
+                "mock",
+                MockCompletionModel::from_stream_turns([[
+                    MockStreamEvent::text("Par"),
+                    MockStreamEvent::text("is"),
+                    MockStreamEvent::final_response_with_default_usage(),
+                ]]),
+            ),
+        )
+        .expect("register");
+    driver.record_to(recorder.clone());
+    let _live = spawn(driver);
+    let live: Vec<_> = within(
+        dispatcher
+            .dispatch_stream(&HandlerKey::from("model"), completion_kind(true))
+            .collect(),
+    )
+    .await;
+    assert!(live.iter().all(Result::is_ok));
+    drop(dispatcher);
+    let log = recorder.take();
+    let Ok(Outcome::Completion(recorded)) = &log[0].outcome else {
+        panic!("a completion outcome");
+    };
+    assert_eq!(recorded.choice, vec![AssistantContent::text("Paris")]);
+
+    let is_text_end = |event: &StreamEvent| {
+        matches!(
+            event,
+            StreamEvent::BlockEnd {
+                end: rig_core::streaming::BlockClose::Text,
+                ..
+            }
+        )
+    };
+    let blockless = |events: Vec<StreamEvent>| {
+        events
+            .into_iter()
+            .map(|event| match event {
+                StreamEvent::BlockEnd {
+                    id,
+                    end: rig_core::streaming::BlockClose::Text,
+                    ..
+                } => StreamEvent::BlockEnd {
+                    id,
+                    end: rig_core::streaming::BlockClose::Text,
+                    block: None,
+                },
+                event => event,
+            })
+            .collect::<Vec<_>>()
+    };
+    let unclosed = |events: Vec<StreamEvent>| {
+        events
+            .into_iter()
+            .filter(|event| !is_text_end(event))
+            .collect::<Vec<_>>()
+    };
+    let kept = log[0].events.clone().expect("events kept");
+    for old in [blockless(kept.clone()), unclosed(kept)] {
+        let mut old_log = log.clone();
+        old_log.records[0].events = Some(old.clone());
+
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        super::register_all(&old_log, &mut driver).expect("fresh keys");
+        let again = EffectLogRecorder::keeping_stream_events();
+        driver.record_to(again.clone());
+        let _replay = spawn(driver);
+        let replayed: Vec<_> = within(
+            dispatcher
+                .dispatch_stream(&HandlerKey::from("model"), completion_kind(true))
+                .collect(),
+        )
+        .await;
+        drop(dispatcher);
+        assert_eq!(
+            replayed,
+            old.iter().cloned().map(Ok).collect::<Vec<_>>(),
+            "a replay re-emits the kept items and nothing more"
+        );
+
+        let mut relay = CompletionStream::relay("model", Box::pin(futures::stream::iter(replayed)));
+        while relay.next().await.is_some() {}
+        let relayed = relay.finish().expect("a relayed completion");
+        assert_eq!(relayed.choice, recorded.choice, "the relay folds the text");
+
+        let rerecorded = again.take();
+        assert_eq!(
+            serde_json::to_value(&rerecorded[0].outcome).unwrap(),
+            serde_json::to_value(&log[0].outcome).unwrap(),
+            "a re-record folds to the recorded outcome"
+        );
+    }
+}
+
 /// Holds its dispatch open until dropped.
 struct Held(FamilyDescriptor);
 
