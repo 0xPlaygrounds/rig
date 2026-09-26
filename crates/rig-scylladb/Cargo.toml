@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = [
   "derive",
 ] }
 serde_json = { workspace = true }
@@ -21,7 +21,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 chrono = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
-rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
+rig-reqwest = { path = "../rig-reqwest", version = "0.43.0" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }

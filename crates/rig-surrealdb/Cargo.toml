@@ -10,14 +10,14 @@ workspace = true
 
 [dependencies]
 surrealdb = { workspace = true, features = ["protocol-ws", "kv-mem"] }
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = [
   "derive",
 ] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
+rig-reqwest = { path = "../rig-reqwest", version = "0.43.0" }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
