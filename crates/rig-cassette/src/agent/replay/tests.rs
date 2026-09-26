@@ -1169,7 +1169,7 @@ async fn a_record_names_the_scope_of_the_program_that_made_it() {
 /// the items as they were and nothing more, and a re-record folds to the
 /// same outcome.
 #[tokio::test]
-async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
+async fn kept_events_replay_a_malformed_call_as_the_items_that_carried_it() {
     use rig_core::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
 
     struct Items(Vec<Result<StreamEvent, ErrorReport>>);

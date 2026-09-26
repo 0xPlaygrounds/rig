@@ -272,7 +272,10 @@ pub fn stream_truncated() -> ErrorReport {
 pub enum Reply {
     /// The completed unary answer or a setup error.
     Outcome(Result<Outcome, ErrorReport>),
-    /// Events, including any frames after the first terminal record.
+    /// Events, including any frames after the first terminal record. They
+    /// must be canonical, as the completion sink makes them: a handler
+    /// writes through [`AdapterOutput`](crate::operation::AdapterOutput)
+    /// or relays a stream a model opened.
     Stream(StreamEvents),
 }
 

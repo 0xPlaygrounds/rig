@@ -3,7 +3,7 @@
 //! or an in-process model speaks, so its transport is the runtime itself.
 //!
 //! ```
-//! use rig_core::driver::{Local, Model};
+//! use rig_core::driver::Local;
 //! use rig_core::operation::{Embedding, EmbeddingCapabilities};
 //! use rig_core::wire::Wire;
 //!

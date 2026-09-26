@@ -372,7 +372,9 @@ impl Fold<Completion> for CompletionFold {
                 end,
                 block: Some(block),
             } => self.collect(id, end, block),
-            StreamEvent::Final(terminal) => {
+            // The stream's terminal record is its first: a relay may carry
+            // items past it.
+            StreamEvent::Final(terminal) if self.terminal.is_none() => {
                 // An explicit message-id block keeps precedence; the terminal
                 // record only fills a gap.
                 if self.message_id.is_none() {

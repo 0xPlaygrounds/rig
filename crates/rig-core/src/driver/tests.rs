@@ -128,6 +128,13 @@ enum Frame {
     Delta { text: String },
     /// The provider's own end of turn.
     Stop { usage: Usage },
+    /// A whole tool call whose block the provider declared complete, ending
+    /// the turn when it carries usage.
+    Tool {
+        name: String,
+        arguments: String,
+        usage: Option<Usage>,
+    },
 }
 
 #[derive(Clone, Copy, serde::Deserialize)]
@@ -143,7 +150,7 @@ impl Decoder<Completion> for EchoDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         crate::providers::internal::wire::classify_tagged_frame(&frame.as_str(), "type", |kind| {
-            matches!(kind, "message" | "delta" | "stop")
+            matches!(kind, "message" | "delta" | "stop" | "tool")
         })
     }
 
@@ -157,6 +164,24 @@ impl Decoder<Completion> for EchoDecoder {
             }
             Frame::Delta { text } => out.text(text),
             Frame::Stop { usage } => terminal(out, usage),
+            Frame::Tool {
+                name,
+                arguments,
+                usage,
+            } => {
+                let id = crate::streaming::BlockId::wire("call_1");
+                out.tool_name(&id, name);
+                out.tool_arguments(&id, arguments);
+                out.tool_end(
+                    id,
+                    crate::streaming::ToolCallEnd::new(
+                        crate::streaming::UnparseableToolInput::Error,
+                    ),
+                );
+                if let Some(usage) = usage {
+                    terminal(out, usage);
+                }
+            }
         }
     }
 
@@ -650,6 +675,71 @@ async fn a_unary_call_closes_its_attempt_as_decoded() {
         events(&log),
         vec!["started", "response", "usage", "provider", "finished"]
     );
+}
+
+/// How an attempt ended, when it did.
+fn ending(log: &ObservationLog) -> Option<AdapterEvent> {
+    log.trace()
+        .observations
+        .iter()
+        .find_map(|observation| match &observation.action {
+            crate::observe::Action::Adapter { observation }
+                if matches!(observation.event, AdapterEvent::Finished { .. }) =>
+            {
+                Some(observation.event.clone())
+            }
+            _ => None,
+        })
+}
+
+/// A malformed complete tool input is a decode defect the sink reports
+/// in-band, where the decoder's observation sees it, so the attempt ends as
+/// a decode error in both modes although the stream still reaches its
+/// terminal.
+#[tokio::test]
+async fn a_malformed_tool_input_ends_the_attempt_as_a_decode_error() {
+    let decode_error = AdapterEvent::Finished {
+        ending: crate::observe::AdapterEnding::Error {
+            boundary: crate::observe::AdapterErrorBoundary::Decode,
+            kind: "response".into(),
+            status: None,
+            retryable: false,
+        },
+    };
+
+    let (log, context) = observed();
+    let http = RecordingHttpClient::new(
+        r#"{"type":"tool","name":"add","arguments":"{not json","usage":{"output_tokens":1}}"#,
+    );
+    let error = call(&Echo::unary(), &http, prompt(), Some(context))
+        .await
+        .expect_err("the defect fails a whole reply");
+    assert!(
+        matches!(error, ProviderError::MalformedToolInput(_)),
+        "{error:?}"
+    );
+    assert_eq!(ending(&log), Some(decode_error.clone()));
+
+    let (log, context) = observed();
+    let http = MockStreamingClient {
+        sse_bytes: Bytes::from_static(
+            b"data: {\"type\":\"tool\",\"name\":\"add\",\"arguments\":\"{not json\"}\n\n\
+              data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
+        ),
+    };
+    let items: Vec<_> = Model::new(Echo::streaming(), http)
+        .stream_observed(prompt(), context)
+        .expect("the stream opens")
+        .collect()
+        .await;
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, Err(report) if report.detail.is_some())),
+        "the defect is in-band: {items:?}"
+    );
+    assert!(matches!(items.last(), Some(Ok(StreamEvent::Final(_)))));
+    assert_eq!(ending(&log), Some(decode_error));
 }
 
 #[tokio::test]

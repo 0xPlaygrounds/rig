@@ -409,8 +409,9 @@ impl<Op: Operation> Streamed<Op> {
 
 impl Streamed<Completion> {
     /// A stream relayed over the bus under `label`, whose terminal record
-    /// names the provider behind it. Its events are canonical already: the
-    /// origin's sink made them so.
+    /// names the provider behind it. Its events must be canonical already,
+    /// as the origin's sink made them: the relay's fold collects and never
+    /// assembles.
     pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
         let label = label.into();
         let steps = events.map(|item| {

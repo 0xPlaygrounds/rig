@@ -163,6 +163,9 @@ async fn drain_openai_responses_websocket_events(
     if !errored {
         accumulator.finish(&mut out);
     }
+    // The reply ended, as the driver ends one: the sink closes what is still
+    // open, ahead of a terminal failure.
+    rig_core::wire::Sink::<rig_core::operation::Completion>::finish(&mut out);
 
     let stream = rig_core::streaming::CompletionStream::relay(
         provider,

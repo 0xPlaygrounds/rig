@@ -10,9 +10,9 @@
 use super::*;
 use rig_core::{
     message::{ToolCall, ToolCallId, ToolFunction},
-    operation::CompletionFold,
+    operation::{AdapterOutput, Completion, CompletionFold},
     streaming::{Delta, StreamEvent},
-    wire::Fold,
+    wire::{Fold, Sink},
 };
 
 /// Return the successful event count before the first error, or the full length.
@@ -41,6 +41,23 @@ pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option
         } if id == block_id => Some(call.id.clone()),
         _ => None,
     })
+}
+
+/// The assistant content `events` delivered, with the text and reasoning
+/// blocks still open closed where the stream stands: a block the model was
+/// writing when the prefix was cut is part of it. `None` when the prefix
+/// carries a defect.
+pub(super) fn delivered_prefix(events: &[StreamEvent]) -> Option<Vec<AssistantContent>> {
+    let mut sink = AdapterOutput::new();
+    for event in events {
+        sink.push(Ok(event.clone()));
+    }
+    Sink::<Completion>::finish(&mut sink);
+    let mut fold = CompletionFold::default();
+    for item in sink.drain() {
+        fold.absorb(&item.ok()?).ok()?;
+    }
+    Some(fold.snapshot())
 }
 
 /// Publish invalid tool names from real delivered prefixes, before EOF.
@@ -147,16 +164,9 @@ pub fn discover_streamed_invalid_calls(
             }) {
                 continue;
             }
-            let mut fold = CompletionFold::default();
-            if stream
-                .events
-                .iter()
-                .take(index)
-                .any(|earlier| fold.absorb(earlier).is_err())
-            {
+            let Some(mut prefix) = stream.events.get(..index).and_then(delivered_prefix) else {
                 break;
-            }
-            let mut prefix = fold.snapshot();
+            };
             let completed = match event {
                 StreamEvent::BlockEnd {
                     block: Some(AssistantContent::ToolCall(call)),
@@ -217,3 +227,6 @@ pub fn discover_streamed_invalid_calls(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

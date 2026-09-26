@@ -59,7 +59,7 @@ where
         request: <W::Op as Operation>::Request,
         observation: Option<AdapterContext>,
     ) -> WasmBoxedFuture<'static, Result<<W::Op as Operation>::Response, ProviderError>> {
-        Box::pin(async move { self.unary(request, observation).await })
+        Box::pin(async move { self.drained(request, observation).await })
     }
 
     fn streamed(

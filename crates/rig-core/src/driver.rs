@@ -182,7 +182,7 @@ where
         &self,
         request: Request<W>,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
-        self.unary(request, None)
+        self.drained(request, None)
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
@@ -191,7 +191,7 @@ where
         request: Request<W>,
         observation: AdapterContext,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
-        self.unary(request, Some(observation))
+        self.drained(request, Some(observation))
     }
 
     /// Open a streamed reply. Encoding errors, and requests the transport
@@ -210,7 +210,8 @@ where
         self.streamed(request, Mode::Streaming, Some(observation))
     }
 
-    pub(crate) async fn unary(
+    /// [`Self::streamed`] in unary mode, drained, then accepted.
+    pub(crate) async fn drained(
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,
@@ -427,6 +428,11 @@ where
                     &document,
                 );
                 documents.push(document);
+                // A streamed page that failed ends the reply; a unary one
+                // already returned.
+                if failed {
+                    break;
+                }
 
                 pages += 1;
                 // Warn only when an offered page is refused: normal exhaustion
