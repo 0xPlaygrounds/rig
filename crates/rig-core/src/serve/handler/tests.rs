@@ -735,3 +735,23 @@ fn the_tap_folds_a_raw_handler_stream_like_a_canonical_one() {
         vec![crate::message::AssistantContent::text("hello")]
     );
 }
+
+/// A tap yields one outcome, the first: an error item is the outcome, and
+/// nothing observed after it yields another.
+#[test]
+fn the_tap_yields_only_its_first_outcome() {
+    let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
+    let items: Vec<Result<StreamEvent, ErrorReport>> = vec![
+        Err(ErrorReport::new(ErrorKind::Provider, "reset")),
+        Ok(StreamEvent::text(text, "late")),
+        Ok(StreamEvent::Final(StreamFinal::new(
+            "local",
+            Default::default(),
+            serde_json::Value::Null,
+        ))),
+    ];
+    let mut tap = StreamTap::new();
+    let outcomes: Vec<_> = items.iter().filter_map(|item| tap.observe(item)).collect();
+    assert_eq!(outcomes.len(), 1, "{outcomes:?}");
+    assert!(matches!(outcomes.first(), Some(Err(report)) if report.message == "reset"));
+}

@@ -412,8 +412,13 @@ impl Streamed<Completion> {
     /// names the provider behind it. The events pass the completion sink's
     /// canonicalization, which leaves a stream the origin's sink made
     /// canonical as it is. Any other stream gains its closes and blocks, and
-    /// loses a second terminal. Items are yielded as they arrive, so closes
-    /// the stream's end adds follow an error already yielded.
+    /// loses a second terminal. An end that carries its block keeps it.
+    ///
+    /// Items are yielded as they arrive, so closes the stream's end adds
+    /// follow an error already yielded. A relay cannot tell a terminal
+    /// failure from an in-band one without waiting for the next item, and
+    /// holding an error back would stall it behind an origin that never
+    /// closes its stream.
     pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
         let label = label.into();
         let steps = async_stream::stream! {

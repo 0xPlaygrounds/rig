@@ -669,9 +669,11 @@ impl BlockAccumulator {
     /// End the open call a malformed-input report names: the one under
     /// assembly with its name and exactly its raw input. The report took the
     /// place of the call's end, so the call is finished and a later fragment
-    /// under its key begins a new call.
+    /// under its key begins a new call. A call with no argument fragments
+    /// finalizes as `{}` and never reports malformed input, so no report
+    /// ends it.
     pub(super) fn abandon(&mut self, input: &MalformedToolInput) {
-        let raw = |open: &OpenToolInput| open.buffer.as_deref().unwrap_or_default() == input.raw;
+        let raw = |open: &OpenToolInput| open.buffer.as_deref() == Some(input.raw.as_str());
         // The call the report names by its block, else the one with its raw
         // input and its name (a name that arrived only on the end left the
         // open call unnamed).

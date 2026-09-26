@@ -526,7 +526,8 @@ impl Canonical {
             }
             Ok(StreamEvent::BlockEnd { id, end, block }) => {
                 // A sibling part under a finished key begins where it ends,
-                // so a collector keeps both.
+                // so a collector keeps both. The start recurses once: a
+                // start never takes this arm.
                 if self.blocks.ends_a_sibling(&id, &end) {
                     self.push_as(
                         Ok(StreamEvent::BlockStart {
@@ -561,15 +562,20 @@ impl Canonical {
             }
             Ok(event) => self.blocks.apply(&event).map(|_| event),
             Err(error) => {
-                // A malformed complete tool input took the place of its
-                // call's end: the call ended, so its key assembles anew.
-                if let Some(input) = malformed_tool_input(&error) {
-                    self.blocks.abandon(input);
-                }
+                self.end_reported_call(&error);
                 Err(error)
             }
         };
         emit(item, synthesized);
+    }
+
+    /// A malformed complete tool input took the place of its call's end:
+    /// the call it reports ended, so its key assembles anew. Every other
+    /// error item leaves the blocks as they are.
+    pub(crate) fn end_reported_call(&mut self, error: &ProviderError) {
+        if let Some(input) = malformed_tool_input(error) {
+            self.blocks.abandon(input);
+        }
     }
 
     /// End every text and reasoning block still open, in the order they
@@ -767,6 +773,7 @@ impl AdapterOutput {
 
     /// Push an in-band error item.
     pub fn error(&mut self, error: ProviderError) {
+        self.canonical.end_reported_call(&error);
         self.items.push(Err(error));
     }
 

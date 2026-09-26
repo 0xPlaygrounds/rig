@@ -215,6 +215,8 @@ pub trait Observe: Send + Sync {
 pub struct StreamTap {
     canonical: crate::operation::Canonical,
     fold: CompletionFold,
+    /// The tap yielded its outcome.
+    finished: bool,
 }
 
 impl Default for StreamTap {
@@ -222,20 +224,34 @@ impl Default for StreamTap {
         Self {
             canonical: crate::operation::Canonical::default(),
             fold: CompletionFold::relayed(""),
+            finished: false,
         }
     }
 }
 
 impl StreamTap {
-    /// An empty fold.
+    /// A new stream fold.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Folds an event, returning an outcome on `Final` or an error item,
-    /// including a defect the sink finds in the event. Callers decide
-    /// whether to stop after an outcome.
+    /// Folds an event and returns the stream's outcome once: the response on
+    /// the terminal record, or the first error item, including a defect the
+    /// sink finds in an event. Every later call returns `None`, so an error
+    /// item needs no canonicalizing.
     pub fn observe(
+        &mut self,
+        item: &Result<StreamEvent, ErrorReport>,
+    ) -> Option<Result<Outcome, ErrorReport>> {
+        if self.finished {
+            return None;
+        }
+        let outcome = self.fold_item(item);
+        self.finished = outcome.is_some();
+        outcome
+    }
+
+    fn fold_item(
         &mut self,
         item: &Result<StreamEvent, ErrorReport>,
     ) -> Option<Result<Outcome, ErrorReport>> {
@@ -262,10 +278,9 @@ impl StreamTap {
                     raw: serde_json::Value::Null,
                     provider_request_id: None,
                 };
+                let fold = std::mem::replace(&mut self.fold, CompletionFold::relayed(""));
                 return Some(
-                    std::mem::take(self)
-                        .fold
-                        .finish(reply)
+                    fold.finish(reply)
                         .map(Outcome::Completion)
                         .map_err(|error| ErrorReport::from(&error)),
                 );
