@@ -388,6 +388,11 @@ pub enum ProviderError {
     /// stream carries it as the report's [`ErrorDetail::MalformedToolInput`].
     #[error("tool call `{}` arrived with malformed JSON input: {}", .0.name, .0.error)]
     MalformedToolInput(MalformedToolInput),
+    /// A failure another runtime reported, relayed as its wire report. The
+    /// report converts back to itself, so a relayed stream's errors reach
+    /// the consumer as the origin made them.
+    #[error("{}", .0.message)]
+    Relayed(ErrorReport),
     /// The provider returned vectors of a width other than the one the caller
     /// declared through an embedding wire's `ndims` argument. Raised only
     /// when the width was set explicitly.
@@ -446,6 +451,7 @@ impl ProviderError {
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
             | Self::CacheExpired { .. } => ErrorKind::ProviderResponse,
+            Self::Relayed(report) => report.kind,
         }
     }
 
@@ -457,6 +463,7 @@ impl ProviderError {
         match self {
             Self::Http(error) => transient_transport(error),
             Self::ProviderResponse(response) => response.is_retryable(),
+            Self::Relayed(report) => report.retryable,
             _ => false,
         }
     }
@@ -467,6 +474,7 @@ impl ProviderError {
             Self::ProviderResponse(response)
             | Self::InvalidAuthentication(response)
             | Self::CacheExpired { response, .. } => Some(response),
+            Self::Relayed(report) => report.provider_response.as_ref(),
             _ => None,
         }
     }
@@ -647,6 +655,9 @@ impl From<http::Error> for ProviderError {
 
 impl From<&ProviderError> for ErrorReport {
     fn from(error: &ProviderError) -> Self {
+        if let ProviderError::Relayed(report) = error {
+            return report.clone();
+        }
         let response = error.provider_response();
         ErrorReport {
             kind: error.kind(),

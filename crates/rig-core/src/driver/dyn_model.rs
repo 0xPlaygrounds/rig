@@ -3,15 +3,14 @@
 //! [`DynModel`] runs the same driver as the [`Model`] it was made from.
 
 use std::fmt;
+use std::future::Future;
 use std::sync::Arc;
 
-use super::{Model, Step, Transport, completion_stream};
-use crate::completion::CompletionRequest;
+use super::{Model, Transport};
 use crate::error::ProviderError;
 use crate::observe::AdapterContext;
-use crate::operation::Completion;
-use crate::streaming::CompletionStream;
-use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
+use crate::streaming::Streamed;
+use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 use crate::wire::{Mode, Operation, Wire};
 
 /// Object-safe mirror of the calls a [`Model`] answers, with the wire and
@@ -24,26 +23,20 @@ pub(crate) trait ErasedModel<Op: Operation>: WasmCompatSend + WasmCompatSync {
 
     fn capabilities(&self) -> Op::Capabilities;
 
-    fn fold(&self, request: &Op::Request, mode: Mode) -> Op::Fold;
-
-    fn call(
-        &self,
-        request: Op::Request,
-        observation: Option<AdapterContext>,
-    ) -> WasmBoxedFuture<'_, Result<Op::Response, ProviderError>>;
-
-    fn steps(
+    fn streamed(
         &self,
         request: Op::Request,
         mode: Mode,
         observation: Option<AdapterContext>,
-    ) -> Result<
-        (
-            tracing::Span,
-            WasmBoxedStream<'static, Result<Step<Op>, ProviderError>>,
-        ),
-        ProviderError,
-    >;
+    ) -> Result<Streamed<Op>, ProviderError>;
+
+    /// The unary call as a future that owns its model, so a consumer can
+    /// spawn it.
+    fn call(
+        self: Arc<Self>,
+        request: Op::Request,
+        observation: Option<AdapterContext>,
+    ) -> WasmBoxedFuture<'static, Result<Op::Response, ProviderError>>;
 }
 
 impl<W, T> ErasedModel<W::Op> for Model<W, T>
@@ -63,35 +56,21 @@ where
         self.wire.capabilities()
     }
 
-    fn fold(
+    fn streamed(
         &self,
-        request: &<W::Op as Operation>::Request,
+        request: <W::Op as Operation>::Request,
         mode: Mode,
-    ) -> <W::Op as Operation>::Fold {
-        <W::Op as Operation>::fold(request, &self.wire, mode)
+        observation: Option<AdapterContext>,
+    ) -> Result<Streamed<W::Op>, ProviderError> {
+        Model::streamed(self, request, mode, observation)
     }
 
     fn call(
-        &self,
+        self: Arc<Self>,
         request: <W::Op as Operation>::Request,
         observation: Option<AdapterContext>,
-    ) -> WasmBoxedFuture<'_, Result<<W::Op as Operation>::Response, ProviderError>> {
-        Box::pin(self.unary(request, observation))
-    }
-
-    fn steps(
-        &self,
-        request: <W::Op as Operation>::Request,
-        mode: Mode,
-        observation: Option<AdapterContext>,
-    ) -> Result<
-        (
-            tracing::Span,
-            WasmBoxedStream<'static, Result<Step<W::Op>, ProviderError>>,
-        ),
-        ProviderError,
-    > {
-        Model::steps(self, request, mode, observation)
+    ) -> WasmBoxedFuture<'static, Result<<W::Op as Operation>::Response, ProviderError>> {
+        Box::pin(async move { self.drained(request, observation).await })
     }
 }
 
@@ -184,12 +163,13 @@ impl<Op: Operation> DynModel<Op> {
     }
 
     /// Send `request` and fold the whole reply into the operation's
-    /// response; [`Model::call`] with the model erased.
+    /// response; [`Model::call`] with the model erased. The future holds
+    /// its own handle to the model, so it can be spawned.
     pub fn call(
         &self,
         request: Op::Request,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + '_ {
-        self.inner.call(request, None)
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+        Arc::clone(&self.inner).call(request, None)
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
@@ -197,34 +177,23 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: Op::Request,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + '_ {
-        self.inner.call(request, Some(observation))
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+        Arc::clone(&self.inner).call(request, Some(observation))
     }
-}
 
-impl DynModel<Completion> {
-    /// Open a streamed completion; [`Model::stream`] with the model erased.
-    pub fn stream(&self, request: CompletionRequest) -> Result<CompletionStream, ProviderError> {
-        self.streamed(request, None)
+    /// Open a streamed reply; [`Model::stream`] with the model erased.
+    pub fn stream(&self, request: Op::Request) -> Result<Streamed<Op>, ProviderError> {
+        self.inner.streamed(request, Mode::Streaming, None)
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
     pub fn stream_observed(
         &self,
-        request: CompletionRequest,
+        request: Op::Request,
         observation: AdapterContext,
-    ) -> Result<CompletionStream, ProviderError> {
-        self.streamed(request, Some(observation))
-    }
-
-    fn streamed(
-        &self,
-        request: CompletionRequest,
-        observation: Option<AdapterContext>,
-    ) -> Result<CompletionStream, ProviderError> {
-        let fold = self.inner.fold(&request, Mode::Streaming);
-        let (span, steps) = self.inner.steps(request, Mode::Streaming, observation)?;
-        Ok(completion_stream(span, fold, steps))
+    ) -> Result<Streamed<Op>, ProviderError> {
+        self.inner
+            .streamed(request, Mode::Streaming, Some(observation))
     }
 }
 

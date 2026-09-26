@@ -63,11 +63,10 @@ fn message_delta(stop_reason: &str, usage: PartialUsage) -> StreamingEvent {
 /// Wrap hand-built decoder output as the stream a model opens, exactly as
 /// the driver would yield it.
 fn opened(items: Vec<Result<StreamEvent, ProviderError>>) -> crate::streaming::CompletionStream {
-    crate::streaming::CompletionStream::opened(
+    crate::streaming::CompletionStream::events(
         crate::operation::CompletionFold::opened("anthropic", None, crate::wire::Mode::Streaming),
-        Box::pin(futures::stream::iter(items.into_iter().map(|item| {
-            item.map_err(|error| crate::error::ErrorReport::from(&error))
-        }))),
+        "anthropic",
+        futures::stream::iter(items),
     )
 }
 

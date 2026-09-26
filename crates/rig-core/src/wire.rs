@@ -260,13 +260,13 @@ pub trait Operation: Sized + 'static {
     }
 }
 
-/// What the driver learned about a unary reply beyond its events: the
-/// provider's name, the body as JSON (a completion's `raw`) and the
+/// What the driver learned about a reply beyond its events: the provider's
+/// name, the aggregated document (a whole completion's `raw`) and the
 /// transport request id.
 pub struct Reply {
     /// The provider descriptor name, for the response's `provider` field.
     pub provider: String,
-    /// The reply body parsed as JSON, `Null` when it is not JSON.
+    /// The reply as one JSON document, `Null` when the driver has none.
     pub raw: serde_json::Value,
     /// The provider's transport request id from the reply headers.
     pub provider_request_id: Option<String>,

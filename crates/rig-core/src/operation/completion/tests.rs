@@ -229,16 +229,14 @@ async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
 
     // A provider that opens its own stream knows the issuer up front.
     let opened = |provider: &str, issuer: Option<&str>, items: Items| {
-        CompletionStream::opened(
+        CompletionStream::events(
             super::CompletionFold::opened(
                 provider,
                 issuer.map(str::to_owned),
                 crate::wire::Mode::Streaming,
             ),
-            Box::pin(
-                futures::stream::iter(items)
-                    .map(|item| item.map_err(|error| crate::error::ErrorReport::from(&error))),
-            ),
+            provider,
+            futures::stream::iter(items),
         )
     };
     let mut stream = opened(

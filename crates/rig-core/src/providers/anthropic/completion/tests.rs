@@ -3477,7 +3477,7 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
 
     // A rejected SSE handshake is the provider's reply, classified like the
     // unary driver's and the in-band envelopes': one funnel.
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, crate::error::ErrorKind::ProviderResponse);
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

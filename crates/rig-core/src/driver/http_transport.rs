@@ -76,12 +76,10 @@ where
             observation,
         };
         let http = self.clone();
+        // A reply framed whole is one frame at EOF: it is read whole in
+        // either mode, so a streamed whole reply carries its document too.
         let sending = match mode {
-            Mode::Unary => futures::future::Either::Left(async move {
-                exchange.install(&request, &declared);
-                exchange.unary(&http, request).await
-            }),
-            Mode::Streaming => {
+            Mode::Streaming if framing != Framing::Whole => {
                 let request = byte_request(request)?;
                 futures::future::Either::Right(async move {
                     // Unpolled streams must not report transport attempts.
@@ -89,6 +87,10 @@ where
                     exchange.streaming(&http, request).await
                 })
             }
+            Mode::Unary | Mode::Streaming => futures::future::Either::Left(async move {
+                exchange.install(&request, &declared);
+                exchange.unary(&http, request).await
+            }),
         };
         Ok(futures::future::Either::Right(async move {
             let mut opened = sending.await;

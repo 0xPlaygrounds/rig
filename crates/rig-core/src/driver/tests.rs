@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Model, Step, Transport};
+use super::{Model, Opened, Transport};
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
@@ -19,15 +19,16 @@ use crate::model::{ModelInfo, ModelList};
 use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
-use crate::operation::{Completion, ModelListing};
+use crate::operation::{Completion, Events, ModelListing};
 use crate::streaming::{StreamEvent, StreamFinal};
 use crate::test_utils::{
     HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient,
     RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
 };
+use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{
-    Body, Decoder, Encoded, Mode, ObservationSink, Operation, Output, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Fold, Mode, ObservationSink, Operation, Output, Reply, Sink, Wire,
+    WireEvent, WireFrame,
 };
 
 /// Fold one reply of `wire` over `http`.
@@ -48,34 +49,22 @@ where
     }
 }
 
-/// The driver's own events for one streamed reply of `wire` over `http`,
-/// before any fold step.
+/// One streamed reply of `wire` over `http`.
 pub(crate) fn stream<W, H>(
     wire: &W,
     http: &H,
     request: crate::wire::Request<W>,
     context: Option<AdapterContext>,
-) -> Result<
-    impl futures::Stream<Item = Result<crate::wire::Event<W>, ProviderError>> + use<W, H>,
-    ProviderError,
->
+) -> Result<crate::streaming::Streamed<W::Op>, ProviderError>
 where
     W: Wire,
     H: Transport<W>,
 {
-    let steps = Model::new(wire.clone(), http.clone()).run(
-        request,
-        Mode::Streaming,
-        context,
-        tracing::Span::none(),
-    )?;
-    Ok(steps.filter_map(|step| {
-        futures::future::ready(match step {
-            Ok(Step::Event(event)) => Some(Ok(event)),
-            Ok(Step::Opened(_) | Step::Done(_)) => None,
-            Err(error) => Some(Err(error)),
-        })
-    }))
+    let model = Model::new(wire.clone(), http.clone());
+    match context {
+        Some(context) => model.stream_observed(request, context),
+        None => model.stream(request),
+    }
 }
 
 // ── the fake completion wire ────────────────────────────────────────────
@@ -1091,4 +1080,267 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         );
         assert!(!error.is_retryable());
     }
+}
+
+// ── every operation streams ─────────────────────────────────────────────
+
+/// The ids a listing folded to, in order.
+fn ids(models: &ModelList) -> Vec<&str> {
+    models.iter().map(|model| model.id.as_str()).collect()
+}
+
+/// Every page's events arrive on the stream, the cursor is followed as a
+/// call follows it, and the finished stream is the call's response.
+#[tokio::test]
+async fn a_paged_listing_streamed_yields_every_page_and_finishes_to_what_call_gives() {
+    let script = || {
+        SequencedHttpClient::new([
+            MockHttpResponse::success(r#"{"data":["a","b"],"next":"b"}"#),
+            MockHttpResponse::success(r#"{"data":["c"]}"#),
+        ])
+    };
+    let called = Model::new(Catalogue, script())
+        .call(())
+        .await
+        .expect("both pages decode");
+
+    let http = script();
+    let mut stream = Model::new(Catalogue, http.clone())
+        .stream(())
+        .expect("the stream opens");
+    let mut pages = Vec::new();
+    while let Some(page) = stream.next().await {
+        pages.push(page.expect("a page decodes"));
+    }
+    assert_eq!(
+        pages.iter().map(ids).collect::<Vec<_>>(),
+        vec![vec!["a", "b"], vec!["c"]],
+        "each page is one event"
+    );
+    let streamed = stream.finish().expect("the pages fold");
+    assert_eq!(ids(&streamed), ids(&called));
+    assert_eq!(http.requests().len(), 2);
+}
+
+/// The cursor guards hold on a stream: a repeated cursor stops after the
+/// repeated page and a cursor that keeps changing stops at the ceiling.
+#[tokio::test]
+async fn a_streamed_listing_keeps_the_cursor_guards() {
+    let repeating = SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"data":["a"],"next":"b"}"#),
+        MockHttpResponse::success(r#"{"data":["b"],"next":"b"}"#),
+        MockHttpResponse::success(r#"{"data":["never"]}"#),
+    ]);
+    let mut stream = Model::new(Catalogue, repeating.clone())
+        .stream(())
+        .expect("the stream opens");
+    while stream.next().await.is_some() {}
+    assert_eq!(
+        ids(&stream.finish().expect("the pages fold")),
+        vec!["a", "b"]
+    );
+    assert_eq!(
+        repeating.requests().len(),
+        2,
+        "the repeated cursor is not re-sent"
+    );
+
+    let endless = SequencedHttpClient::new((0..super::MAX_CONTINUATION_PAGES + 5).map(|page| {
+        MockHttpResponse::success(format!(r#"{{"data":["m{page}"],"next":"c{}"}}"#, page + 1))
+    }));
+    let mut stream = Model::new(Catalogue, endless.clone())
+        .stream(())
+        .expect("the stream opens");
+    let mut pages = 0;
+    while stream.next().await.is_some() {
+        pages += 1;
+    }
+    assert_eq!(pages, super::MAX_CONTINUATION_PAGES);
+    assert_eq!(endless.requests().len(), super::MAX_CONTINUATION_PAGES);
+}
+
+/// An operation whose reply is one whole document streams that document
+/// as one event, and finishes to what the call gives.
+#[tokio::test]
+async fn an_embedding_streamed_yields_one_event_and_finishes_to_what_call_gives() {
+    use crate::providers::openai::{OpenAI, TEXT_EMBEDDING_3_SMALL};
+
+    const REPLY: &str = r#"{"object":"list","model":"text-embedding-3-small","data":[{"object":"embedding","index":0,"embedding":[0.5,0.25]}],"usage":{"prompt_tokens":1,"total_tokens":1}}"#;
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(REPLY),
+        MockHttpResponse::success(REPLY),
+    ]);
+    let model = Model::new(
+        OpenAI::new("test-key").embedding(TEXT_EMBEDDING_3_SMALL, None),
+        http,
+    );
+    let called = model
+        .call(vec!["hi".to_owned()])
+        .await
+        .expect("the reply decodes");
+
+    let mut stream = model
+        .stream(vec!["hi".to_owned()])
+        .expect("the stream opens");
+    let mut events = Vec::new();
+    while let Some(event) = stream.next().await {
+        events.push(event.expect("the reply decodes"));
+    }
+    assert_eq!(events.len(), 1, "one whole reply is one event");
+    let streamed = stream.finish().expect("the reply folds");
+    assert_eq!(
+        serde_json::to_value(&streamed).expect("json"),
+        serde_json::to_value(&called).expect("json")
+    );
+}
+
+// ── an operation the crate never heard of ───────────────────────────────
+
+#[derive(Clone, Debug, PartialEq)]
+struct VideoRequest {
+    frames: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+struct SkeletonFrame {
+    index: usize,
+    last: bool,
+}
+
+#[derive(Debug, Default, PartialEq, serde::Serialize)]
+struct PoseTrack {
+    frames: Vec<SkeletonFrame>,
+}
+
+struct PoseEstimation;
+
+impl Operation for PoseEstimation {
+    type Request = VideoRequest;
+    type Event = SkeletonFrame;
+    type Response = PoseTrack;
+    type Capabilities = ();
+    type Output = Events<Self>;
+    type Fold = PoseTrack;
+    type Telemetry = ();
+
+    const NAME: &'static str = "pose_estimation";
+
+    fn is_terminal(frame: &SkeletonFrame) -> bool {
+        frame.last
+    }
+
+    fn fold<W: Wire<Op = Self>>(_: &VideoRequest, _: &W, _: Mode) -> PoseTrack {
+        PoseTrack::default()
+    }
+
+    fn telemetry(_: Mode) {}
+}
+
+impl Fold<PoseEstimation> for PoseTrack {
+    fn absorb(&mut self, frame: &SkeletonFrame) -> Result<(), ProviderError> {
+        self.frames.push(frame.clone());
+        Ok(())
+    }
+
+    fn finish(self, _: Reply) -> Result<PoseTrack, ProviderError> {
+        Ok(self)
+    }
+}
+
+/// A wire whose payload is the request and whose frames are the events.
+#[derive(Clone)]
+struct PoseWire;
+
+struct PoseDecoder;
+
+impl Decoder<PoseEstimation, SkeletonFrame> for PoseDecoder {
+    type Event = SkeletonFrame;
+
+    fn classify(&self, frame: SkeletonFrame) -> WireEvent<SkeletonFrame> {
+        WireEvent::Known(frame)
+    }
+
+    fn interpret(&mut self, frame: SkeletonFrame, out: &mut Output<PoseEstimation>) {
+        out.push(Ok(frame));
+    }
+}
+
+impl Wire for PoseWire {
+    type Op = PoseEstimation;
+    type Payload = VideoRequest;
+    type Frame = SkeletonFrame;
+    type Decoder = PoseDecoder;
+
+    fn name(&self) -> &str {
+        "pose"
+    }
+
+    fn encode(&self, request: VideoRequest, _: Mode) -> Result<VideoRequest, EncodeError> {
+        Ok(request)
+    }
+
+    fn decoder(&self, _: Mode) -> PoseDecoder {
+        PoseDecoder
+    }
+}
+
+/// The runtime behind the wire: one skeleton per frame of the video.
+#[derive(Clone)]
+struct PoseRuntime;
+
+impl Transport<PoseWire> for PoseRuntime {
+    fn send(
+        &self,
+        request: VideoRequest,
+        _: Mode,
+        _: Option<super::Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<VideoRequest, SkeletonFrame>> + WasmCompatSend + 'static + use<>,
+        ProviderError,
+    > {
+        let frames: Vec<_> = (0..request.frames)
+            .map(|index| {
+                Ok(SkeletonFrame {
+                    index,
+                    last: index + 1 == request.frames,
+                })
+            })
+            .collect();
+        Ok(async move { Opened::new(futures::stream::iter(frames)) })
+    }
+}
+
+/// An operation defined outside the crate calls and streams through the one
+/// driver, typed and erased, and the erased call can be spawned.
+#[tokio::test]
+async fn an_operation_the_crate_never_heard_of_calls_and_streams_typed_and_erased() {
+    let model = Model::new(PoseWire, PoseRuntime);
+    let video = VideoRequest { frames: 3 };
+
+    let called = model.call(video.clone()).await.expect("the track folds");
+    assert_eq!(called.frames.len(), 3);
+    assert!(called.frames.last().is_some_and(|frame| frame.last));
+
+    let mut stream = model.stream(video.clone()).expect("the stream opens");
+    let mut frames = Vec::new();
+    while let Some(frame) = stream.next().await {
+        frames.push(frame.expect("a skeleton"));
+    }
+    assert_eq!(frames, called.frames, "the stream yields every frame");
+    assert_eq!(stream.finish().expect("the track folds"), called);
+
+    let erased = model.erase();
+    let spawned = tokio::spawn(erased.call(video.clone()))
+        .await
+        .expect("the spawned call runs")
+        .expect("the track folds");
+    assert_eq!(spawned, called);
+
+    let mut stream = erased.stream(video).expect("the erased stream opens");
+    let mut frames = Vec::new();
+    while let Some(frame) = stream.next().await {
+        frames.push(frame.expect("a skeleton"));
+    }
+    assert_eq!(frames, called.frames);
+    assert_eq!(stream.finish().expect("the track folds"), called);
 }

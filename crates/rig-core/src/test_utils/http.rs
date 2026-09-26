@@ -304,8 +304,9 @@ impl HttpClientExt for RecordingHttpClient {
     }
 }
 
-/// An [`HttpClientExt`] implementation that records unary requests and returns
-/// one scripted response per request.
+/// An [`HttpClientExt`] implementation that records requests and returns one
+/// scripted response per request, whole to `send` and as one chunk to
+/// `send_streaming`, so a wire's `call` and `stream` read the same script.
 ///
 /// This is useful for testing retry and recovery paths through real provider
 /// request/response conversion without live credentials.
@@ -354,6 +355,40 @@ impl SequencedHttpClient {
             Err(poisoned) => poisoned.into_inner().pop_front(),
         }
     }
+
+    /// The scripted response as a stream of one chunk.
+    fn build_streaming_response(
+        response: MockHttpResponse,
+    ) -> http_client::Result<StreamingResponse> {
+        let (status, body, headers) = match response {
+            MockHttpResponse::Success(body) => (http::StatusCode::OK, body, None),
+            MockHttpResponse::SuccessWithHeaders(body, headers) => {
+                (http::StatusCode::OK, body, Some(headers))
+            }
+            MockHttpResponse::ErrorWithHeaders(status, body, headers) => {
+                return Err(http_client::Error::InvalidStatusCodeWithDetails {
+                    status,
+                    body,
+                    headers,
+                });
+            }
+            MockHttpResponse::ErrorResponse(status, body) => (status, body, None),
+            MockHttpResponse::ErrorResponseWithHeaders(status, body, headers) => {
+                (status, body, Some(headers))
+            }
+        };
+        let chunks: http_client::BoxedStream =
+            Box::pin(futures::stream::iter(vec![
+                Ok::<Bytes, http_client::Error>(body),
+            ]));
+        let mut builder = Response::builder().status(status);
+        if let Some(headers) = headers
+            && let Some(slot) = builder.headers_mut()
+        {
+            *slot = headers;
+        }
+        builder.body(chunks).map_err(http_client::Error::Protocol)
+    }
 }
 
 impl HttpClientExt for SequencedHttpClient {
@@ -398,12 +433,18 @@ impl HttpClientExt for SequencedHttpClient {
 
     fn send_streaming<T>(
         &self,
-        _req: Request<T>,
+        req: Request<T>,
     ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes> + WasmCompatSend,
     {
-        future::ready(Err(not_implemented()))
+        let response = self.next_response();
+        let (parts, body) = req.into_parts();
+        self.record_request(parts.uri.to_string(), parts.headers, body.into());
+        future::ready(match response {
+            Some(response) => Self::build_streaming_response(response),
+            None => Err(not_implemented()),
+        })
     }
 }
 
