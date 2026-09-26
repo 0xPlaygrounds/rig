@@ -666,6 +666,34 @@ impl BlockAccumulator {
         Ok(Some((published, tool_call)))
     }
 
+    /// Finish the open call a malformed-input error item reports, as the end
+    /// that raised it did. A sink that receives canonical items again, from a
+    /// pass-through wire or a relay, sees the item in place of that end. The
+    /// call is the open one with the reported input and name (an assembly
+    /// that never saw its name matches any), preferring the one whose block
+    /// mints the reported id.
+    pub(super) fn finish_malformed(&mut self, reported: &MalformedToolInput) {
+        let reports = |input: &OpenToolInput| {
+            input.buffer.as_deref() == Some(reported.raw.as_str())
+                && (input.name.is_empty() || input.name == reported.name)
+        };
+        let mints_reported_id = |input: &OpenToolInput| {
+            crate::message::ToolCallId::for_provider_or(
+                reported.provider.as_ref(),
+                crate::message::ToolCallId::from_block(&input.id),
+            ) == reported.id
+        };
+        let position = self
+            .open_tool_inputs
+            .iter()
+            .position(|input| reports(input) && mints_reported_id(input))
+            .or_else(|| self.open_tool_inputs.iter().position(reports));
+        if let Some(position) = position {
+            let input = self.open_tool_inputs.remove(position);
+            self.finished_tools.insert(input.id);
+        }
+    }
+
     /// Index of the open call for `id`, opening one if none exists.
     fn ensure_open_tool_input(&mut self, id: &BlockId) -> usize {
         match self

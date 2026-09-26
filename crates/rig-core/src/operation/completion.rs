@@ -452,8 +452,10 @@ impl Fold<Completion> for CompletionFold {
 /// before the terminal record, the terminal's finish reason agrees with the
 /// completed tool calls, and a second terminal record is dropped. A sink
 /// driven by hand rather than by the driver ends a reply with
-/// [`Sink::finish`], as the driver does. Frame-classification errors are
-/// handled by the driver.
+/// [`Sink::finish`], as the driver does. Canonical items pass a second sink
+/// unchanged: an error item reporting a malformed tool input finishes the
+/// call it reports, as the end it replaced did. Frame-classification errors
+/// are handled by the driver.
 #[derive(Debug, Default)]
 pub struct AdapterOutput {
     items: Vec<Result<StreamEvent, ProviderError>>,
@@ -646,9 +648,26 @@ impl AdapterOutput {
                 }
             }
             Ok(event) => self.blocks.apply(&event).map(|_| event),
-            Err(error) => Err(error),
+            Err(error) => {
+                self.finish_reported_call(&error);
+                Err(error)
+            }
         };
         self.items.push(item);
+    }
+
+    /// A malformed-input error item stands in place of the end that raised
+    /// it, so the call it reports is finished here as that end finished it.
+    fn finish_reported_call(&mut self, error: &ProviderError) {
+        let reported = match error {
+            ProviderError::MalformedToolInput(reported) => reported,
+            ProviderError::Relayed(report) => match &report.detail {
+                Some(crate::error::ErrorDetail::MalformedToolInput(reported)) => reported,
+                None => return,
+            },
+            _ => return,
+        };
+        self.blocks.finish_malformed(reported);
     }
 
     /// End every text and reasoning block still open, in the order they
@@ -671,6 +690,7 @@ impl AdapterOutput {
 
     /// Push an in-band error item.
     pub fn error(&mut self, error: ProviderError) {
+        self.finish_reported_call(&error);
         self.items.push(Err(error));
     }
 
@@ -1066,3 +1086,7 @@ fn terminal_of(response: &CompletionResponse) -> StreamFinal {
 
 #[cfg(test)]
 mod tests;
+
+/// Canonicalizing is idempotent: the sink passes its own output unchanged.
+#[cfg(test)]
+mod property_tests;

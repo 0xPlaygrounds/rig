@@ -174,6 +174,12 @@ The other commands:
   batch that delivers the item after it, or the effect's last stream batch
   when nothing follows it. It fails on an inserted event that is not a
   `block_end` before a `final`, a stream error or the end of the stream.
+- `cassette audit [--base REF]` checks that every `block_end` block in every
+  effect golden is what its block's deltas assemble, unless the end restates
+  it. It classifies each golden change against `REF` (default `HEAD`) as a
+  close inserted, a block added to an end, a count shifted by exactly the
+  events inserted before it, delivery churn or other. It fails on other, on
+  delivery churn and on any mismatch.
 - `cassette cleanup [ledger.jsonl]` runs the cleanup pass on its own.
 
 The recorder refuses to write a fixture, and panics, in two cases:

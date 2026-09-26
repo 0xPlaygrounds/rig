@@ -80,7 +80,8 @@ pub(crate) struct Stream<'a> {
 }
 
 impl<'a> Stream<'a> {
-    fn of(log: &'a Value, record: &'a Value) -> Option<Self> {
+    /// The stream `record` keeps in `log`, `None` when it kept no events.
+    pub(crate) fn of(log: &'a Value, record: &'a Value) -> Option<Self> {
         let events = record.get("events")?.as_array()?;
         let id = record.get("id")?.to_string();
         let errors = log
