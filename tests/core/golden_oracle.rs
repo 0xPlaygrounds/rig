@@ -35,7 +35,7 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
             HandlerKey::from(RERANK_KEY),
             rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "host",
-                rig::Model::new(MockRerank, MockRerank),
+                MockRerank::model(),
             )),
         )
         .expect("a fresh key");

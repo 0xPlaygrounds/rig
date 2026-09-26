@@ -134,7 +134,7 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
 
 #[tokio::test]
 async fn missing_completion_turn_returns_provider_error() {
-    let model = MockCompletionModel::default();
+    let model = MockCompletionModel::from_turns([]);
 
     let err = model
         .call(request("hello"))

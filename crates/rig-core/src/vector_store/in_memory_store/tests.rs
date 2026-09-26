@@ -482,7 +482,7 @@ fn test_multiple_embeddings() {
 
 #[tokio::test]
 async fn top_n_honors_filter_and_threshold() {
-    use crate::test_utils::MockEmbeddingModel;
+    use crate::test_utils::MockEmbeddings;
     use crate::vector_store::VectorStoreIndex;
     use crate::vector_store::request::{Filter, SearchFilter, VectorSearchRequest};
     use serde::Serialize;
@@ -518,7 +518,7 @@ async fn top_n_honors_filter_and_threshold() {
         ("b", item("veg", "carrot"), embedding("carrot")),
         ("c", item("fruit", "apple"), embedding("apple")),
     ])
-    .index(MockEmbeddingModel::default());
+    .index(MockEmbeddings::model());
 
     let ids = |req| async {
         let mut out: Vec<String> = index
@@ -570,7 +570,7 @@ async fn top_n_honors_filter_and_threshold() {
 
 #[tokio::test]
 async fn top_n_excludes_non_finite_similarity() {
-    use crate::test_utils::MockEmbeddingModel;
+    use crate::test_utils::MockEmbeddings;
     use crate::vector_store::VectorStoreIndex;
     use crate::vector_store::request::VectorSearchRequest;
 
@@ -599,7 +599,7 @@ async fn top_n_excludes_non_finite_similarity() {
             embedding("degenerate", vec![0.0; 10]),
         ),
     ])
-    .index(MockEmbeddingModel::default());
+    .index(MockEmbeddings::model());
 
     let ids: Vec<String> = index
         .top_n_ids(
@@ -618,7 +618,7 @@ async fn top_n_excludes_non_finite_similarity() {
 
 #[tokio::test]
 async fn top_n_ranks_document_by_best_finite_embedding() {
-    use crate::test_utils::MockEmbeddingModel;
+    use crate::test_utils::MockEmbeddings;
     use crate::vector_store::VectorStoreIndex;
     use crate::vector_store::request::VectorSearchRequest;
 
@@ -639,7 +639,7 @@ async fn top_n_ranks_document_by_best_finite_embedding() {
             },
         ],
     )])
-    .index(MockEmbeddingModel::default());
+    .index(MockEmbeddings::model());
 
     let results = index
         .top_n_ids(
@@ -661,7 +661,7 @@ async fn top_n_ranks_document_by_best_finite_embedding() {
 /// same request on every run.
 #[tokio::test]
 async fn top_n_returns_documents_best_first_then_by_id() {
-    use crate::test_utils::MockEmbeddingModel;
+    use crate::test_utils::MockEmbeddings;
     use crate::vector_store::VectorStoreIndex;
     use crate::vector_store::request::VectorSearchRequest;
 
@@ -682,7 +682,7 @@ async fn top_n_returns_documents_best_first_then_by_id() {
             ("z", "z".to_string(), embedding("z", &far)),
             ("b", "b".to_string(), embedding("b", &query)),
         ])
-        .index(MockEmbeddingModel::default());
+        .index(MockEmbeddings::model());
         let request = VectorSearchRequest::builder()
             .query("q")
             .samples(10)

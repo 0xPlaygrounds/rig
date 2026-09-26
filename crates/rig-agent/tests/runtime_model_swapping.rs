@@ -30,11 +30,11 @@ use rig_agent::{
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_core::driver::{Model, Observation, Opened, Transport};
-use rig_core::error::{EncodeError, ProviderError};
+use rig_core::driver::{Local, Model, Observation, Opened, Transport};
+use rig_core::error::ProviderError;
 use rig_core::operation::AdapterOutput;
 use rig_core::operation::Completion;
-use rig_core::wire::{Decoder, Mode, Wire, WireEvent};
+use rig_core::wire::Mode;
 use rig_core::{
     error::ErrorKind,
     message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction, UserContent},
@@ -367,21 +367,14 @@ fn stream_from_script(
     Ok(events)
 }
 
-/// One unit of a fake reply: the whole unary response, or one stream event.
-enum FakeFrame {
-    Whole(Box<CompletionResponse>),
-    Event(StreamEvent),
-}
-
+type FakeFrame = Result<StreamEvent, ProviderError>;
 type FakeReply = Pin<Box<dyn Future<Output = Opened<CompletionRequest, FakeFrame>> + Send>>;
 type FakeSend = dyn Fn(CompletionRequest, Mode) -> Result<FakeReply, ProviderError> + Send + Sync;
 
-/// A test completion endpoint and its transport: `send` answers each
-/// attempt, and the decoder relays the frames it yields.
+/// A test completion runtime: `send` answers each attempt. It is the
+/// transport of a local completion wire.
 #[derive(Clone)]
 struct Fake {
-    provider: &'static str,
-    composes_native_output_with_tools: bool,
     send: Arc<FakeSend>,
     /// The script a scripted model answers from.
     script: Option<Arc<Script>>,
@@ -395,54 +388,45 @@ impl Fake {
         + Sync
         + 'static,
     ) -> FakeModel {
-        let fake = Self {
-            provider,
-            composes_native_output_with_tools: false,
-            send: Arc::new(send),
-            script: None,
-        };
-        Model::new(fake.clone(), fake)
+        Model::new(
+            wire(provider, false),
+            Self {
+                send: Arc::new(send),
+                script: None,
+            },
+        )
     }
 }
 
-type FakeModel = Model<Fake, Fake>;
+type FakeModel = Model<Local<Completion>, Fake>;
 
-/// A reply of `frames`, ready at once.
-fn replied(frames: Vec<FakeFrame>) -> FakeReply {
+/// The local completion wire of `provider`.
+fn wire(provider: &'static str, composes_native_output_with_tools: bool) -> Local<Completion> {
+    Local::new(provider).with_capabilities(
+        ProviderCapabilities::new()
+            .with_native_output_tool_composition(composes_native_output_with_tools),
+    )
+}
+
+/// A reply of `events`, ready at once.
+fn replied(events: Vec<StreamEvent>) -> FakeReply {
     Box::pin(std::future::ready(Opened::new(stream::iter(
-        frames.into_iter().map(Ok),
+        events.into_iter().map(|event| Ok(Ok(event))),
     ))))
 }
 
-impl Wire for Fake {
-    type Op = Completion;
-    type Payload = CompletionRequest;
-    type Frame = FakeFrame;
-    type Decoder = FakeDecoder;
-
-    fn name(&self) -> &str {
-        self.provider
-    }
-
-    fn encode(
-        &self,
-        request: CompletionRequest,
-        _mode: Mode,
-    ) -> Result<CompletionRequest, EncodeError> {
-        Ok(request)
-    }
-
-    fn decoder(&self, _mode: Mode) -> FakeDecoder {
-        FakeDecoder::default()
-    }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities::new()
-            .with_native_output_tool_composition(self.composes_native_output_with_tools)
+/// A whole `response`: its events as an adapter emits them, its `raw` the
+/// reply's document.
+fn answered(response: CompletionResponse) -> Opened<CompletionRequest, FakeFrame> {
+    let mut out = AdapterOutput::new();
+    out.response(&response, rig_core::operation::ImagePart::Block);
+    Opened {
+        document: Some(response.raw.clone()),
+        ..Opened::new(stream::iter(out.into_items().into_iter().map(Ok)))
     }
 }
 
-impl Transport<Fake> for Fake {
+impl Transport<Local<Completion>> for Fake {
     fn send(
         &self,
         request: CompletionRequest,
@@ -456,36 +440,9 @@ impl Transport<Fake> for Fake {
     }
 }
 
-#[derive(Default)]
-struct FakeDecoder {
-    document: Option<serde_json::Value>,
-}
-
-impl Decoder<Completion, FakeFrame> for FakeDecoder {
-    type Event = FakeFrame;
-
-    fn classify(&self, frame: FakeFrame) -> WireEvent<FakeFrame> {
-        WireEvent::Known(frame)
-    }
-
-    fn interpret(&mut self, frame: FakeFrame, out: &mut AdapterOutput) {
-        match frame {
-            FakeFrame::Whole(response) => {
-                self.document = Some(response.raw.clone());
-                out.response(&response, rig_core::operation::ImagePart::Block);
-            }
-            FakeFrame::Event(event) => out.push(Ok(event)),
-        }
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        self.document.clone()
-    }
-}
-
 /// The script `model` answers from.
 fn script_of(model: &FakeModel) -> Arc<Script> {
-    Arc::clone(model.wire.script.as_ref().expect("a scripted model"))
+    Arc::clone(model.transport.script.as_ref().expect("a scripted model"))
 }
 
 /// A model answering from `script`.
@@ -494,12 +451,11 @@ fn scripted(script: Arc<Script>) -> FakeModel {
     let kept = Arc::clone(&script);
     let mut model = Fake::model(script.provider, move |request, mode| match mode {
         Mode::Unary => completion_from_script(&script, request)
-            .map(|response| replied(vec![FakeFrame::Whole(Box::new(response))])),
-        Mode::Streaming => stream_from_script(&script, request)
-            .map(|events| replied(events.into_iter().map(FakeFrame::Event).collect())),
+            .map(|response| Box::pin(std::future::ready(answered(response))) as FakeReply),
+        Mode::Streaming => stream_from_script(&script, request).map(replied),
     });
-    model.wire.composes_native_output_with_tools = composes;
-    model.wire.script = Some(kept);
+    model.wire = wire(kept.provider, composes);
+    model.transport.script = Some(kept);
     model
 }
 
@@ -1481,19 +1437,12 @@ fn gated_tool_model(started: Arc<Notify>, release: Arc<Notify>) -> FakeModel {
                         serde_json::json!({}),
                     )
                     .with_message_id(turn.message_id());
-                    Opened::new(stream::iter([Ok(FakeFrame::Whole(Box::new(response)))]))
+                    answered(response)
                 }) as FakeReply
             }
             Mode::Streaming => replied(vec![
-                FakeFrame::Event(StreamEvent::text(
-                    MintKind::Text.for_wire_index(0),
-                    "unused",
-                )),
-                FakeFrame::Event(StreamEvent::Final(StreamFinal::new(
-                    "gated",
-                    usage(1),
-                    serde_json::json!({}),
-                ))),
+                StreamEvent::text(MintKind::Text.for_wire_index(0), "unused"),
+                StreamEvent::Final(StreamFinal::new("gated", usage(1), serde_json::json!({}))),
             ]),
         })
     })
@@ -1597,12 +1546,12 @@ impl Drop for PendingRawStream {
 fn pending_streaming_model(started: Arc<Notify>, dropped: Arc<AtomicUsize>) -> FakeModel {
     Fake::model("pending", move |_request, mode| {
         Ok(match mode {
-            Mode::Unary => replied(vec![FakeFrame::Whole(Box::new(CompletionResponse::new(
+            Mode::Unary => Box::pin(std::future::ready(answered(CompletionResponse::new(
                 vec![AssistantContent::text("unused")],
                 Usage::default(),
                 "pending",
                 serde_json::json!({}),
-            )))]),
+            )))),
             Mode::Streaming => Box::pin(std::future::ready(Opened::new(PendingRawStream {
                 started: started.clone(),
                 dropped: dropped.clone(),

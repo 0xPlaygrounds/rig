@@ -23,17 +23,19 @@ use crate::agent::streaming::{MultiTurnStreamItem, StreamingError};
 use crate::completion::{FinishReason, Message, PromptError, Usage};
 use crate::streaming::{Delta, StreamEvent, StreamedUserContent};
 use crate::test_utils::{
-    MockAddTool, MockBarrierTool, MockCompletionModel, MockFrame, MockOperationArgs, MockScript,
-    MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, MockWire, mock_final,
+    MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockScript,
+    MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, mock_final,
 };
 use crate::tool::{
     Tool, ToolContext, ToolExecutionError, ToolSet,
     server::{ToolServer, ToolServerHandle},
 };
+use rig_core::driver::Local;
 use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
 };
+use rig_core::operation::Completion;
 use rig_core::vector_store::{
     VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
 };
@@ -2512,7 +2514,6 @@ mod structured_tool_results {
 /// streaming side is already pinned by `assert_stream_usage_recorded_on_chat_spans`.
 mod span_safety_net {
     use crate::agent::telemetry::build_chat_span;
-    use rig_core::error::ProviderError;
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 
@@ -2527,14 +2528,14 @@ mod span_safety_net {
     use crate::agent::{
         AgentBuilder, HookContext, MultiTurnStreamItem, OutcomeAction, OutcomeEvent,
     };
-    use crate::completion::{CompletionRequest, PromptError, Usage};
+    use crate::completion::{PromptError, Usage};
     use crate::streaming::StreamEvent;
     use crate::test_utils::{
-        MockAddTool, MockCompletionModel, MockDecoder, MockFrame, MockScript, MockStreamEvent,
-        MockTurn, MockWire,
+        MockAddTool, MockCompletionModel, MockScript, MockStreamEvent, MockTurn,
     };
     use crate::tool::{ToolContext, ToolExecutionError};
-    use rig_core::driver::{Model, Observation, Opened, Transport};
+    use rig_core::driver::{Local, Model};
+    use rig_core::operation::Completion;
 
     use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
 
@@ -2676,58 +2677,13 @@ mod span_safety_net {
         ])
     }
 
-    /// The mock wire under a fixture provider and model name, so the
-    /// driver's provider span carries both.
-    #[derive(Clone)]
-    struct FixtureWire;
-
-    impl rig_core::wire::Wire for FixtureWire {
-        type Op = rig_core::operation::Completion;
-        type Payload = CompletionRequest;
-        type Frame = MockFrame;
-        type Decoder = MockDecoder;
-
-        fn name(&self) -> &str {
-            "fixture-provider"
-        }
-
-        fn id(&self) -> Option<&str> {
-            Some("fixture-model")
-        }
-
-        fn encode(
-            &self,
-            request: CompletionRequest,
-            mode: rig_core::wire::Mode,
-        ) -> Result<CompletionRequest, rig_core::error::EncodeError> {
-            MockWire.encode(request, mode)
-        }
-
-        fn decoder(&self, mode: rig_core::wire::Mode) -> MockDecoder {
-            MockWire.decoder(mode)
-        }
-    }
-
-    impl Transport<FixtureWire> for MockScript {
-        fn send(
-            &self,
-            payload: CompletionRequest,
-            mode: rig_core::wire::Mode,
-            observation: Option<Observation>,
-        ) -> Result<
-            impl Future<Output = Opened<CompletionRequest, MockFrame>>
-            + rig_core::wasm_compat::WasmCompatSend
-            + 'static
-            + use<>,
-            ProviderError,
-        > {
-            Transport::<MockWire>::send(self, payload, mode, observation)
-        }
-    }
-
-    /// A model that answers `text` under the fixture provider's telemetry.
-    fn fixture_telemetry_model(text: &str) -> Model<FixtureWire, MockScript> {
-        Model::new(FixtureWire, MockCompletionModel::text(text).transport)
+    /// A model that answers `text` under a fixture provider and model name,
+    /// so the driver's provider span carries both.
+    fn fixture_telemetry_model(text: &str) -> Model<Local<Completion>, MockScript> {
+        Model::new(
+            Local::new("fixture-provider").with_id("fixture-model"),
+            MockCompletionModel::text(text).transport,
+        )
     }
 
     /// Register the blocking driver's span callsites against the scoped
@@ -6095,7 +6051,11 @@ impl PausingScript {
     /// `inner`'s script behind the pause, as a model.
     fn model(
         inner: MockCompletionModel,
-    ) -> (rig_core::Model<MockWire, Self>, Arc<Notify>, Arc<Notify>) {
+    ) -> (
+        rig_core::Model<Local<Completion>, Self>,
+        Arc<Notify>,
+        Arc<Notify>,
+    ) {
         let request_started = Arc::new(Notify::new());
         let release_response = Arc::new(Notify::new());
         let script = Self {
@@ -6128,14 +6088,19 @@ impl PausingScript {
     }
 }
 
-impl rig_core::driver::Transport<MockWire> for PausingScript {
+impl rig_core::driver::Transport<Local<Completion>> for PausingScript {
     fn send(
         &self,
         payload: crate::completion::CompletionRequest,
         mode: rig_core::wire::Mode,
         observation: Option<rig_core::driver::Observation>,
     ) -> Result<
-        impl Future<Output = rig_core::driver::Opened<crate::completion::CompletionRequest, MockFrame>>
+        impl Future<
+            Output = rig_core::driver::Opened<
+                crate::completion::CompletionRequest,
+                Result<StreamEvent, rig_core::error::ProviderError>,
+            >,
+        >
         + rig_core::wasm_compat::WasmCompatSend
         + 'static
         + use<>,
@@ -6144,7 +6109,7 @@ impl rig_core::driver::Transport<MockWire> for PausingScript {
         let this = self.clone();
         Ok(async move {
             this.inspect_and_pause(&payload).await;
-            match rig_core::driver::Transport::<MockWire>::send(
+            match rig_core::driver::Transport::<Local<Completion>>::send(
                 &this.inner,
                 payload,
                 mode,
@@ -6165,10 +6130,10 @@ fn one_hook_instance_attaches_to_distinct_completion_models() {
     impl AgentHook for ProviderIndependentHook {}
 
     let hook = ProviderIndependentHook;
-    let _mock_agent = AgentBuilder::new(MockCompletionModel::default())
+    let _mock_agent = AgentBuilder::new(MockCompletionModel::from_turns([]))
         .add_hook(hook.clone())
         .build();
-    let (other_model, _, _) = PausingScript::model(MockCompletionModel::default());
+    let (other_model, _, _) = PausingScript::model(MockCompletionModel::from_turns([]));
     let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
 }
 

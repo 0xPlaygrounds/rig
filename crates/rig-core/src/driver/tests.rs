@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Model, Step, Transport};
+use super::{Local, Model, Step, Transport};
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
@@ -1015,58 +1015,30 @@ impl Fold<PoseEstimation> for PoseTrack {
     }
 }
 
-/// A pose wire: the payload is the request and each frame is a skeleton.
-#[derive(Clone, Debug, PartialEq)]
-struct Pose;
-
-impl Wire for Pose {
-    type Op = PoseEstimation;
-    type Payload = VideoRequest;
-    type Frame = SkeletonFrame;
-    type Decoder = Pose;
-    fn name(&self) -> &str {
-        "pose"
-    }
-    fn encode(&self, request: VideoRequest, _mode: Mode) -> Result<VideoRequest, EncodeError> {
-        Ok(request)
-    }
-    fn decoder(&self, _mode: Mode) -> Pose {
-        Pose
-    }
-}
-
-impl Decoder<PoseEstimation, SkeletonFrame> for Pose {
-    type Event = SkeletonFrame;
-    fn classify(&self, frame: SkeletonFrame) -> WireEvent<SkeletonFrame> {
-        WireEvent::Known(frame)
-    }
-    fn interpret(&mut self, frame: SkeletonFrame, out: &mut Output<PoseEstimation>) {
-        out.push(Ok(frame));
-    }
-}
-
 /// The runtime: one skeleton per video frame, the last one marked.
 #[derive(Clone)]
 struct Runtime;
 
-impl Transport<Pose> for Runtime {
+impl Transport<Local<PoseEstimation>> for Runtime {
     fn send(
         &self,
         request: VideoRequest,
         _mode: Mode,
         _observation: Option<super::Observation>,
     ) -> Result<
-        impl std::future::Future<Output = super::Opened<VideoRequest, SkeletonFrame>>
+        impl std::future::Future<
+            Output = super::Opened<VideoRequest, Result<SkeletonFrame, ProviderError>>,
+        >
         + crate::wasm_compat::WasmCompatSend
         + 'static
         + use<>,
         ProviderError,
     > {
         let frames = (0..request.frames).map(move |index| {
-            Ok(SkeletonFrame {
+            Ok(Ok(SkeletonFrame {
                 index,
                 last: index + 1 == request.frames,
-            })
+            }))
         });
         Ok(std::future::ready(super::Opened::new(
             futures::stream::iter(frames.collect::<Vec<_>>()),
@@ -1089,7 +1061,7 @@ fn track(frames: usize) -> PoseTrack {
 /// driver, typed and erased.
 #[tokio::test]
 async fn an_unknown_operation_calls_and_streams_typed_and_erased() {
-    let model = Model::new(Pose, Runtime);
+    let model = Model::new(Local::<PoseEstimation>::new("pose"), Runtime);
     assert_eq!(
         model.call(VideoRequest { frames: 3 }).await.ok(),
         Some(track(3))

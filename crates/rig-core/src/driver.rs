@@ -33,8 +33,10 @@ use crate::wire::{
 
 mod dyn_model;
 mod http_transport;
+mod local;
 
 pub use dyn_model::DynModel;
+pub use local::{Local, Passthrough};
 
 /// An endpoint of one provider: a wire bound to a transport.
 ///

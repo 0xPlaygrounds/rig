@@ -1782,49 +1782,38 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
     );
 }
 
-/// A rerank endpoint and its transport: every document keeps its place at
-/// score 1.0, or the call fails with `failure`.
+/// A rerank runtime: every document keeps its place at score 1.0, or the
+/// call fails with `failure`.
 #[derive(Clone)]
 struct ProbeRerank {
     max_documents: usize,
     failure: Option<&'static str>,
 }
 
-impl rig_core::wire::Wire for ProbeRerank {
-    type Op = rig_core::operation::Rerank;
-    type Payload = Vec<String>;
-    type Frame = Vec<String>;
-    type Decoder = Self;
-
-    fn name(&self) -> &str {
-        "probe"
-    }
-
-    fn capabilities(&self) -> usize {
-        self.max_documents
-    }
-
-    fn encode(
-        &self,
-        request: rig_core::operation::RerankRequest,
-        _mode: rig_core::wire::Mode,
-    ) -> Result<Vec<String>, rig_core::error::EncodeError> {
-        Ok(request.documents)
-    }
-
-    fn decoder(&self, _mode: rig_core::wire::Mode) -> Self {
-        self.clone()
+impl ProbeRerank {
+    fn model(self) -> rig_core::Model<rig_core::driver::Local<rig_core::operation::Rerank>, Self> {
+        rig_core::Model::new(
+            rig_core::driver::Local::new("probe").with_capabilities(self.max_documents),
+            self,
+        )
     }
 }
 
-impl rig_core::driver::Transport<ProbeRerank> for ProbeRerank {
+impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Rerank>>
+    for ProbeRerank
+{
     fn send(
         &self,
-        documents: Vec<String>,
+        request: rig_core::operation::RerankRequest,
         _mode: rig_core::wire::Mode,
         _observation: Option<rig_core::driver::Observation>,
     ) -> Result<
-        impl Future<Output = rig_core::driver::Opened<Vec<String>, Vec<String>>>
+        impl Future<
+            Output = rig_core::driver::Opened<
+                rig_core::operation::RerankRequest,
+                Result<RerankResponse, ProviderError>,
+            >,
+        >
         + Send
         + 'static
         + use<>,
@@ -1836,37 +1825,23 @@ impl rig_core::driver::Transport<ProbeRerank> for ProbeRerank {
                 Some(message) => {
                     rig_core::driver::Opened::failed(ProviderError::Response(message.to_owned()))
                 }
-                None => rig_core::driver::Opened::new(futures::stream::iter([Ok(documents)])),
+                None => rig_core::driver::Opened::new(futures::stream::iter([Ok(Ok(
+                    RerankResponse::new(
+                        request
+                            .documents
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, document)| RerankResult {
+                                index,
+                                document: Some(document),
+                                relevance_score: 1.0,
+                            })
+                            .collect(),
+                        "probe",
+                    ),
+                ))])),
             }
         })
-    }
-}
-
-impl rig_core::wire::Decoder<rig_core::operation::Rerank, Vec<String>> for ProbeRerank {
-    type Event = Vec<String>;
-
-    fn classify(&self, documents: Vec<String>) -> rig_core::wire::WireEvent<Vec<String>> {
-        rig_core::wire::WireEvent::Known(documents)
-    }
-
-    fn interpret(
-        &mut self,
-        documents: Vec<String>,
-        out: &mut rig_core::wire::Output<rig_core::operation::Rerank>,
-    ) {
-        use rig_core::wire::Sink as _;
-        out.push(Ok(RerankResponse::new(
-            documents
-                .into_iter()
-                .enumerate()
-                .map(|(index, document)| RerankResult {
-                    index,
-                    document: Some(document),
-                    relevance_score: 1.0,
-                })
-                .collect(),
-            "probe",
-        )));
     }
 }
 
@@ -1880,10 +1855,7 @@ async fn a_rerank_adapter_serves_every_handle_clone_and_publishes_its_batch_size
         failure: None,
     };
     driver
-        .register(
-            "rerank:probe",
-            ModelAdapter::new("probe", rig_core::Model::new(probe.clone(), probe)),
-        )
+        .register("rerank:probe", ModelAdapter::new("probe", probe.model()))
         .expect("register");
     let task = spawn(driver);
 
@@ -1924,10 +1896,7 @@ async fn a_rerank_model_error_crosses_the_bus_as_a_report() {
         failure: Some("probe"),
     };
     driver
-        .register(
-            "rerank:once",
-            ModelAdapter::new("once", rig_core::Model::new(failing.clone(), failing)),
-        )
+        .register("rerank:once", ModelAdapter::new("once", failing.model()))
         .expect("register");
     let task = spawn(driver);
     let handle: super::RerankHandle = dispatcher

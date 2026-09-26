@@ -7,10 +7,9 @@ use super::*;
 use crate::bus::Bus;
 use rig_core::{
     completion::{CompletionRequest, Message},
-    driver::{Model, Observation, Opened, Transport},
+    driver::{Local, Model, Observation, Opened, Transport},
     effect::{EffectFamily, HandlerKey, family},
     embeddings::{Embedding, EmbeddingResponse},
-    error::EncodeError,
     error::ErrorKind,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
@@ -18,7 +17,7 @@ use rig_core::{
     serve::adapters::{MemoryAdapter, ModelAdapter, ToolAdapter},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolExecutionError},
-    wire::{Decoder, Mode, Output, Sink, Wire, WireEvent},
+    wire::Mode,
 };
 
 async fn within<T>(future: impl Future<Output = T>) -> T {
@@ -53,57 +52,36 @@ impl Tool for Double {
     }
 }
 
-/// A two-dimension embedding endpoint and its transport: each text embeds
-/// to its length and 1.0.
+/// A two-dimension embedding runtime: each text embeds to its length and
+/// 1.0.
 #[derive(Clone)]
 struct Tiny;
 
-impl Wire for Tiny {
-    type Op = rig_core::operation::Embedding;
-    type Payload = Vec<String>;
-    type Frame = Vec<String>;
-    type Decoder = Tiny;
-
-    fn name(&self) -> &str {
-        "tiny"
-    }
-
-    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Vec<String>, EncodeError> {
-        Ok(texts)
-    }
-
-    fn decoder(&self, _mode: Mode) -> Self {
-        Self
-    }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(8, 2)
+impl Tiny {
+    fn model() -> Model<Local<rig_core::operation::Embedding>, Tiny> {
+        Model::new(
+            Local::new("tiny").with_capabilities(EmbeddingCapabilities::new(8, 2)),
+            Tiny,
+        )
     }
 }
 
-impl Transport<Tiny> for Tiny {
+impl Transport<Local<rig_core::operation::Embedding>> for Tiny {
     fn send(
         &self,
         texts: Vec<String>,
         _mode: Mode,
         _observation: Option<Observation>,
     ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Vec<String>>> + Send + 'static + use<>,
+        impl Future<
+            Output = Opened<Vec<String>, Result<EmbeddingResponse, rig_core::error::ProviderError>>,
+        >
+        + Send
+        + 'static
+        + use<>,
         rig_core::error::ProviderError,
     > {
-        Ok(async move { Opened::new(futures::stream::iter([Ok(texts)])) })
-    }
-}
-
-impl Decoder<rig_core::operation::Embedding, Vec<String>> for Tiny {
-    type Event = Vec<String>;
-
-    fn classify(&self, texts: Vec<String>) -> WireEvent<Vec<String>> {
-        WireEvent::Known(texts)
-    }
-
-    fn interpret(&mut self, texts: Vec<String>, out: &mut Output<rig_core::operation::Embedding>) {
-        out.push(Ok(EmbeddingResponse::new(
+        let response = EmbeddingResponse::new(
             texts
                 .into_iter()
                 .map(|document| Embedding {
@@ -112,7 +90,8 @@ impl Decoder<rig_core::operation::Embedding, Vec<String>> for Tiny {
                 })
                 .collect(),
             "tiny",
-        )));
+        );
+        Ok(async move { Opened::new(futures::stream::iter([Ok(Ok(response))])) })
     }
 }
 
@@ -169,7 +148,7 @@ fn bus() -> (
         )
         .expect("register");
     driver
-        .register("embed", ModelAdapter::new("tiny", Model::new(Tiny, Tiny)))
+        .register("embed", ModelAdapter::new("tiny", Tiny::model()))
         .expect("register");
     (dispatcher, registrar, tokio::spawn(driver))
 }

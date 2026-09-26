@@ -597,7 +597,7 @@ fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
 
 #[tokio::test]
 async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
-    let runner = AgentBuilder::new(MockCompletionModel::default())
+    let runner = AgentBuilder::new(MockCompletionModel::from_turns([]))
         .build()
         .prompt("go");
     let tool_snapshot = Arc::new(
