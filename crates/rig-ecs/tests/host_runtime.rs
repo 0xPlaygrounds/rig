@@ -70,7 +70,7 @@ fn gateway(
         Gemini::new(token)
             .with_base_url(endpoint)
             .completion("gemini-test"),
-        ReqwestClient::new(http),
+        ReqwestClient::from(http),
     );
     Ok(ErasedHandler::new(ModelAdapter::new("gemini-test", model)))
 }

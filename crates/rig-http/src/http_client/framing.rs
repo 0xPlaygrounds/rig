@@ -3,7 +3,7 @@
 //! NDJSON permits a final unterminated line through [`NdjsonFramer::finish`].
 //!
 //! ```
-//! use rig_core::http_client::framing::NdjsonFramer;
+//! use rig_http::http_client::framing::NdjsonFramer;
 //!
 //! let mut framer = NdjsonFramer::new();
 //! assert_eq!(framer.push(b"{}\n").collect::<Vec<_>>(), vec![b"{}".to_vec()]);

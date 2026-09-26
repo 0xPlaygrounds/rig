@@ -46,6 +46,32 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 /// browser wasm). `Self::Family` is what a typed key can be proven against
 /// (a typed registration on the bus); a handler with no one
 /// family names [`crate::effect::family::Dynamic`].
+///
+/// A handler holding an `Rc` or a `Cell` is refused natively:
+///
+/// ```compile_fail
+/// use std::rc::Rc;
+/// use rig_core::{serve::{Dispatch, Reply, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+///
+/// struct Local(Rc<u8>);
+/// impl Serve for Local {
+///     type Family = family::Dynamic;
+///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
+///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use std::cell::Cell;
+/// use rig_core::{serve::{Dispatch, Reply, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+///
+/// struct Local(Cell<u8>);
+/// impl Serve for Local {
+///     type Family = family::Dynamic;
+///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
+///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
+/// }
+/// ```
 pub trait Serve: WasmCompatSend + WasmCompatSync {
     /// The family this handler serves, or `Dynamic`.
     type Family: crate::effect::Served;

@@ -3,7 +3,7 @@
 
 use bytes::Bytes;
 use futures::FutureExt;
-use rig_core::http_client::{HttpClientExt, NoBody, Request};
+use rig_http::http_client::{HttpClientExt, NoBody, Request};
 use rig_reqwest::ReqwestClient;
 use std::{
     io::{Read, Write},
@@ -13,7 +13,7 @@ use std::{
 };
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    futures::executor::block_on(rig_core::wasm_compat::timeout(
+    futures::executor::block_on(rig_http::wasm_compat::timeout(
         Duration::from_secs(10),
         future,
     ))
@@ -85,7 +85,7 @@ fn held_response(
 #[test]
 fn dropping_a_pending_request_releases_the_connection() {
     let (url, received, disconnected) = held_response(false);
-    let client = ReqwestClient::new(
+    let client = ReqwestClient::from(
         reqwest::Client::builder()
             .no_proxy()
             .build()
@@ -119,14 +119,14 @@ fn the_supplied_timeout_releases_a_pending_request() {
         .timeout(Duration::from_secs(1))
         .build()
         .expect("client");
-    let client = ReqwestClient::new(client);
+    let client = ReqwestClient::from(client);
     let started = std::time::Instant::now();
     let request = Request::builder().uri(url).body(NoBody).expect("request");
     let error = block_on(client.send::<_, Bytes>(request))
         .err()
         .expect("request times out");
     match error {
-        rig_core::http_client::Error::Instance(error) => assert!(
+        rig_http::http_client::Error::Instance(error) => assert!(
             error
                 .downcast_ref::<reqwest::Error>()
                 .is_some_and(reqwest::Error::is_timeout),
@@ -147,7 +147,7 @@ fn the_supplied_timeout_releases_a_pending_request() {
 fn dropping_before_first_poll_never_connects() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     listener.set_nonblocking(true).expect("nonblocking");
-    let client = ReqwestClient::new(
+    let client = ReqwestClient::from(
         reqwest::Client::builder()
             .no_proxy()
             .build()
@@ -170,7 +170,7 @@ fn dropping_before_first_poll_never_connects() {
 #[test]
 fn dropping_a_lazy_unary_body_releases_the_connection() {
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::new(
+    let client = ReqwestClient::from(
         reqwest::Client::builder()
             .no_proxy()
             .build()
@@ -191,7 +191,7 @@ fn dropping_a_lazy_unary_body_releases_the_connection() {
 #[test]
 fn dropping_a_polled_unary_body_releases_the_connection() {
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::new(
+    let client = ReqwestClient::from(
         reqwest::Client::builder()
             .no_proxy()
             .build()
@@ -215,7 +215,7 @@ fn dropping_a_polled_unary_body_releases_the_connection() {
 fn a_host_runtime_allows_body_drop_from_a_foreign_executor() {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::new(
+    let client = ReqwestClient::from(
         reqwest::Client::builder()
             .no_proxy()
             .build()
@@ -223,7 +223,7 @@ fn a_host_runtime_allows_body_drop_from_a_foreign_executor() {
     );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
     let response = runtime
-        .block_on(rig_core::wasm_compat::timeout(
+        .block_on(rig_http::wasm_compat::timeout(
             Duration::from_secs(10),
             client.send::<_, Bytes>(request),
         ))
@@ -244,7 +244,7 @@ fn a_host_runtime_allows_body_drop_from_a_foreign_executor() {
 fn host_runtime_shutdown_releases_io_and_late_body_polling_returns_an_error() {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::new(
+    let client = ReqwestClient::from(
         reqwest::Client::builder()
             .no_proxy()
             .build()
@@ -252,7 +252,7 @@ fn host_runtime_shutdown_releases_io_and_late_body_polling_returns_an_error() {
     );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
     let response = runtime
-        .block_on(rig_core::wasm_compat::timeout(
+        .block_on(rig_http::wasm_compat::timeout(
             Duration::from_secs(10),
             client.send::<_, Bytes>(request),
         ))
@@ -271,7 +271,7 @@ fn host_runtime_shutdown_releases_io_and_late_body_polling_returns_an_error() {
 #[test]
 fn dropping_an_idle_stream_releases_the_connection_without_another_chunk() {
     let (url, received, disconnected) = held_response(true);
-    let client = ReqwestClient::new(
+    let client = ReqwestClient::from(
         reqwest::Client::builder()
             .no_proxy()
             .build()

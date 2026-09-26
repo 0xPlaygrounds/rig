@@ -19,7 +19,6 @@ use crate::providers::openai::responses_api::streaming::{
 };
 use crate::providers::openai::responses_api::wire::Responses;
 use crate::streaming::StreamEvent;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::WireFrame;
 use crate::wire::{Fold, Mode, Reply, Wire};
 use crate::ws_client::{
@@ -251,6 +250,15 @@ impl ResponsesWebSocketSessionBuilder {
 }
 
 impl ResponsesWebSocketSessionBuilder {
+    /// Open a session over the bundled tungstenite backend with the configured
+    /// timeouts. Return handshake construction, transport, or provider errors.
+    #[cfg(all(feature = "tungstenite", not(target_family = "wasm")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "tungstenite")))]
+    pub async fn connect(self) -> Result<ResponsesWebSocketSession, ProviderError> {
+        self.connect_with(&rig_tungstenite::TungsteniteClient::new())
+            .await
+    }
+
     /// Open a session over `backend` with the configured timeouts.
     /// Return handshake construction, transport, or provider errors.
     pub async fn connect_with<W>(
@@ -861,38 +869,13 @@ fn websocket_provider_error(error: http_client::Error) -> ProviderError {
     ProviderError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }
 
-/// Construct Responses WebSocket sessions from a model's wire and a supplied backend.
-pub trait ResponsesWebSocketExt {
-    /// Start configuring a websocket session for this wire's model.
-    fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder;
-
-    /// Open a websocket session over `backend`, with default options.
-    fn responses_websocket_with<W>(
-        &self,
-        backend: &W,
-    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, ProviderError>>
-    + WasmCompatSend
-    where
-        W: WebSocketClientExt + WasmCompatSync,
-        Self: WasmCompatSync;
-}
-
-impl<T> ResponsesWebSocketExt for Model<Responses, T> {
-    fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder {
+impl<T> Model<Responses, T> {
+    /// Start configuring a Responses WebSocket session for this model. Open
+    /// it with [`connect_with`](ResponsesWebSocketSessionBuilder::connect_with)
+    /// and a backend, or, under the `tungstenite` feature, with
+    /// [`connect`](ResponsesWebSocketSessionBuilder::connect).
+    pub fn responses_websocket(&self) -> ResponsesWebSocketSessionBuilder {
         ResponsesWebSocketSessionBuilder::new(self.wire.clone())
-    }
-
-    fn responses_websocket_with<W>(
-        &self,
-        backend: &W,
-    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, ProviderError>>
-    + WasmCompatSend
-    where
-        W: WebSocketClientExt + WasmCompatSync,
-        Self: WasmCompatSync,
-    {
-        let builder = self.responses_websocket_builder();
-        async move { builder.connect_with(backend).await }
     }
 }
 

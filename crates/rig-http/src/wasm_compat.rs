@@ -1,7 +1,7 @@
 //! Target-dependent thread bounds, boxed futures, and executor-independent timers.
 //!
 //! ```
-//! use rig_core::wasm_compat::WasmBoxedFuture;
+//! use rig_http::wasm_compat::WasmBoxedFuture;
 //! let future: WasmBoxedFuture<'_, u32> = Box::pin(async { 42 });
 //! ```
 
@@ -18,7 +18,7 @@ use futures::Stream;
     target_feature = "atomics"
 ))]
 compile_error!(
-    "rig-core does not support threaded wasm (`+atomics`): its wasm-compat markers assume a \
+    "rig-http does not support threaded wasm (`+atomics`): its wasm-compat markers assume a \
      single-threaded target"
 );
 
@@ -27,19 +27,15 @@ compile_error!(
 ///
 /// ```compile_fail
 /// use std::rc::Rc;
-/// use rig_core::{serve::{Dispatch, Reply, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+/// use rig_http::wasm_compat::WasmCompatSend;
 ///
-/// struct Local(Rc<u8>);
-/// impl Serve for Local {
-///     type Family = family::Dynamic;
-///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
-///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
-/// }
+/// fn shared<T: WasmCompatSend>(_: T) {}
+/// shared(Rc::new(0u8));
 /// ```
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is not `Send`, and every bus handler must be `Send + Sync` natively",
+    message = "`{Self}` is not `Send`, and Rig needs `Send` natively",
     label = "not `Send`",
-    note = "a handler runs inside the driver's task: hold the model, tool or memory behind an `Arc` (never an `Rc`), or register a `!Send` value only on browser wasm, where this marker is a no-op"
+    note = "handlers and transports run inside a driver's task: hold shared state behind an `Arc` (never an `Rc`), or use a `!Send` value only on browser wasm, where this marker is a no-op"
 )]
 pub trait WasmCompatSend: Send {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -86,19 +82,15 @@ where
 ///
 /// ```compile_fail
 /// use std::cell::Cell;
-/// use rig_core::{serve::{Dispatch, Reply, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+/// use rig_http::wasm_compat::WasmCompatSync;
 ///
-/// struct Local(Cell<u8>);
-/// impl Serve for Local {
-///     type Family = family::Dynamic;
-///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
-///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
-/// }
+/// fn shared<T: WasmCompatSync>(_: T) {}
+/// shared(Cell::new(0u8));
 /// ```
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is not `Sync`, and every bus handler must be `Send + Sync` natively",
+    message = "`{Self}` is not `Sync`, and Rig needs `Sync` natively",
     label = "not `Sync`",
-    note = "a handler is shared between the driver and its in-flight tasks: use `Mutex`/atomics instead of `Cell`/`RefCell`, or register a `!Sync` value only on browser wasm, where this marker is a no-op"
+    note = "handlers and transports are shared between a driver and its in-flight tasks: use `Mutex`/atomics instead of `Cell`/`RefCell`, or use a `!Sync` value only on browser wasm, where this marker is a no-op"
 )]
 pub trait WasmCompatSync: Sync {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]

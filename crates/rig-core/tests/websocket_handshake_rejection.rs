@@ -20,7 +20,7 @@ use rig_core::driver::Model;
 use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
-use rig_tungstenite::DefaultWebSocketClient as _;
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -86,7 +86,7 @@ async fn a_refused_upgrade_keeps_the_status_body_and_request_id() {
     .await;
 
     let error = expect_refusal(
-        bound(&base_url).responses_websocket().await,
+        bound(&base_url).responses_websocket().connect().await,
         "an invalid key should be refused",
     );
 
@@ -123,7 +123,7 @@ async fn a_rate_limited_upgrade_keeps_its_backoff_headers() {
     .await;
 
     let error = expect_refusal(
-        bound(&base_url).responses_websocket().await,
+        bound(&base_url).responses_websocket().connect().await,
         "a rate-limited upgrade should be refused",
     );
 
@@ -160,6 +160,7 @@ async fn a_connection_failure_reports_no_provider_response() {
     let error = expect_refusal(
         bound(&format!("http://{address}/v1"))
             .responses_websocket()
+            .connect()
             .await,
         "a closed port should fail to connect",
     );

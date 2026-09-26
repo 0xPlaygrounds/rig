@@ -13,8 +13,8 @@
 #![cfg(not(target_family = "wasm"))]
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
-use rig_core::http_client::multipart::{MultipartForm, Part};
-use rig_core::http_client::{HttpClientExt, Request};
+use rig_http::http_client::multipart::{MultipartForm, Part};
+use rig_http::http_client::{HttpClientExt, Request};
 use rig_reqwest::ReqwestClient;
 use std::io::{Read, Write};
 use std::net::TcpListener;

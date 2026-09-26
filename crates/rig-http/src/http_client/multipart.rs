@@ -1,7 +1,7 @@
 //! Transport-neutral multipart fields and byte encoding.
 //!
 //! ```
-//! use rig_core::http_client::multipart::MultipartForm;
+//! use rig_http::http_client::multipart::MultipartForm;
 //!
 //! let (boundary, body) = MultipartForm::new().text("model", "example").encode();
 //! assert!(!boundary.is_empty());

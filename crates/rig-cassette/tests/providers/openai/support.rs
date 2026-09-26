@@ -90,7 +90,7 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
-        ReqwestClient::default().erase().with_middleware(middleware),
+        DynHttpClient::new(ReqwestClient::default()).with_middleware(middleware),
     );
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;

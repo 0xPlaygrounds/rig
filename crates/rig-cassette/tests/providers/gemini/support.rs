@@ -321,8 +321,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     .await;
     let provider =
         Gemini::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url());
-    let http = rig::http_client::ReqwestClient::default()
-        .erase()
+    let http = rig::http_client::DynHttpClient::new(rig::http_client::ReqwestClient::default())
         .with_middleware(middleware);
     let result = AssertUnwindSafe(test_body(provider, http))
         .catch_unwind()

@@ -6,7 +6,7 @@
 //! the request, even if the host moves them to a different executor.
 
 use futures::{Stream, stream};
-use rig_core::http_client::Error;
+use rig_http::http_client::Error;
 use std::{
     future::{Future, poll_fn},
     pin::pin,

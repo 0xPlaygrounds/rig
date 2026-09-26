@@ -1,11 +1,11 @@
 //! Transport-independent HTTP requests, lazy response bodies, and errors.
 //!
 //! ```
-//! use rig_core::http_client::{HeaderMap, bearer_auth_header};
+//! use rig_http::http_client::{HeaderMap, bearer_auth_header};
 //!
 //! let mut headers = HeaderMap::new();
 //! bearer_auth_header(&mut headers, "example-token")?;
-//! # Ok::<(), rig_core::http_client::Error>(())
+//! # Ok::<(), rig_http::http_client::Error>(())
 //! ```
 
 use bytes::Bytes;
@@ -17,7 +17,6 @@ mod erased;
 pub mod framing;
 pub mod middleware;
 pub mod multipart;
-pub(crate) mod tail;
 use crate::wasm_compat::*;
 pub use erased::DynHttpClient;
 pub use middleware::HttpMiddleware;
@@ -89,7 +88,7 @@ impl Error {
     /// The following example reads the seconds form of `Retry-After`:
     ///
     /// ```
-    /// # use rig_core::http_client::Error;
+    /// # use rig_http::http_client::Error;
     /// # use std::time::Duration;
     /// fn retry_after(error: &Error) -> Option<Duration> {
     ///     let seconds = error
@@ -169,7 +168,15 @@ pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Resu
     Ok(())
 }
 
-/// A helper trait to make generic requests (both regular and SSE) possible.
+/// An HTTP client Rig sends through: unary, multipart and streaming requests.
+///
+/// `rig-reqwest`'s `ReqwestClient` is the bundled implementation; a provider
+/// configuration takes any implementation with `with_http(client)`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not an HTTP client Rig can send through",
+    label = "not an `HttpClientExt`",
+    note = "use `rig_reqwest::ReqwestClient` (wrap a configured `reqwest::Client` with `ReqwestClient::from(client)`), erase a client with `DynHttpClient::new(client)`, or implement `HttpClientExt`; a provider configuration takes it with `.with_http(client)`"
+)]
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     /// Sends a request and returns headers with a lazy body converted from bytes to `U`.
     fn send<T, U>(

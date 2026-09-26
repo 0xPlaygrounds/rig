@@ -31,9 +31,9 @@ use rig_core::test_utils::RecordingHttpClient;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance, fixtures::openai_responses,
 };
-use rig_tungstenite::DefaultWebSocketClient as _;
+
+use rig_tungstenite::tokio_tungstenite::{accept_async, tungstenite::Message};
 use tokio::net::TcpListener;
-use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 /// Lower the fixture's byte frames onto ws text messages (one per `data:`
 /// line); an `Err` chunk truncates the script and marks an abrupt abort.
@@ -194,7 +194,7 @@ fn driver() -> conformance::WireDriver {
                 .with_base_url(format!("http://{address}/v1"))
                 .responses("gpt-5.4");
             let bound = Model::new(wire, RecordingHttpClient::new("{}"));
-            let mut session = bound.responses_websocket().await?;
+            let mut session = bound.responses_websocket().connect().await?;
             session
                 .send(CompletionRequestBuilder::new("hello").build())
                 .await?;
