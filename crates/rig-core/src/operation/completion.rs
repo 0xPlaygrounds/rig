@@ -448,7 +448,8 @@ impl Fold<Completion> for CompletionFold {
 /// message starts. Every event is applied to the one block assembly as it is
 /// pushed, so what drains is final: each `BlockEnd` carries the block it
 /// finalized (text included), a malformed complete tool input is an error
-/// item in its place, the text and reasoning blocks still open are closed
+/// item in its place. A malformed-input error finishes the call it reports,
+/// whether passed to `push` or `error`. The text and reasoning blocks still open are closed
 /// before the terminal record, the terminal's finish reason agrees with the
 /// completed tool calls, and a second terminal record is dropped. A sink
 /// driven by hand rather than by the driver ends a reply with
@@ -561,15 +562,18 @@ impl Canonical {
             }
             Ok(event) => self.blocks.apply(&event).map(|_| event),
             Err(error) => {
-                // A malformed complete tool input took the place of its
-                // call's end: the call ended, so its key assembles anew.
-                if let Some(input) = malformed_tool_input(&error) {
-                    self.blocks.abandon(input);
-                }
+                self.abandon_reported(&error);
                 Err(error)
             }
         };
         emit(item, synthesized);
+    }
+
+    fn abandon_reported(&mut self, error: &ProviderError) {
+        // A malformed-input error replaces the call's end, so its key assembles anew.
+        if let Some(input) = malformed_tool_input(error) {
+            self.blocks.abandon(input);
+        }
     }
 
     /// End every text and reasoning block still open, in the order they
@@ -765,8 +769,9 @@ impl AdapterOutput {
         self.accept(emitted);
     }
 
-    /// Push an in-band error item.
+    /// Push an in-band error item, finishing the call a malformed-input error reports.
     pub fn error(&mut self, error: ProviderError) {
+        self.canonical.abandon_reported(&error);
         self.items.push(Err(error));
     }
 

@@ -362,6 +362,64 @@ fn duplicate_terminals_and_a_trailing_error_are_idempotent() {
     ]);
 }
 
+fn tool_calls(items: &[Result<StreamEvent, ProviderError>]) -> usize {
+    items
+        .iter()
+        .filter(|item| {
+            matches!(
+                item,
+                Ok(StreamEvent::BlockEnd {
+                    block: Some(AssistantContent::ToolCall(_)),
+                    ..
+                })
+            )
+        })
+        .count()
+}
+
+fn reported_error_ends_call(relayed: bool) {
+    let mut first = AdapterOutput::new();
+    apply(&mut first, Step::ToolArguments(0, "a".to_owned()));
+    apply(&mut first, Step::ToolName(0, "lookup".to_owned()));
+    apply(&mut first, Step::ToolEnd(0, UnparseableToolInput::Error));
+    let error = first
+        .into_items()
+        .into_iter()
+        .find_map(Result::err)
+        .expect("a malformed-input error");
+    let error = if relayed {
+        ProviderError::Relayed(Box::new(ErrorReport::from(&error)))
+    } else {
+        error
+    };
+    let mut out = AdapterOutput::new();
+    apply(&mut out, Step::ToolArguments(0, "a".to_owned()));
+    apply(&mut out, Step::ToolName(0, "lookup".to_owned()));
+    out.error(error);
+    apply(
+        &mut out,
+        Step::ToolEnd(0, UnparseableToolInput::EmptyObject),
+    );
+    Sink::<Completion>::finish(&mut out);
+    assert_eq!(
+        tool_calls(&out.into_items()),
+        0,
+        "a phantom call was finalized"
+    );
+}
+
+/// A synthetic malformed call isolates the public sink error entry point.
+#[test]
+fn an_error_item_pushed_by_hand_finishes_the_call_it_reports() {
+    reported_error_ends_call(false);
+}
+
+/// A relayed report must end the same call as its originating error.
+#[test]
+fn a_relayed_error_item_pushed_by_hand_finishes_the_call_it_reports() {
+    reported_error_ends_call(true);
+}
+
 #[test]
 fn images_and_text_metadata_are_idempotent() {
     assert_idempotent(vec![
