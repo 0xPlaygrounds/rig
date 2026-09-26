@@ -21,7 +21,8 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
                 "truncation_matrix/agent_blocking_truncated_call_is_not_invoked",
                 |client| async move {
                     let invocations = Arc::new(AtomicUsize::new(0));
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), TOOL_PREAMBLE, 1);
+                    let mut ecs =
+                        EcsAgent::new(rig::model(client.completion(MODEL)), TOOL_PREAMBLE, 1);
                     ecs.app.world_mut().entity_mut(ecs.agent).insert((
                         DefaultMaxTurns(Some(1)),
                         MaxTokens(Some(32)),
@@ -86,7 +87,8 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
                 "truncation_matrix/agent_streaming_truncated_call_is_not_invoked",
                 |client| async move {
                     let invocations = Arc::new(AtomicUsize::new(0));
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), TOOL_PREAMBLE, 1);
+                    let mut ecs =
+                        EcsAgent::new(rig::model(client.completion(MODEL)), TOOL_PREAMBLE, 1);
                     ecs.app.world_mut().entity_mut(ecs.agent).insert((
                         DefaultMaxTurns(None),
                         MaxTokens(Some(32)),
@@ -154,7 +156,8 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
                 "truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked",
                 |client| async move {
                     let invocations = Arc::new(AtomicUsize::new(0));
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), TOOL_PREAMBLE, 1);
+                    let mut ecs =
+                        EcsAgent::new(rig::model(client.completion(MODEL)), TOOL_PREAMBLE, 1);
                     ecs.app.world_mut().entity_mut(ecs.agent).insert((
                         DefaultMaxTurns(Some(1)),
                         MaxTokens(Some(16)),
@@ -220,7 +223,8 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                 "truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked",
                 |client| async move {
                     let invocations = Arc::new(AtomicUsize::new(0));
-                    let mut ecs = EcsAgent::new(client.completion(MODEL), TOOL_PREAMBLE, 1);
+                    let mut ecs =
+                        EcsAgent::new(rig::model(client.completion(MODEL)), TOOL_PREAMBLE, 1);
                     ecs.app.world_mut().entity_mut(ecs.agent).insert((
                         DefaultMaxTurns(None),
                         MaxTokens(Some(16)),

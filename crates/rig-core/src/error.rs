@@ -383,10 +383,19 @@ pub enum ProviderError {
         /// The provider's reply.
         response: ProviderResponseError,
     },
+    /// A tool block the wire declared complete carried invalid JSON. The
+    /// payload keeps the call's identity and the raw input for recovery; a
+    /// stream carries it as the report's [`ErrorDetail::MalformedToolInput`].
+    #[error("tool call `{}` arrived with malformed JSON input: {}", .0.name, .0.error)]
+    MalformedToolInput(MalformedToolInput),
+    /// A failure another runtime reported, relayed as its wire report. The
+    /// report converts back to itself, so a relayed stream's errors reach
+    /// the consumer as the origin made them.
+    #[error("{}", .0.message)]
+    Relayed(ErrorReport),
     /// The provider returned vectors of a width other than the one the caller
-    /// declared through
-    /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
-    /// argument. Raised only when the width was set explicitly.
+    /// declared through an embedding wire's `ndims` argument. Raised only
+    /// when the width was set explicitly.
     #[error(
         "{provider} embedding response returned {returned}-dimension vectors, but the model was \
          created with {requested} dimensions; this provider does not resize embeddings"
@@ -435,11 +444,14 @@ impl ProviderError {
             Self::Json(_) => ErrorKind::Json,
             Self::Url(_) => ErrorKind::Url,
             Self::Request(_) => ErrorKind::Request,
-            Self::Response(_) | Self::MismatchedDimensions { .. } => ErrorKind::Response,
+            Self::Response(_) | Self::MismatchedDimensions { .. } | Self::MalformedToolInput(_) => {
+                ErrorKind::Response
+            }
             Self::Provider(_) => ErrorKind::Provider,
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
             | Self::CacheExpired { .. } => ErrorKind::ProviderResponse,
+            Self::Relayed(report) => report.kind,
         }
     }
 
@@ -451,6 +463,7 @@ impl ProviderError {
         match self {
             Self::Http(error) => transient_transport(error),
             Self::ProviderResponse(response) => response.is_retryable(),
+            Self::Relayed(report) => report.retryable,
             _ => false,
         }
     }
@@ -461,6 +474,7 @@ impl ProviderError {
             Self::ProviderResponse(response)
             | Self::InvalidAuthentication(response)
             | Self::CacheExpired { response, .. } => Some(response),
+            Self::Relayed(report) => report.provider_response.as_ref(),
             _ => None,
         }
     }
@@ -639,20 +653,11 @@ impl From<http::Error> for ProviderError {
     }
 }
 
-/// A client that could not be built: transport-configuration failures keep
-/// their HTTP identity, anything else (a missing key, an unreadable
-/// environment variable) is reported as a provider error.
-impl From<crate::client::ProviderClientError> for ProviderError {
-    fn from(error: crate::client::ProviderClientError) -> Self {
-        match error {
-            crate::client::ProviderClientError::Http(error) => Self::Http(error),
-            other => Self::Provider(other.to_string()),
-        }
-    }
-}
-
 impl From<&ProviderError> for ErrorReport {
     fn from(error: &ProviderError) -> Self {
+        if let ProviderError::Relayed(report) = error {
+            return report.clone();
+        }
         let response = error.provider_response();
         ErrorReport {
             kind: error.kind(),
@@ -666,7 +671,12 @@ impl From<&ProviderError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: response.and_then(|response| response.provider_request_id.clone()),
             provider_response: response.cloned(),
-            detail: None,
+            detail: match error {
+                ProviderError::MalformedToolInput(detail) => {
+                    Some(ErrorDetail::MalformedToolInput(detail.clone()))
+                }
+                _ => None,
+            },
         }
     }
 }

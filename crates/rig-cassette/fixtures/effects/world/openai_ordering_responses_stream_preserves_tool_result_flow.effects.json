@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 12,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,45 +26,29 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 29,
         "id": 0,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 20,
-        "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 30,
-        "id": 2,
+        "id": 1,
         "kind": {
-          "delivery": "stream",
-          "items": 6
+          "delivery": "outcome"
         }
       },
       {
-        "batch": 31,
+        "batch": 48,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 2
         }
       },
       {
-        "batch": 32,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 33,
+        "batch": 49,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -72,7 +56,7 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 50,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -80,7 +64,95 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 51,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 52,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 53,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 57,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 58,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 59,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 62,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 70,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 70,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -592,6 +664,17 @@
           "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The alpha signal marker is \"crimson-harbor.\""
           }
         },
         {

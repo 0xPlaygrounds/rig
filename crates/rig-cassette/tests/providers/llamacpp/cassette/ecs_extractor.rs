@@ -11,8 +11,11 @@ async fn extractor_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
             with_llamacpp_cassette("extractor/extractor_smoke", |client| async move {
-                let mut extractor =
-                    EcsExtractor::<SmokePerson>::new(client.completion(CASSETTE_MODEL), None, None);
+                let mut extractor = EcsExtractor::<SmokePerson>::new(
+                    rig::model(client.completion(CASSETTE_MODEL)),
+                    None,
+                    None,
+                );
                 let response = extractor
                     .extract(EXTRACTOR_TEXT, &[])
                     .await

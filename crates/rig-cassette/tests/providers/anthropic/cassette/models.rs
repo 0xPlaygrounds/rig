@@ -2,12 +2,11 @@
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};
 use rig::error::ProviderError;
-use rig::model::ModelLister;
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_anthropic_cassette("models/list_models_smoke", |client| async move {
-        let models = match client.models().list_all().await {
+        let models = match rig::model(client.models()).call(()).await {
             Ok(models) => models,
             Err(error) => {
                 panic!(
@@ -34,9 +33,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
     with_anthropic_cassette_bogus_key(
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
-            let error = client
-                .models()
-                .list_all()
+            let error = rig::model(client.models())
+                .call(())
                 .await
                 .expect_err("a bogus key must not list models");
 

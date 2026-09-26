@@ -4,7 +4,6 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;
 use rig::message::ImageMediaType;
-use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
 
 use crate::support::{
@@ -14,12 +13,8 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires a local Ollama server with a multimodal model"]
 async fn multimodal_image_prompt() {
-    let ollama = Ollama::from_env()
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
-    let agent = ollama
-        .agent("llava")
+    let ollama = Ollama::from_env().expect("config should build from env");
+    let agent = rig::AgentBuilder::new(rig::model(ollama.completion("llava")))
         .preamble("Describe this image and include anything notable about it.")
         .temperature(0.5)
         .build();

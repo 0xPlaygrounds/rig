@@ -40,14 +40,6 @@
         }
       },
       {
-        "batch": 18,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 19,
         "id": 2,
         "kind": {
@@ -56,7 +48,15 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 20,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -516,6 +516,17 @@
           "delta": {
             "delta": "text",
             "text": "s dominant color is red, and the sum is 42."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The image's dominant color is red, and the sum is 42."
           }
         },
         {

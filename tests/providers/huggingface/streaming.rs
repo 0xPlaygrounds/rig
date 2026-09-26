@@ -1,6 +1,5 @@
 //! Hugging Face streaming coverage for the default and Together-backed inference paths.
 
-use rig::prelude::*;
 use rig::providers::openai::wire::{HUGGINGFACE, OpenAI, SubRoute};
 
 use crate::support::{
@@ -10,14 +9,12 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn streaming_smoke() {
-    let provider = OpenAI::from_env_with(&HUGGINGFACE)
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
-    let agent = provider
-        .agent("meta-llama/Meta-Llama-3.1-8B-Instruct")
-        .preamble(STREAMING_PREAMBLE)
-        .build();
+    let provider = OpenAI::from_env_with(&HUGGINGFACE).expect("config should build from env");
+    let agent = rig::AgentBuilder::new(rig::model(
+        provider.completion("meta-llama/Meta-Llama-3.1-8B-Instruct"),
+    ))
+    .preamble(STREAMING_PREAMBLE)
+    .build();
 
     let mut stream = agent.prompt(STREAMING_PROMPT).stream();
     let response = collect_stream_final_response(&mut stream)
@@ -30,15 +27,15 @@ async fn streaming_smoke() {
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn together_subprovider_streaming() {
-    let agent = OpenAI::from_env_with(&HUGGINGFACE)
-        .expect("config should build from env")
-        .with_sub_route(SubRoute::Together)
-        .bound()
-        .expect("transport should build")
-        .agent("deepseek-ai/DeepSeek-R1")
-        .preamble("Be precise and concise.")
-        .temperature(0.5)
-        .build();
+    let agent = rig::AgentBuilder::new(rig::model(
+        OpenAI::from_env_with(&HUGGINGFACE)
+            .expect("config should build from env")
+            .with_sub_route(SubRoute::Together)
+            .completion("deepseek-ai/DeepSeek-R1"),
+    ))
+    .preamble("Be precise and concise.")
+    .temperature(0.5)
+    .build();
 
     let mut stream = agent
         .prompt("When and where and what type is the next solar eclipse?")

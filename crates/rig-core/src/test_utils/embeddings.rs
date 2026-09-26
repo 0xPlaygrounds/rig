@@ -1,42 +1,63 @@
 //! Embedding helpers for deterministic tests.
 
+use crate::driver::{Local, Model, Observation, Opened, Transport};
 use crate::error::ProviderError;
+use crate::operation::{Embedding as EmbeddingOp, EmbeddingCapabilities};
+use crate::wire::Mode;
 use crate::{
     Embed,
     embeddings::{
-        Embedding, EmbeddingModel, EmbeddingResponse,
+        Embedding, EmbeddingResponse,
         embed::{EmbedError, TextEmbedder},
     },
     wasm_compat::WasmCompatSend,
 };
 
-/// A deterministic [`EmbeddingModel`] that returns a fixed vector for each input document.
-#[derive(Clone, Debug, Default)]
-pub struct MockEmbeddingModel;
+/// The mock embedding transport: every text embeds to one fixed vector,
+/// five texts to a request at ten dimensions.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MockEmbeddings;
 
-impl EmbeddingModel for MockEmbeddingModel {
-    fn max_documents(&self) -> usize {
-        5
+/// A deterministic embedding model that returns a fixed vector for each input document.
+pub type MockEmbeddingModel = Model<Local<EmbeddingOp>, MockEmbeddings>;
+
+impl MockEmbeddings {
+    /// The mock's wire: the mock provider at the mock's batch size and width.
+    pub fn wire() -> Local<EmbeddingOp> {
+        Local::new(super::MOCK_PROVIDER).with_capabilities(EmbeddingCapabilities::new(5, 10))
     }
 
-    fn ndims(&self) -> usize {
-        10
+    /// The mock model: the mock's wire over this transport.
+    pub fn model() -> MockEmbeddingModel {
+        Model::new(Self::wire(), Self)
     }
 
-    async fn embed_texts_response(
-        &self,
-        documents: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<EmbeddingResponse, ProviderError> {
-        Ok(EmbeddingResponse::new(
-            documents
+    /// The reply the mock gives `texts`: one fixed vector each.
+    pub fn embed(texts: Vec<String>) -> EmbeddingResponse {
+        EmbeddingResponse::new(
+            texts
                 .into_iter()
                 .map(|document| Embedding {
                     document,
                     vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
                 })
                 .collect(),
-            "mock",
-        ))
+            super::MOCK_PROVIDER,
+        )
+    }
+}
+
+impl Transport<Local<EmbeddingOp>> for MockEmbeddings {
+    fn send(
+        &self,
+        texts: Vec<String>,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<Vec<String>, EmbeddingResponse>> + WasmCompatSend + 'static + use<>,
+        ProviderError,
+    > {
+        Ok(async move { Opened::new(futures::stream::iter([Ok(Self::embed(texts))])) })
     }
 }
 

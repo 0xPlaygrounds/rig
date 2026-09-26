@@ -240,7 +240,9 @@ impl MockStreamEvent {
         Self::FinalResponse(mock_final_with_total_tokens(total_tokens))
     }
 
-    /// Create a stream error event.
+    /// A scripted failure. The mock's transport delivers what was scripted
+    /// before it, then the failure ends the turn as a transport failure
+    /// would; nothing scripted after it is delivered.
     pub fn error(message: impl Into<String>) -> Self {
         Self::Error(MockError::provider(message))
     }
@@ -301,7 +303,7 @@ impl MockStreamEvent {
                 if let Some(call_id) = call_id {
                     end = end.with_call_id(call_id);
                 }
-                out.tool_call(key, end);
+                out.tool_end(key, end);
             }
             Self::ToolCallNameDelta { id, name } => out.tool_name(&fixture_part_id(id), name),
             Self::ToolCallArgumentsDelta { id, arguments } => {

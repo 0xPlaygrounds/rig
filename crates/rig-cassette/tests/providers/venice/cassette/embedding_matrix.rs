@@ -8,7 +8,6 @@
 //! error path preserving the body.
 
 use super::super::support::with_venice_cassette;
-use rig::embeddings::EmbeddingModel as _;
 use rig::providers::venice;
 
 use crate::support::{
@@ -33,9 +32,9 @@ async fn normalized_response_is_complete() {
     with_venice_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+            let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None));
             let response = model
-                .embed_texts_response(inputs())
+                .call(inputs())
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -50,9 +49,9 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_venice_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+        let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None));
         let response = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("embedding request should succeed");
 
@@ -91,13 +90,13 @@ async fn raw_route_parity() {
     const SCENARIO: &str = "embedding_matrix/raw_route_parity";
 
     with_venice_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+        let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None));
         let normalized = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("normalized call should succeed");
         let again = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("the same request should succeed again");
 
@@ -137,9 +136,9 @@ async fn single_text_convenience() {
     with_venice_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
+            let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None));
             let response = model
-                .embed_text_response(EMBEDDING_INPUTS[0])
+                .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -163,9 +162,9 @@ async fn single_text_convenience() {
 async fn dimensions_request() {
     with_venice_cassette("embedding_matrix/dimensions_request", |client| async move {
         let ndims = 256;
-        let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, Some(ndims));
+        let model = rig::model(client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, Some(ndims)));
         let response = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("dimension-constrained embedding should succeed");
         for embedding in &response.embeddings {
@@ -181,9 +180,9 @@ async fn error_preserves_provider_body() {
     with_venice_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding("no-such-embedding-model", None);
+            let model = rig::model(client.embedding("no-such-embedding-model", None));
             let error = model
-                .embed_texts_response(inputs())
+                .call(inputs())
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(

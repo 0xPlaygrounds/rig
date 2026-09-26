@@ -319,6 +319,10 @@
                 "id": "minted:text:0",
                 "end": {
                   "close": "text"
+                },
+                "block": {
+                  "type": "text",
+                  "text": "ready."
                 }
               },
               {
@@ -345,6 +349,15 @@
                 "id": "minted:text:1",
                 "end": {
                   "close": "text"
+                },
+                "block": {
+                  "type": "text",
+                  "text": "",
+                  "additional_params": {
+                    "gemini": {
+                      "thoughtSignature": "EuACCt0CAWkUfRO9B6mHNbIxmPOOAzyhsyIRelbHOAAWAiAvUyQYx2h32s3hifGMncAxTKF6M4z9sZ4IcyuajotE4ZvBEDZHe2vS93yegJ2Tyfig1RRf4OptOSPrf3IM+mvaFc5x1OgggZcPJOQg/yWVIJyISrblradABL2LSJN/pmT3AzUj8tXKyrQkZDvBDsSSOZf1GMF0N92KJAyY++wJSn1+xCZ7ipF4Q9HABWkp+PMoNquVzgVsFu2pJ5pTeZbxlzbdWZ/9gpPkl7RutFqYWkrZ0qfG3Qw07FM+uRpu1KS7sP9OMhrlQ2O2qjujSPIThgmcREInN4UE1FZxR0PaA6JNrZ4ZDhO/dQMScC4xoQxZeudFQ1Q2mUETgDkWCwdS4LoBdXAmOBtMsauim8snbywAUcSC3gKyLFecP3xtUMx0ulyPLrnhu6CCZ/LIG8Qrtd0QzzKHzx9tEAzs7Nk+RQ=="
+                    }
+                  }
                 }
               },
               {

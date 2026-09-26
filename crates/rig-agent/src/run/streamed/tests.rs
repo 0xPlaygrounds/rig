@@ -550,7 +550,7 @@ fn interleaved_delta_parts_stay_distinct_in_arrival_order() {
 #[test]
 fn delta_only_part_survives_alongside_a_completed_block() {
     // The openrouter shape: visible chain-of-thought streams as deltas
-    // whose synthesized end stays silent, while an encrypted block
+    // that the sink closes at the boundary, while an encrypted block
     // arrives completed. Both must reach history, deltas first.
     let mut asm = assembler();
     ingest_all(
@@ -1673,20 +1673,33 @@ fn reasoning_close(restatement: Option<Reasoning>, signature: Option<&str>) -> S
     }
 }
 
-fn assert_reasoning_matches_core(events: Vec<StreamEvent>, expected_parts: usize) {
-    let mut core = rig_core::streaming::BlockAccumulator::new();
-    let mut asm = assembler();
-    for mut event in events {
-        let completed = core.apply(&event).expect("valid provider event");
-        if let StreamEvent::BlockEnd { id, block, .. } = &mut event {
-            *block = completed.map(|(completed_id, content)| {
-                *id = completed_id;
-                content
-            });
-        }
-        asm.ingest(&event).expect("normalized event");
+/// The events as the sink makes them canonical, and the fold over them.
+fn canonical(events: Vec<StreamEvent>) -> (Vec<StreamEvent>, rig_core::operation::CompletionFold) {
+    use rig_core::wire::{Fold as _, Sink as _};
+    let mut out = rig_core::operation::AdapterOutput::new();
+    for event in events {
+        out.push(Ok(event));
     }
-    let choice = rig_core::streaming::stamp_reasoning(core.finish(), "mock");
+    // The reply's end closes what the script left open, as the driver's does.
+    out.finish();
+    let mut fold = rig_core::operation::CompletionFold::default();
+    let events: Vec<StreamEvent> = out
+        .drain()
+        .map(|item| item.expect("valid provider event"))
+        .collect();
+    for event in &events {
+        fold.absorb(event).expect("valid provider event");
+    }
+    (events, fold)
+}
+
+fn assert_reasoning_matches_core(events: Vec<StreamEvent>, expected_parts: usize) {
+    let (events, core) = canonical(events);
+    let mut asm = assembler();
+    for event in &events {
+        asm.ingest(event).expect("normalized event");
+    }
+    let choice = rig_core::streaming::stamp_reasoning(core.snapshot(), "mock");
     assert_eq!(choice.len(), expected_parts);
     let partial = asm.partial_turn(None, Some("mock")).reasoning;
     let finished = asm.finish(None, &choice, Some("mock"));
@@ -1748,24 +1761,55 @@ fn a_second_same_key_signature_survives_in_its_own_history_part() {
 
 #[test]
 fn a_completed_key_takes_precedence_over_another_keys_pending_provider_id() {
-    assert_reasoning_matches_core(
+    let (events, core) = canonical(vec![
+        reasoning_close(Some(Reasoning::new("A").with_id("rs".into())), None),
+        StreamEvent::BlockStart {
+            id: BlockId::wire("other"),
+            kind: BlockKind::Reasoning {
+                provider_id: Some("rs".into()),
+            },
+        },
+        StreamEvent::BlockDelta {
+            id: BlockId::wire("other"),
+            delta: Delta::Reasoning {
+                text: "pending".into(),
+            },
+        },
+        reasoning_close(Some(Reasoning::new("B").with_id("rs".into())), None),
+    ]);
+    let mut asm = assembler();
+    for event in &events {
+        asm.ingest(event).expect("normalized event");
+    }
+    // Core keeps one part per block: A, the `other` key's text (closed by
+    // the reply's end), and B, the sibling under A's key.
+    let choice = rig_core::streaming::stamp_reasoning(core.snapshot(), "mock");
+    assert_eq!(choice.len(), 3);
+    // B never consumed `other`'s pending text. History groups `other` with
+    // A (distinct keys, one provider item) and keeps B, the reused key,
+    // apart.
+    let finished = asm.finish(None, &choice, Some("mock"));
+    let texts: Vec<Vec<String>> = finished
+        .choice
+        .iter()
+        .map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => reasoning
+                .content
+                .iter()
+                .map(|content| match content {
+                    rig_core::message::ReasoningContent::Text { text, .. } => text.clone(),
+                    other => panic!("unexpected reasoning content: {other:?}"),
+                })
+                .collect(),
+            other => panic!("unexpected part: {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        texts,
         vec![
-            reasoning_close(Some(Reasoning::new("A").with_id("rs".into())), None),
-            StreamEvent::BlockStart {
-                id: BlockId::wire("other"),
-                kind: BlockKind::Reasoning {
-                    provider_id: Some("rs".into()),
-                },
-            },
-            StreamEvent::BlockDelta {
-                id: BlockId::wire("other"),
-                delta: Delta::Reasoning {
-                    text: "pending".into(),
-                },
-            },
-            reasoning_close(Some(Reasoning::new("B").with_id("rs".into())), None),
-        ],
-        3,
+            vec!["A".to_string(), "pending".to_string()],
+            vec!["B".to_string()]
+        ]
     );
 }
 
@@ -1799,28 +1843,27 @@ fn a_silent_reasoning_close_still_separates_reopened_history() {
 #[test]
 fn trailing_signature_updates_a_grouped_provider_part_without_duplication() {
     let mut asm = assembler();
-    let mut core = rig_core::streaming::BlockAccumulator::new();
-    for (key, text, signature) in [
+    let ends: Vec<StreamEvent> = [
         ("a", Some("A"), None),
         ("b", Some("B"), None),
         ("b", None, Some("sig-B")),
-    ] {
-        let mut event = StreamEvent::BlockEnd {
-            id: BlockId::wire(key),
-            end: BlockClose::Reasoning {
-                reasoning: text.map(|text| Reasoning::new(text).with_id("rs".into())),
-                signature: signature.map(str::to_string),
-                wire_sent: true,
-            },
-            block: None,
-        };
-        let completed = core.apply(&event).unwrap();
-        if let StreamEvent::BlockEnd { block, .. } = &mut event {
-            *block = completed.map(|(_, block)| block);
-        }
-        asm.ingest(&event).unwrap();
+    ]
+    .into_iter()
+    .map(|(key, text, signature)| StreamEvent::BlockEnd {
+        id: BlockId::wire(key),
+        end: BlockClose::Reasoning {
+            reasoning: text.map(|text| Reasoning::new(text).with_id("rs".into())),
+            signature: signature.map(str::to_string),
+            wire_sent: true,
+        },
+        block: None,
+    })
+    .collect();
+    let (events, core) = canonical(ends);
+    for event in &events {
+        asm.ingest(event).unwrap();
     }
-    let choice = rig_core::streaming::stamp_reasoning(core.finish(), "mock");
+    let choice = rig_core::streaming::stamp_reasoning(core.snapshot(), "mock");
     let expected: Vec<_> = choice
         .iter()
         .flat_map(|item| match item {

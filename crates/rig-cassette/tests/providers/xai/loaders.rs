@@ -1,7 +1,6 @@
 //! xAI loaders smoke test.
 
 use rig::loaders::FileLoader;
-use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette;
@@ -17,7 +16,7 @@ async fn loaders_smoke() {
             .into_iter();
 
         let agent = examples
-            .fold(client.agent(xai::GROK_4), |builder, (path, content)| {
+            .fold(rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_4))), |builder, (path, content)| {
                 let file_name = path
                     .file_name()
                     .and_then(|name| name.to_str())

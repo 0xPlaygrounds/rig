@@ -1,12 +1,12 @@
 # rig-candle
 
-`rig-candle` runs validated local checkpoints through Rig's `CompletionModel`
-and agent APIs. The crate receives byte buffers and performs no filesystem or
+`rig-candle` runs validated local checkpoints through Rig's `Model` and agent
+APIs: the `Generation` wire on a `CandleModel` transport. The crate receives byte buffers and performs no filesystem or
 network access itself.
 
 ```rust,no_run
 use rig_agent::agent::AgentBuilder;
-use rig_candle::{CandleModel, ModelData};
+use rig_candle::{CandleModel, Generation, ModelData};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         weights: std::fs::read("./model/model.safetensors")?,
     })
     .await?;
-    let agent = AgentBuilder::new(model)
+    let agent = AgentBuilder::new(rig_core::Model::new(Generation, model))
         .preamble("You are a concise assistant.")
         .build();
     println!("{}", agent.prompt("Explain ownership briefly.").await?.output);

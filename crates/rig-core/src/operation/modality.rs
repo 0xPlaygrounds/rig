@@ -7,11 +7,11 @@
 //! assert_eq!(capabilities.declared, Some(768));
 //! ```
 
-use super::{One, Take};
+use super::{Events, Take};
 use crate::embeddings::Embedding as Vector;
 use crate::error::ProviderError;
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Fold, Operation, Reply};
+use crate::wire::{Fold, Mode, Operation, Reply};
 
 /// Embedding batch limit, resolved dimensions, and optional caller-declared width.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -94,6 +94,7 @@ macro_rules! modality_operation {
             name: $name:literal,
             fold: $fold:ty,
             seed: $seed:expr,
+            $(accept: $accept:expr,)?
         }
     ) => {
         $(#[$doc])*
@@ -105,7 +106,7 @@ macro_rules! modality_operation {
             type Event = $response;
             type Response = $response;
             type Capabilities = $capabilities;
-            type Output = One<Self>;
+            type Output = Events<Self>;
             type Fold = $fold;
             type Telemetry = GenAiOperation;
 
@@ -115,21 +116,25 @@ macro_rules! modality_operation {
                 true
             }
 
-            fn fold(request: &Self::Request) -> Self::Fold {
+            fn fold<W: crate::wire::Wire<Op = Self>>(
+                request: &Self::Request,
+                _wire: &W,
+                _mode: Mode,
+            ) -> Self::Fold {
                 #[allow(clippy::redundant_closure_call)]
                 ($seed)(request)
             }
 
-            fn telemetry(_streaming: bool) -> Self::Telemetry {
+            fn telemetry(_mode: Mode) -> Self::Telemetry {
                 GenAiOperation::$telemetry
             }
 
-            fn stamp_reply(response: &mut Self::Response, reply: Reply) {
+            fn stamp_reply(response: &mut Self::Response, reply: &Reply) {
                 if response.provider_request_id.is_none() {
-                    response.provider_request_id = reply.provider_request_id;
+                    response.provider_request_id = reply.provider_request_id.clone();
                 }
                 if response.raw.is_null() {
-                    response.raw = reply.raw;
+                    response.raw = reply.raw.clone();
                 }
             }
 
@@ -150,6 +155,23 @@ macro_rules! modality_operation {
                     &response.usage,
                 );
             }
+
+            /// The one event is the response, so a stream records it as a
+            /// call does.
+            fn record_event(span: &tracing::Span, event: &Self::Event) {
+                Self::record(span, event);
+            }
+
+            $(
+                fn accept(
+                    capabilities: &Self::Capabilities,
+                    provider: &str,
+                    response: &Self::Response,
+                ) -> Result<(), ProviderError> {
+                    #[allow(clippy::redundant_closure_call)]
+                    ($accept)(capabilities, provider, response)
+                }
+            )?
         }
     };
 }
@@ -164,6 +186,11 @@ modality_operation!(
         name: "embedding",
         fold: Embedded,
         seed: |texts: &Vec<String>| Embedded::over(texts.clone()),
+        accept: |capabilities: &EmbeddingCapabilities,
+                 provider: &str,
+                 response: &crate::embeddings::EmbeddingResponse| {
+            capabilities.honour_declaration(provider, response.embeddings.iter().map(|e| e.vec.len()))
+        },
     }
 );
 
@@ -179,6 +206,11 @@ modality_operation!(
         seed: |images: &Vec<Vec<u8>>| Embedded::over(
             images.iter().map(|bytes| crate::embeddings::image_document(bytes)).collect(),
         ),
+        accept: |capabilities: &EmbeddingCapabilities,
+                 provider: &str,
+                 response: &crate::embeddings::ImageEmbeddingResponse| {
+            capabilities.honour_declaration(provider, response.embeddings.iter().map(|e| e.vec.len()))
+        },
     }
 );
 
@@ -303,16 +335,19 @@ impl Embedded {
 }
 
 impl Fold<Embedding> for Embedded {
-    fn absorb(&mut self, reply: crate::embeddings::EmbeddingResponse) -> Result<(), ProviderError> {
+    fn absorb(
+        &mut self,
+        reply: &crate::embeddings::EmbeddingResponse,
+    ) -> Result<(), ProviderError> {
         self.absorb_parts(
-            reply.embeddings,
+            reply.embeddings.iter().cloned(),
             reply.usage,
             Metadata {
-                provider: reply.provider,
-                model: reply.model,
-                response_id: reply.response_id,
-                provider_request_id: reply.provider_request_id,
-                raw: reply.raw,
+                provider: reply.provider.clone(),
+                model: reply.model.clone(),
+                response_id: reply.response_id.clone(),
+                provider_request_id: reply.provider_request_id.clone(),
+                raw: reply.raw.clone(),
             },
         );
         Ok(())
@@ -329,7 +364,7 @@ impl Fold<Embedding> for Embedded {
             provider_request_id: metadata.provider_request_id,
             raw: metadata.raw,
         };
-        Embedding::stamp_reply(&mut response, reply);
+        Embedding::stamp_reply(&mut response, &reply);
         Ok(response)
     }
 }
@@ -337,17 +372,17 @@ impl Fold<Embedding> for Embedded {
 impl Fold<ImageEmbedding> for Embedded {
     fn absorb(
         &mut self,
-        reply: crate::embeddings::ImageEmbeddingResponse,
+        reply: &crate::embeddings::ImageEmbeddingResponse,
     ) -> Result<(), ProviderError> {
         self.absorb_parts(
-            reply.embeddings,
+            reply.embeddings.iter().cloned(),
             reply.usage,
             Metadata {
-                provider: reply.provider,
-                model: reply.model,
-                response_id: reply.response_id,
-                provider_request_id: reply.provider_request_id,
-                raw: reply.raw,
+                provider: reply.provider.clone(),
+                model: reply.model.clone(),
+                response_id: reply.response_id.clone(),
+                provider_request_id: reply.provider_request_id.clone(),
+                raw: reply.raw.clone(),
             },
         );
         Ok(())
@@ -367,7 +402,7 @@ impl Fold<ImageEmbedding> for Embedded {
             provider_request_id: metadata.provider_request_id,
             raw: metadata.raw,
         };
-        ImageEmbedding::stamp_reply(&mut response, reply);
+        ImageEmbedding::stamp_reply(&mut response, &reply);
         Ok(response)
     }
 }

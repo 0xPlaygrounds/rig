@@ -10,7 +10,9 @@
 use super::*;
 use rig_core::{
     message::{ToolCall, ToolCallId, ToolFunction},
-    streaming::{BlockAccumulator, Delta, StreamEvent},
+    operation::{AdapterOutput, CompletionFold},
+    streaming::{Delta, StreamEvent},
+    wire::{Fold as _, Sink as _},
 };
 
 /// Return the successful event count before the first error, or the full length.
@@ -31,17 +33,14 @@ pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option
         StreamEvent::BlockDelta { id, .. } | StreamEvent::BlockEnd { id, .. } => id,
         _ => return None,
     };
-    let mut accumulator = BlockAccumulator::new();
-    for (index, event) in events.iter().enumerate() {
-        let completed = accumulator.apply(event).ok()?;
-        if index >= offset
-            && let Some((block, AssistantContent::ToolCall(call))) = completed
-            && &block == block_id
-        {
-            return Some(call.id);
-        }
-    }
-    None
+    events.iter().skip(offset).find_map(|event| match event {
+        StreamEvent::BlockEnd {
+            id,
+            block: Some(AssistantContent::ToolCall(call)),
+            ..
+        } if id == block_id => Some(call.id.clone()),
+        _ => None,
+    })
 }
 
 /// Publish invalid tool names from real delivered prefixes, before EOF.
@@ -148,22 +147,29 @@ pub fn discover_streamed_invalid_calls(
             }) {
                 continue;
             }
-            let mut accumulator = BlockAccumulator::new();
-            let mut valid_prefix = true;
+            // The prefix is the reply as if it had ended here: the sink
+            // closes what is still open (text a wire closes only at its
+            // terminal) and the fold collects the finalized blocks.
+            let mut out = AdapterOutput::new();
             for earlier in stream.events.iter().take(index) {
-                if accumulator.apply(earlier).is_err() {
-                    valid_prefix = false;
+                out.push(Ok(earlier.clone()));
+            }
+            out.finish();
+            let mut fold = CompletionFold::default();
+            for item in out.into_items() {
+                if let Ok(event) = item
+                    && fold.absorb(&event).is_err()
+                {
                     break;
                 }
             }
-            if !valid_prefix {
-                break;
-            }
-            let mut prefix = accumulator.snapshot();
-            let completed = match accumulator.apply(event) {
-                Ok(Some((_, AssistantContent::ToolCall(call)))) => Some(call),
-                Ok(_) => None,
-                Err(_) => break,
+            let mut prefix = fold.snapshot();
+            let completed = match event {
+                StreamEvent::BlockEnd {
+                    block: Some(AssistantContent::ToolCall(call)),
+                    ..
+                } => Some(call.clone()),
+                _ => None,
             };
             // Earlier repairs/ignores already took effect in the driver's
             // view, even while native execution waits for the final outcome.

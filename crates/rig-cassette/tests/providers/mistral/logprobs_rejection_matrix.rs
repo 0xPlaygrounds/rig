@@ -28,10 +28,11 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
 use futures::StreamExt as _;
-use rig::completion::CompletionModel;
 use serde_json::{Value, json};
 
-use super::support::{BoundMistral, with_mistral_logprobs_rejection_cassette_result};
+use super::support::with_mistral_logprobs_rejection_cassette_result;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -60,10 +61,9 @@ fn model_name(model: Model) -> &'static str {
     }
 }
 
-async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Result<()> {
-    let model = client.completion(model_name(cell.model));
-    let request = model
-        .completion_request("Reply with exactly: cobalt")
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedError) -> Result<()> {
+    let model = rig::model(client.completion(model_name(cell.model)));
+    let request = CompletionRequestBuilder::new("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
         .max_tokens(8)
         .build();
@@ -72,11 +72,11 @@ async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Re
     // fails in-band with the `ErrorReport` it was mapped to. Both display the
     // preserved Mistral body, which is what the matrix asserts on.
     let error = match cell.transport {
-        Transport::Blocking => match model.completion(request).await {
+        Transport::Blocking => match model.call(request).await {
             Ok(_) => bail!("Mistral unexpectedly accepted blocking logprobs"),
             Err(error) => error.to_string(),
         },
-        Transport::Streaming => match model.stream(request).await {
+        Transport::Streaming => match model.stream(request) {
             Err(error) => error.to_string(),
             Ok(mut stream) => loop {
                 match stream.next().await {

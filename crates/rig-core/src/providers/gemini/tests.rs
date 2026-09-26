@@ -22,7 +22,7 @@ fn a_serialized_config_carries_no_key_material() {
 
     // The wires built from it are data too, and the completion wire is the
     // one a host is most likely to store.
-    let wire = gemini.generate_content("gemini-2.5-flash");
+    let wire = gemini.completion("gemini-2.5-flash");
     let json = serde_json::to_string(&wire).expect("the wire serializes");
     assert!(
         !json.contains("AIzaSyNOTAREALKEY"),

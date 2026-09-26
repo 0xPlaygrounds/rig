@@ -24,9 +24,10 @@ use crate::{
         OutcomeAction, OutcomeEvent, OutputMode, RequestPatch, StreamingError,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
-    completion::{AssistantContent, CompletionModel, Message, PromptError, ToolDefinition},
+    completion::{AssistantContent, Message, PromptError, ToolDefinition},
     tool::{Tool, ToolContext},
 };
+use rig_core::completion::CompletionRequestBuilder;
 use rig_core::error::ProviderError;
 use rig_core::message::{ToolChoice, UserContent};
 
@@ -996,13 +997,14 @@ fn value_matches_integer(value: &serde_json::Value, expected: i64) -> bool {
 ///
 /// Set `tool_concurrency` to `Some(1)` to prove that serial host execution does
 /// not split or drop the model's parallel call batch.
-pub async fn parallel_tools<M, F>(
-    model: M,
+pub async fn parallel_tools<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
     tool_concurrency: Option<usize>,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
@@ -1084,12 +1086,13 @@ where
 }
 
 /// Runs a zero-argument tool and validates verbatim string-result handling.
-pub async fn zero_argument_tool<M, F>(
-    model: M,
+pub async fn zero_argument_tool<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "zero_argument_tool";
@@ -1126,12 +1129,13 @@ where
 
 /// Runs string- and JSON-returning tools and validates that neither output is
 /// double encoded.
-pub async fn tool_output_serialization<M, F>(
-    model: M,
+pub async fn tool_output_serialization<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "tool_output_serialization";
@@ -1180,12 +1184,13 @@ where
 
 /// Runs a nested, escaped, Unicode-bearing argument payload through typed tool
 /// deserialization and validates the exact semantic value received by the tool.
-pub async fn complex_tool_arguments<M, F>(
-    model: M,
+pub async fn complex_tool_arguments<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "complex_tool_arguments";
@@ -1233,21 +1238,23 @@ where
 
 /// Runs the same deterministic text request through buffered and raw streaming
 /// completion surfaces and validates equivalent visible content and usage.
-pub async fn buffered_streaming_text_parity<M>(model: M) -> Result<ScenarioReport, ScenarioError>
+pub async fn buffered_streaming_text_parity<W, T>(
+    model: rig_core::driver::Model<W, T>,
+) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + Clone + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
 {
     const SCENARIO: &str = "buffered_streaming_text_parity";
     const PROMPT: &str = "Answer with exactly the single word Paris.";
     let started = Instant::now();
     let request = || {
-        model
-            .completion_request(PROMPT)
+        CompletionRequestBuilder::new(PROMPT)
             .temperature(0.0)
             .max_tokens(32)
             .build()
     };
-    let buffered = model.completion(request()).await?;
+    let buffered = model.call(request()).await?;
     let buffered_text = buffered
         .choice
         .iter()
@@ -1257,7 +1264,7 @@ where
         })
         .collect::<String>();
 
-    let mut stream = model.stream(request()).await?;
+    let mut stream = model.stream(request())?;
     let mut streamed_text = String::new();
     let mut streamed_usage = None;
     while let Some(item) = stream.next().await {
@@ -1313,9 +1320,12 @@ where
 
 /// Runs Rig's structured extractor and validates both the extracted semantic
 /// fields and accumulated usage.
-pub async fn structured_extraction<M>(model: M) -> Result<ScenarioReport, ScenarioError>
+pub async fn structured_extraction<W, T>(
+    model: rig_core::driver::Model<W, T>,
+) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
 {
     const SCENARIO: &str = "structured_extraction";
     const INPUT: &str = "Hello, my name is Ada Lovelace and I work as a mathematician.";
@@ -1382,12 +1392,13 @@ fn restricted_recovery_run(
 
 /// Uses one real model turn to exercise fail-fast, retry exhaustion, repair,
 /// rejected repair, and skip handling without executing a disallowed call.
-pub async fn invalid_tool_recovery<M, F>(
-    model: M,
+pub async fn invalid_tool_recovery<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "invalid_tool_recovery";
@@ -1574,12 +1585,13 @@ where
 
 /// Exercises chained argument/result rewrites and a first-turn-only request
 /// patch. Completion proves `tool_choice=Required` did not leak to turn two.
-pub async fn hook_rewrites_and_request_patch<M, F>(
-    model: M,
+pub async fn hook_rewrites_and_request_patch<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "hook_rewrites_and_request_patch";
@@ -1647,12 +1659,13 @@ where
 
 /// Exercises post-execution cancellation and max-turn diagnostics through the
 /// public agent driver using real model-emitted calls.
-pub async fn cancellation_and_max_turns<M, F>(
-    model: M,
+pub async fn cancellation_and_max_turns<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + Clone + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: Fn(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "cancellation_and_max_turns";
@@ -1724,12 +1737,13 @@ where
 /// `configure` is deliberately outside the scenario so a provider suite can
 /// attach transport-only settings without putting them into the shared model
 /// contract.
-pub async fn optional_argument<M, F>(
-    model: M,
+pub async fn optional_argument<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
@@ -1761,9 +1775,13 @@ where
 }
 
 /// Runs a portable two-tool sequential arithmetic scenario.
-pub async fn sequential_tools<M, F>(model: M, configure: F) -> Result<ScenarioReport, ScenarioError>
+pub async fn sequential_tools<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
+    configure: F,
+) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
@@ -1799,9 +1817,13 @@ where
 }
 
 /// Runs a tool through Rig's multi-turn streaming agent driver.
-pub async fn streaming_tool<M, F>(model: M, configure: F) -> Result<ScenarioReport, ScenarioError>
+pub async fn streaming_tool<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
+    configure: F,
+) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
@@ -1887,12 +1909,13 @@ where
 }
 
 /// Runs a normal tool followed by Rig's synthetic structured-output tool.
-pub async fn structured_after_tool<M, F>(
-    model: M,
+pub async fn structured_after_tool<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
@@ -1923,9 +1946,12 @@ where
 }
 
 /// Runs all portable tool-choice modes directly against a completion model.
-pub async fn tool_choice_modes<M>(model: M) -> Result<ScenarioReport, ScenarioError>
+pub async fn tool_choice_modes<W, T>(
+    model: rig_core::driver::Model<W, T>,
+) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + Clone + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
 {
     let definition = |name: &str| ToolDefinition {
         name: name.to_string(),
@@ -1939,9 +1965,8 @@ where
     let tools = vec![definition("alpha"), definition("beta")];
     let started = Instant::now();
     let none = model
-        .completion(
-            model
-                .completion_request("Answer with only the number 4. Do not call a function.")
+        .call(
+            CompletionRequestBuilder::new("Answer with only the number 4. Do not call a function.")
                 .tools(tools.clone())
                 .tool_choice(ToolChoice::None)
                 .temperature(0.0)
@@ -1961,9 +1986,8 @@ where
     }
 
     let required = model
-        .completion(
-            model
-                .completion_request("Call alpha with value 7.")
+        .call(
+            CompletionRequestBuilder::new("Call alpha with value 7.")
                 .tools(tools.clone())
                 .tool_choice(ToolChoice::Required)
                 .temperature(0.0)
@@ -1984,9 +2008,8 @@ where
     }
 
     let specific = model
-        .completion(
-            model
-                .completion_request("Call beta with value 9.")
+        .call(
+            CompletionRequestBuilder::new("Call beta with value 9.")
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["beta".to_string()],
@@ -2028,12 +2051,13 @@ where
 }
 
 /// Runs a streamed real-tool turn followed by Rig's synthetic output tool.
-pub async fn streaming_structured_after_tool<M, F>(
-    model: M,
+pub async fn streaming_structured_after_tool<W, T, F>(
+    model: rig_core::driver::Model<W, T>,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
     F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));

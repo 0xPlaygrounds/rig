@@ -16,7 +16,7 @@ use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::{EffectFamily, HandlerKey},
     providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6},
-    serve::adapters::{CompletionAdapter, MemoryAdapter},
+    serve::adapters::{MemoryAdapter, ModelAdapter},
 };
 use rig_ecs::{
     agent::{
@@ -40,8 +40,12 @@ fn route_after_first(
         }
     }
 }
-fn routed_agent(client: &rig::driver::Bound<Anthropic>, selected: bool) -> EcsAgent {
-    let mut ecs = EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
+fn routed_agent(client: &Anthropic, selected: bool) -> EcsAgent {
+    let mut ecs = EcsAgent::for_golden(
+        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        TOOLS_PREAMBLE,
+        false,
+    );
     ecs.app
         .world_mut()
         .entity_mut(ecs.agent)
@@ -50,9 +54,9 @@ fn routed_agent(client: &rig::driver::Bound<Anthropic>, selected: bool) -> EcsAg
         handlers.register(
             "golden/model:fast",
             RuntimeHandler {
-                inner: Arc::new(CompletionAdapter::new(
+                inner: Arc::new(ModelAdapter::new(
                     "fast",
-                    client.completion(CLAUDE_HAIKU_4_5),
+                    rig::model(client.completion(CLAUDE_HAIKU_4_5)),
                 )),
                 runtime: io_runtime(),
             },
@@ -78,13 +82,13 @@ fn routed_agent(client: &rig::driver::Bound<Anthropic>, selected: bool) -> EcsAg
 }
 
 async fn two_tools(
-    client: rig::driver::Bound<Anthropic>,
+    client: Anthropic,
     bus: rig::serve::ServingPolicy,
     concurrency: usize,
     events: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        client.completion(CLAUDE_SONNET_4_6),
+        rig::model(client.completion(CLAUDE_SONNET_4_6)),
         TWO_TOOL_STREAM_PREAMBLE,
         events,
     );
@@ -226,7 +230,7 @@ async fn serial_memory_tools_effect_log() {
     crate::goldens::capture_world_programs(async {
         with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
             let mut ecs = EcsAgent::for_golden_with_setup(
-                client.completion(CLAUDE_SONNET_4_6),
+                rig::model(client.completion(CLAUDE_SONNET_4_6)),
                 TOOLS_PREAMBLE,
                 false,
                 |world| {
@@ -371,12 +375,9 @@ async fn model_route_unselected_effect_log() {
 /// The same tool-call program over a host's bus: the host registers the
 /// model under the agent's key, drives the bus and records; the agent
 /// stamps the log, whose header names no bus policy (the host's).
-async fn over_host_bus(
-    client: rig::driver::Bound<Anthropic>,
-    streamed: bool,
-) -> rig::cassette::effect_log::EffectLog {
+async fn over_host_bus(client: Anthropic, streamed: bool) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        client.completion(CLAUDE_SONNET_4_6),
+        rig::model(client.completion(CLAUDE_SONNET_4_6)),
         TOOLS_PREAMBLE,
         streamed,
     );

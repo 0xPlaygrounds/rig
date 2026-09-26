@@ -16,7 +16,7 @@
 //! ```
 
 use rig::Embed;
-use rig::embeddings::{EmbedError, Embedding, EmbeddingModel, TextEmbedder};
+use rig::embeddings::{EmbedError, Embedding, TextEmbedder};
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::vectorize::{VectorizeClient, VectorizeFilter, VectorizeVectorStore};
@@ -35,7 +35,7 @@ async fn test_insert_documents() {
         return;
     };
 
-    let model = MockEmbeddingModel::new(1536);
+    let model = mock_model(1536);
 
     let docs = vec![
         TestDocument {
@@ -51,8 +51,9 @@ async fn test_insert_documents() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect())
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -76,7 +77,7 @@ async fn test_insert_and_query() {
         return;
     };
 
-    let model = MockEmbeddingModel::new(1536);
+    let model = mock_model(1536);
 
     let doc = TestDocument {
         id: "test-doc".to_string(),
@@ -85,8 +86,9 @@ async fn test_insert_and_query() {
     };
 
     let embeddings = model
-        .embed_texts(vec![doc.content.clone()])
+        .call(vec![doc.content.clone()])
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings =
@@ -122,7 +124,7 @@ async fn test_top_n_returns_full_documents() {
         return;
     };
 
-    let model = MockEmbeddingModel::new(1536);
+    let model = mock_model(1536);
     let doc = TestDocument {
         id: "doc-rust".to_string(),
         content: "Rust is a systems programming language".to_string(),
@@ -130,8 +132,9 @@ async fn test_top_n_returns_full_documents() {
     };
 
     let embeddings = model
-        .embed_texts(vec![doc.content.clone()])
+        .call(vec![doc.content.clone()])
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     vector_store
@@ -176,7 +179,7 @@ async fn test_top_n_with_multiple_documents() {
         return;
     };
 
-    let model = MockEmbeddingModel::new(1536);
+    let model = mock_model(1536);
     let docs = vec![
         TestDocument {
             id: "doc-rust".to_string(),
@@ -191,8 +194,9 @@ async fn test_top_n_with_multiple_documents() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect())
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -235,7 +239,7 @@ async fn test_query_with_eq_filter() {
         return;
     };
 
-    let model = MockEmbeddingModel::new(1536);
+    let model = mock_model(1536);
     let docs = vec![
         TestDocument {
             id: "doc-rust".to_string(),
@@ -250,8 +254,9 @@ async fn test_query_with_eq_filter() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect())
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -306,7 +311,7 @@ async fn test_query_with_combined_filters() {
         return;
     };
 
-    let model = MockEmbeddingModel::new(1536);
+    let model = mock_model(1536);
     let docs = vec![
         TestDocument {
             id: "doc-rust".to_string(),
@@ -326,8 +331,9 @@ async fn test_query_with_combined_filters() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect())
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -385,7 +391,7 @@ async fn test_query_with_in_filter() {
         return;
     };
 
-    let model = MockEmbeddingModel::new(1536);
+    let model = mock_model(1536);
     let docs = vec![
         TestDocument {
             id: "doc-rust".to_string(),
@@ -405,8 +411,9 @@ async fn test_query_with_in_filter() {
     ];
 
     let embeddings = model
-        .embed_texts(docs.iter().map(|d| d.content.clone()))
+        .call(docs.iter().map(|d| d.content.clone()).collect())
         .await
+        .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
 
     let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
@@ -473,37 +480,45 @@ impl Embed for TestDocument {
     }
 }
 
-/// A mock embedding model that returns deterministic embeddings for testing.
+/// A deterministic embedding endpoint and its transport: each text embeds
+/// to a hash-derived vector of `dimensions` values.
+/// The mock embedding transport: a deterministic vector per text at
+/// `dimensions` width.
 #[derive(Clone)]
-struct MockEmbeddingModel {
+struct MockEmbeddings {
     dimensions: usize,
 }
 
-impl MockEmbeddingModel {
-    fn new(dimensions: usize) -> Self {
-        Self { dimensions }
-    }
+type MockEmbeddingModel = rig::Model<rig::driver::Local<rig::operation::Embedding>, MockEmbeddings>;
+
+/// The mock endpoint as a model.
+fn mock_model(dimensions: usize) -> MockEmbeddingModel {
+    rig::Model::new(
+        rig::driver::Local::new("mock")
+            .with_capabilities(rig::operation::EmbeddingCapabilities::new(100, dimensions)),
+        MockEmbeddings { dimensions },
+    )
 }
 
-impl EmbeddingModel for MockEmbeddingModel {
-    fn max_documents(&self) -> usize {
-        100
-    }
-
-    fn ndims(&self) -> usize {
-        self.dimensions
-    }
-
-    async fn embed_texts_response(
+impl rig::driver::Transport<rig::driver::Local<rig::operation::Embedding>> for MockEmbeddings {
+    fn send(
         &self,
-        texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<rig::embeddings::EmbeddingResponse, rig::error::ProviderError> {
-        let texts: Vec<String> = texts.into_iter().collect();
+        texts: Vec<String>,
+        _mode: rig::wire::Mode,
+        _observation: Option<rig::driver::Observation>,
+    ) -> Result<
+        impl Future<Output = rig::driver::Opened<Vec<String>, rig::embeddings::EmbeddingResponse>>
+        + Send
+        + 'static
+        + use<>,
+        rig::error::ProviderError,
+    > {
+        let dimensions = self.dimensions;
         let embeddings = texts
             .into_iter()
             .map(|text| {
                 let hash = simple_hash(&text);
-                let vec: Vec<f64> = (0..self.dimensions)
+                let vec: Vec<f64> = (0..dimensions)
                     .map(|i| {
                         let val = ((hash.wrapping_add(i as u64)) % 1000) as f64 / 1000.0;
                         val * 2.0 - 1.0
@@ -515,7 +530,11 @@ impl EmbeddingModel for MockEmbeddingModel {
                 }
             })
             .collect();
-        Ok(rig::embeddings::EmbeddingResponse::new(embeddings, "mock"))
+        Ok(std::future::ready(rig::driver::Opened::new(
+            futures::stream::iter([Ok(rig::embeddings::EmbeddingResponse::new(
+                embeddings, "mock",
+            ))]),
+        )))
     }
 }
 
@@ -531,12 +550,12 @@ fn get_env_or_skip(var: &str) -> Option<String> {
     std::env::var(var).ok()
 }
 
-fn create_vector_store() -> Option<VectorizeVectorStore<MockEmbeddingModel>> {
+fn create_vector_store() -> Option<VectorizeVectorStore> {
     let account_id = get_env_or_skip("CLOUDFLARE_ACCOUNT_ID")?;
     let api_token = get_env_or_skip("CLOUDFLARE_API_TOKEN")?;
     let index_name = get_env_or_skip("VECTORIZE_INDEX_NAME")?;
 
-    let model = MockEmbeddingModel::new(1536);
+    let model = mock_model(1536);
 
     Some(VectorizeVectorStore::new(
         model, account_id, index_name, api_token,

@@ -22,8 +22,8 @@
 
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
-use rig_core::completion::CompletionModel as _;
-use rig_core::driver::Bound;
+use rig_core::completion::CompletionRequestBuilder;
+use rig_core::driver::Model;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
@@ -100,8 +100,9 @@ fn spawn_server(listener: TcpListener, messages: Vec<String>, abort: bool) {
 /// `Err` channel, so the caller collects events (stopping at the first
 /// terminal or session error) and this helper replays them. One policy the
 /// helper supplies that the buffered session cannot: tool calls the provider
-/// fully delivered flush before a session error, mirroring the SSE loop's
-/// flush-before-terminal-error contract (`RawChoiceAccumulator::flush_tool_calls`).
+/// fully delivered flush and open blocks close before a session error,
+/// mirroring the driver's flush-before-terminal-error contract
+/// (`RawChoiceAccumulator::flush_tool_calls`, then the sink's `finish`).
 async fn drain_openai_responses_websocket_events(
     provider: &'static str,
     events: Vec<Result<ResponsesWebSocketEvent, ProviderError>>,
@@ -111,6 +112,7 @@ async fn drain_openai_responses_websocket_events(
     use rig_core::providers::openai::responses_api::streaming::{
         RawChoiceAccumulator, ResponseChunkKind, ResponsesStreamOptions,
     };
+    use rig_core::wire::Sink as _;
 
     let mut accumulator = RawChoiceAccumulator::new(provider, None);
     let mut out = AdapterOutput::new();
@@ -131,6 +133,7 @@ async fn drain_openai_responses_websocket_events(
                     accumulator.record_response_chunk(chunk.kind, chunk.response, "", &mut out)
                 {
                     accumulator.flush_tool_calls(&mut out);
+                    out.finish();
                     out.error(error);
                     errored = true;
                     break;
@@ -148,12 +151,14 @@ async fn drain_openai_responses_websocket_events(
             Ok(ResponsesWebSocketEvent::Done(_)) => {}
             Ok(ResponsesWebSocketEvent::Error(error)) => {
                 accumulator.flush_tool_calls(&mut out);
+                out.finish();
                 out.error(ProviderError::Provider(error.to_string()));
                 errored = true;
                 break;
             }
             Err(error) => {
                 accumulator.flush_tool_calls(&mut out);
+                out.finish();
                 out.error(error);
                 errored = true;
                 break;
@@ -164,9 +169,11 @@ async fn drain_openai_responses_websocket_events(
         accumulator.finish(&mut out);
     }
 
-    let stream = rig_core::streaming::StreamingCompletionResponse::stream(
+    let stream = rig_core::streaming::CompletionStream::relay(
         provider,
-        Box::pin(futures::stream::iter(out.into_items())),
+        Box::pin(futures::stream::iter(out.into_items().into_iter().map(
+            |item| item.map_err(|error| rig_core::error::ErrorReport::from(&error)),
+        ))),
     );
     conformance::fixtures::drain(stream).await
 }
@@ -188,10 +195,10 @@ fn driver() -> conformance::WireDriver {
             let wire = OpenAI::new("test-key")
                 .with_base_url(format!("http://{address}/v1"))
                 .responses("gpt-5.4");
-            let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
+            let bound = Model::new(wire, RecordingHttpClient::new("{}"));
             let mut session = bound.responses_websocket().await?;
             session
-                .send(bound.completion_request("hello").build())
+                .send(CompletionRequestBuilder::new("hello").build())
                 .await?;
 
             // Collect the turn exactly as the production session loop does:

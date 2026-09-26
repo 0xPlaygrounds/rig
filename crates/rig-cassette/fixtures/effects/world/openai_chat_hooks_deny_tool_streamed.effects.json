@@ -113,15 +113,15 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 27,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 28,
+        "batch": 27,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -611,6 +611,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "42"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "42"
           }
         },

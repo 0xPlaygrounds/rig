@@ -8,7 +8,7 @@
 //! ```
 
 use crate::completion;
-use crate::driver::{Bound, WireDriver};
+use crate::driver::{Model, WireDriver};
 use crate::driver::{TriagedFrame, triage_frame};
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
@@ -21,7 +21,7 @@ use crate::providers::openai::responses_api::wire::Responses;
 use crate::streaming::StreamEvent;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::WireFrame;
-use crate::wire::{Fold, Mode, Operation, Reply, Wire};
+use crate::wire::{Fold, Mode, Reply, Wire};
 use crate::ws_client::{
     BoxedWebSocketConnection, ConnectOptions, Frame, WebSocketClientExt, WebSocketConnection,
 };
@@ -722,8 +722,8 @@ fn fold_events(
     events: Vec<StreamEvent>,
     response: &CompletionResponse,
 ) -> Result<completion::CompletionResponse, ProviderError> {
-    let mut fold = <Completion as Operation>::Fold::default();
-    for event in events {
+    let mut fold = crate::operation::CompletionFold::opened(provider, None, Mode::Unary);
+    for event in &events {
         fold.absorb(event)?;
     }
     fold.finish(Reply {
@@ -861,7 +861,7 @@ fn websocket_provider_error(error: http_client::Error) -> ProviderError {
     ProviderError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }
 
-/// Construct Responses WebSocket sessions from a bound wire and a supplied backend.
+/// Construct Responses WebSocket sessions from a model's wire and a supplied backend.
 pub trait ResponsesWebSocketExt {
     /// Start configuring a websocket session for this wire's model.
     fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder;
@@ -877,7 +877,7 @@ pub trait ResponsesWebSocketExt {
         Self: WasmCompatSync;
 }
 
-impl<H> ResponsesWebSocketExt for Bound<Responses, H> {
+impl<T> ResponsesWebSocketExt for Model<Responses, T> {
     fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder {
         ResponsesWebSocketSessionBuilder::new(self.wire.clone())
     }

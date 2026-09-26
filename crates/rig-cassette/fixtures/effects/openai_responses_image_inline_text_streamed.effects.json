@@ -250,6 +250,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "wire:msg_05b944c3051ac2d6006ab2b45857c087d084e296d41d8b88e3",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The dominant non-background color is bright red."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 43,

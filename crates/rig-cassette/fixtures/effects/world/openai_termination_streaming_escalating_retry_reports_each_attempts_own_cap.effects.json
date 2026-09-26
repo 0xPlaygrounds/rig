@@ -26,6 +26,14 @@
         }
       },
       {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 11,
         "id": 0,
         "kind": {
@@ -122,30 +130,22 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 29,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 34,
+        "batch": 32,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -153,7 +153,23 @@
         }
       },
       {
+        "batch": 34,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 35,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -177,7 +193,7 @@
         }
       },
       {
-        "batch": 39,
+        "batch": 40,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -185,7 +201,7 @@
         }
       },
       {
-        "batch": 40,
+        "batch": 41,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -225,6 +241,14 @@
         }
       },
       {
+        "batch": 47,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 48,
         "id": 1,
         "kind": {
@@ -233,7 +257,7 @@
         }
       },
       {
-        "batch": 49,
+        "batch": 50,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -241,7 +265,7 @@
         }
       },
       {
-        "batch": 50,
+        "batch": 51,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -289,6 +313,14 @@
         }
       },
       {
+        "batch": 58,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 59,
         "id": 1,
         "kind": {
@@ -313,7 +345,7 @@
         }
       },
       {
-        "batch": 63,
+        "batch": 62,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -345,6 +377,14 @@
         }
       },
       {
+        "batch": 67,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 68,
         "id": 1,
         "kind": {
@@ -353,7 +393,7 @@
         }
       },
       {
-        "batch": 69,
+        "batch": 70,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -361,7 +401,7 @@
         }
       },
       {
-        "batch": 70,
+        "batch": 71,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -378,14 +418,6 @@
       },
       {
         "batch": 73,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 74,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -417,47 +449,15 @@
         }
       },
       {
-        "batch": 79,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 80,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 81,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 83,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 86,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 86,
+        "batch": 80,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -705,6 +705,17 @@
           "delta": {
             "delta": "text",
             "text": " red"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red"
           }
         },
         {
@@ -1139,6 +1150,17 @@
           "delta": {
             "delta": "text",
             "text": "."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup."
           }
         },
         {

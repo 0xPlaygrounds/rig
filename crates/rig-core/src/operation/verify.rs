@@ -6,7 +6,7 @@
 //! assert_eq!(Verify::NAME, "verify");
 //! ```
 
-use super::{One, Take};
+use super::{Events, Take};
 use crate::wire::{Decoder, Operation, Output, Sink, WireEvent, WireFrame};
 
 /// Checks credentials using response status. HTTP 401/403 indicate invalid
@@ -19,7 +19,7 @@ impl Operation for Verify {
     type Event = ();
     type Response = ();
     type Capabilities = ();
-    type Output = One<Self>;
+    type Output = Events<Self>;
     type Fold = Take<Self>;
     type Telemetry = ();
 
@@ -29,7 +29,15 @@ impl Operation for Verify {
         true
     }
 
-    fn telemetry(_streaming: bool) -> Self::Telemetry {}
+    fn fold<W: crate::wire::Wire<Op = Self>>(
+        _request: &Self::Request,
+        _wire: &W,
+        _mode: crate::wire::Mode,
+    ) -> Self::Fold {
+        Take::default()
+    }
+
+    fn telemetry(_mode: crate::wire::Mode) -> Self::Telemetry {}
 }
 
 /// Accepts any body, including an empty one, after driver status validation.

@@ -40,7 +40,7 @@ async fn parallel_contract_validates_batch_and_correlation() -> Result<(), Scena
         ),
     ]);
     let report = parallel_tools(
-        MockCompletionModel::new([first, MockTurn::text("7 and 8")]),
+        MockCompletionModel::from_turns([first, MockTurn::text("7 and 8")]),
         |builder| builder,
         Some(1),
     )
@@ -53,7 +53,7 @@ async fn parallel_contract_validates_batch_and_correlation() -> Result<(), Scena
 #[tokio::test]
 async fn zero_argument_and_output_serialization_contracts_pass() -> Result<(), ScenarioError> {
     let zero = zero_argument_tool(
-        MockCompletionModel::new([
+        MockCompletionModel::from_turns([
             MockTurn::tool_call("ping_call", "ping", serde_json::json!({})),
             MockTurn::text(PING_OUTPUT),
         ]),
@@ -67,7 +67,7 @@ async fn zero_argument_and_output_serialization_contracts_pass() -> Result<(), S
         tool_call("config_call", "fetch_config", serde_json::json!({})),
     ]);
     let serialized = tool_output_serialization(
-        MockCompletionModel::new([first, MockTurn::text("summary")]),
+        MockCompletionModel::from_turns([first, MockTurn::text("summary")]),
         |builder| builder,
     )
     .await?;
@@ -84,7 +84,7 @@ async fn complex_arguments_preserve_nested_unicode_and_escapes() -> Result<(), S
         "quote": "path C:\\tmp and \"quoted\""
     });
     let report = complex_tool_arguments(
-        MockCompletionModel::new([
+        MockCompletionModel::from_turns([
             MockTurn::tool_call("profile_call", "store_profile", arguments),
             MockTurn::text("stored"),
         ]),
@@ -97,7 +97,7 @@ async fn complex_arguments_preserve_nested_unicode_and_escapes() -> Result<(), S
 
 #[tokio::test]
 async fn extraction_contract_requires_fields_and_usage() -> Result<(), ScenarioError> {
-    let report = structured_extraction(MockCompletionModel::new([MockTurn::tool_call(
+    let report = structured_extraction(MockCompletionModel::from_turns([MockTurn::tool_call(
         "submit_call",
         "submit",
         serde_json::json!({
@@ -134,7 +134,7 @@ async fn streaming_contract_checks_events_history_and_usage() -> Result<(), Scen
 #[tokio::test]
 async fn invalid_recovery_paths_do_not_execute_tools() -> Result<(), ScenarioError> {
     let report = invalid_tool_recovery(
-        MockCompletionModel::new([MockTurn::tool_call(
+        MockCompletionModel::from_turns([MockTurn::tool_call(
             "invalid-add",
             "add",
             serde_json::json!({ "x": 2, "y": 3 }),
@@ -149,7 +149,7 @@ async fn invalid_recovery_paths_do_not_execute_tools() -> Result<(), ScenarioErr
 #[tokio::test]
 async fn hook_rewrites_chain_and_request_patch_is_turn_local() -> Result<(), ScenarioError> {
     let report = hook_rewrites_and_request_patch(
-        MockCompletionModel::new([
+        MockCompletionModel::from_turns([
             MockTurn::tool_call("hook-add", "add", serde_json::json!({ "x": 1, "y": 1 })),
             MockTurn::text("[portable-redacted]"),
         ]),
@@ -163,7 +163,7 @@ async fn hook_rewrites_chain_and_request_patch_is_turn_local() -> Result<(), Sce
 #[tokio::test]
 async fn cancellation_and_max_turn_controls_retain_diagnostics() -> Result<(), ScenarioError> {
     let report = cancellation_and_max_turns(
-        MockCompletionModel::new([
+        MockCompletionModel::from_turns([
             MockTurn::tool_call("cancel-add", "add", serde_json::json!({ "x": 20, "y": 22 })),
             MockTurn::tool_call("budget-add", "add", serde_json::json!({ "x": 20, "y": 22 })),
         ]),

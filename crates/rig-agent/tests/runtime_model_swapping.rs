@@ -21,17 +21,19 @@ use rig_agent::{
         StreamingResult,
     },
     completion::{
-        CompletionModel, CompletionRequest, CompletionResponse, Message, PromptError,
-        ProviderCapabilities, Usage,
+        CompletionRequest, CompletionResponse, Message, PromptError, ProviderCapabilities, Usage,
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
-        BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
-        StreamingCompletionResponse, ToolCallEnd, UnparseableToolInput,
+        BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal, ToolCallEnd,
+        UnparseableToolInput,
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_core::driver::{Local, Model, Observation, Opened, Transport};
 use rig_core::error::ProviderError;
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
+use rig_core::wire::Mode;
 use rig_core::{
     error::ErrorKind,
     message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction, UserContent},
@@ -267,20 +269,20 @@ fn completion_from_script(
 fn stream_from_script(
     script: &Script,
     request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, ProviderError> {
+) -> Result<Vec<StreamEvent>, ProviderError> {
     script.record(request);
     let turn = script.next_turn();
     if let Turn::Error(message) = &turn {
         return Err(ProviderError::Provider(message.clone()));
     }
-    let mut events = vec![Ok(StreamEvent::BlockStart {
+    let mut events = vec![StreamEvent::BlockStart {
         id: BlockId::wire(turn.message_id()),
         kind: BlockKind::Message,
-    })];
+    }];
     let text_block = MintKind::Text.for_wire_index(0);
     match &turn {
         Turn::Text { text, .. } => {
-            events.push(Ok(StreamEvent::text(text_block, text.clone())));
+            events.push(StreamEvent::text(text_block, text.clone()));
         }
         Turn::Tool {
             id,
@@ -291,30 +293,30 @@ fn stream_from_script(
             // Canonical fragmenting-wire shape: name/args fragments closed by
             // a tool-call end; the shared accumulator assembles the call and
             // opens the block at the first fragment.
-            events.push(Ok(StreamEvent::BlockDelta {
+            events.push(StreamEvent::BlockDelta {
                 id: BlockId::wire(id.clone()),
                 delta: Delta::ToolName { name: name.clone() },
-            }));
-            events.push(Ok(StreamEvent::BlockDelta {
+            });
+            events.push(StreamEvent::BlockDelta {
                 id: BlockId::wire(id.clone()),
                 delta: Delta::ToolArguments {
                     arguments: arguments.to_string(),
                 },
-            }));
-            events.push(Ok(StreamEvent::BlockEnd {
+            });
+            events.push(StreamEvent::BlockEnd {
                 id: BlockId::wire(id.clone()),
                 end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Drop)),
                 block: None,
-            }));
+            });
         }
         Turn::Rich { text, .. } => {
             // A whole reasoning block restated at its (wire-sent) end.
             let whole = MintKind::Reasoning.for_wire_index(1);
-            events.push(Ok(StreamEvent::BlockStart {
+            events.push(StreamEvent::BlockStart {
                 id: whole.clone(),
                 kind: BlockKind::Reasoning { provider_id: None },
-            }));
-            events.push(Ok(StreamEvent::BlockEnd {
+            });
+            events.push(StreamEvent::BlockEnd {
                 id: whole,
                 end: BlockClose::Reasoning {
                     reasoning: Some(Reasoning {
@@ -326,80 +328,150 @@ fn stream_from_script(
                     wire_sent: true,
                 },
                 block: None,
-            }));
-            events.push(Ok(StreamEvent::BlockDelta {
+            });
+            events.push(StreamEvent::BlockDelta {
                 id: MintKind::Reasoning.for_wire_index(2),
                 delta: Delta::Reasoning {
                     text: "reasoning delta".to_owned(),
                 },
-            }));
-            events.push(Ok(StreamEvent::Unknown(
+            });
+            // A boundary-less wire's decoder closes the minted part before
+            // other content, as the driver's sequence laws require.
+            events.push(StreamEvent::BlockEnd {
+                id: MintKind::Reasoning.for_wire_index(2),
+                end: BlockClose::Reasoning {
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: false,
+                },
+                block: None,
+            });
+            events.push(StreamEvent::Unknown(
                 serde_json::json!({
                     "type": "provider_native_event",
                     "provider": script.provider,
                 })
                 .into(),
-            )));
-            events.push(Ok(StreamEvent::text(text_block, text.clone())));
+            ));
+            events.push(StreamEvent::text(text_block, text.clone()));
         }
         // Handled by the early return above.
         Turn::Error(_) => return Err(ProviderError::Provider("unreachable".to_owned())),
     }
-    events.push(Ok(StreamEvent::Final(
+    events.push(StreamEvent::Final(
         StreamFinal::new(script.provider, turn.usage(), serde_json::json!({}))
             .with_message_id(turn.message_id()),
-    )));
+    ));
 
-    Ok(StreamingCompletionResponse::stream(
-        script.provider,
-        Box::pin(stream::iter(events)),
-    ))
+    Ok(events)
 }
 
+/// One unit of a fake reply: the whole unary response, or one stream event.
+enum FakeFrame {
+    Whole(Box<CompletionResponse>),
+    Event(StreamEvent),
+}
+
+type FakeReply = Pin<Box<dyn Future<Output = Opened<CompletionRequest, StreamEvent>> + Send>>;
+type FakeSend = dyn Fn(CompletionRequest, Mode) -> Result<FakeReply, ProviderError> + Send + Sync;
+
+/// A test completion transport behind a [`Local`] wire: `send` answers each
+/// attempt with the reply's canonical events.
 #[derive(Clone)]
-struct AlphaModel(Arc<Script>);
+struct Fake {
+    send: Arc<FakeSend>,
+    /// The script a scripted model answers from.
+    script: Option<Arc<Script>>,
+}
 
-#[derive(Clone)]
-struct BetaModel(Arc<Script>);
+impl Fake {
+    fn model(
+        provider: &'static str,
+        send: impl Fn(CompletionRequest, Mode) -> Result<FakeReply, ProviderError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> FakeModel {
+        Model::new(
+            Local::new(provider),
+            Self {
+                send: Arc::new(send),
+                script: None,
+            },
+        )
+    }
+}
 
-macro_rules! impl_test_model {
-    ($model:ty) => {
-        impl CompletionModel for $model {
-            async fn completion(
-                &self,
-                request: CompletionRequest,
-            ) -> Result<CompletionResponse, ProviderError> {
-                completion_from_script(&self.0, request)
+type FakeModel = Model<Local<Completion>, Fake>;
+
+/// A reply of `frames`, ready at once. A whole response is expanded to its
+/// events through the helper adapters use and is the reply's document.
+fn replied(frames: Vec<FakeFrame>) -> FakeReply {
+    let mut document = None;
+    let mut events = Vec::new();
+    for frame in frames {
+        match frame {
+            FakeFrame::Whole(response) => {
+                document = Some(response.raw.clone());
+                let mut out = AdapterOutput::scripted();
+                out.response(&response, ImagePart::Block);
+                events.extend(out.into_items());
             }
-
-            async fn stream(
-                &self,
-                request: CompletionRequest,
-            ) -> Result<StreamingCompletionResponse, ProviderError> {
-                stream_from_script(&self.0, request)
-            }
-
-            fn capabilities(&self) -> ProviderCapabilities {
-                ProviderCapabilities::new()
-                    .with_native_output_tool_composition(self.0.composes_native_output_with_tools)
-            }
+            FakeFrame::Event(event) => events.push(Ok(event)),
         }
-    };
+    }
+    Box::pin(std::future::ready(Opened {
+        document,
+        ..Opened::new(stream::iter(events))
+    }))
 }
 
-impl_test_model!(AlphaModel);
-impl_test_model!(BetaModel);
+impl Transport<Local<Completion>> for Fake {
+    fn send(
+        &self,
+        request: CompletionRequest,
+        mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<CompletionRequest, StreamEvent>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        (self.send)(request, mode)
+    }
+}
 
-fn alpha_static(text: &str) -> AlphaModel {
-    AlphaModel(Script::new(
+/// The script `model` answers from.
+fn script_of(model: &FakeModel) -> Arc<Script> {
+    Arc::clone(model.transport.script.as_ref().expect("a scripted model"))
+}
+
+/// A model answering from `script`.
+fn scripted(script: Arc<Script>) -> FakeModel {
+    let composes = script.composes_native_output_with_tools;
+    let kept = Arc::clone(&script);
+    let mut model = Fake::model(script.provider, move |request, mode| match mode {
+        Mode::Unary => completion_from_script(&script, request)
+            .map(|response| replied(vec![FakeFrame::Whole(Box::new(response))])),
+        Mode::Streaming => stream_from_script(&script, request)
+            .map(|events| replied(events.into_iter().map(FakeFrame::Event).collect())),
+    });
+    model.wire = model.wire.with_capabilities(
+        ProviderCapabilities::new().with_native_output_tool_composition(composes),
+    );
+    model.transport.script = Some(kept);
+    model
+}
+
+fn alpha_static(text: &str) -> FakeModel {
+    scripted(Script::new(
         "alpha",
         [],
         Turn::text(text, 1, "alpha-message"),
     ))
 }
 
-fn beta_static(text: &str) -> BetaModel {
-    BetaModel(Script::new("beta", [], Turn::text(text, 2, "beta-message")))
+fn beta_static(text: &str) -> FakeModel {
+    scripted(Script::new("beta", [], Turn::text(text, 2, "beta-message")))
 }
 
 fn request(prompt: &str) -> CompletionRequest {
@@ -445,14 +517,13 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     assert_agent_stream(alpha_agent.prompt("stream type").stream());
 
     let unary = alpha
-        .completion(request("low-level unary"))
+        .call(request("low-level unary"))
         .await
         .expect("direct unary response");
     assert_eq!(unary.provider, "alpha");
 
     let mut low_level_stream = beta
         .stream(request("low-level stream"))
-        .await
         .expect("direct provider stream");
     let mut stream_final: Option<StreamFinal> = None;
     while let Some(item) = low_level_stream.next().await {
@@ -473,7 +544,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
         usage: usage(3),
         message_id: "extract-message".to_owned(),
     };
-    let extracted = ExtractorBuilder::<ExtractedValue>::new(AlphaModel(Script::new(
+    let extracted = ExtractorBuilder::<ExtractedValue>::new(scripted(Script::new(
         "extractor",
         [extraction_turn.clone()],
         extraction_turn,
@@ -486,7 +557,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
 
     let diagnostic = AgentBuilder::named_model("diagnostic-alpha", alpha).build();
     assert_eq!(
-        diagnostic.model_ref(),
+        diagnostic.model_label(),
         Some(ModelRef::from("diagnostic-alpha")),
         "the agent's default model is addressed by its registered label"
     );
@@ -528,7 +599,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
     let original = AgentBuilder::named_model("alpha", alpha.clone())
         .model_route("beta", beta.clone())
         .build();
-    let changed_clone = original.clone().with_model_ref("beta");
+    let changed_clone = original.clone().with_model_label("beta");
     assert_eq!(
         original.prompt("original").await.expect("original").output,
         "alpha"
@@ -649,7 +720,7 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
 #[tokio::test]
 async fn model_selection_stop_cancels_before_provider_execution() {
     let blocking_model = alpha_static("must not execute");
-    let blocking_script = blocking_model.0.clone();
+    let blocking_script = script_of(&blocking_model);
     let blocking_completion_calls = Arc::new(AtomicUsize::new(0));
     let error = AgentBuilder::new(blocking_model)
         .build()
@@ -670,7 +741,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
     assert_eq!(blocking_completion_calls.load(Ordering::SeqCst), 1);
 
     let streaming_model = alpha_static("must not stream");
-    let streaming_script = streaming_model.0.clone();
+    let streaming_script = script_of(&streaming_model);
     let streaming_completion_calls = Arc::new(AtomicUsize::new(0));
     let mut stream = AgentBuilder::new(streaming_model)
         .build()
@@ -728,13 +799,13 @@ async fn extraction_override_is_run_local_and_sets_each_retry_default() {
         ],
         specialist_turn,
     );
-    let extractor = ExtractorBuilder::<ExtractedValue>::new(AlphaModel(default_script.clone()))
+    let extractor = ExtractorBuilder::<ExtractedValue>::new(scripted(default_script.clone()))
         .retries(1)
         .build();
 
     let specialist = extractor
         .extract("use the specialist")
-        .using_model_value(BetaModel(specialist_script.clone()))
+        .using_model_value(scripted(specialist_script.clone()))
         .await
         .expect("run-local extraction override");
     assert_eq!(specialist.output.value, "specialist");
@@ -743,7 +814,7 @@ async fn extraction_override_is_run_local_and_sets_each_retry_default() {
 
     let typed = extractor
         .extract("use a typed model value")
-        .using_model_value(BetaModel(Script::new("typed", [], typed_turn)))
+        .using_model_value(scripted(Script::new("typed", [], typed_turn)))
         .await
         .expect("typed extraction override");
     assert_eq!(typed.output.value, "typed specialist");
@@ -760,9 +831,9 @@ async fn extraction_override_is_run_local_and_sets_each_retry_default() {
 #[tokio::test]
 async fn extraction_retries_reenter_model_selection_hooks() {
     let default = alpha_static("default must not execute");
-    let default_script = default.0.clone();
+    let default_script = script_of(&default);
     let first = alpha_static("retry without submit");
-    let first_script = first.0.clone();
+    let first_script = script_of(&first);
     let submit_turn = Turn::Tool {
         id: "routed-submit".to_owned(),
         name: "submit".to_owned(),
@@ -770,8 +841,8 @@ async fn extraction_retries_reenter_model_selection_hooks() {
         usage: usage(2),
         message_id: "routed-extraction".to_owned(),
     };
-    let second = BetaModel(Script::new("second", [submit_turn.clone()], submit_turn));
-    let second_script = second.0.clone();
+    let second = scripted(Script::new("second", [submit_turn.clone()], submit_turn));
+    let second_script = script_of(&second);
     let selections = Arc::new(Mutex::new(Vec::new()));
     let selections_for_hook = selections.clone();
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -893,12 +964,12 @@ impl AgentHook for LifecycleLog {
     }
 }
 
-fn routing_models() -> (AlphaModel, BetaModel) {
+fn routing_models() -> (FakeModel, FakeModel) {
     let alpha_turn = Turn::tool("lookup", 3, "alpha-tool-message");
     let beta_turn = Turn::text("synthesized answer", 5, "beta-answer-message");
     (
-        AlphaModel(Script::new("alpha", [alpha_turn.clone()], alpha_turn)),
-        BetaModel(Script::new("beta", [beta_turn.clone()], beta_turn)),
+        scripted(Script::new("alpha", [alpha_turn.clone()], alpha_turn)),
+        scripted(Script::new("beta", [beta_turn.clone()], beta_turn)),
     )
 }
 
@@ -916,8 +987,8 @@ fn history_has_tool_result(request: &CompletionRequest) -> bool {
 async fn runner_default_is_used_for_every_attempt_without_a_selecting_hook() {
     let first = Turn::tool("lookup", 2, "default-tool-message");
     let second = Turn::text("default final", 3, "default-final-message");
-    let model = AlphaModel(Script::new("default", [first, second.clone()], second));
-    let script = model.0.clone();
+    let model = scripted(Script::new("default", [first, second.clone()], second));
+    let script = script_of(&model);
 
     let output = AgentBuilder::new(model)
         .tool(LookupTool {
@@ -943,7 +1014,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         Vec<String>,
     ) {
         let (alpha, beta) = routing_models();
-        let beta_script = beta.0.clone();
+        let beta_script = script_of(&beta);
         let calls = Arc::new(AtomicUsize::new(0));
         let lifecycle = LifecycleLog::default();
         let selected = Arc::new(Mutex::new(Vec::new()));
@@ -991,7 +1062,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         Vec<rig_core::streaming::BlockId>,
     ) {
         let (alpha, beta) = routing_models();
-        let beta_script = beta.0.clone();
+        let beta_script = script_of(&beta);
         let calls = Arc::new(AtomicUsize::new(0));
         let lifecycle = LifecycleLog::default();
         let selected = Arc::new(Mutex::new(Vec::new()));
@@ -1131,7 +1202,7 @@ impl AgentHook for RetryFirst {
 async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
     let alpha = alpha_static("rejected draft");
     let beta = beta_static("accepted answer");
-    let beta_script = beta.0.clone();
+    let beta_script = script_of(&beta);
     let selections = Arc::new(Mutex::new(Vec::new()));
     let selections_for_router = selections.clone();
 
@@ -1196,7 +1267,7 @@ impl AgentHook for RetryInvalidTool {
 #[tokio::test]
 async fn invalid_tool_retry_reenters_selection_exactly_once() {
     let invalid = Turn::tool("missing_tool", 2, "invalid-tool-message");
-    let alpha = AlphaModel(Script::new("alpha", [invalid.clone()], invalid));
+    let alpha = scripted(Script::new("alpha", [invalid.clone()], invalid));
     let beta = beta_static("recovered after invalid tool");
     let selections = Arc::new(Mutex::new(Vec::new()));
     let selections_for_router = selections.clone();
@@ -1233,7 +1304,7 @@ async fn invalid_tool_retry_reenters_selection_exactly_once() {
 #[tokio::test]
 async fn normalized_stream_preserves_events_message_id_and_usage() {
     let rich = Turn::rich("final text", 13, "rich-message-id");
-    let alpha = AlphaModel(Script::new("alpha", [rich.clone()], rich));
+    let alpha = scripted(Script::new("alpha", [rich.clone()], rich));
     let agent = AgentBuilder::new(alpha).build();
     let mut stream = agent.prompt("rich stream").stream();
     let mut saw_reasoning = false;
@@ -1288,19 +1359,19 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
 #[tokio::test]
 async fn selected_model_capability_is_used_for_each_prepared_attempt() {
     let composing_turn = Turn::text("retry me", 1, "compose-message");
-    let composing = BetaModel(Script::composing(
+    let composing = scripted(Script::composing(
         "composing",
         [composing_turn.clone()],
         composing_turn,
     ));
-    let composing_script = composing.0.clone();
+    let composing_script = script_of(&composing);
     let noncomposing_turn = Turn::text("accepted", 1, "noncompose-message");
-    let noncomposing = AlphaModel(Script::new(
+    let noncomposing = scripted(Script::new(
         "noncomposing",
         [noncomposing_turn.clone()],
         noncomposing_turn,
     ));
-    let noncomposing_script = noncomposing.0.clone();
+    let noncomposing_script = script_of(&noncomposing);
     let _response = AgentBuilder::named_model("composing", composing)
         .model_route("noncomposing", noncomposing)
         .output_schema::<ExtractedValue>()
@@ -1351,55 +1422,47 @@ async fn selected_model_capability_is_used_for_each_prepared_attempt() {
     );
 }
 
-#[derive(Clone)]
-struct GatedToolModel {
-    started: Arc<Notify>,
-    release: Arc<Notify>,
-}
-
-impl CompletionModel for GatedToolModel {
-    async fn completion(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        self.started.notify_one();
-        self.release.notified().await;
-        let turn = Turn::tool("lookup", 3, "gated-tool-message");
-        Ok(
-            CompletionResponse::new(turn.choice(), turn.usage(), "gated", serde_json::json!({}))
-                .with_message_id(turn.message_id()),
-        )
-    }
-
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Ok(StreamingCompletionResponse::stream(
-            "gated",
-            Box::pin(stream::iter([
-                Ok(StreamEvent::text(
+/// Answers a unary call with a tool call once `release` is notified,
+/// after notifying `started`.
+fn gated_tool_model(started: Arc<Notify>, release: Arc<Notify>) -> FakeModel {
+    Fake::model("gated", move |_request, mode| {
+        Ok(match mode {
+            Mode::Unary => {
+                let (started, release) = (started.clone(), release.clone());
+                Box::pin(async move {
+                    started.notify_one();
+                    release.notified().await;
+                    let turn = Turn::tool("lookup", 3, "gated-tool-message");
+                    let response = CompletionResponse::new(
+                        turn.choice(),
+                        turn.usage(),
+                        "gated",
+                        serde_json::json!({}),
+                    )
+                    .with_message_id(turn.message_id());
+                    replied(vec![FakeFrame::Whole(Box::new(response))]).await
+                }) as FakeReply
+            }
+            Mode::Streaming => replied(vec![
+                FakeFrame::Event(StreamEvent::text(
                     MintKind::Text.for_wire_index(0),
                     "unused",
                 )),
-                Ok(StreamEvent::Final(StreamFinal::new(
+                FakeFrame::Event(StreamEvent::Final(StreamFinal::new(
                     "gated",
                     usage(1),
                     serde_json::json!({}),
                 ))),
-            ])),
-        ))
-    }
+            ]),
+        })
+    })
 }
 
 #[tokio::test]
 async fn routing_changes_cannot_rebind_an_in_flight_attempt_but_affect_the_next_call() {
-    let gated = GatedToolModel {
-        started: Arc::new(Notify::new()),
-        release: Arc::new(Notify::new()),
-    };
-    let started = gated.started.clone();
-    let release = gated.release.clone();
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let gated = gated_tool_model(started.clone(), release.clone());
     let use_beta = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let use_beta_for_router = use_beta.clone();
     let tool_calls = Arc::new(AtomicUsize::new(0));
@@ -1448,31 +1511,21 @@ impl Drop for DropGuard {
     }
 }
 
-#[derive(Clone)]
-struct PendingUnaryModel {
-    started: Arc<Notify>,
-    dropped: Arc<AtomicUsize>,
-}
-
-impl CompletionModel for PendingUnaryModel {
-    async fn completion(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        let _guard = DropGuard(self.dropped.clone());
-        self.started.notify_one();
-        std::future::pending::<Result<CompletionResponse, ProviderError>>().await
-    }
-
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Ok(StreamingCompletionResponse::stream(
-            "pending",
-            Box::pin(stream::empty()),
-        ))
-    }
+/// A unary call that never answers; its attempt counts a drop in `dropped`.
+fn pending_unary_model(started: Arc<Notify>, dropped: Arc<AtomicUsize>) -> FakeModel {
+    Fake::model("pending", move |_request, mode| {
+        Ok(match mode {
+            Mode::Unary => {
+                let (started, dropped) = (started.clone(), dropped.clone());
+                Box::pin(async move {
+                    let _guard = DropGuard(dropped);
+                    started.notify_one();
+                    std::future::pending::<Opened<CompletionRequest, StreamEvent>>().await
+                }) as FakeReply
+            }
+            Mode::Streaming => replied(Vec::new()),
+        })
+    })
 }
 
 struct PendingRawStream {
@@ -1499,46 +1552,33 @@ impl Drop for PendingRawStream {
     }
 }
 
-#[derive(Clone)]
-struct PendingStreamingModel {
-    started: Arc<Notify>,
-    dropped: Arc<AtomicUsize>,
-}
-
-impl CompletionModel for PendingStreamingModel {
-    async fn completion(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        Ok(CompletionResponse::new(
-            vec![AssistantContent::text("unused")],
-            Usage::default(),
-            "pending",
-            serde_json::json!({}),
-        ))
-    }
-
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        let raw: rig_agent::streaming::StreamingResult = Box::pin(PendingRawStream {
-            started: self.started.clone(),
-            dropped: self.dropped.clone(),
-            notified: false,
-        });
-        Ok(StreamingCompletionResponse::stream("pending", raw))
-    }
+/// A stream that never yields; dropping it counts in `dropped`.
+fn pending_streaming_model(started: Arc<Notify>, dropped: Arc<AtomicUsize>) -> FakeModel {
+    Fake::model("pending", move |_request, mode| {
+        Ok(match mode {
+            Mode::Unary => replied(vec![FakeFrame::Whole(Box::new(CompletionResponse::new(
+                vec![AssistantContent::text("unused")],
+                Usage::default(),
+                "pending",
+                serde_json::json!({}),
+            )))]),
+            Mode::Streaming => Box::pin(std::future::ready(Opened::new(PendingRawStream {
+                started: started.clone(),
+                dropped: dropped.clone(),
+                notified: false,
+            }))),
+        })
+    })
 }
 
 #[tokio::test]
 async fn dropping_pending_unary_and_streaming_attempts_cancels_by_drop() {
     let unary_started = Arc::new(Notify::new());
     let unary_dropped = Arc::new(AtomicUsize::new(0));
-    let unary_agent = AgentBuilder::new(PendingUnaryModel {
-        started: unary_started.clone(),
-        dropped: unary_dropped.clone(),
-    })
+    let unary_agent = AgentBuilder::new(pending_unary_model(
+        unary_started.clone(),
+        unary_dropped.clone(),
+    ))
     .build();
     let unary_task = tokio::spawn(async move { unary_agent.prompt("pending unary").await });
     wait_for_notification(&unary_started).await;
@@ -1548,10 +1588,10 @@ async fn dropping_pending_unary_and_streaming_attempts_cancels_by_drop() {
 
     let stream_started = Arc::new(Notify::new());
     let stream_dropped = Arc::new(AtomicUsize::new(0));
-    let stream_agent = AgentBuilder::new(PendingStreamingModel {
-        started: stream_started.clone(),
-        dropped: stream_dropped.clone(),
-    })
+    let stream_agent = AgentBuilder::new(pending_streaming_model(
+        stream_started.clone(),
+        stream_dropped.clone(),
+    ))
     .build();
     let pending_stream = stream_agent.prompt("pending stream").stream();
     let stream_task = tokio::spawn(async move {
@@ -1659,7 +1699,7 @@ async fn drain_stream(mut stream: StreamingResult) -> Result<(), StreamingError>
 async fn model_selection_hooks_observe_the_merged_request_patch_on_both_surfaces() {
     for streaming in [false, true] {
         let model = alpha_static("patched");
-        let script = model.0.clone();
+        let script = script_of(&model);
         let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
         // Two patching hooks: the selection event must observe their MERGED
         // patch (temperature from the first, preamble from the second).
@@ -1697,7 +1737,7 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
     for streaming in [false, true] {
         let alpha = alpha_static("alpha answer");
         let beta = beta_static("beta answer");
-        let beta_script = beta.0.clone();
+        let beta_script = script_of(&beta);
         // The completion-call hook escalates via a patch; the selection hook
         // routes to beta exactly when it observes the escalation marker.
         let agent = AgentBuilder::new(alpha)
@@ -1744,7 +1784,7 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
 async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() {
     for streaming in [false, true] {
         let model = alpha_static("must not run");
-        let script = model.0.clone();
+        let script = script_of(&model);
         let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
         let agent = AgentBuilder::new(model)
             .add_hook(StopCompletionCall)
@@ -1789,8 +1829,8 @@ async fn failed_preparation_follows_selection_and_does_not_issue_an_attempt() {
         // patch names a tool that does not exist, so preparation fails after
         // model selection resolves.
         let alpha_turn = Turn::tool("lookup", 3, "alpha-tool-message");
-        let model = AlphaModel(Script::new("alpha", [alpha_turn.clone()], alpha_turn));
-        let script = model.0.clone();
+        let model = scripted(Script::new("alpha", [alpha_turn.clone()], alpha_turn));
+        let script = script_of(&model);
         let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
         let bad_patch = BadSecondTurnPatch;
         let agent = AgentBuilder::named_model("alpha", model.clone())
@@ -1861,12 +1901,12 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         // provider-error path is asserted below to issue exactly one request
         // and fail with the provider error (not a cancellation), proving the
         // attempt was issued after selection resolved.
-        let flaky = AlphaModel(Script::new(
+        let flaky = scripted(Script::new(
             "flaky",
             [Turn::error("provider exploded")],
             Turn::text("unreachable", 1, "unreachable-message"),
         ));
-        let script = flaky.0.clone();
+        let script = script_of(&flaky);
         let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
         let agent = AgentBuilder::named_model("flaky", flaky)
             .add_hook(observing_selector(observations.clone()))
@@ -1905,7 +1945,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
     // previous_model == "alpha" even though nothing from that attempt was
     // committed.
     let invalid = Turn::tool("missing_tool", 2, "invalid-message");
-    let alpha = AlphaModel(Script::new("alpha", [invalid.clone()], invalid));
+    let alpha = scripted(Script::new("alpha", [invalid.clone()], invalid));
     let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
     let observations_for_router = observations.clone();
     let output = AgentBuilder::named_model("alpha", alpha)
@@ -1964,7 +2004,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
 
     let label = agent.register_model(
         "alpha",
-        BetaModel(Script::composing(
+        scripted(Script::composing(
             "beta",
             [],
             Turn::text("two", 2, "beta-message"),
@@ -1983,7 +2023,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
         before, after,
         "a handle bound before the swap reports the new descriptor"
     );
-    assert_eq!(handle.model_ref().as_str(), "alpha");
+    assert_eq!(handle.label().as_str(), "alpha");
     drop((agent, dispatcher, handle));
     task.await.expect("driver task");
 }

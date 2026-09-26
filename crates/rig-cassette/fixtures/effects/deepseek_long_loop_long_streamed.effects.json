@@ -383,6 +383,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'll start by listing the repository files."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 722,
@@ -6478,6 +6489,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "done"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "done"
           }
         },

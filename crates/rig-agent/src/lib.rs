@@ -19,8 +19,9 @@
 //! is provided by the native-only `rig-rmcp` crate.
 //!
 //! ```
-//! use rig_agent::{Agent, AgentBuilder, core::completion::CompletionModel};
-//! fn assistant(model: impl CompletionModel + 'static) -> Agent {
+//! use rig_agent::core::{DynModel, operation::Completion};
+//! use rig_agent::{Agent, AgentBuilder};
+//! fn assistant(model: impl Into<DynModel<Completion>>) -> Agent {
 //!     AgentBuilder::new(model).preamble("Be concise.").build()
 //! }
 //! ```
@@ -41,7 +42,6 @@ pub mod core {
 
 pub mod agent;
 pub mod bus;
-pub mod client;
 pub mod completion;
 pub mod extractor;
 /// Ready-made integrations: the CLI chatbot.

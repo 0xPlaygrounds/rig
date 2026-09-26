@@ -1,7 +1,5 @@
 //! llama.cpp context smoke test.
 
-use rig::prelude::*;
-
 use super::super::cassette_support::*;
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
@@ -11,9 +9,10 @@ async fn context_smoke() {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(CASSETTE_MODEL), |builder, doc| {
-                builder.context(doc)
-            })
+            .fold(
+                rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL))),
+                |builder, doc| builder.context(doc),
+            )
             .build();
 
         let response = agent

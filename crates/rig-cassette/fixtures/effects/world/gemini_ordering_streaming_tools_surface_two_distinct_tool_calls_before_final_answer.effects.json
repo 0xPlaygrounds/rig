@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 5,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,14 +32,14 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 11,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -50,11 +50,19 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 4
         }
       },
       {
-        "batch": 17,
+        "batch": 18,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -753,6 +761,15 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "CiIBaRR9E/s8BP5WMjX1UfTAX5dHpNoqyRv+XwNAm09tLbOAClkBaRR9E5ph7lK2i9e+V1Laqm7Ec4s1GjPIksVCIHlENNM0Lo5cgMN+HapPKzks2SAJWgZhTajiUGR17aJls0I7F7OcrEJEffmQUlK32QwJWIY5CB9+JVBNKwqxAQFpFH0Tsi3ZMRVLH/2W7745H+VTh24d/jeBQCtE+UIzPODlAhgz7jquK5tv7zNdkjsd54ij6AYfFzpm9PM2Mr6CFJI4uFg5aQpw5npGDgOYJWrdHiuc8AGtI9jSN84RZX9r/3LdIRnK34vzFoXSW7NLP51fZnWbftfdE8MfFYloXsAvqgsgJQJYMU1Sl7IyvXAX8lcHzwiJF0xp/VCm7IMnsq78HOEfulo/vEDBsC/qpgpmAWkUfRPRigTiD+l0DVhjXnTWKNV3jbqKfJ+D0JG9glcweOlO5S4a9oWt1Wgk6jgyHZSbONN6AnCV3yHCOrqOIqI1xo3MJnLN+P1DlyCVB2maRB1/eMFDS3NiM2ZJh6NzPDJouMAY"
+              }
+            }
           }
         },
         {

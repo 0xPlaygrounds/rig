@@ -662,6 +662,7 @@ dependencies = [
 name = "rig-agent-run-stepper-fixture"
 version = "0.0.0"
 dependencies = [
+ "futures",
  "rig-agent",
  "rig-core",
  "serde_json",
@@ -688,7 +689,6 @@ dependencies = [
  "sha2",
  "thiserror",
  "tracing",
- "tracing-futures",
  "url",
 ]
 

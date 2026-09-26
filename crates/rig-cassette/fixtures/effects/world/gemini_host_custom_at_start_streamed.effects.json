@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 5,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,7 +17,7 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -25,7 +25,7 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -191,6 +191,10 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "ready."
           }
         },
         {
@@ -217,6 +221,15 @@
           "id": "minted:text:1",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "EuACCt0CAWkUfRPY9afkIVxKRlZgDwU0pKqD4XxKOr1285oOJdGALuHH3C3M6Vhkbq+PC3vzZkHv3gz8EIzzVnsAG9GwHACa1OnRewHGtbf2PXLU3RXz/XsmY2fBgrShDFE1q9LOBgonO+5Bse75m+ZQ2El+shLWtnLK3UVDsieZPgcmN5HqmzednFYL4Ush078LMhtApB8dS2oeTcTWetUvLSxfMFGKwW4bKTOEEhtBVDvWpL/POefFjsR8BYNa6CSUYUOJDdJpMZQ52K9URKABOcpqlk/GkDWT9vQT8MuWe9uccXRM5KMhCtWviBQ62Nf+xtCj2whTXuaSYCbjPa+2SrSVuVcTzEnUBMzhPDw9AJGQAdOFdhUxFyO62OfH+ehw522kD8yPB6v71uWZHS7rEmMWWSudHKpgtHaj+SaqjculTCJERcqRPAN+Th8RHCkBK4QWoAEmJbyoKRAV3C2uuA=="
+              }
+            }
           }
         },
         {

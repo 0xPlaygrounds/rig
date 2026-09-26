@@ -9,19 +9,11 @@
         }
       },
       {
-        "batch": 7,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -45,7 +37,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -53,36 +45,36 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
-        "id": 1,
-        "kind": {
-          "delivery": "outcome"
+          "items": 4
         }
       },
       {
         "batch": 13,
-        "id": 2,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
+        "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 14,
-        "id": 3,
+        "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
-        "id": 4,
+        "batch": 15,
+        "id": 3,
         "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
@@ -90,7 +82,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
@@ -106,18 +98,26 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 24,
+        "batch": 25,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 25,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 25,
+        "batch": 26,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -475,6 +475,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'll call both tools simultaneously right now!"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 700,
@@ -784,6 +795,17 @@
           "delta": {
             "delta": "text",
             "text": "silver-orchard**."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**."
           }
         },
         {

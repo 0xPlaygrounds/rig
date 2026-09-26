@@ -18,7 +18,7 @@ use super::{
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     Reply as CoreReply, Serve,
-    adapters::{CompletionAdapter, MemoryAdapter, RerankAdapter, ToolAdapter, ToolFn},
+    adapters::{MemoryAdapter, ModelAdapter, ToolAdapter, ToolFn},
 };
 use rig_core::{
     completion::{CompletionRequest, Message},
@@ -30,7 +30,7 @@ use rig_core::{
     id::ConversationId,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
-    rerank::{RerankModel, RerankResponse, RerankResult},
+    rerank::{RerankResponse, RerankResult},
     streaming::StreamEvent,
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolContext, ToolExecutionError, ToolOutput},
@@ -774,7 +774,7 @@ async fn streaming_completion_flows_through_the_bus_final_terminated() {
         MockStreamEvent::final_response_with_total_tokens(7),
     ]]);
     driver
-        .register("model", CompletionAdapter::new("mock", model))
+        .register("model", ModelAdapter::new("mock", model))
         .expect("register");
     let _task = spawn(driver);
 
@@ -807,7 +807,7 @@ async fn a_unary_dispatch_of_a_streaming_completion_folds_to_the_response() {
         MockStreamEvent::final_response_with_total_tokens(3),
     ]]);
     driver
-        .register("model", CompletionAdapter::new("mock", model))
+        .register("model", ModelAdapter::new("mock", model))
         .expect("register");
     let _task = spawn(driver);
 
@@ -826,7 +826,7 @@ async fn a_unary_dispatch_of_a_unary_script_resolves_the_completion() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     let model = MockCompletionModel::from_turns([MockTurn::text("whole")]);
     driver
-        .register("model", CompletionAdapter::new("mock", model))
+        .register("model", ModelAdapter::new("mock", model))
         .expect("register");
     let _task = spawn(driver);
 
@@ -1184,7 +1184,7 @@ fn an_effect_stream_polls_cleanly_without_any_runtime() {
         MockStreamEvent::final_response_with_total_tokens(2),
     ]]);
     driver
-        .register("model", CompletionAdapter::new("mock", model))
+        .register("model", ModelAdapter::new("mock", model))
         .expect("register");
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
@@ -1219,7 +1219,7 @@ fn register_refuses_a_family_change_under_a_live_key() {
     let refused = registrar
         .register(
             "k",
-            CompletionAdapter::new("mock", MockCompletionModel::text("x")),
+            ModelAdapter::new("mock", MockCompletionModel::text("x")),
         )
         .expect_err("a Completion handler cannot replace a Custom one");
     assert_eq!(refused.kind, ErrorKind::HandlerUnavailable);
@@ -1293,14 +1293,14 @@ async fn a_typed_view_binds_synchronously_after_a_runtime_registration() {
     registrar
         .register(
             "model",
-            CompletionAdapter::new("mock", MockCompletionModel::text("hi")),
+            ModelAdapter::new("mock", MockCompletionModel::text("hi")),
         )
         .expect("fresh key");
     // Nobody has polled the driver: the descriptor is there, the bind works.
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("bound from the descriptor table");
-    assert_eq!(model.model_ref().as_str(), "mock");
+    assert_eq!(model.label().as_str(), "mock");
     assert_eq!(
         dispatcher
             .descriptor(&HandlerKey::from("model"))
@@ -1522,7 +1522,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
     let key: Key<rig_core::effect::family::Completion> = driver
         .register_typed(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::new(
                 "mock",
                 MockCompletionModel::from_turns([MockTurn::text("typed"), MockTurn::text("typed")]),
             ),
@@ -1545,7 +1545,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
         .await
         .expect("the family's own answer");
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
-    let response = within(model.complete(completion_request_value()))
+    let response = within(model.call(completion_request_value()))
         .await
         .expect("the convenience is the same dispatch");
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
@@ -1564,7 +1564,7 @@ async fn register_typed_refuses_a_handler_of_another_family() {
     let report = registrar
         .register_typed::<rig_core::effect::family::Tool>(
             "model",
-            CompletionAdapter::new("mock", MockCompletionModel::text("x")),
+            ModelAdapter::new("mock", MockCompletionModel::text("x")),
         )
         .expect_err("a completion adapter cannot prove a tool key");
     assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
@@ -1770,13 +1770,11 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
         assert!(ends.contains(id), "block {id} ends before the terminal");
     }
     assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
-    let mut accumulator = rig_core::streaming::BlockAccumulator::new();
+    let mut fold = rig_core::operation::CompletionFold::default();
     for event in &events {
-        accumulator
-            .apply(event)
-            .expect("the accumulator accepts every event");
+        rig_core::wire::Fold::absorb(&mut fold, event).expect("the fold accepts every event");
     }
-    let choice = accumulator.finish();
+    let choice = fold.snapshot();
     assert_eq!(
         choice.len(),
         4,
@@ -1784,62 +1782,78 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
     );
 }
 
-/// A rerank model that counts its clones.
-struct CloneCountingRerank {
-    clones: Arc<AtomicUsize>,
+/// A rerank transport: every document keeps its place at score 1.0, or
+/// the call fails with `failure`; `max_documents` is the wire's capability.
+#[derive(Clone)]
+struct ProbeRerank {
+    max_documents: usize,
+    failure: Option<&'static str>,
 }
 
-impl Clone for CloneCountingRerank {
-    fn clone(&self) -> Self {
-        self.clones.fetch_add(1, Ordering::SeqCst);
-        Self {
-            clones: Arc::clone(&self.clones),
-        }
-    }
-}
-
-impl RerankModel for CloneCountingRerank {
-    fn max_documents(&self) -> usize {
-        7
-    }
-
-    async fn rerank(
-        &self,
-        _query: &str,
-        documents: Vec<String>,
-    ) -> Result<RerankResponse, ProviderError> {
-        Ok(RerankResponse::new(
-            documents
-                .into_iter()
-                .enumerate()
-                .map(|(index, document)| RerankResult {
-                    index,
-                    document: Some(document),
-                    relevance_score: 1.0,
-                })
-                .collect(),
-            "probe",
-        ))
-    }
-}
-
-/// The adapter owns the model by value: no dispatch, through however many
-/// clones of the handle, ever clones it; `max_documents` and the label ride
-/// on the descriptor.
-#[tokio::test]
-async fn a_rerank_adapter_never_clones_the_model_and_publishes_its_batch_size() {
-    let clones = Arc::new(AtomicUsize::new(0));
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver
-        .register(
-            "rerank:probe",
-            RerankAdapter::new(
-                "probe",
-                CloneCountingRerank {
-                    clones: Arc::clone(&clones),
-                },
-            ),
+impl ProbeRerank {
+    fn model(self) -> rig_core::Model<rig_core::driver::Local<rig_core::operation::Rerank>, Self> {
+        rig_core::Model::new(
+            rig_core::driver::Local::new("probe").with_capabilities(self.max_documents),
+            self,
         )
+    }
+}
+
+impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Rerank>>
+    for ProbeRerank
+{
+    fn send(
+        &self,
+        request: rig_core::operation::RerankRequest,
+        _mode: rig_core::wire::Mode,
+        _observation: Option<rig_core::driver::Observation>,
+    ) -> Result<
+        impl Future<
+            Output = rig_core::driver::Opened<rig_core::operation::RerankRequest, RerankResponse>,
+        >
+        + Send
+        + 'static
+        + use<>,
+        ProviderError,
+    > {
+        let failure = self.failure;
+        Ok(async move {
+            match failure {
+                Some(message) => {
+                    rig_core::driver::Opened::failed(ProviderError::Response(message.to_owned()))
+                }
+                None => {
+                    let reply = RerankResponse::new(
+                        request
+                            .documents
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, document)| RerankResult {
+                                index,
+                                document: Some(document),
+                                relevance_score: 1.0,
+                            })
+                            .collect(),
+                        "probe",
+                    );
+                    rig_core::driver::Opened::new(futures::stream::iter([Ok(reply)]))
+                }
+            }
+        })
+    }
+}
+
+/// Every clone of the handle dispatches to the one registered model;
+/// `max_documents` and the label ride on the descriptor.
+#[tokio::test]
+async fn a_rerank_adapter_serves_every_handle_clone_and_publishes_its_batch_size() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let probe = ProbeRerank {
+        max_documents: 7,
+        failure: None,
+    };
+    driver
+        .register("rerank:probe", ModelAdapter::new("probe", probe.model()))
         .expect("register");
     let task = spawn(driver);
 
@@ -1857,9 +1871,8 @@ async fn a_rerank_adapter_never_clones_the_model_and_publishes_its_batch_size() 
             .expect("rerank via clone");
         assert_eq!(via_clone.results[0].document.as_deref(), Some("c"));
     }
-    assert_eq!(clones.load(Ordering::SeqCst), 0);
     assert_eq!(handle.max_documents(), Some(7));
-    assert_eq!(handle.model_label(), "probe");
+    assert_eq!(handle.label(), "probe");
     assert_eq!(
         handle.descriptor().family,
         FamilyDescriptor::Rerank {
@@ -1872,29 +1885,16 @@ async fn a_rerank_adapter_never_clones_the_model_and_publishes_its_batch_size() 
     within(task).await.expect("driver task");
 }
 
-struct NonCloneRerank;
-
-impl RerankModel for NonCloneRerank {
-    fn max_documents(&self) -> usize {
-        1
-    }
-
-    async fn rerank(
-        &self,
-        _query: &str,
-        _documents: Vec<String>,
-    ) -> Result<RerankResponse, ProviderError> {
-        Err(ProviderError::Response("probe".to_owned()))
-    }
-}
-
-/// A model that is not `Clone` registers, and its error crosses the bus as
-/// a classified report.
+/// A rerank model's error crosses the bus as a classified report.
 #[tokio::test]
-async fn a_non_clone_rerank_model_registers_and_its_error_is_a_report() {
+async fn a_rerank_model_error_crosses_the_bus_as_a_report() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let failing = ProbeRerank {
+        max_documents: 1,
+        failure: Some("probe"),
+    };
     driver
-        .register("rerank:once", RerankAdapter::new("once", NonCloneRerank))
+        .register("rerank:once", ModelAdapter::new("once", failing.model()))
         .expect("register");
     let task = spawn(driver);
     let handle: super::RerankHandle = dispatcher
@@ -2050,7 +2050,7 @@ async fn concurrent_agent_wrappers_receive_distinct_recorder_contexts() {
         };
         let (dispatcher, registrar, mut driver) = Bus::channel();
         driver
-            .register("model", CompletionAdapter::new("mock", model.clone()))
+            .register("model", ModelAdapter::new("mock", model.clone()))
             .unwrap();
         let recorder = Counting {
             observation_sink: Some(Arc::new(rig_core::observe::ObservationLog::default())),
@@ -2133,7 +2133,7 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
             };
             let (dispatcher, _registrar, mut driver) = Bus::channel();
             driver
-                .register("model", CompletionAdapter::new("mock", model.clone()))
+                .register("model", ModelAdapter::new("mock", model.clone()))
                 .unwrap();
             let sink = Arc::new(ObservationLog::default());
             let recorder = Counting {
@@ -2151,14 +2151,19 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
             let context =
                 explicit.then(|| AdapterContext::new(sink, Subject::scoped("caller"), "caller"));
             if streamed {
-                let mut stream = handle.stream_with_context(request, context);
+                let mut stream = match context {
+                    Some(context) => handle.stream_observed(request, context),
+                    None => handle.stream(request),
+                };
                 while let Some(event) = within(stream.next()).await {
                     event.unwrap();
                 }
             } else {
-                within(handle.complete_with_context(request, context))
-                    .await
-                    .unwrap();
+                let completion = match context {
+                    Some(context) => handle.call_observed(request, context),
+                    None => handle.call(request),
+                };
+                within(completion).await.unwrap();
             }
             let requests = model.requests();
             assert_eq!(requests.len(), 1);
@@ -2506,7 +2511,7 @@ fn a_bind_on_a_closed_bus_is_bus_closed_not_unavailable() {
     driver
         .register(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::new(
                 "gpt",
                 MockCompletionModel::from_turns([MockTurn::text("hi")]),
             ),

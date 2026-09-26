@@ -5,7 +5,6 @@ use rig::agent::MultiTurnStreamItem;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
 };
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
@@ -68,8 +67,7 @@ impl Tool for HybridImageTool {
 #[tokio::test]
 async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     super::super::support::with_gemini_cassette("streaming_multimodal_tool_results/streaming_history_preserves_hybrid_tool_result_image_parts", |client| async move {
-    let agent = client
-        .agent(MULTIMODAL_FUNCTION_RESPONSE_MODEL)
+    let agent = rig::AgentBuilder::new(rig::model(client.completion(MULTIMODAL_FUNCTION_RESPONSE_MODEL)))
         .preamble(
             "You are a precise assistant. Call `render_reference_image` exactly once before \
              answering. After the tool result arrives, do not call any more tools. Answer in one \

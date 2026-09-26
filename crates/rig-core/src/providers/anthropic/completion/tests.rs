@@ -29,13 +29,14 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
     if let Some(map) = body.as_object_mut() {
         map.entry("type").or_insert_with(|| json!("message"));
     }
-    let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
+    let wire = Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6);
     let mut driver = WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
     driver.push(WireFrame::Text(body.to_string()));
     driver.finish();
-    let mut fold = <Completion as Operation>::fold(&hello_request());
+    let mut fold =
+        <Completion as Operation>::fold(&hello_request(), &wire, crate::wire::Mode::Unary);
     for item in driver.drain() {
-        fold.absorb(item?)?;
+        fold.absorb(&item?)?;
     }
     Fold::<Completion>::finish(
         fold,
@@ -398,7 +399,7 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
         "k",
         &crate::providers::anthropic::wire::ZAI,
     )
-    .messages("some-model")
+    .completion("some-model")
     .with_strict_tools()
     .encode(request, Mode::Unary)
     .expect("the request encodes");
@@ -3403,9 +3404,10 @@ async fn completion_http_non_success_preserves_status_and_body() {
 
     let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
     let http = RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
-    let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
+    let wire = Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6);
 
-    let error = crate::driver::call(&wire, &http, hello_request(), None)
+    let error = crate::driver::Model::new(wire.clone(), http.clone())
+        .call(hello_request())
         .await
         .expect_err("completion should fail with non-success status");
 
@@ -3439,9 +3441,10 @@ async fn completion_2xx_error_envelope_preserves_status_and_body() {
     // status the caller must see.
     let body = r#"{"error":{"message":"model overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
     let http = RecordingHttpClient::new(body); // 200 OK
-    let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
+    let wire = Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6);
 
-    let error = crate::driver::call(&wire, &http, hello_request(), None)
+    let error = crate::driver::Model::new(wire.clone(), http.clone())
+        .call(hello_request())
         .await
         .expect_err("completion should fail with provider error envelope");
 
@@ -3457,9 +3460,9 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
 
     let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
     let http = HttpErrorStreamingClient::new(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
+    let wire = Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6);
 
-    let stream = crate::driver::stream(&wire, &http, hello_request(), None)
+    let stream = crate::driver::tests::stream(&wire, &http, hello_request(), None)
         .expect("the streamed request encodes");
     let mut stream = Box::pin(stream);
 
@@ -3474,7 +3477,7 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
 
     // A rejected SSE handshake is the provider's reply, classified like the
     // unary driver's and the in-band envelopes': one funnel.
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, crate::error::ErrorKind::ProviderResponse);
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -3585,8 +3588,9 @@ mod raw_capture {
     /// normalized response drops.
     #[tokio::test]
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
-        let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
-        let response = crate::driver::call(&wire, &http(), hello_request(), None)
+        let wire = Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6);
+        let response = crate::driver::Model::new(wire.clone(), http())
+            .call(hello_request())
             .await
             .expect("completion");
 

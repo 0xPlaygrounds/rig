@@ -8,14 +8,14 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::super::support::with_gemini_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 struct EventLocation {
@@ -37,25 +37,24 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
     with_gemini_cassette(
         "generate_behaviors/max_tokens_truncation_preserves_finish_reason_and_partial_text",
         |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
             // Thinking is disabled so the token budget is spent on visible
             // text and the truncated candidate still carries partial output.
-            let request = model
-                .completion_request(
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-                .preamble("You are a storyteller.".to_string())
-                .temperature(0.0)
-                .max_tokens(48)
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 0 }
-                    }
-                }))
-                .build();
+            let request = CompletionRequestBuilder::new(
+                "Write a story of at least 150 words about a lighthouse keeper.",
+            )
+            .preamble("You are a storyteller.".to_string())
+            .temperature(0.0)
+            .max_tokens(48)
+            .additional_params(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 0 }
+                }
+            }))
+            .build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("a truncated response should still convert, not error");
 
@@ -100,11 +99,12 @@ async fn structured_output_nested_arrays_and_optional_fields() {
     with_gemini_cassette(
         "generate_behaviors/structured_output_nested_arrays_and_optional_fields",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .output_schema::<EventRecord>()
-                .temperature(0.0)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .output_schema::<EventRecord>()
+            .temperature(0.0)
+            .build();
 
             let response = agent
                 .prompt(

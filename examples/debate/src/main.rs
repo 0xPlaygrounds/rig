@@ -20,18 +20,18 @@ impl Debater {
             .with_max_level(tracing::Level::INFO)
             .with_target(false)
             .init();
-        let openai_client = OpenAI::from_env()?.bound()?;
-        let cohere_client = Cohere::from_env()?.bound()?;
+        let openai_client = OpenAI::from_env()?;
+        let cohere_client = Cohere::from_env()?;
 
         Ok(Self {
-            gpt_4: openai_client
-                .agent(openai::GPT_4)
+            gpt_4: AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4)))
                 .preamble(position_a)
                 .build(),
-            coral: cohere_client
-                .agent(cohere::COMMAND_A_03_2025)
-                .preamble(position_b)
-                .build(),
+            coral: AgentBuilder::new(rig::model(
+                cohere_client.completion(cohere::COMMAND_A_03_2025),
+            ))
+            .preamble(position_b)
+            .build(),
         })
     }
 

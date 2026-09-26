@@ -149,7 +149,7 @@ fn reasoning_end(
             block: None,
         })
         .expect("reasoning ends never fail")
-        .map(|(_, block)| match block {
+        .map(|finalized| match finalized.block {
             AssistantContent::Reasoning(reasoning) => reasoning,
             other => panic!("a reasoning end completed a non-reasoning block: {other:?}"),
         })
@@ -193,7 +193,7 @@ fn tool_end(
             end: BlockClose::ToolCall(end),
             block: None,
         })?
-        .and_then(|(_, block)| match block {
+        .and_then(|finalized| match finalized.block {
             AssistantContent::ToolCall(call) => Some(call),
             AssistantContent::Text(_)
             | AssistantContent::Reasoning(_)
@@ -214,7 +214,7 @@ fn tool_call(
     if let Some(tool_id) = key.wire_str() {
         end = end.with_tool_id(tool_id);
     }
-    let (published, block) = accumulator
+    let finalized = accumulator
         .apply(&StreamEvent::BlockEnd {
             id: key,
             end: BlockClose::ToolCall(end),
@@ -222,8 +222,8 @@ fn tool_call(
         })
         .expect("whole calls never fail")
         .expect("a whole call always finalizes");
-    assert!(matches!(block, AssistantContent::ToolCall(_)));
-    published
+    assert!(matches!(finalized.block, AssistantContent::ToolCall(_)));
+    finalized.id
 }
 
 // --- reasoning lifecycle ---
@@ -533,10 +533,10 @@ fn repeated_bare_ends_are_no_ops() {
     assert_eq!(accumulator.finish().len(), 1);
 }
 
-/// Only a bare end the adapter *synthesized* stays silent on `apply`; the
-/// part it closed is still in the choice.
+/// A bare end the adapter synthesized closes the part like any other end,
+/// and carries it: every end publishes what it finalized.
 #[test]
-fn a_synthesized_bare_end_finalizes_silently() {
+fn a_synthesized_bare_end_carries_the_part_it_closed() {
     let mut accumulator = BlockAccumulator::new();
     reasoning_delta(&mut accumulator, "reasoning-0", "A");
     let completed = accumulator
@@ -550,10 +550,9 @@ fn a_synthesized_bare_end_finalizes_silently() {
             block: None,
         })
         .expect("no error");
-    assert!(
-        completed.is_none(),
-        "a synthesized bare end publishes nothing"
-    );
+    let completed = completed.expect("a bare end carries the part it closed");
+    assert!(!completed.fresh, "closing an open part restates nothing");
+    assert_eq!(reasoning_texts(&[completed.block]), vec!["A"]);
     assert_eq!(reasoning_texts(&accumulator.finish()), vec!["A"]);
 }
 
@@ -1366,8 +1365,8 @@ fn folds_a_provider_less_event_stream() {
         let mut completed = Vec::new();
         let mut events = futures::stream::iter(scripted_turn());
         while let Some(event) = events.next().await {
-            if let Some((id, block)) = accumulator.apply(&event).expect("no error") {
-                completed.push((id, block));
+            if let Some(finalized) = accumulator.apply(&event).expect("no error") {
+                completed.push((finalized.id, finalized.block));
             }
         }
         (accumulator.finish(), completed)
@@ -1502,7 +1501,7 @@ fn an_id_less_tool_call_is_named_by_its_block_deterministically() {
             })
             .expect("end")
             .expect("a completed call");
-        match finalized.1 {
+        match finalized.block {
             AssistantContent::ToolCall(call) => {
                 assert!(call.provider.is_none(), "no provider id existed");
                 call.id.to_string()

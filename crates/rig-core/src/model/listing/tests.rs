@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn test_model_from_id() {
-    let model = Model::from_id("gpt-4");
+    let model = ModelInfo::from_id("gpt-4");
     assert_eq!(model.id, "gpt-4");
     assert_eq!(model.name, None);
     assert_eq!(model.description, None);
@@ -14,29 +14,29 @@ fn test_model_from_id() {
 
 #[test]
 fn test_model_new() {
-    let model = Model::new("gpt-4", "GPT-4");
+    let model = ModelInfo::new("gpt-4", "GPT-4");
     assert_eq!(model.id, "gpt-4");
     assert_eq!(model.name, Some("GPT-4".to_string()));
 }
 
 #[test]
 fn test_model_display_name() {
-    let model_with_name = Model::new("gpt-4", "GPT-4");
+    let model_with_name = ModelInfo::new("gpt-4", "GPT-4");
     assert_eq!(model_with_name.display_name(), "GPT-4");
 
-    let model_without_name = Model::from_id("gpt-4");
+    let model_without_name = ModelInfo::from_id("gpt-4");
     assert_eq!(model_without_name.display_name(), "gpt-4");
 }
 
 #[test]
 fn test_model_display() {
-    let model = Model::new("gpt-4", "GPT-4");
+    let model = ModelInfo::new("gpt-4", "GPT-4");
     assert_eq!(format!("{model}"), "GPT-4");
 }
 
 #[test]
 fn test_model_list_new() {
-    let list = ModelList::new(vec![Model::from_id("gpt-4")]);
+    let list = ModelList::new(vec![ModelInfo::from_id("gpt-4")]);
     assert_eq!(list.len(), 1);
 }
 
@@ -50,8 +50,8 @@ fn test_model_list_empty() {
 #[test]
 fn test_model_list_iter() {
     let list = ModelList::new(vec![
-        Model::from_id("gpt-4"),
-        Model::from_id("gpt-3.5-turbo"),
+        ModelInfo::from_id("gpt-4"),
+        ModelInfo::from_id("gpt-3.5-turbo"),
     ]);
     let models: Vec<_> = list.iter().collect();
     assert_eq!(models.len(), 2);
@@ -60,8 +60,8 @@ fn test_model_list_iter() {
 #[test]
 fn test_model_list_into_iter() {
     let list = ModelList::new(vec![
-        Model::from_id("gpt-4"),
-        Model::from_id("gpt-3.5-turbo"),
+        ModelInfo::from_id("gpt-4"),
+        ModelInfo::from_id("gpt-3.5-turbo"),
     ]);
     let models: Vec<_> = list.into_iter().collect();
     assert_eq!(models.len(), 2);
@@ -135,7 +135,7 @@ fn a_listing_route_is_a_diagnostic_and_is_not_serialized() {
 
 #[test]
 fn test_model_serde() {
-    let model = Model {
+    let model = ModelInfo {
         id: "gpt-4".to_string(),
         name: Some("GPT-4".to_string()),
         description: None,
@@ -150,7 +150,7 @@ fn test_model_serde() {
     assert!(json.contains("gpt-4"));
     assert!(json.contains("GPT-4"));
 
-    let deserialized: Model = serde_json::from_str(&json).unwrap();
+    let deserialized: ModelInfo = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.id, "gpt-4");
     assert_eq!(deserialized.name, Some("GPT-4".to_string()));
 }
@@ -158,7 +158,7 @@ fn test_model_serde() {
 #[test]
 fn test_model_list_serde() {
     let list = ModelList {
-        data: vec![Model::from_id("gpt-4")],
+        data: vec![ModelInfo::from_id("gpt-4")],
     };
 
     let json = serde_json::to_string(&list).unwrap();

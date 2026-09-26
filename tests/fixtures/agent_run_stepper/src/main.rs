@@ -14,22 +14,28 @@
 use std::{
     future::Future,
     pin::{Pin, pin},
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     task::{Context, Poll, Waker},
 };
 
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
-use rig_core::completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionRequestBuilder, CompletionResponse, ModelRef, Usage};
+use rig_core::completion::{AssistantContent, CompletionRequest, CompletionRequestBuilder, ModelRef, Usage};
+use rig_core::driver::{Local, Model, Observation, Opened, Transport};
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
-use rig_core::serve::adapters::CompletionAdapter;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::serve::adapters::ModelAdapter;
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
+use rig_core::streaming::{StreamEvent, StreamFinal};
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::wasm_compat::WasmCompatSend;
 use rig_core::error::ProviderError;
+use rig_core::wire::Mode;
 
 /// Every future here is ready on first poll (a scripted model, in-process
 /// tools); a no-op waker is all the "runtime" this driver needs.
@@ -56,17 +62,28 @@ fn drive<F: Future + Unpin>(mut future: F, driver: &mut BusDriver) -> F::Output 
     }
 }
 
-/// Calls `add(2, 3)` on its first turn, answers "done" on its second.
-#[derive(Default)]
-struct ScriptedModel {
-    calls: AtomicUsize,
+/// Calls `add(2, 3)` on its first turn, answers "done" on its second: the
+/// transport behind a [`Local`] wire, answering with the turn's events.
+#[derive(Clone, Default)]
+struct Scripted {
+    calls: Arc<AtomicUsize>,
 }
 
-impl CompletionModel for ScriptedModel {
-    fn completion(
+impl Transport<Local<Completion>> for Scripted {
+    fn send(
         &self,
         request: CompletionRequest,
-        ) -> impl Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend {
+        mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<CompletionRequest, StreamEvent>> + WasmCompatSend + 'static + use<>,
+        ProviderError,
+    > {
+        if mode == Mode::Streaming {
+            return Err(ProviderError::Provider(
+                "fixture drives unary completions only".to_string(),
+            ));
+        }
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         let choice = if call == 0 {
             // The request must carry the tool the run will call back into.
@@ -88,22 +105,13 @@ impl CompletionModel for ScriptedModel {
         } else {
             vec![AssistantContent::text("done")]
         };
-        std::future::ready(Ok(CompletionResponse::new(
-            choice,
-            Usage::default(),
-            "fixture",
-            serde_json::json!({ "provider": "fixture" }),
-        )))
-    }
-
-    fn stream(
-        &self,
-        _request: CompletionRequest,
-        ) -> impl Future<Output = Result<StreamingCompletionResponse, ProviderError>> + WasmCompatSend
-    {
-        std::future::ready(Err(ProviderError::Provider(
-            "fixture drives unary completions only".to_string(),
-        )))
+        let mut out = AdapterOutput::scripted();
+        out.content(&choice, ImagePart::Block);
+        out.final_record(StreamFinal::new("fixture", Usage::default(), serde_json::Value::Null));
+        Ok(std::future::ready(Opened {
+            document: Some(serde_json::json!({ "provider": "fixture" })),
+            ..Opened::new(futures::stream::iter(out.into_items()))
+        }))
     }
 }
 
@@ -133,10 +141,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver.register(
         "model",
-        CompletionAdapter::new(ModelRef::new("fixture"), ScriptedModel::default()),
+        ModelAdapter::new(
+            ModelRef::new("fixture"),
+            Model::new(Local::new("fixture"), Scripted::default()),
+        ),
     )?;
     let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;
-    assert_eq!(model.model_ref().as_str(), "fixture");
+    assert_eq!(model.label().as_str(), "fixture");
 
     // 2. An erased tool set, pinned into a catalog for the turn.
     let mut tools = ToolSet::default();
@@ -174,9 +185,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let executable = prepared.executable_tool_names.clone();
                 let allowed = prepared.allowed_tool_names.clone();
                 let request = prepared
-                    .apply(CompletionRequestBuilder::unbound(prompt))
+                    .apply(CompletionRequestBuilder::new(prompt))
                     .build();
-                let response = drive(model.complete(request), &mut driver)?;
+                let response = drive(model.call(request), &mut driver)?;
                 model_calls += 1;
                 run.model_response(ModelTurn::new(
                     None,

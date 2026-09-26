@@ -4,7 +4,6 @@ use std::future::IntoFuture;
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::prelude::*;
 use rig::providers::deepseek;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -34,18 +33,15 @@ async fn batch_multi_extract_chain() -> Result<()> {
     with_deepseek_cassette_result(
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
         |client| async move {
-            let names_extractor = client
-                .extractor::<Names>(deepseek::DEEPSEEK_V4_FLASH)
+            let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
                 .append_preamble("Extract names from the given text.")
                 .retries(2)
                 .build();
-            let topics_extractor = client
-                .extractor::<Topics>(deepseek::DEEPSEEK_V4_FLASH)
+            let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
                 .append_preamble("Extract topics from the given text.")
                 .retries(2)
                 .build();
-            let sentiment_extractor = client
-                .extractor::<Sentiment>(deepseek::DEEPSEEK_V4_FLASH)
+            let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
                 .append_preamble("Extract sentiment and confidence from the given text.")
                 .retries(2)
                 .build();

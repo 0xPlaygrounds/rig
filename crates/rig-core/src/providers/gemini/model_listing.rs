@@ -1,7 +1,7 @@
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::{
-    model::{Model, ModelList, listing},
+    model::{ModelInfo, ModelList, listing},
     operation::{ModelListing, Verify},
     providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
@@ -57,7 +57,7 @@ fn normalize_gemini_model_id(name: &str) -> Option<String> {
     }
 }
 
-impl TryFrom<ListModelEntry> for Model {
+impl TryFrom<ListModelEntry> for ModelInfo {
     type Error = MissingModelIdError;
 
     fn try_from(value: ListModelEntry) -> Result<Self, Self::Error> {
@@ -70,7 +70,7 @@ impl TryFrom<ListModelEntry> for Model {
             .or_else(|| normalize_gemini_model_id(&value.name))
             .ok_or(MissingModelIdError)?;
 
-        let mut model = Model::from_id(id);
+        let mut model = ModelInfo::from_id(id);
         model.name = value.display_name;
         model.description = value.description;
         model.context_length = value
@@ -95,7 +95,7 @@ fn list_models_path(page_token: Option<&str>) -> String {
 /// A decoded model page with an optional nonempty continuation cursor.
 #[derive(Debug)]
 struct ListingPage {
-    models: Vec<Model>,
+    models: Vec<ModelInfo>,
     next_cursor: Option<String>,
 }
 
@@ -108,7 +108,7 @@ fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ProviderErr
         .models
         .into_iter()
         .map(|entry| {
-            Model::try_from(entry)
+            ModelInfo::try_from(entry)
                 .map_err(|error| listing::parse_error("Gemini", path, error, body))
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -174,6 +174,8 @@ impl Models {
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -188,8 +190,15 @@ impl Wire for Models {
         ))
     }
 
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(
+            list_models_request(&self.provider, Auth::Query, Some(cursor))?,
+            Framing::Whole,
+        ))
+    }
+
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder::new(self.provider.clone(), Auth::Query)
+        ModelsDecoder::default()
     }
 }
 
@@ -210,6 +219,8 @@ impl InteractionsModels {
 
 impl Wire for InteractionsModels {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -224,27 +235,23 @@ impl Wire for InteractionsModels {
         ))
     }
 
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(
+            list_models_request(&self.provider, Auth::Header, Some(cursor))?,
+            Framing::Whole,
+        ))
+    }
+
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder::new(self.provider.clone(), Auth::Header)
+        ModelsDecoder::default()
     }
 }
 
-/// Decode model pages and follow cursors using the original authentication mode.
+/// Decode model pages and name the cursor the wire follows.
+#[derive(Default)]
 pub struct ModelsDecoder {
-    provider: super::Gemini,
-    auth: Auth,
     /// The cursor the page just interpreted named, when it named a usable one.
     next: Option<String>,
-}
-
-impl ModelsDecoder {
-    fn new(provider: super::Gemini, auth: Auth) -> Self {
-        Self {
-            provider,
-            auth,
-            next: None,
-        }
-    }
 }
 
 impl Decoder<ModelListing> for ModelsDecoder {
@@ -270,9 +277,8 @@ impl Decoder<ModelListing> for ModelsDecoder {
         }
     }
 
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        let cursor = self.next.as_deref()?;
-        list_models_request(&self.provider, self.auth, Some(cursor)).ok()
+    fn cursor(&self) -> Option<String> {
+        self.next.clone()
     }
 }
 
@@ -292,6 +298,8 @@ impl VerifyKey {
 
 impl Wire for VerifyKey {
     type Op = Verify;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = VerifyKeyDecoder;
 
     fn name(&self) -> &str {

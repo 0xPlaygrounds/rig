@@ -121,11 +121,10 @@ impl AgentHook for ForceToolOnFirstTurn {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = OpenAI::from_env()?.bound()?;
+    let client = OpenAI::from_env()?;
     // A fresh agent per run (both share the same tool and preamble).
     let make_agent = || {
-        client
-            .agent(openai::GPT_4O)
+        AgentBuilder::new(rig::model(client.completion(openai::GPT_4O)))
             .preamble(PREAMBLE)
             .tool(Add)
             .build()

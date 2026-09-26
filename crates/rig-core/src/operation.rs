@@ -20,7 +20,7 @@ mod modality;
 mod verify;
 
 pub use cached_content::{CachedContentFold, ContextCache};
-pub use completion::{AdapterOutput, Completion, CompletionFold};
+pub use completion::{AdapterOutput, Completion, CompletionFold, ImagePart};
 pub use listing::{ModelListing, ModelListingFold};
 #[cfg(feature = "audio")]
 pub use modality::AudioGeneration;
@@ -31,18 +31,19 @@ pub use modality::{
 };
 pub use verify::{Verify, VerifyDecoder};
 
-/// The sink of an operation whose reply is one event.
-pub struct One<Op: Operation> {
+/// The sink of an operation whose events need no bookkeeping: what a
+/// decoder pushes is what the driver drains, in order.
+pub struct Events<Op: Operation> {
     items: Vec<Result<Op::Event, ProviderError>>,
 }
 
-impl<Op: Operation> Default for One<Op> {
+impl<Op: Operation> Default for Events<Op> {
     fn default() -> Self {
         Self { items: Vec::new() }
     }
 }
 
-impl<Op: Operation> Sink<Op> for One<Op> {
+impl<Op: Operation> Sink<Op> for Events<Op> {
     type Laws = ();
 
     fn push(&mut self, item: Result<Op::Event, ProviderError>) {
@@ -59,7 +60,9 @@ impl<Op: Operation> Sink<Op> for One<Op> {
 }
 
 /// Retains the first event and ignores later events. Finishing without an
-/// event returns a decode error; otherwise reply metadata is stamped on the response.
+/// event returns a decode error; otherwise reply metadata is stamped on the
+/// response. The one event is cloned once: the fold sees it by reference and
+/// the reply is that event.
 pub struct Take<Op: Operation> {
     value: Option<Op::Event>,
 }
@@ -73,11 +76,11 @@ impl<Op: Operation> Default for Take<Op> {
 impl<Op> Fold<Op> for Take<Op>
 where
     Op: Operation,
-    Op::Event: Into<Op::Response>,
+    Op::Event: Clone + Into<Op::Response>,
 {
-    fn absorb(&mut self, event: Op::Event) -> Result<(), ProviderError> {
+    fn absorb(&mut self, event: &Op::Event) -> Result<(), ProviderError> {
         if self.value.is_none() {
-            self.value = Some(event);
+            self.value = Some(event.clone());
         }
         Ok(())
     }
@@ -89,7 +92,7 @@ where
                 ProviderError::Response(format!("{} reply carried no payload", Op::NAME))
             })?
             .into();
-        Op::stamp_reply(&mut response, reply);
+        Op::stamp_reply(&mut response, &reply);
         Ok(response)
     }
 }

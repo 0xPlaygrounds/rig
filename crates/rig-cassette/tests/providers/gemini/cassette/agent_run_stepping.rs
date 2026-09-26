@@ -23,7 +23,7 @@ async fn hand_driven_single_turn_completes() {
         "agent_run_stepping/hand_driven_single_turn_completes",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 BASIC_PREAMBLE,
                 &[],
                 None,
@@ -106,7 +106,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
         "agent_run_stepping/hand_driven_multi_turn_tool_run_completes",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -196,7 +196,7 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
         "agent_run_stepping/hand_driven_parallel_tool_calls_arrive_in_one_step",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -260,7 +260,7 @@ async fn max_turns_error_carries_pending_tool_results_message() {
         "agent_run_stepping/max_turns_error_carries_pending_tool_results_message",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -336,7 +336,7 @@ async fn hand_driven_entries_survive_midrun_serialization() {
         "agent_run_stepping/entries_survive_midrun_serialization",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+                rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,

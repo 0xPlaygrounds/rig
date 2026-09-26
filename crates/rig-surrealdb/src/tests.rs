@@ -1,29 +1,44 @@
 use super::{Mem, SurrealSearchFilter, SurrealVectorStore};
-use rig_core::error::ProviderError;
 use rig_core::{
-    embeddings::{Embedding, EmbeddingModel, EmbeddingResponse},
+    embeddings::Embedding,
     vector_store::{VectorStoreIndex, request::Filter},
 };
 use serde_json::json;
 use surrealdb::Surreal;
 
+/// The mock embedding transport: every text embeds to a zero vector at
+/// width 3.
 #[derive(Clone)]
-struct MockEmbeddingModel;
+struct MockEmbeddings;
 
-impl EmbeddingModel for MockEmbeddingModel {
-    fn max_documents(&self) -> usize {
-        4
+impl MockEmbeddings {
+    fn model() -> rig_core::Model<rig_core::driver::Local<rig_core::operation::Embedding>, Self> {
+        rig_core::Model::new(
+            rig_core::driver::Local::new("mock")
+                .with_capabilities(rig_core::operation::EmbeddingCapabilities::new(4, 3)),
+            Self,
+        )
     }
+}
 
-    fn ndims(&self) -> usize {
-        3
-    }
-
-    async fn embed_texts_response(
+impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Embedding>>
+    for MockEmbeddings
+{
+    fn send(
         &self,
-        texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<EmbeddingResponse, ProviderError> {
-        Ok(EmbeddingResponse::new(
+        texts: Vec<String>,
+        _mode: rig_core::wire::Mode,
+        _observation: Option<rig_core::driver::Observation>,
+    ) -> Result<
+        impl Future<
+            Output = rig_core::driver::Opened<Vec<String>, rig_core::embeddings::EmbeddingResponse>,
+        >
+        + Send
+        + 'static
+        + use<>,
+        rig_core::error::ProviderError,
+    > {
+        let reply = rig_core::embeddings::EmbeddingResponse::new(
             texts
                 .into_iter()
                 .map(|text| Embedding {
@@ -32,7 +47,10 @@ impl EmbeddingModel for MockEmbeddingModel {
                 })
                 .collect(),
             "mock",
-        ))
+        );
+        Ok(std::future::ready(rig_core::driver::Opened::new(
+            futures::stream::iter([Ok(reply)]),
+        )))
     }
 }
 
@@ -68,7 +86,7 @@ async fn surreal_vector_store_supports_type_erased_queries() {
         Ok(surreal) => surreal,
         Err(err) => panic!("failed to create in-memory surreal client: {err}"),
     };
-    let vector_store = SurrealVectorStore::with_defaults(MockEmbeddingModel, surreal);
+    let vector_store = SurrealVectorStore::with_defaults(MockEmbeddings::model(), surreal);
 
     assert_dyn(vector_store);
 }
