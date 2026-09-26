@@ -2,7 +2,9 @@
 
 Run the smallest useful local check for changed behavior and leave comprehensive
 execution to CI; see [DEVELOPING.md](../DEVELOPING.md) for check selection,
-`cargo xtask verify` modes, review, and publication.
+`cargo xtask verify` modes, review, and publication. After an edit,
+`cargo xtask verify --quick` checks and tests the owning package or provider
+target under the `local` nextest profile.
 
 Provider test targets have two owners:
 
@@ -79,13 +81,15 @@ encodes the team's model of the wire and structurally cannot falsify it.
 
 ## Core Tests
 
-Start with the owning package and a test-name filter. Confirm that the filter
-actually ran the intended tests; a successful command running zero tests is not
+Start with `cargo xtask verify --quick`, or the owning package and a test-name
+filter under the `local` nextest profile. Confirm that the filter actually ran
+the intended tests; a successful command running zero tests is not
 verification.
 
 ```bash
-cargo test --locked -p rig-core --lib <test-name-filter>
-cargo test --locked -p rig --test <provider> <test-name-filter>
+cargo xtask verify --quick
+cargo nextest run --locked --profile local -p rig-core --lib <test-name-filter>
+cargo nextest run --locked --profile local -p rig --test <provider> <test-name-filter>
 cargo clippy --locked -p rig-core --all-features --tests -- -D warnings
 ```
 
@@ -128,10 +132,11 @@ coverage distinct in the report.
 Cassette tests replay committed HTTP interactions by default and do not require
 provider API keys. Fixtures live under `crates/rig-cassette/fixtures/cassettes/<provider>/...`.
 
-Replay one migrated provider suite (`anthropic`, `bedrock`, `chatgpt`, `cohere`,
-`copilot`, `deepseek`, `doubleword`, `gemini`, `groq`, `llamacpp`, `mistral`,
-`mistralrs`, `ollama`, `openai`, `openrouter`, `perplexity`, `venice`, `xai`)
-with:
+After editing a provider's tests or cassettes, `cargo xtask verify --quick`
+replays that provider's target. Replay one migrated provider suite
+(`anthropic`, `bedrock`, `chatgpt`, `cohere`, `copilot`, `deepseek`,
+`doubleword`, `gemini`, `groq`, `llamacpp`, `mistral`, `mistralrs`, `ollama`,
+`openai`, `openrouter`, `perplexity`, `venice`, `xai`) by hand with:
 
 ```bash
 cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1

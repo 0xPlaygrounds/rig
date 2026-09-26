@@ -16,6 +16,17 @@ signatures, module paths, and feature flags.
 - Do not make commits, comments, stage changes, push branches, or open PRs unless the user explicitly asks.
 - Do not discard user changes.
 
+## Fast Loop
+
+- After an edit, run `cargo xtask verify --quick`. It checks and tests only
+  what the edit owns and lists what it leaves to CI.
+- Keep incremental compilation on locally. `CARGO_INCREMENTAL=0` is a CI
+  setting for fresh runners; locally it makes every rebuild start over.
+- Use one target directory per worktree.
+- Do not run workspace-wide or `--all-features` builds or tests locally unless
+  you are debugging a CI failure.
+- Run anything that takes over a minute in the background with a log.
+
 ## Efficient Investigation
 
 - Reuse instructions and unchanged source already in context. Read the relevant
