@@ -16,9 +16,8 @@ use futures::{StreamExt, channel::oneshot};
 
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
-    error::ProviderError,
     error::{ErrorKind, ErrorReport},
-    operation::{AdapterOutput, CompletionFold},
+    operation::CompletionFold,
     streaming::{StreamEvent, StreamEvents},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
     wire::Fold,
@@ -211,18 +210,13 @@ pub trait Observe: Send + Sync {
 /// record, holds: what a unary consumer runs over a streaming handler's
 /// events, what the driver's observer runs over a streaming dispatch, what
 /// a layer runs for its verdict.
-///
-/// Each item passes a completion sink before the fold absorbs it, so a
-/// handler's events fold as a wire's do, canonical or not.
 pub struct StreamTap {
-    sink: AdapterOutput,
     fold: CompletionFold,
 }
 
 impl Default for StreamTap {
     fn default() -> Self {
         Self {
-            sink: AdapterOutput::new(),
             fold: CompletionFold::relayed(""),
         }
     }
@@ -240,37 +234,27 @@ impl StreamTap {
         &mut self,
         item: &Result<StreamEvent, ErrorReport>,
     ) -> Option<Result<Outcome, ErrorReport>> {
-        self.sink.push(
-            item.clone()
-                .map_err(|report| ProviderError::Relayed(Box::new(report))),
-        );
-        let items: Vec<_> = self.sink.drain().collect();
-        for item in items {
-            let event = match item {
-                Err(error) => return Some(Err(ErrorReport::from(&error))),
-                Ok(event) => event,
-            };
-            if let Err(error) = self.fold.absorb(&event) {
-                return Some(Err(ErrorReport::from(&error)));
-            }
-            if matches!(event, StreamEvent::Final(_)) {
-                // A relayed stream's reply is its terminal record; the tap
-                // saw no transport.
-                let reply = crate::wire::Reply {
-                    provider: String::new(),
-                    raw: serde_json::Value::Null,
-                    provider_request_id: None,
-                };
-                return Some(
-                    std::mem::take(self)
-                        .fold
-                        .finish(reply)
-                        .map(Outcome::Completion)
-                        .map_err(|error| ErrorReport::from(&error)),
-                );
-            }
+        let event = match item {
+            Err(report) => return Some(Err(report.clone())),
+            Ok(event) => event,
+        };
+        if let Err(error) = self.fold.absorb(event) {
+            return Some(Err(ErrorReport::from(&error)));
         }
-        None
+        // A relayed stream's reply is its terminal record; the tap saw no
+        // transport.
+        let reply = crate::wire::Reply {
+            provider: String::new(),
+            raw: serde_json::Value::Null,
+            provider_request_id: None,
+        };
+        matches!(event, StreamEvent::Final(_)).then(|| {
+            std::mem::take(self)
+                .fold
+                .finish(reply)
+                .map(Outcome::Completion)
+                .map_err(|error| ErrorReport::from(&error))
+        })
     }
 }
 
@@ -288,7 +272,14 @@ pub fn stream_truncated() -> ErrorReport {
 pub enum Reply {
     /// The completed unary answer or a setup error.
     Outcome(Result<Outcome, ErrorReport>),
-    /// Events, including any frames after the first terminal record.
+    /// Events, including any frames after the first terminal record. They
+    /// must be canonical, as the completion sink makes them, because
+    /// [`StreamTap`] folds them to the outcome a unary consumer, the recorder
+    /// and a layer see: a handler writes through
+    /// [`AdapterOutput`](crate::operation::AdapterOutput) or relays a stream
+    /// a model opened. A consumer's
+    /// [`Streamed::relay`](crate::streaming::Streamed::relay) canonicalizes
+    /// them on its own.
     Stream(StreamEvents),
 }
 

@@ -421,7 +421,6 @@ impl Streamed<Completion> {
             events,
             sink: AdapterOutput::new(),
             ready: VecDeque::new(),
-            failures: Vec::new(),
             ended: false,
         }
         .map(|item| item.map(Step::Event));
@@ -435,16 +434,14 @@ impl Streamed<Completion> {
     }
 }
 
-/// Relayed items as one completion sink makes them canonical.
-///
-/// A run of error items is held until an event follows it or the stream
-/// ends, so the closes [`Sink::finish`](crate::wire::Sink::finish) adds at
-/// the end precede a trailing failure, as they do on a wire.
+/// Relayed items as one completion sink makes them canonical, drained as
+/// each arrives. An error item passes at once: a relay cannot tell a
+/// terminal failure from an in-band one, so the closes the end of the stream
+/// adds follow it, as they do after a decoder's in-band error.
 struct Canonical {
     events: StreamEvents,
     sink: AdapterOutput,
     ready: VecDeque<Result<StreamEvent, ProviderError>>,
-    failures: Vec<Result<StreamEvent, ProviderError>>,
     ended: bool,
 }
 
@@ -462,25 +459,15 @@ impl Stream for Canonical {
             }
             match this.events.as_mut().poll_next(cx) {
                 Poll::Pending => return Poll::Pending,
-                Poll::Ready(Some(item)) => {
-                    this.sink
-                        .push(item.map_err(|report| ProviderError::Relayed(Box::new(report))));
-                    for item in this.sink.drain() {
-                        if item.is_ok() {
-                            this.ready.extend(this.failures.drain(..));
-                            this.ready.push_back(item);
-                        } else {
-                            this.failures.push(item);
-                        }
-                    }
-                }
+                Poll::Ready(Some(item)) => this
+                    .sink
+                    .push(item.map_err(|report| ProviderError::Relayed(Box::new(report)))),
                 Poll::Ready(None) => {
                     this.ended = true;
                     crate::wire::Sink::<Completion>::finish(&mut this.sink);
-                    this.ready.extend(this.sink.drain());
-                    this.ready.extend(this.failures.drain(..));
                 }
             }
+            this.ready.extend(this.sink.drain());
         }
     }
 }

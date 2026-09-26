@@ -172,8 +172,9 @@ The other commands:
   batches it has at `REF` (default `HEAD`). Each batch's `items` grows by the
   `block_end` events inserted into it: an inserted event counts toward the
   batch that delivers the item after it, or the effect's last stream batch
-  when nothing follows it. It fails on an inserted event that is not a
-  `block_end` before a `final`, a stream error or the end of the stream.
+  when nothing follows it. A golden whose change does not fit that rule, such
+  as a new record or an edited event, keeps its regenerated deliveries and is
+  listed.
 - `cassette audit [--base REF]` checks that every `block_end` block in every
   effect golden is what its block's deltas assemble, unless the end restates
   it. It classifies each golden change against `REF` (default `HEAD`) as a

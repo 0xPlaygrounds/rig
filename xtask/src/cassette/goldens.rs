@@ -7,7 +7,9 @@
 //! whose only difference from the base (`HEAD` unless `--base` names another
 //! ref) is that field is restored. A golden whose content changed keeps the
 //! base's batches, with each batch's `items` grown by the stream events the
-//! regeneration inserted into it.
+//! regeneration inserted into it. A golden that does not fit that rule keeps
+//! its regenerated deliveries and is reported; `cargo xtask cassette audit`
+//! fails on it.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -243,9 +245,11 @@ pub(crate) fn rebase_deliveries(base: &Value, head: &Value) -> Result<Option<Val
         if trailing.is_empty() {
             continue;
         }
-        if trailing.iter().any(|item| **item != listed) {
+        // Nothing may lie between the delivered items and an event counted
+        // toward the last batch, or that batch would deliver it instead.
+        if total < listed {
             return Err(format!(
-                "record {id}: an inserted event precedes an item no stream batch delivered"
+                "record {id}: an inserted event follows an item no stream batch delivered"
             ));
         }
         let batch = last
@@ -357,16 +361,18 @@ pub(crate) struct Rebased {
     pub(crate) rebased: usize,
     /// Changed goldens kept as regenerated, rebased or not.
     pub(crate) kept: usize,
+    /// Changed goldens that keep their regenerated deliveries because their
+    /// change does not fit the rebase rule, with the reason.
+    pub(crate) misfits: Vec<String>,
 }
 
 /// Restore every golden whose only change from `base` is
 /// `header.deliveries`, and give every other changed golden `base`'s
-/// delivery batches (see [`rebase_deliveries`]). Fails, naming each golden,
-/// when an inserted event does not fit the rule; those goldens are left as
-/// they are.
+/// delivery batches (see [`rebase_deliveries`]). A golden whose change does
+/// not fit the rule keeps its regenerated deliveries and is named in
+/// [`Rebased::misfits`].
 pub(crate) fn rebase_goldens(root: &Path, base: &str) -> Result<Rebased, String> {
     let mut summary = Rebased::default();
-    let mut misfits = Vec::new();
     for (path, before) in changed_goldens(root, base)? {
         let Some(before) = before else {
             summary.kept += 1;
@@ -392,7 +398,7 @@ pub(crate) fn rebase_goldens(root: &Path, base: &str) -> Result<Rebased, String>
             Ok(Some(deliveries)) => deliveries,
             Ok(None) => continue,
             Err(error) => {
-                misfits.push(format!("{path}: {error}"));
+                summary.misfits.push(format!("{path}: {error}"));
                 continue;
             }
         };
@@ -404,15 +410,7 @@ pub(crate) fn rebase_goldens(root: &Path, base: &str) -> Result<Rebased, String>
         std::fs::write(root.join(&path), rebased).map_err(|error| format!("{path}: {error}"))?;
         summary.rebased += 1;
     }
-    if misfits.is_empty() {
-        Ok(summary)
-    } else {
-        Err(format!(
-            "{} golden(s) do not fit the delivery rebase rule:\n{}",
-            misfits.len(),
-            misfits.join("\n")
-        ))
-    }
+    Ok(summary)
 }
 
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
@@ -449,9 +447,15 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         .status()
         .map_err(|error| format!("cargo nextest: {error}"))?;
     let summary = rebase_goldens(root, &base)?;
+    for misfit in &summary.misfits {
+        println!("kept the regenerated deliveries of {misfit}");
+    }
     println!(
-        "against {base}: reverted {} delivery-only golden(s), kept {} (rebased the deliveries of {})",
-        summary.reverted, summary.kept, summary.rebased
+        "against {base}: reverted {} delivery-only golden(s), kept {} (rebased the deliveries of {}, {} misfit(s))",
+        summary.reverted,
+        summary.kept,
+        summary.rebased,
+        summary.misfits.len()
     );
     if status.success() {
         Ok(())

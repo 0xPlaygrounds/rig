@@ -425,18 +425,21 @@ fn relayed(items: Vec<Result<StreamEvent, ErrorReport>>) -> Vec<Result<StreamEve
     )
 }
 
-/// `items` pushed through one sink and finished, as a relay canonicalizes
-/// them.
+/// `items` pushed through one sink, drained after each and finished at the
+/// end, as a relay canonicalizes them.
 fn canonical(items: &[Result<StreamEvent, ErrorReport>]) -> Vec<Result<StreamEvent, ErrorReport>> {
     let mut out = AdapterOutput::new();
+    let mut drained = Vec::new();
     for item in items {
         out.push(
             item.clone()
                 .map_err(|report| ProviderError::Relayed(Box::new(report))),
         );
+        drained.extend(out.drain());
     }
     Sink::<Completion>::finish(&mut out);
-    comparable(&out.into_items())
+    drained.extend(out.drain());
+    comparable(&drained)
 }
 
 proptest! {
@@ -479,7 +482,7 @@ fn a_relay_drops_a_second_terminal_and_passes_what_follows_the_first() {
 }
 
 #[test]
-fn a_truncated_relay_closes_its_open_blocks_before_its_failure() {
+fn a_truncated_relay_closes_its_open_blocks_at_its_end() {
     let text = Ok(StreamEvent::BlockDelta {
         id: text_key(0),
         delta: Delta::Text {
@@ -523,8 +526,41 @@ fn a_truncated_relay_closes_its_open_blocks_before_its_failure() {
         ]
     );
 
+    // The failure passes when it arrives; the closes follow at the end.
     let failed = relayed(vec![text, reasoning, failure.clone()]);
     assert_eq!(failed.len(), 5);
-    assert_eq!(failed.last(), Some(&failure), "the closes precede it");
+    assert_eq!(failed.get(2), Some(&failure));
     assert_eq!(closes(&failed), closes(&truncated));
+}
+
+/// A decoder that pushes a malformed-input error item by hand finishes the
+/// call it reports, as the sink's own end does.
+#[test]
+fn an_error_item_pushed_by_hand_finishes_the_call_it_reports() {
+    let mut out = AdapterOutput::new();
+    out.tool_name(&tool_key(0), "lookup");
+    out.tool_arguments(&tool_key(0), "{bad");
+    out.error(ProviderError::MalformedToolInput(
+        crate::error::MalformedToolInput {
+            name: "lookup".to_owned(),
+            id: crate::message::ToolCallId::from_block(&tool_key(0)),
+            provider: None,
+            raw: "{bad".to_owned(),
+            error: "expected value".to_owned(),
+        },
+    ));
+    out.tool_end(
+        tool_key(0),
+        ToolCallEnd::new(UnparseableToolInput::EmptyObject),
+    );
+    assert!(
+        out.iter().all(|item| !matches!(
+            item,
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(_)),
+                ..
+            })
+        )),
+        "the stale end finalizes no call"
+    );
 }

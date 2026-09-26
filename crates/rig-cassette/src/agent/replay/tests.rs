@@ -810,12 +810,13 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
     );
 }
 
-/// A log kept before ends carried their blocks replays its text. Its text
-/// end carries no block, or the text is still open at the terminal. The
-/// replay re-emits those items verbatim, and a relay and a re-record fold
-/// them to the recorded outcome, because each canonicalizes what it folds.
+/// A log kept before ends carried their blocks relays its text and
+/// reasoning. Its text and reasoning ends carry no block, or its text is
+/// still open at the terminal. The replay re-emits those items verbatim,
+/// and a relay folds them to the recorded choice, because it canonicalizes
+/// what it carries.
 #[tokio::test]
-async fn a_log_kept_before_ends_carried_their_blocks_replays_its_text() {
+async fn a_log_kept_before_ends_carried_their_blocks_relays_its_text() {
     use rig_core::streaming::CompletionStream;
 
     let recorder = EffectLogRecorder::keeping_stream_events();
@@ -828,6 +829,7 @@ async fn a_log_kept_before_ends_carried_their_blocks_replays_its_text() {
                 MockCompletionModel::from_stream_turns([[
                     MockStreamEvent::text("Par"),
                     MockStreamEvent::text("is"),
+                    MockStreamEvent::reasoning_delta("Think"),
                     MockStreamEvent::final_response_with_default_usage(),
                 ]]),
             ),
@@ -847,7 +849,10 @@ async fn a_log_kept_before_ends_carried_their_blocks_replays_its_text() {
     let Ok(Outcome::Completion(recorded)) = &log[0].outcome else {
         panic!("a completion outcome");
     };
-    assert_eq!(recorded.choice, vec![AssistantContent::text("Paris")]);
+    assert!(matches!(
+        recorded.choice.as_slice(),
+        [AssistantContent::Text(text), AssistantContent::Reasoning(_)] if text.text == "Paris"
+    ));
 
     let is_text_end = |event: &StreamEvent| {
         matches!(
@@ -862,13 +867,9 @@ async fn a_log_kept_before_ends_carried_their_blocks_replays_its_text() {
         events
             .into_iter()
             .map(|event| match event {
-                StreamEvent::BlockEnd {
+                StreamEvent::BlockEnd { id, end, .. } => StreamEvent::BlockEnd {
                     id,
-                    end: rig_core::streaming::BlockClose::Text,
-                    ..
-                } => StreamEvent::BlockEnd {
-                    id,
-                    end: rig_core::streaming::BlockClose::Text,
+                    end,
                     block: None,
                 },
                 event => event,
@@ -876,7 +877,7 @@ async fn a_log_kept_before_ends_carried_their_blocks_replays_its_text() {
             .collect::<Vec<_>>()
     };
     let unclosed = |events: Vec<StreamEvent>| {
-        events
+        blockless(events)
             .into_iter()
             .filter(|event| !is_text_end(event))
             .collect::<Vec<_>>()
@@ -888,8 +889,6 @@ async fn a_log_kept_before_ends_carried_their_blocks_replays_its_text() {
 
         let (dispatcher, _registrar, mut driver) = Bus::channel();
         super::register_all(&old_log, &mut driver).expect("fresh keys");
-        let again = EffectLogRecorder::keeping_stream_events();
-        driver.record_to(again.clone());
         let _replay = spawn(driver);
         let replayed: Vec<_> = within(
             dispatcher
@@ -908,13 +907,6 @@ async fn a_log_kept_before_ends_carried_their_blocks_replays_its_text() {
         while relay.next().await.is_some() {}
         let relayed = relay.finish().expect("a relayed completion");
         assert_eq!(relayed.choice, recorded.choice, "the relay folds the text");
-
-        let rerecorded = again.take();
-        assert_eq!(
-            serde_json::to_value(&rerecorded[0].outcome).unwrap(),
-            serde_json::to_value(&log[0].outcome).unwrap(),
-            "a re-record folds to the recorded outcome"
-        );
     }
 }
 

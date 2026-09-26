@@ -95,6 +95,11 @@ fn batches_other_than_the_base_s_grown_are_delivery_churn() {
     assert_eq!(changes.delivery_churn, 1);
     assert_eq!(changes.closes_inserted, 1);
     assert!(changes.other.is_empty());
+
+    // Batches that did not grow with the close are churn too.
+    let mut ungrown = head;
+    ungrown["header"]["deliveries"] = base["header"]["deliveries"].clone();
+    assert_eq!(classified(&base, &ungrown).delivery_churn, 1);
 }
 
 #[test]
@@ -131,9 +136,10 @@ fn anything_else_is_other() {
 #[test]
 fn a_validated_offset_grows_by_the_closes_inserted_before_it() {
     let program = |validated: u64, events: Vec<Value>| {
-        json!({"golden/run#0": [{"entities": [
+        json!({"golden/run#0": [{}, {"entities": [
             {"Outputs": {"stream_validated": validated}},
-            {"Streamed": {"events": events}},
+            {"bevy_ecs::hierarchy::ChildOf": 0, "Streamed": {"events": events}},
+            {"Streamed": {"events": [delta("c", "z"), text_end("c", Some("z")), last()]}},
         ]}]})
     };
     let base = program(2, vec![delta("b", "a"), last()]);
@@ -141,13 +147,28 @@ fn a_validated_offset_grows_by_the_closes_inserted_before_it() {
 
     let changes = classified(&base, &program(3, closed.clone()));
     assert_eq!((changes.closes_inserted, changes.count_shifts), (1, 1));
-    assert!(changes.other.is_empty());
+    assert!(changes.other.is_empty(), "{:?}", changes.other);
 
     assert_eq!(
         classified(&base, &program(4, closed)).other.len(),
         1,
         "grown by more than the closes before it"
     );
+
+    // A close in a stream that is not the turn's own explains nothing.
+    let mut elsewhere = program(3, vec![delta("b", "a"), last()]);
+    elsewhere["golden/run#0"][1]["entities"][2]["Streamed"]["events"] = json!([
+        delta("c", "z"),
+        text_end("c", Some("z")),
+        text_end("d", Some("")),
+        last()
+    ]);
+    let mut base = base;
+    base["golden/run#0"][1]["entities"][2]["Streamed"]["events"] =
+        json!([delta("c", "z"), text_end("c", Some("z")), last()]);
+    let changes = classified(&base, &elsewhere);
+    assert_eq!(changes.closes_inserted, 1);
+    assert_eq!(changes.other.len(), 1, "{:?}", changes.other);
 }
 
 #[test]
@@ -208,4 +229,16 @@ fn a_tool_call_is_its_argument_fragments_unless_the_end_restates_them() {
     assert!(block_mismatches(&events).is_empty(), "a restatement stands");
     let events = [arguments("{\"q\":1}"), end(None, json!({"q": 2}))];
     assert_eq!(block_mismatches(&events).len(), 1);
+}
+
+/// The checked-in corpus: every golden's ends carry what their deltas
+/// assemble.
+#[test]
+fn every_golden_end_carries_what_its_deltas_assemble() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the workspace root");
+    let (audited, mismatches) = corpus_mismatches(root).expect("the corpus reads");
+    assert!(audited > 1000, "only {audited} goldens found");
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
 }

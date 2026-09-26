@@ -1,10 +1,10 @@
 //! `cargo xtask cassette audit`: check what every effect golden's stream
 //! ends carry, and classify each golden change against a base ref.
 //!
-//! Every `block_end` block must equal what its block's deltas assemble: a
-//! text block the concatenation of its text deltas, a reasoning block the
-//! end did not restate the concatenation of its reasoning deltas, and a tool
-//! call the end did not restate the parse of its argument fragments. Each
+//! Every `block_end` must carry what its block's deltas assemble, unless the
+//! end restates the block itself. A text block is the concatenation of its
+//! text deltas, a reasoning block the concatenation of its reasoning deltas,
+//! and a tool call the parse of its argument fragments. Each
 //! golden that differs from the base (`HEAD` unless `--base` names another
 //! ref) is classified change by change: a close inserted, a block added to an
 //! end, a count shifted by exactly the events inserted before it, delivery
@@ -51,12 +51,10 @@ fn kind(event: &Value) -> Option<&str> {
 
 struct Walk<'a> {
     changes: &'a mut Changes,
-    /// The top-level key being walked: a program run in a programs golden.
-    scope: String,
-    /// Head positions of the events inserted into each stream, by scope.
-    inserted: BTreeMap<String, Vec<Vec<usize>>>,
-    /// Changed `stream_validated` offsets: scope, path, base, head.
-    validated: Vec<(String, String, u64, u64)>,
+    /// Head positions of the events inserted into each stream, by path.
+    inserted: BTreeMap<String, Vec<usize>>,
+    /// Changed `stream_validated` offsets: path, base, head.
+    validated: Vec<(String, u64, u64)>,
 }
 
 impl Walk<'_> {
@@ -81,10 +79,9 @@ impl Walk<'_> {
                     return;
                 }
                 for (key, value) in base {
-                    if path.is_empty() {
-                        key.clone_into(&mut self.scope);
-                    }
                     if let Some(changed) = head.get(key) {
+                        // Paths are JSON pointers, and program keys hold `/`.
+                        let key = key.replace('~', "~0").replace('/', "~1");
                         self.walk(value, changed, &format!("{path}/{key}"));
                     }
                 }
@@ -99,8 +96,7 @@ impl Walk<'_> {
             {
                 match (before.as_u64(), after.as_u64()) {
                     (Some(before), Some(after)) => {
-                        self.validated
-                            .push((self.scope.clone(), path.to_owned(), before, after));
+                        self.validated.push((path.to_owned(), before, after));
                     }
                     _ => self.other(path, "a validated offset is not a count"),
                 }
@@ -143,27 +139,49 @@ impl Walk<'_> {
                 Some(_) => {}
             }
         }
-        self.inserted
-            .entry(self.scope.clone())
-            .or_default()
-            .push(inserted);
+        self.inserted.insert(path.to_owned(), inserted);
     }
 
-    /// A validated offset may grow by the events inserted before it in one
-    /// stream of the same program run.
-    fn check_validated(&mut self) {
-        for (scope, path, before, after) in std::mem::take(&mut self.validated) {
+    /// A program's validated offset (`…/entities/{turn}/…/stream_validated`)
+    /// may grow by the events inserted before it in the stream of one of
+    /// the turn's child entities (`bevy_ecs::hierarchy::ChildOf`).
+    fn check_validated(&mut self, head: &Value) {
+        for (path, before, after) in std::mem::take(&mut self.validated) {
             let grown = after.checked_sub(before).map(|grown| grown as usize);
-            let explained = self.inserted.get(&scope).is_some_and(|streams| {
-                streams.iter().any(|inserted| {
-                    Some(
-                        inserted
-                            .iter()
-                            .filter(|position| **position < after as usize)
-                            .count(),
-                    ) == grown
-                })
-            });
+            let explained = path
+                .split_once("/entities/")
+                .is_some_and(|(program, rest)| {
+                    let turn = rest
+                        .split('/')
+                        .next()
+                        .and_then(|turn| turn.parse::<u64>().ok());
+                    let entities = head
+                        .pointer(&format!("{program}/entities"))
+                        .and_then(Value::as_array);
+                    entities
+                        .into_iter()
+                        .flatten()
+                        .enumerate()
+                        .filter(|(_, entity)| {
+                            entity
+                                .get("bevy_ecs::hierarchy::ChildOf")
+                                .and_then(Value::as_u64)
+                                == turn
+                        })
+                        .any(|(child, _)| {
+                            let prefix = format!("{program}/entities/{child}/");
+                            self.inserted
+                                .iter()
+                                .filter(|(stream, _)| stream.starts_with(&prefix))
+                                .any(|(_, inserted)| {
+                                    let before_offset = inserted
+                                        .iter()
+                                        .filter(|position| **position < after as usize)
+                                        .count();
+                                    Some(before_offset) == grown
+                                })
+                        })
+                });
             if explained {
                 self.changes.count_shifts += 1;
             } else {
@@ -177,32 +195,29 @@ impl Walk<'_> {
 /// set them to the base's in `head`, so the structural walk compares the
 /// rest.
 fn classify_header(base: &Value, head: &mut Value, changes: &mut Changes) {
-    let base_deliveries = base.pointer("/header/deliveries");
-    if head.pointer("/header/deliveries") != base_deliveries {
-        match rebase_deliveries(base, head) {
-            Err(error) => changes.other.push(format!("/header/deliveries: {error}")),
-            Ok(Some(expected)) if head.pointer("/header/deliveries") == Some(&expected) => {
-                changes.count_shifts += expected
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .zip(
-                        base_deliveries
-                            .and_then(Value::as_array)
-                            .into_iter()
-                            .flatten(),
-                    )
-                    .filter(|(expected, base)| expected != base)
-                    .count();
-            }
-            Ok(_) => changes.delivery_churn += 1,
+    let base_deliveries = base.pointer("/header/deliveries").cloned();
+    let head_deliveries = head.pointer("/header/deliveries");
+    // A stream change the rebase cannot place is the walk's to report; the
+    // deliveries are then judged against the base's alone.
+    match rebase_deliveries(base, head) {
+        Ok(Some(expected)) if head_deliveries == Some(&expected) => {
+            changes.count_shifts += expected
+                .as_array()
+                .into_iter()
+                .flatten()
+                .zip(base_deliveries.iter().filter_map(Value::as_array).flatten())
+                .filter(|(expected, base)| expected != base)
+                .count();
         }
-        if let (Some(header), Some(deliveries)) = (
-            head.get_mut("header").and_then(Value::as_object_mut),
-            base_deliveries,
-        ) {
-            header.insert("deliveries".to_owned(), deliveries.clone());
-        }
+        Ok(Some(_)) => changes.delivery_churn += 1,
+        _ if head_deliveries == base_deliveries.as_ref() => {}
+        _ => changes.delivery_churn += 1,
+    }
+    if let (Some(header), Some(deliveries)) = (
+        head.get_mut("header").and_then(Value::as_object_mut),
+        base_deliveries,
+    ) {
+        header.insert("deliveries".to_owned(), deliveries);
     }
 
     let records = |log: &Value| -> BTreeMap<String, Value> {
@@ -267,12 +282,11 @@ pub(crate) fn classify(base: &Value, head: &Value, changes: &mut Changes) {
     }
     let mut walk = Walk {
         changes,
-        scope: String::new(),
         inserted: BTreeMap::new(),
         validated: Vec::new(),
     };
     walk.walk(base, &head, "");
-    walk.check_validated();
+    walk.check_validated(&head);
 }
 
 fn text(value: Option<&Value>) -> &str {
@@ -333,13 +347,18 @@ pub(crate) fn block_mismatches(events: &[Value]) -> Vec<String> {
             (Some("block_end"), _) => {
                 let block = event.get("block").filter(|block| !block.is_null());
                 let mismatch = match (text(event.pointer("/end/close")), block) {
-                    ("text", Some(block)) => {
+                    ("text", block) => {
                         let expected = texts.get(id).map_or("", String::as_str);
-                        (text(block.get("text")) != expected)
-                            .then(|| format!("text block is not its deltas {expected:?}"))
+                        match block {
+                            Some(block) => (text(block.get("text")) != expected)
+                                .then(|| format!("text block is not its deltas {expected:?}")),
+                            None => (!expected.is_empty())
+                                .then(|| format!("text end carries no block for {expected:?}")),
+                        }
                     }
                     ("reasoning", block) => {
-                        let expected = if open_reasoning.remove(id) {
+                        let closes_open = open_reasoning.remove(id);
+                        let expected = if closes_open {
                             let assembled = reasoning.remove(id).unwrap_or_default();
                             finished_reasoning.insert(id, assembled.clone());
                             assembled
@@ -349,9 +368,13 @@ pub(crate) fn block_mismatches(events: &[Value]) -> Vec<String> {
                         let restated = event
                             .pointer("/end/reasoning")
                             .is_some_and(|reasoning| !reasoning.is_null());
-                        block
-                            .filter(|block| !restated && reasoning_text(block) != expected)
-                            .map(|_| format!("reasoning block is not its deltas {expected:?}"))
+                        match block {
+                            Some(block) => (!restated && reasoning_text(block) != expected)
+                                .then(|| format!("reasoning block is not its deltas {expected:?}")),
+                            None => {
+                                closes_open.then(|| "reasoning end carries no block".to_owned())
+                            }
+                        }
                     }
                     ("tool_call", block) => {
                         let fragments = arguments.remove(id).unwrap_or_default();
@@ -428,19 +451,9 @@ fn goldens(dir: &Path, found: &mut Vec<std::path::PathBuf>) -> Result<(), String
     Ok(())
 }
 
-pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
-    let mut base = "HEAD".to_owned();
-    let mut args = args.iter();
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--base" => base = args.next().cloned().ok_or("--base needs a ref")?,
-            other => return Err(format!("unknown argument {other}")),
-        }
-    }
-    let parse = |path: &str, text: &str| {
-        serde_json::from_str::<Value>(text).map_err(|error| format!("{path}: {error}"))
-    };
-
+/// The number of goldens under the effects tree, and every block/delta
+/// mismatch among them as `file/path/position: what`.
+pub(crate) fn corpus_mismatches(root: &Path) -> Result<(usize, Vec<String>), String> {
     let mut files = Vec::new();
     goldens(
         &root.join("crates/rig-cassette/fixtures/effects"),
@@ -455,10 +468,29 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             .display()
             .to_string();
         let text = std::fs::read_to_string(file).map_err(|error| format!("{label}: {error}"))?;
-        for mismatch in golden_mismatches(&parse(&label, &text)?) {
+        let golden =
+            serde_json::from_str::<Value>(&text).map_err(|error| format!("{label}: {error}"))?;
+        for mismatch in golden_mismatches(&golden) {
             mismatches.push(format!("{label}{mismatch}"));
         }
     }
+    Ok((files.len(), mismatches))
+}
+
+pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
+    let mut base = "HEAD".to_owned();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--base" => base = args.next().cloned().ok_or("--base needs a ref")?,
+            other => return Err(format!("unknown argument {other}")),
+        }
+    }
+    let parse = |path: &str, text: &str| {
+        serde_json::from_str::<Value>(text).map_err(|error| format!("{path}: {error}"))
+    };
+
+    let (audited, mismatches) = corpus_mismatches(root)?;
 
     let mut changes = Changes::default();
     let mut churned = Vec::new();
@@ -487,7 +519,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     }
     println!(
         "audited {} golden(s); {} differ from {base}: {} close(s) inserted, {} block(s) added to an end, {} count shift(s), {} delivery churn, {} other; {} block/delta mismatch(es)",
-        files.len(),
+        audited,
         changes.files,
         changes.closes_inserted,
         changes.blocks_added,

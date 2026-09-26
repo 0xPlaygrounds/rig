@@ -56,7 +56,7 @@ fn an_end_that_gained_its_block_restates_the_base_end() {
 }
 
 #[test]
-fn a_close_inserted_before_the_final_counts_toward_the_final_s_batch() {
+fn a_close_before_the_final_counts_toward_the_batch_of_the_final() {
     let base = log(
         json!([
             batch(stream(0, 2), 3),
@@ -104,7 +104,7 @@ fn a_close_at_the_end_of_the_stream_counts_toward_the_last_stream_batch() {
 }
 
 #[test]
-fn a_close_before_a_stream_error_counts_toward_the_error_s_batch() {
+fn a_close_before_a_stream_error_counts_toward_the_batch_of_the_error() {
     // The error is item 2 in the base and item 3 once the close is inserted.
     let base = log(
         json!([
@@ -131,7 +131,7 @@ fn a_close_before_a_stream_error_counts_toward_the_error_s_batch() {
 }
 
 #[test]
-fn a_close_before_an_unlisted_trailing_error_counts_toward_its_batch() {
+fn a_close_before_an_unlisted_trailing_error_counts_toward_the_batch_of_the_error() {
     // The failed outcome's error was delivered as item 2 without a
     // `stream_errors` entry.
     let base = log(
@@ -221,6 +221,16 @@ fn a_close_after_an_undelivered_item_is_refused() {
         None,
     );
     let head = log(json!([]), vec![delta("a"), close(), last()], None);
+    assert!(rebase_deliveries(&base, &head).is_err());
+
+    // A close at the end of such a stream would make its last batch deliver
+    // the undelivered delta instead.
+    let base = log(
+        json!([batch(stream(0, 1), 1)]),
+        vec![delta("a"), delta("b")],
+        None,
+    );
+    let head = log(json!([]), vec![delta("a"), delta("b"), close()], None);
     assert!(rebase_deliveries(&base, &head).is_err());
 }
 
