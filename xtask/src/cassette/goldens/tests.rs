@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn unfit_goldens_warn_with_the_default_base() {
+    assert!(regeneration_result(true, false, 1).is_ok());
+}
+
+#[test]
+fn unfit_goldens_fail_with_an_explicit_base() {
+    assert!(regeneration_result(true, true, 1).is_err());
+    assert!(regeneration_result(true, true, 0).is_ok());
+}
+
+#[test]
+fn failed_regeneration_fails_with_either_base_policy() {
+    for explicit in [false, true] {
+        for unfit in [0, 1] {
+            assert!(regeneration_result(false, explicit, unfit).is_err());
+        }
+    }
+}
+
+#[test]
 fn only_a_deliveries_change_is_churn() {
     let base = r#"{"header":{"deliveries":[1,2],"run_spec":7},"records":[{"a":1}]}"#;
     let reordered = r#"{"header":{"deliveries":[2,1],"run_spec":7},"records":[{"a":1}]}"#;

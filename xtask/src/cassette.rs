@@ -33,7 +33,8 @@ pub(crate) const USAGE: &str = "\
   cassette goldens [--base REF] [--test TARGET]...
                               regenerate effect goldens from replay, revert
                               delivery-only churn and keep the base's delivery
-                              batches (REF defaults to HEAD)
+                              batches (REF defaults to HEAD); unfit goldens warn
+                              by default and fail under an explicit --base
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";
 

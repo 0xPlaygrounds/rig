@@ -432,15 +432,17 @@ fn array_span(text: &str, key: &str) -> Option<std::ops::Range<usize>> {
 
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let mut targets = Vec::new();
-    let mut base = "HEAD".to_owned();
+    let mut base = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--test" => targets.push(args.next().cloned().ok_or("--test needs a target")?),
-            "--base" => base = args.next().cloned().ok_or("--base needs a ref")?,
+            "--base" => base = Some(args.next().cloned().ok_or("--base needs a ref")?),
             other => return Err(format!("unknown argument {other}")),
         }
     }
+    let explicit_base = base.is_some();
+    let base = base.unwrap_or_else(|| "HEAD".to_owned());
     let mut command = Command::new("cargo");
     command.args([
         "nextest",
@@ -471,14 +473,29 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     for (path, reason) in &outcome.kept {
         println!("kept regenerated deliveries in {path}: {reason}");
     }
-    if !status.success() {
-        return Err("the regeneration run failed".into());
+    regeneration_result(status.success(), explicit_base, outcome.kept.len())
+        .map_err(|error| error.to_string())
+}
+
+#[derive(Debug, thiserror::Error)]
+enum RegenerationError {
+    #[error("the regeneration run failed")]
+    TestRun,
+    #[error("{0} golden(s) changed in a way the base's delivery batches do not fit")]
+    Unfit(usize),
+}
+
+fn regeneration_result(
+    success: bool,
+    explicit_base: bool,
+    unfit: usize,
+) -> Result<(), RegenerationError> {
+    if !success {
+        return Err(RegenerationError::TestRun);
     }
-    if !outcome.kept.is_empty() {
-        return Err(format!(
-            "{} golden(s) changed in a way the base's delivery batches do not fit",
-            outcome.kept.len()
-        ));
+    if explicit_base && unfit != 0 {
+        // A rebase onto a named base is a migration: every golden must fit.
+        return Err(RegenerationError::Unfit(unfit));
     }
     Ok(())
 }
