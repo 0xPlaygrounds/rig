@@ -195,10 +195,10 @@ document why lower-severity findings should remain. After fixes, rerun only
 useful targeted checks and the independent review; repeat if new confirmed
 P0/P1 issues appear. Do not restart the full local suite after each fix.
 
-Commit/push/open a non-draft PR promptly when the task authorizes it; do not
-delay publication to duplicate CI locally. This policy does not independently
+Commit/push/open a PR promptly when the task authorizes it; do not delay
+publication to duplicate CI locally. This policy does not independently
 authorize commits, pushes, PR creation, merging, or comments on PRs/issues.
-Do not open draft PRs or comment on PRs/issues unless asked.
+Do not comment on PRs/issues unless asked.
 
 After publication, inspect required checks on the current committed head and
 actionable review feedback. CI is the comprehensive verification gate. Confirm
