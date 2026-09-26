@@ -171,8 +171,14 @@ The other commands:
   is `header.deliveries` is reverted. A golden whose content changed keeps
   `REF`'s delivery batches, each stream count grown by the events the change
   inserted into it, so the diff shows the change and not the racy batching.
+  A golden whose change does not fit is listed. With an explicit `--base`,
+  that fails the command; under the default it keeps its regenerated
+  batches.
 - `cassette audit [--base REF]` checks every effect golden: a block on a
-  stream's end must be what the block's deltas carried. It then classifies
+  stream's end must be what the block's deltas carried, and an end whose
+  text or reasoning deltas assembled content must carry that block. The
+  same block check runs over the whole corpus in xtask's tests, so CI's
+  guards job enforces it. The audit then classifies
   each change from `REF` (default `HEAD`) as an inserted close or reasoning
   start, a block added to an end, or a count shift that follows the inserted
   events, and fails on any other change or any mismatch.

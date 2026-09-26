@@ -188,3 +188,35 @@ fn an_authoritative_block_is_counted_apart() {
     assert_eq!((found.blocks, found.authoritative), (0, 1));
     assert!(found.mismatches.is_empty());
 }
+
+#[test]
+fn a_text_end_without_its_block_is_a_mismatch() {
+    let head = log(vec![delta("hi"), end(None), done()], vec![], vec![(1, 3)]);
+    assert_eq!(audit(None, &head).mismatches.len(), 1);
+    let empty = log(vec![end(None), done()], vec![], vec![(1, 2)]);
+    assert!(audit(None, &empty).mismatches.is_empty());
+}
+
+#[test]
+fn a_reasoning_end_without_the_part_its_deltas_opened_is_a_mismatch() {
+    let reasoning = json!({"event": "block_delta", "id": "r", "delta": {"delta": "reasoning", "text": "think"}});
+    let close = json!({"event": "block_end", "id": "r", "end": {"close": "reasoning"}});
+    let head = log(vec![reasoning, close, done()], vec![], vec![(1, 3)]);
+    assert_eq!(audit(None, &head).mismatches.len(), 1);
+}
+
+/// The checked-in corpus: every golden's ends carry what their deltas
+/// assemble.
+#[test]
+fn every_golden_end_carries_what_its_deltas_assemble() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the workspace root");
+    let audit = corpus_audit(root).expect("the corpus reads");
+    assert!(audit.files > 1000, "only {} goldens found", audit.files);
+    assert!(
+        audit.mismatches.is_empty(),
+        "{}",
+        audit.mismatches.join("\n")
+    );
+}

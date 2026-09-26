@@ -194,3 +194,16 @@ fn an_inserted_sibling_start_counts_like_a_close() {
         .expect("rebased");
     assert_eq!(batches(&rebased), vec![(1, Some(3)), (99, None)]);
 }
+
+#[test]
+fn an_unfit_golden_fails_only_under_an_explicit_base() {
+    assert!(verdict(true, false, 2).is_ok());
+    assert!(verdict(true, true, 2).is_err());
+    assert!(verdict(true, true, 0).is_ok());
+}
+
+#[test]
+fn a_failed_run_fails_under_either_base() {
+    assert!(verdict(false, false, 0).is_err());
+    assert!(verdict(false, true, 0).is_err());
+}

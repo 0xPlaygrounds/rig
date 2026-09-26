@@ -125,7 +125,21 @@ impl Audit {
                         Some("tool_call") => arguments.remove(id).unwrap_or_default(),
                         _ => String::new(),
                     };
-                    let Some(block) = block else { continue };
+                    let Some(block) = block else {
+                        // An end that closes content its deltas assembled
+                        // must carry it: a missing block would read as empty.
+                        let assembled = match close {
+                            Some("text") => text.get(id).is_some_and(|t| !t.is_empty()),
+                            Some("reasoning") => !deltas.is_empty(),
+                            _ => false,
+                        };
+                        if assembled {
+                            self.mismatches.push(format!(
+                                "{path}: the end of {id} carries no block for content its deltas assembled"
+                            ));
+                        }
+                        continue;
+                    };
                     let authoritative = match close {
                         Some("reasoning") => event.pointer("/end/reasoning").is_some(),
                         Some("tool_call") => event.pointer("/end/arguments").is_some(),
@@ -513,6 +527,49 @@ fn run_of(at: &str) -> Option<&str> {
     Some(&at[..("/golden/".len() + close + 1)])
 }
 
+/// Every golden under the effects tree, as its repository-relative path and
+/// parsed JSON, sorted by path. Reads the working tree without git, so the
+/// corpus check runs anywhere the sources are.
+pub(crate) fn corpus(root: &Path) -> Result<Vec<(String, Value)>, String> {
+    fn walk(dir: &Path, found: &mut Vec<std::path::PathBuf>) -> Result<(), String> {
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        for entry in entries {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if path.is_dir() {
+                walk(&path, found)?;
+            } else if path.extension().is_some_and(|e| e == "json") {
+                found.push(path);
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    walk(&root.join(EFFECTS), &mut files)?;
+    files.sort();
+    files
+        .into_iter()
+        .map(|file| {
+            let label = file
+                .strip_prefix(root)
+                .unwrap_or(&file)
+                .display()
+                .to_string();
+            let text = std::fs::read_to_string(&file).map_err(|e| format!("{label}: {e}"))?;
+            let golden = serde_json::from_str(&text).map_err(|e| format!("{label}: {e}"))?;
+            Ok((label, golden))
+        })
+        .collect()
+}
+
+/// The block check over every golden in the corpus, with no base.
+pub(crate) fn corpus_audit(root: &Path) -> Result<Audit, String> {
+    let mut audit = Audit::default();
+    for (path, golden) in corpus(root)? {
+        audit.file(&path, None, &golden);
+    }
+    Ok(audit)
+}
+
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let mut base = "HEAD".to_owned();
     let mut args = args.iter();
@@ -543,23 +600,20 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             "crates/rig-cassette/fixtures/cassettes",
         ],
     )?;
-    let listed = git(root, &["ls-files", "--", EFFECTS])?;
-    for path in listed.lines().filter(|path| path.ends_with(".json")) {
-        let text = std::fs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))?;
-        let head: Value = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
-        let base = if changed.contains(&path) {
+    for (path, head) in corpus(root)? {
+        let base = if changed.contains(&path.as_str()) {
             let text = git(root, &["show", &format!("{base}:{path}")])?;
             match serde_json::from_str::<Value>(&text) {
                 Ok(base) => Some(base),
                 Err(error) => {
-                    audit.other(path, format!("the base golden does not parse: {error}"));
+                    audit.other(&path, format!("the base golden does not parse: {error}"));
                     continue;
                 }
             }
         } else {
             None
         };
-        audit.file(path, base.as_ref(), &head);
+        audit.file(&path, base.as_ref(), &head);
     }
     println!(
         "{} goldens, {} changed from {base}; {} blocks checked against their deltas, {} carried \

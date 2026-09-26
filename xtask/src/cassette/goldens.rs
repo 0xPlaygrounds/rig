@@ -432,15 +432,17 @@ fn array_span(text: &str, key: &str) -> Option<std::ops::Range<usize>> {
 
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let mut targets = Vec::new();
-    let mut base = "HEAD".to_owned();
+    let mut base = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--test" => targets.push(args.next().cloned().ok_or("--test needs a target")?),
-            "--base" => base = args.next().cloned().ok_or("--base needs a ref")?,
+            "--base" => base = Some(args.next().cloned().ok_or("--base needs a ref")?),
             other => return Err(format!("unknown argument {other}")),
         }
     }
+    let explicit = base.is_some();
+    let base = base.unwrap_or_else(|| "HEAD".to_owned());
     let mut command = Command::new("cargo");
     command.args([
         "nextest",
@@ -471,16 +473,24 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     for (path, reason) in &outcome.kept {
         println!("kept regenerated deliveries in {path}: {reason}");
     }
-    if !status.success() {
-        return Err("the regeneration run failed".into());
+    verdict(status.success(), explicit, outcome.kept.len())
+}
+
+/// Whether a regeneration succeeded: the test run passed, and, when the
+/// base was named, every golden fit its delivery batches. A rebase onto a
+/// named base is a migration, so every golden must fit; under the default
+/// base, a golden that does not fit keeps its regenerated batches and is
+/// only reported.
+fn verdict(run_passed: bool, explicit_base: bool, unfit: usize) -> Result<(), String> {
+    if !run_passed {
+        Err("the regeneration run failed".into())
+    } else if explicit_base && unfit > 0 {
+        Err(format!(
+            "{unfit} golden(s) changed in a way the base's delivery batches do not fit"
+        ))
+    } else {
+        Ok(())
     }
-    if !outcome.kept.is_empty() {
-        return Err(format!(
-            "{} golden(s) changed in a way the base's delivery batches do not fit",
-            outcome.kept.len()
-        ));
-    }
-    Ok(())
 }
 
 #[cfg(test)]
