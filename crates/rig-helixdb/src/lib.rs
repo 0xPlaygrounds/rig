@@ -9,7 +9,6 @@ use std::future::Future;
 
 use reqwest::{Client, StatusCode};
 use rig_core::{
-    embeddings::EmbeddingModel,
     vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -119,13 +118,13 @@ impl HelixDBClient for HelixDB {
 ///
 /// ```no_run
 /// use rig_core::providers::openai::wire::OpenAI;
-/// use rig_reqwest::prelude::*;
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
 /// # fn example() -> anyhow::Result<()> {
-/// let openai_model = OpenAI::from_env()?
-///     .bound()?
-///     .embedding("text-embedding-ada-002", None);
+/// let openai_model = rig_core::Model::new(
+///     OpenAI::from_env()?.embedding("text-embedding-ada-002", None),
+///     rig_reqwest::shared(),
+/// );
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
 /// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());
@@ -173,9 +172,13 @@ struct VecResult {
     vec_docs: Vec<QueryResult>,
 }
 
-impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M> {
+impl<C, W, Tr> HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     /// Creates a new HelixDB vector store.
-    pub fn new(client: C, model: M) -> Self {
+    pub fn new(client: C, model: rig_core::driver::Model<W, Tr>) -> Self {
         Self { client, model }
     }
 
@@ -185,8 +188,10 @@ impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M> {
     }
 }
 
-impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M>
+impl<C, W, Tr> HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {
@@ -211,8 +216,10 @@ where
     }
 }
 
-impl<C, M: EmbeddingModel> InsertDocuments for HelixDBVectorStore<C, M>
+impl<C, W, Tr> InsertDocuments for HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {
@@ -251,8 +258,10 @@ where
     }
 }
 
-impl<C, M: EmbeddingModel> VectorStoreIndex for HelixDBVectorStore<C, M>
+impl<C, W, Tr> VectorStoreIndex for HelixDBVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {

@@ -1,10 +1,9 @@
 //! OpenRouter history survival: Anthropic-signed reasoning delivered through
 //! `reasoning_details`, and tool-call ids, across three prompts.
 
-use rig::completion::CompletionModel;
-
-use super::super::support::{BoundOpenRouter, with_openrouter_cassette};
+use super::super::support::with_openrouter_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({
@@ -13,8 +12,8 @@ fn params() -> Option<serde_json::Value> {
     }))
 }
 
-fn model(client: BoundOpenRouter, cell: Cell) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

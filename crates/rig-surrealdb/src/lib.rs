@@ -9,7 +9,7 @@ use std::fmt::Display;
 
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -103,8 +103,10 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
     }
 }
 
-impl<C, M: EmbeddingModel> InsertDocuments for SurrealVectorStore<C, M>
+impl<C, W, Tr> InsertDocuments for SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
@@ -256,12 +258,14 @@ impl SurrealSearchFilter {
     }
 }
 
-impl<C, M: EmbeddingModel> SurrealVectorStore<C, M>
+impl<C, W, Tr> SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {
     pub fn new(
-        model: M,
+        model: rig_core::driver::Model<W, Tr>,
         surreal: Surreal<C>,
         documents_table: Option<String>,
         distance_function: SurrealDistanceFunction,
@@ -278,7 +282,7 @@ where
         &self.surreal
     }
 
-    pub fn with_defaults(model: M, surreal: Surreal<C>) -> Self {
+    pub fn with_defaults(model: rig_core::driver::Model<W, Tr>, surreal: Surreal<C>) -> Self {
         Self::new(model, surreal, None, SurrealDistanceFunction::Cosine)
     }
 
@@ -327,8 +331,10 @@ where
     }
 }
 
-impl<C, M: EmbeddingModel> VectorStoreIndex for SurrealVectorStore<C, M>
+impl<C, W, Tr> VectorStoreIndex for SurrealVectorStore<C, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     C: Connection,
 {
     type Filter = SurrealSearchFilter;

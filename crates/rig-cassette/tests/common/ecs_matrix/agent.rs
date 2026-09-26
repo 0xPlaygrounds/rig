@@ -17,8 +17,6 @@ use rig_agent::agent::WithBuilderTools;
 
 use rig_agent::agent::WithToolServerHandle;
 
-use rig_agent::completion::CompletionModel;
-
 use rig_agent::completion::PromptError;
 
 use rig_core::effect::HandlerKey;
@@ -29,7 +27,7 @@ use rig_core::error::ErrorReport;
 
 use rig_core::serve::ErasedHandler;
 
-use rig_core::serve::adapters::CompletionAdapter;
+use rig_core::serve::adapters::ModelAdapter;
 
 use super::cells::{Bus, Cell, Memory, ToolKind};
 use super::corpus::{self, Ending, LayerAt, Lookup, Nesting, Program};
@@ -184,14 +182,16 @@ impl Buildable for AgentBuilder<WithToolServerHandle> {
 }
 
 /// Apply the cell's memory and route, then build.
-fn finish<S, M: CompletionModel + Clone + 'static>(
+fn finish<S, W, T>(
     mut builder: AgentBuilder<S>,
-    wire: &Wire<M>,
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     program: &Program,
 ) -> rig_agent::agent::Agent
 where
     AgentBuilder<S>: Buildable,
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
 {
     let memory_layered = program.layers.iter().any(|spec| spec.at == LayerAt::Memory);
     builder = match cell.memory {
@@ -244,12 +244,16 @@ fn typed_tool(
 }
 
 /// The cell's tools on the builder, then [`finish`].
-fn grant<M: CompletionModel + Clone + 'static>(
+fn grant<W, T>(
     builder: AgentBuilder<NoToolConfig>,
-    wire: &Wire<M>,
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     program: &Program,
-) -> rig_agent::agent::Agent {
+) -> rig_agent::agent::Agent
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     let layered_tool = program.layers.iter().any(|spec| spec.at == LayerAt::Tool);
     if layered_tool {
         assert_eq!(cell.tools, [ToolKind::Adder], "the layer cells grant add");
@@ -378,11 +382,15 @@ async fn run_prompts(
 
 /// The producer's cell: the program over `wire` on rig-agent's builder,
 /// its log written as the golden `golden`.
-pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) async fn run_agent<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     golden: impl FnOnce(&rig_cassette::effect_log::EffectLog),
-) -> rig_cassette::effect_log::EffectLog {
+) -> rig_cassette::effect_log::EffectLog
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     let program = wire.program(cell);
     let policy = cell.bus.policy();
     let settlement: Option<super::reasoning::SettlementCapture> =
@@ -413,7 +421,7 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
         driver
             .register_erased(
                 model_key.clone(),
-                ErasedHandler::new(CompletionAdapter::new("default", wire.model.clone())),
+                ErasedHandler::new(ModelAdapter::new("default", wire.model.clone())),
             )
             .expect("a fresh key");
         if cell.notes {

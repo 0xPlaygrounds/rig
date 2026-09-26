@@ -37,14 +37,15 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, FinishReason};
-use rig::prelude::*;
+use rig::completion::{AssistantContent, FinishReason};
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::support::{BoundMistral, with_mistral_tool_lifecycle_cassette_result};
+use super::support::with_mistral_tool_lifecycle_cassette_result;
+use rig::completion::CompletionRequestBuilder;
+use rig::providers::openai::OpenAI;
 
 const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
@@ -153,12 +154,8 @@ fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
-    let mut builder = model
-        .completion_request(prompt(cell.shape))
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())
         .additional_params(
             json!({ "tool_choice": "any", "parallel_tool_calls": cell.shape == Shape::Parallel }),
@@ -260,10 +257,10 @@ impl_matrix_tool!(RecordPayload, "record_payload", PayloadArgs);
 impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
-async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
-    let model = client.completion(model_name(cell.model));
+async fn run_model(client: OpenAI, cell: Cell) -> Observation {
+    let model = rig::model(client.completion(model_name(cell.model)));
     match cell.transport {
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => {
                 let (names, ids, arguments) = normalized_calls(&response.choice);
                 Observation {
@@ -280,7 +277,7 @@ async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.stream(request(&model, cell)).await {
+            let raw = match model.stream(request(cell)) {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {
@@ -313,10 +310,9 @@ async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
     }
 }
 
-async fn run_agent(client: BoundMistral, cell: Cell) -> Observation {
+async fn run_agent(client: OpenAI, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
-    let builder = client
-        .agent(model_name(cell.model))
+    let builder = rig::AgentBuilder::new(rig::model(client.completion(model_name(cell.model))))
         .preamble(PREAMBLE)
         .additional_params(
             json!({ "tool_choice": "any", "parallel_tool_calls": cell.shape == Shape::Parallel }),
@@ -368,7 +364,7 @@ async fn run_agent(client: BoundMistral, cell: Cell) -> Observation {
     }
 }
 
-async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
+async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
         Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,

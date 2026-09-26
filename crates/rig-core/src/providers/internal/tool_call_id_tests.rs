@@ -7,7 +7,10 @@ use serde_json::{Value, json};
 
 /// Fold one whole reply document through a wire's own decoder — the single
 /// path a unary reply takes in production, minus the transport.
-fn fold_document<W: Wire<Op = Completion>>(wire: &W, body: &Value) -> CompletionResponse {
+fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
+    wire: &W,
+    body: &Value,
+) -> CompletionResponse {
     let body = body.to_string();
     let mut driver =
         crate::driver::WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
@@ -106,7 +109,7 @@ fn anthropic_missing_ids_and_later_explicit_collision() {
     let wire = json!({"type":"message","id":"response","model":"test","role":"assistant","stop_reason":"tool_use",
         "usage":{"input_tokens":1,"output_tokens":1},
         "content":(0..3).map(|i|json!({"type":"tool_use","id":if i==1 {"tool-0"} else {""},"name":"same","input":{"n":i}})).collect::<Vec<_>>()});
-    let messages = crate::providers::anthropic::wire::Anthropic::new("test-key").messages("test");
+    let messages = crate::providers::anthropic::wire::Anthropic::new("test-key").completion("test");
     assert_normalization(|| fold_document(&messages, &wire));
 }
 
@@ -115,7 +118,7 @@ fn cohere_missing_ids_and_later_explicit_collision() {
     let mut message = chat_wire()["choices"][0]["message"].clone();
     message["content"] = json!([{"type":"text","text":"prefix"}]);
     let wire = json!({"id":"response","finish_reason":"TOOL_CALL","message":message});
-    let chat = crate::providers::cohere::Cohere::new("test-key").chat("test");
+    let chat = crate::providers::cohere::Cohere::new("test-key").completion("test");
     assert_normalization(|| fold_document(&chat, &wire));
 }
 
@@ -124,7 +127,7 @@ fn gemini_rest_missing_ids_and_later_explicit_collision() {
     let wire = json!({"candidates":[{"content":{"role":"model","parts":
         (0..3).map(|i|json!({"functionCall":{"id":if i==1 {"tool-0"} else {""},"name":"same","args":{"n":i}}})).collect::<Vec<_>>()
     },"finishReason":"STOP"}]});
-    let generate = crate::providers::gemini::Gemini::new("test-key").generate_content("test");
+    let generate = crate::providers::gemini::Gemini::new("test-key").completion("test");
     assert_normalization(|| fold_document(&generate, &wire));
 }
 

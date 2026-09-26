@@ -30,7 +30,7 @@ use rig_core::error::ProviderError;
 use rig_core::{completion::ModelRef, message::ToolChoice};
 
 use crate::{
-    completion::{CompletionModel, Document, Message, PromptError, Usage},
+    completion::{Document, Message, PromptError, Usage},
     tool::{ToolContext, server::ToolServerHandle},
 };
 
@@ -152,9 +152,10 @@ impl AgentRunner {
     /// Register `model` on the agent's bus under a generated label and use
     /// it as this run's default. The registration is scoped to this runner
     /// and the run it produces: it leaves the bus when they drop.
-    pub fn using_model_value<M>(mut self, model: M) -> Self
+    pub fn using_model_value<W, T>(mut self, model: rig_core::driver::Model<W, T>) -> Self
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
     {
         let anonymous = self.config.bus.register_anonymous_model(model);
         self.config.model_key = anonymous.key().clone();

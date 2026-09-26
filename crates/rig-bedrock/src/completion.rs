@@ -1,30 +1,33 @@
-//! Bedrock Converse completion models and model identifiers.
+//! The Bedrock Converse completion wire and model identifiers.
 //! Model availability and inference-profile support depend on the AWS region.
 //!
 //! ```no_run
-//! use rig_bedrock::{client::Client, completion::{CompletionModel, AMAZON_NOVA_LITE}};
+//! use rig_bedrock::{client::BedrockRuntime, completion::{AMAZON_NOVA_LITE, Converse}};
+//! use rig_core::Model;
 //!
-//! let model = CompletionModel::new(Client::from_env()?, AMAZON_NOVA_LITE);
-//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env());
+//! # let _ = model;
 //! ```
 
 use crate::{
-    client::Client,
+    client::BedrockRuntime,
+    streaming::StreamState,
     types::{
-        assistant_content::{AwsConverseOutput, completion_response},
+        assistant_content::{PROVIDER_NAME, reasoning_issuer},
         completion_request::AwsCompletionRequest,
         converse_output::InternalConverseOutput,
-        errors::AwsSdkConverseError,
+        errors::{
+            AwsSdkConverseError, AwsSdkConverseStreamError, converse_stream_output_completion_error,
+        },
     },
 };
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::{self, CompletionRequest};
-use rig_core::error::ProviderError;
-use rig_core::streaming::StreamingCompletionResponse;
-use rig_core::telemetry::ProviderResponseExt;
-use rig_core::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use tracing::Instrument;
+use rig_core::completion::CompletionRequest;
+use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::error::{EncodeError, ProviderError};
+use rig_core::operation::Completion;
+use rig_core::wire::{Mode, Wire};
 
 // Profile identifiers with a us. prefix route inference within the US region
 // family; callers elsewhere must select a supported regional profile.
@@ -119,24 +122,24 @@ pub const WRITER_PALMYRA_X4: &str = "us.writer.palmyra-x4-v1:0";
 /// `us.writer.palmyra-x5-v1:0` (cross-region profile)
 pub const WRITER_PALMYRA_X5: &str = "us.writer.palmyra-x5-v1:0";
 
-#[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
+/// The Converse endpoint for one model: `Converse` for a unary call,
+/// `ConverseStream` for a streamed one.
+#[derive(Clone, Debug)]
+pub struct Converse {
     pub model: String,
     /// When enabled, cache checkpoints are inserted into Converse API requests
     /// to take advantage of [Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
     /// Marks system content and, when history contains no reasoning, the final
     /// message. Disabled by default.
     pub prompt_caching: bool,
-    /// Guardrail applied to unary Converse requests from this model, if any.
-    /// Set through [`CompletionModel::with_guardrail`].
+    /// Guardrail applied to unary Converse requests, if any.
+    /// Set through [`Converse::with_guardrail`].
     pub guardrail: Option<aws_bedrock::GuardrailConfiguration>,
 }
 
-impl CompletionModel {
-    pub fn new(client: Client, model: impl Into<String>) -> Self {
+impl Converse {
+    pub fn new(model: impl Into<String>) -> Self {
         Self {
-            client,
             model: model.into(),
             prompt_caching: false,
             guardrail: None,
@@ -155,9 +158,8 @@ impl CompletionModel {
     /// to unary Converse requests. Streaming requests do not apply this setting.
     ///
     /// `identifier` is the guardrail ID or ARN; `version` is a version or `DRAFT`.
-    /// Enabled trace details are available through [`Self::raw_completion`] in
-    /// [`InternalConverseOutput::trace`]. The normalized finish reason reports
-    /// guardrail intervention as content filtering.
+    /// The normalized finish reason reports guardrail intervention as content
+    /// filtering.
     pub fn with_guardrail(
         mut self,
         identifier: impl Into<String>,
@@ -173,101 +175,183 @@ impl CompletionModel {
         );
         self
     }
+
+    fn request_model<'a>(&'a self, model: Option<&'a str>) -> &'a str {
+        model.unwrap_or(&self.model)
+    }
 }
 
-pub(crate) fn resolve_request_model(
-    default_model: &str,
-    completion_request: &CompletionRequest,
-) -> String {
-    completion_request
-        .model
-        .clone()
-        .unwrap_or_else(|| default_model.to_string())
+/// One Converse request: the model it addresses and the request prepared
+/// for it.
+pub struct ConverseRequest {
+    pub model: String,
+    pub request: AwsCompletionRequest,
+    pub guardrail: Option<aws_bedrock::GuardrailConfiguration>,
 }
 
-impl CompletionModel {
-    /// Executes one Converse request and returns provider-native output.
-    /// Returns request-conversion, SDK, or response-conversion errors.
-    pub async fn raw_completion(
+/// One unit of a Converse reply.
+pub enum ConverseFrame {
+    /// The reply opened: the model it answers for, and the AWS request id
+    /// from the SDK's response metadata.
+    Opened {
+        model: String,
+        request_id: Option<String>,
+    },
+    /// The whole unary reply.
+    Whole(Box<InternalConverseOutput>),
+    /// One streamed event.
+    Event(aws_bedrock::ConverseStreamOutput),
+}
+
+impl Wire for Converse {
+    type Op = Completion;
+    type Payload = ConverseRequest;
+    type Frame = ConverseFrame;
+    type Decoder = StreamState;
+
+    fn name(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    /// Claude reasoning on Bedrock is Anthropic's; other models' is Bedrock's.
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
+        Some(vec![reasoning_issuer(self.request_model(model)).to_owned()])
+    }
+
+    fn reasoning_issuer(&self, model: Option<&str>) -> Option<&str> {
+        let issuer = reasoning_issuer(self.request_model(model));
+        (issuer != PROVIDER_NAME).then_some(issuer)
+    }
+
+    fn encode(
         &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<AwsConverseOutput, ProviderError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
+        request: CompletionRequest,
+        _mode: Mode,
+    ) -> Result<ConverseRequest, EncodeError> {
+        let model = self.request_model(request.model.as_deref()).to_owned();
+        Ok(ConverseRequest {
+            request: AwsCompletionRequest::new(request, self.prompt_caching),
+            model,
+            guardrail: self.guardrail.clone(),
+        })
+    }
 
-        let span = SpanBuilder::new("aws_bedrock", &request_model, GenAiOperation::Chat)
-            .system_instructions(
-                completion_request.system_instructions(),
-                completion_request.record_telemetry_content,
-            )
-            .build();
+    fn decoder(&self, _mode: Mode) -> StreamState {
+        StreamState::default()
+    }
+}
 
-        let request = AwsCompletionRequest::for_model(
-            completion_request,
-            &request_model,
-            self.prompt_caching,
-        );
-
-        let mut converse_builder = self
-            .client
-            .inner()
-            .await
-            .converse()
-            .model_id(request_model.clone());
-
+impl Transport<Converse> for BedrockRuntime {
+    fn send(
+        &self,
+        payload: ConverseRequest,
+        mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let ConverseRequest {
+            model,
+            request,
+            guardrail,
+        } = payload;
         let tool_config = request.tools_config()?;
         let output_config = request.output_config()?;
         let additional_params = request.additional_params();
         let inference_config = request.inference_config();
         let system_prompt = request.system_prompt()?;
         let messages = request.messages()?;
-        converse_builder = converse_builder
-            .set_additional_model_request_fields(additional_params)
-            .set_inference_config(Some(inference_config))
-            .set_tool_config(tool_config)
-            .set_system(system_prompt)
-            .set_messages(Some(messages))
-            .set_output_config(output_config)
-            .set_guardrail_config(self.guardrail.clone());
-
-        async move {
-            let response = converse_builder
-                .send()
-                .await
-                .map_err(|sdk_error| Into::<ProviderError>::into(AwsSdkConverseError(sdk_error)))?;
-
-            let response: InternalConverseOutput = response
-                .try_into()
-                .map_err(|x| ProviderError::Provider(format!("Type conversion error: {x}")))?;
-
-            let aws_output = AwsConverseOutput(response);
-
-            let span = tracing::Span::current();
-            span.record_response(
-                aws_output.response_id(),
-                aws_output.response_model_name(),
-                &aws_output.usage().unwrap_or_default(),
-            );
-
-            Ok(aws_output)
-        }
-        .instrument(span)
-        .await
-    }
-}
-
-impl completion::CompletionModel for CompletionModel {
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, ProviderError> {
-        let model = resolve_request_model(&self.model, &completion_request);
-        completion_response(self.raw_completion(completion_request).await?, &model)
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        CompletionModel::stream(self, request).await
+        let runtime = self.clone();
+        Ok(async move {
+            let client = runtime.inner().await;
+            match mode {
+                Mode::Unary => {
+                    let sent = client
+                        .converse()
+                        .model_id(model.clone())
+                        .set_additional_model_request_fields(additional_params)
+                        .set_inference_config(Some(inference_config))
+                        .set_tool_config(tool_config)
+                        .set_system(system_prompt)
+                        .set_messages(Some(messages))
+                        .set_output_config(output_config)
+                        .set_guardrail_config(guardrail)
+                        .send()
+                        .await
+                        .map_err(|sdk_error| ProviderError::from(AwsSdkConverseError(sdk_error)))
+                        .and_then(|response| {
+                            InternalConverseOutput::try_from(response).map_err(|error| {
+                                ProviderError::Provider(format!("Type conversion error: {error}"))
+                            })
+                        });
+                    match sent {
+                        Ok(output) => {
+                            let request_id = output.request_id().map(str::to_owned);
+                            Opened {
+                                request_id: request_id.clone(),
+                                ..Opened::new(futures::stream::iter([
+                                    Ok(ConverseFrame::Opened { model, request_id }),
+                                    Ok(ConverseFrame::Whole(Box::new(output))),
+                                ]))
+                            }
+                        }
+                        Err(error) => Opened::failed(error),
+                    }
+                }
+                Mode::Streaming => {
+                    let sent = client
+                        .converse_stream()
+                        .model_id(model.clone())
+                        .set_additional_model_request_fields(additional_params)
+                        .set_inference_config(Some(inference_config))
+                        .set_tool_config(tool_config)
+                        .set_system(system_prompt)
+                        .set_messages(Some(messages))
+                        .set_output_config(output_config)
+                        .send()
+                        .await;
+                    let response = match sent {
+                        Ok(response) => response,
+                        Err(sdk_error) => {
+                            return Opened::failed(AwsSdkConverseStreamError(sdk_error).into());
+                        }
+                    };
+                    // Events do not carry the request id the terminal record
+                    // reports: it is the operation's metadata.
+                    let request_id =
+                        aws_sdk_bedrockruntime::operation::RequestId::request_id(&response)
+                            .map(str::to_owned);
+                    let opened = ConverseFrame::Opened {
+                        model,
+                        request_id: request_id.clone(),
+                    };
+                    let frames = async_stream::stream! {
+                        yield Ok(opened);
+                        let mut stream = response.stream;
+                        loop {
+                            match stream.recv().await {
+                                Ok(Some(output)) => yield Ok(ConverseFrame::Event(output)),
+                                Ok(None) => break,
+                                Err(error) => {
+                                    yield Err(converse_stream_output_completion_error(
+                                        error.into_service_error(),
+                                    ));
+                                    break;
+                                }
+                            }
+                        }
+                    };
+                    Opened {
+                        request_id,
+                        ..Opened::new(frames)
+                    }
+                }
+            }
+        })
     }
 }

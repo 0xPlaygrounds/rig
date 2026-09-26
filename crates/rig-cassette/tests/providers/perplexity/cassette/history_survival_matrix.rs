@@ -5,18 +5,18 @@
 //! task is tool-driven, so the cells are registered as unsupported rather
 //! than recorded.
 
-use rig::completion::CompletionModel;
 use rig::providers::perplexity;
 
-use super::super::support::{BoundPerplexity, with_perplexity_cassette};
+use super::super::support::with_perplexity_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundPerplexity, cell: Cell) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

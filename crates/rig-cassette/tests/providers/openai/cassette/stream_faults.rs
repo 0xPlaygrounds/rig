@@ -12,7 +12,6 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::openai::GPT_4O;
 use rig::providers::openai::OpenAI;
 use rig::streaming::{Delta, StreamEvent};
@@ -70,8 +69,8 @@ pub(super) fn tool_call_prefix_frames() -> Vec<String> {
 
 /// A client over a transport that answers one streaming request with
 /// `chunks`, then EOF.
-pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Bound<OpenAI, SequencedStreamingHttpClient> {
-    OpenAI::new(SCRIPTED_KEY).bind(scripted(chunks))
+pub(super) fn scripted_client(chunks: Vec<Bytes>) -> (OpenAI, SequencedStreamingHttpClient) {
+    (OpenAI::new(SCRIPTED_KEY), scripted(chunks))
 }
 
 /// The model refuses the request before any frame: the run fails with the
@@ -84,9 +83,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .openai
-                .agent(MISSING_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(MISSING_MODEL)))
                 .max_tokens(SETUP_MAX_TOKENS)
                 .record_to(recorder.clone())
                 .build();
@@ -121,10 +118,9 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
         !prefix.is_empty(),
         "the recording streams text before its end"
     );
-    let client = scripted_client(vec![sse_bytes(&frames)]);
+    let (client, http) = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = client
-        .agent(GPT_4O)
+    let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(GPT_4O), http.clone()))
         .preamble(STREAMING_PREAMBLE)
         .record_to(recorder.clone())
         .build();
@@ -157,10 +153,9 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
     let frames = tool_call_prefix_frames();
     let invocations = Invocations::default();
-    let client = scripted_client(vec![sse_bytes(&frames)]);
+    let (client, http) = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = client
-        .agent(GPT_4O)
+    let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(GPT_4O), http.clone()))
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(CountedSubtract(invocations.clone()))
@@ -197,10 +192,9 @@ async fn error_event_after_content_fails_with_the_provider_error() {
     let mut frames = text_prefix_frames();
     let prefix = delta_text(&frames);
     frames.push(ERROR_EVENT.to_owned());
-    let client = scripted_client(vec![sse_bytes(&frames)]);
+    let (client, http) = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = client
-        .agent(GPT_4O)
+    let agent = rig::AgentBuilder::new(rig::Model::new(client.completion(GPT_4O), http.clone()))
         .preamble(STREAMING_PREAMBLE)
         .record_to(recorder.clone())
         .build();
@@ -246,9 +240,7 @@ async fn error_event_after_content_fails_with_the_provider_error() {
 async fn dropping_the_stream_at_the_first_delta_records_a_cancel() {
     with_openai_cassette("streaming/streaming_smoke", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = client
-            .openai
-            .agent(GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(GPT_4O)))
             .preamble(STREAMING_PREAMBLE)
             .record_to(recorder.clone())
             .build();

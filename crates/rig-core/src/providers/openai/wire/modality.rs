@@ -3,7 +3,7 @@
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, TEXT_EMBEDDING_3_SMALL};
-//! let wire = OpenAI::new("key").embeddings(TEXT_EMBEDDING_3_SMALL, None);
+//! let wire = OpenAI::new("key").embedding(TEXT_EMBEDDING_3_SMALL, None);
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::embeddings;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
-use crate::model::{Model, ModelList};
+use crate::model::{ModelInfo, ModelList};
 use crate::operation::{
     Embedding, EmbeddingCapabilities, ModelListing, Rerank as RerankOp, Transcription,
     Verify as VerifyOp,
@@ -280,6 +280,8 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
 
 impl Wire for Embeddings {
     type Op = Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {
@@ -509,6 +511,8 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
 
 impl Wire for Transcriptions {
     type Op = Transcription;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = TranscriptionsDecoder;
 
     fn name(&self) -> &str {
@@ -709,6 +713,8 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
 #[cfg(feature = "image")]
 impl Wire for Images {
     type Op = crate::operation::ImageGeneration;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ImagesDecoder;
 
     fn name(&self) -> &str {
@@ -877,6 +883,8 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
 #[cfg(feature = "audio")]
 impl Wire for Speech {
     type Op = crate::operation::AudioGeneration;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = SpeechDecoder;
 
     fn name(&self) -> &str {
@@ -981,16 +989,16 @@ pub struct ModelEntry {
 }
 
 /// OpenRouter's per-entry routing block. Only the output ceiling is read;
-/// the rest of the block is routing detail [`Model`] has no slot for.
+/// the rest of the block is routing detail [`ModelInfo`] has no slot for.
 #[derive(Debug, Deserialize)]
 pub struct TopProvider {
     #[serde(default)]
     pub max_completion_tokens: Option<u32>,
 }
 
-impl From<ModelEntry> for Model {
+impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        let mut model = Model::from_id(entry.id);
+        let mut model = ModelInfo::from_id(entry.id);
         model.name = entry.name;
         model.description = entry.description;
         model.r#type = entry.kind;
@@ -1028,13 +1036,15 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<ModelListing>) {
-        let models = event.data.into_iter().map(Model::from).collect();
+        let models = event.data.into_iter().map(ModelInfo::from).collect();
         out.push(Ok(ModelList::new(models)));
     }
 }
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -1162,6 +1172,8 @@ impl Decoder<RerankOp> for RerankDecoder {
 
 impl Wire for Rerank {
     type Op = RerankOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = RerankDecoder;
 
     fn name(&self) -> &str {
@@ -1238,6 +1250,8 @@ pub use crate::operation::VerifyDecoder;
 
 impl Wire for Verify {
     type Op = VerifyOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = VerifyDecoder;
 
     fn name(&self) -> &str {

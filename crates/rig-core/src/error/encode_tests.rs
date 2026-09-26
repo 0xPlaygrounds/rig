@@ -5,7 +5,6 @@ use serde_json::json;
 
 use super::*;
 use crate::completion::{CompletionRequest, CompletionRequestBuilder, ToolDefinition};
-use crate::driver::{HasCompletion, HasEmbedding, HasModelListing, HasRerank, HasVerify};
 use crate::message::ToolChoice;
 use crate::providers::anthropic::Anthropic;
 use crate::providers::cohere::Cohere;
@@ -21,9 +20,7 @@ use crate::wire::{Mode, Wire};
 const BAD: &str = "http://bad host";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::unbound("hi")
-        .max_tokens(16)
-        .build()
+    CompletionRequestBuilder::new("hi").max_tokens(16).build()
 }
 
 fn failure<T>(result: Result<T, EncodeError>) -> ProviderError {
@@ -91,7 +88,7 @@ fn provider_encode_failures_classify_as_request_building() {
     let perplexity = OpenAI::with_key(&PERPLEXITY, "k");
     let anthropic = Anthropic::new("k").with_base_url(BAD);
     let gemini = Gemini::new("k").with_base_url(BAD);
-    let specific_tool = CompletionRequestBuilder::unbound("hi")
+    let specific_tool = CompletionRequestBuilder::new("hi")
         .tool(ToolDefinition {
             name: "f".into(),
             description: "d".into(),
@@ -101,7 +98,7 @@ fn provider_encode_failures_classify_as_request_building() {
             function_names: vec!["f".into()],
         })
         .build();
-    let unflattenable_schema = CompletionRequestBuilder::unbound("hi")
+    let unflattenable_schema = CompletionRequestBuilder::new("hi")
         .tool(ToolDefinition {
             name: "f".into(),
             description: "d".into(),
@@ -207,12 +204,12 @@ fn provider_encode_failures_classify_as_request_building() {
         ),
         (
             "anthropic verify",
-            failure(HasVerify::verify(&anthropic).encode((), Mode::Unary)),
+            failure(anthropic.verify().encode((), Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (
             "anthropic models",
-            failure(anthropic.model_listing().encode((), Mode::Unary)),
+            failure(anthropic.models().encode((), Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (

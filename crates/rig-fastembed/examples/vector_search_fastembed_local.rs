@@ -3,6 +3,7 @@ use fastembed::{
     EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
     TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
 };
+use rig_core::Model;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -10,7 +11,7 @@ use rig_core::{
         VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
     },
 };
-use rig_fastembed::EmbeddingModel;
+use rig_fastembed::{Fastembed, TextEmbeddings};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -52,8 +53,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let user_defined_model =
         UserDefinedEmbeddingModel::new(onnx_file, tokenizer_files).with_pooling(Pooling::Mean);
 
-    let embedding_model =
-        EmbeddingModel::new_from_user_defined(user_defined_model, 384, test_model_info)?;
+    let embedding_model = Model::new(
+        TextEmbeddings::new(test_model_info.model.clone(), 384),
+        Fastembed::from_user_defined(user_defined_model)?,
+    );
 
     // Create documents
     let documents = vec![

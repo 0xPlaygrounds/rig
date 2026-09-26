@@ -1,3 +1,4 @@
+use rig_core::Model;
 use rig_core::providers::openai::{self, wire::OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -6,7 +7,6 @@ use rig_core::{
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_postgres::PostgresVectorStore;
-use rig_reqwest::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 
@@ -34,8 +34,12 @@ async fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
 
     // Bind the OpenAI embeddings endpoint
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+    let openai_client = OpenAI::from_env()?;
+    let http = rig_reqwest::shared();
+    let model = Model::new(
+        openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+        http,
+    );
 
     // setup Postgres
     let database_url = std::env::var("DATABASE_URL")?;

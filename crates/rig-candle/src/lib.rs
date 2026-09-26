@@ -20,7 +20,7 @@ mod validation;
 
 pub use artifacts::{GgufModelData, ModelArtifacts, ModelData};
 pub use generation::{GenerationConfig, GenerationEvent};
-pub use model::{CandleModel, CandleModelBuilder, stream_from_events};
+pub use model::{CandleAdapter, CandleFrame, CandleModel, CandleModelBuilder, Generation};
 pub use profile::{ConversationProtocol, ModelArchitecture, Quantization};
 pub use types::{CandleCompletionResponse, CandleError, FinishReason};
 

@@ -1,4 +1,3 @@
-use rig::client::DefaultTransport as _;
 use serde_json::json;
 use testcontainers::{
     GenericImage, ImageExt,
@@ -12,7 +11,7 @@ use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
-    driver::Bound,
+    driver::Model,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
@@ -141,13 +140,10 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST")
-        .with_base_url(server.base_url())
-        .bound()
-        .unwrap();
+    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
 
     let embeddings = create_embeddings(model.clone()).await;
 
@@ -235,7 +231,7 @@ async fn vector_search_test() {
     );
 }
 
-async fn create_embeddings(model: Bound<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
+async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

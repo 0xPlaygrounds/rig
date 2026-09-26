@@ -1,14 +1,13 @@
 //! Typed extraction through an agent's `submit` output tool, with configurable retries.
 //!
 //! ```no_run
-//! use rig_agent::prelude::*;
-//! use rig_core::providers::openai::{self, OpenAI};
-//! use rig_reqwest::prelude::*;
+//! use rig_agent::extractor::ExtractorBuilder;
+//! use rig_core::{Model, providers::openai::{self, OpenAI}};
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person { name: String, age: u8 }
-//! let provider = OpenAI::from_env()?.bound()?;
-//! let extractor = provider.extractor::<Person>(openai::GPT_4O).retries(2).build();
+//! let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_4O), rig_reqwest::shared());
+//! let extractor = ExtractorBuilder::<Person>::new(model).retries(2).build();
 //! let person = extractor.extract("John is 30.").await?.output;
 //! # Ok(())
 //! # }
@@ -25,10 +24,7 @@ use rig_core::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-use crate::{
-    agent::{Agent, AgentBuilder, AgentHook, ModelRef, OutputMode, TypedRun},
-    completion::CompletionModel,
-};
+use crate::agent::{Agent, AgentBuilder, AgentHook, ModelRef, OutputMode, TypedRun};
 
 const SUBMIT_TOOL_NAME: &str = "submit";
 
@@ -56,9 +52,10 @@ where
     }
 
     /// Register `model` on the extractor's bus and use it.
-    pub fn with_model<M>(mut self, model: M) -> Self
+    pub fn with_model<W, Tr>(mut self, model: rig_core::driver::Model<W, Tr>) -> Self
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        Tr: rig_core::driver::Transport<W>,
     {
         self.agent.set_model(model);
         self
@@ -118,9 +115,10 @@ where
     T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// An extractor of `T` over `model`.
-    pub fn new<M>(model: M) -> Self
+    pub fn new<W, Tr>(model: rig_core::driver::Model<W, Tr>) -> Self
     where
-        M: CompletionModel + 'static,
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        Tr: rig_core::driver::Transport<W>,
     {
         Self::from_agent_builder(AgentBuilder::new(model))
     }

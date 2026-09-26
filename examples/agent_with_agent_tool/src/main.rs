@@ -104,11 +104,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Bind the OpenAI Responses API to the default transport
-    let openai_client = OpenAI::from_env()?.bound()?;
+    let openai_client = OpenAI::from_env()?;
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent = openai_client
-        .agent(providers::openai::GPT_4O)
+    let calculator_agent = AgentBuilder::new(rig::model(openai_client.completion(providers::openai::GPT_4O)))
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)
@@ -117,8 +116,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create agent which has the calculator_agent as a tool
-    let agent_using_agent = openai_client
-        .agent(providers::openai::GPT_4O)
+    let agent_using_agent = AgentBuilder::new(rig::model(openai_client.completion(providers::openai::GPT_4O)))
         .preamble("You are a helpful assistant that can solve problems. Use the tool provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)

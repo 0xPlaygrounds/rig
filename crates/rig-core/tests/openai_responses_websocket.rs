@@ -15,7 +15,8 @@
 #[path = "common/websocket_script.rs"]
 mod websocket_script;
 
-use rig_core::completion::{AssistantContent, CompletionModel as _, FinishReason};
+use rig_core::completion::CompletionRequestBuilder;
+use rig_core::completion::{AssistantContent, FinishReason};
 use rig_core::providers::openai::responses_api::{
     CompletionResponse, IncompleteDetailsReason, Output, ResponseObject, ResponseStatus,
     ResponsesUsage,
@@ -123,7 +124,7 @@ async fn incomplete_turn_keeps_streamed_partial_output() {
     let mut session = session(&client, &script);
 
     let normalized = session
-        .completion(client.completion_request("hello").build())
+        .completion(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("incomplete turn should be a successful terminal");
 
@@ -168,7 +169,7 @@ async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
     let mut session = session(&client, &script);
 
     let normalized = session
-        .completion(client.completion_request("hello").build())
+        .completion(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("interleaved turn should normalize");
 
@@ -206,7 +207,7 @@ async fn completed_turn_without_deltas_falls_back_to_terminal_body() {
     let mut session = session(&client, &script);
 
     let normalized = session
-        .completion(client.completion_request("hello").build())
+        .completion(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("completed turn should normalize");
 
@@ -238,7 +239,7 @@ async fn incomplete_turn_without_deltas_normalizes_terminal_body_output() {
     let mut session = session(&client, &script);
 
     let normalized = session
-        .completion(client.completion_request("hello").build())
+        .completion(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("incomplete turn with body output should normalize");
 
@@ -258,7 +259,7 @@ async fn malformed_known_event_rejects_reuse_and_allows_close() {
     let mut session = session(&client, &script);
 
     session
-        .send(client.completion_request("hello").build())
+        .send(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("request should send");
 
@@ -272,7 +273,7 @@ async fn malformed_known_event_rejects_reuse_and_allows_close() {
     );
 
     let closed = session
-        .send(client.completion_request("retry").build())
+        .send(CompletionRequestBuilder::new("retry").build())
         .await
         .expect_err("session should close after fatal parse error");
     assert!(
@@ -297,7 +298,7 @@ async fn event_timeout_rejects_reuse_and_allows_close() {
     let mut session = session_with_timeout(&client, &script, Some(Duration::from_millis(20)));
 
     session
-        .send(client.completion_request("hello").build())
+        .send(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("request should send");
 
@@ -313,7 +314,7 @@ async fn event_timeout_rejects_reuse_and_allows_close() {
     );
 
     let closed = session
-        .send(client.completion_request("retry").build())
+        .send(CompletionRequestBuilder::new("retry").build())
         .await
         .expect_err("timed-out session should close");
     assert!(
@@ -357,7 +358,7 @@ async fn late_response_done_is_ignored_on_next_turn() {
 
     let first = raw_response(
         session
-            .completion(client.completion_request("first").build())
+            .completion(CompletionRequestBuilder::new("first").build())
             .await
             .expect("first response should complete"),
     );
@@ -366,7 +367,7 @@ async fn late_response_done_is_ignored_on_next_turn() {
 
     let second = raw_response(
         session
-            .completion(client.completion_request("second").build())
+            .completion(CompletionRequestBuilder::new("second").build())
             .await
             .expect("second response should complete"),
     );
@@ -386,7 +387,7 @@ async fn clearing_previous_response_id_does_not_disable_late_done_filter() {
 
     let first = raw_response(
         session
-            .completion(client.completion_request("first").build())
+            .completion(CompletionRequestBuilder::new("first").build())
             .await
             .expect("first response should complete"),
     );
@@ -397,7 +398,7 @@ async fn clearing_previous_response_id_does_not_disable_late_done_filter() {
 
     let second = raw_response(
         session
-            .completion(client.completion_request("second").build())
+            .completion(CompletionRequestBuilder::new("second").build())
             .await
             .expect("second response should complete"),
     );
@@ -427,7 +428,7 @@ async fn failed_turn_keeps_late_done_out_of_next_request() {
     let mut session = session(&client, &script);
 
     let error = session
-        .completion(client.completion_request("first").build())
+        .completion(CompletionRequestBuilder::new("first").build())
         .await
         .expect_err("failed response should error");
     assert!(error.to_string().contains("failed response"));
@@ -435,7 +436,7 @@ async fn failed_turn_keeps_late_done_out_of_next_request() {
 
     let second = raw_response(
         session
-            .completion(client.completion_request("second").build())
+            .completion(CompletionRequestBuilder::new("second").build())
             .await
             .expect("second response should complete"),
     );
@@ -466,7 +467,7 @@ async fn done_first_completed_turn_updates_previous_response_id() {
 
     let first = raw_response(
         session
-            .completion(client.completion_request("first").build())
+            .completion(CompletionRequestBuilder::new("first").build())
             .await
             .expect("first response should complete"),
     );
@@ -475,7 +476,7 @@ async fn done_first_completed_turn_updates_previous_response_id() {
 
     let second = raw_response(
         session
-            .completion(client.completion_request("second").build())
+            .completion(CompletionRequestBuilder::new("second").build())
             .await
             .expect("second response should complete"),
     );
@@ -524,7 +525,7 @@ async fn done_first_failed_turn_does_not_chain_next_request() {
     let mut session = session(&client, &script);
 
     let error = session
-        .completion(client.completion_request("first").build())
+        .completion(CompletionRequestBuilder::new("first").build())
         .await
         .expect_err("failed response should error");
     assert!(error.to_string().contains("failed response"));
@@ -532,7 +533,7 @@ async fn done_first_failed_turn_does_not_chain_next_request() {
 
     let second = raw_response(
         session
-            .completion(client.completion_request("second").build())
+            .completion(CompletionRequestBuilder::new("second").build())
             .await
             .expect("second response should complete"),
     );
@@ -568,12 +569,12 @@ async fn send_while_in_flight_returns_error() {
     let mut session = session(&client, &script);
 
     session
-        .send(client.completion_request("first").build())
+        .send(CompletionRequestBuilder::new("first").build())
         .await
         .expect("first request should send");
 
     let error = session
-        .send(client.completion_request("second").build())
+        .send(CompletionRequestBuilder::new("second").build())
         .await
         .expect_err("second send while in-flight should error");
     assert!(
@@ -591,7 +592,7 @@ async fn send_after_close_returns_error() {
     session.close().await.expect("close should succeed");
 
     let error = session
-        .send(client.completion_request("after close").build())
+        .send(CompletionRequestBuilder::new("after close").build())
         .await
         .expect_err("send after close should error");
     assert!(
@@ -646,7 +647,7 @@ async fn unknown_event_is_skipped_and_reasoning_metadata_is_preserved() {
 
     let response = raw_response(
         session
-            .completion(client.completion_request("hello").build())
+            .completion(CompletionRequestBuilder::new("hello").build())
             .await
             .expect("response should complete despite unknown event"),
     );
@@ -702,7 +703,7 @@ async fn websocket_conformance_replays_sse_fixture_frames() {
     let mut session = session(&client, &script);
 
     let normalized = session
-        .completion(client.completion_request("hello").build())
+        .completion(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("fixture turn should normalize");
 
@@ -763,7 +764,7 @@ async fn reasoning_text_delta_arrives_over_websocket() {
     let mut session = session(&client, &script);
 
     let normalized = session
-        .completion(client.completion_request("hello").build())
+        .completion(CompletionRequestBuilder::new("hello").build())
         .await
         .expect("turn with reasoning deltas should normalize");
 

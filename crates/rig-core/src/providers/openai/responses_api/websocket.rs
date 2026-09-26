@@ -8,7 +8,7 @@
 //! ```
 
 use crate::completion;
-use crate::driver::{Bound, WireDriver};
+use crate::driver::{Model, WireDriver};
 use crate::driver::{TriagedFrame, triage_frame};
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
@@ -861,7 +861,7 @@ fn websocket_provider_error(error: http_client::Error) -> ProviderError {
     ProviderError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }
 
-/// Construct Responses WebSocket sessions from a bound wire and a supplied backend.
+/// Construct Responses WebSocket sessions from a model's wire and a supplied backend.
 pub trait ResponsesWebSocketExt {
     /// Start configuring a websocket session for this wire's model.
     fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder;
@@ -877,7 +877,7 @@ pub trait ResponsesWebSocketExt {
         Self: WasmCompatSync;
 }
 
-impl<H> ResponsesWebSocketExt for Bound<Responses, H> {
+impl<T> ResponsesWebSocketExt for Model<Responses, T> {
     fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder {
         ResponsesWebSocketSessionBuilder::new(self.wire.clone())
     }

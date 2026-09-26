@@ -1,29 +1,27 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
-use rig::completion::CompletionModel;
-use rig::prelude::*;
 use serde_json::Value;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
+use rig::completion::CompletionRequestBuilder;
 
 #[tokio::test]
 async fn raw_chat_completion_surfaces_reasoning_or_text() {
     with_mistralrs_completions_cassette(
         "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
         |client| async move {
-            let model = client.chat(model_name());
-            let request = model
-                .completion_request(
-                    "Think briefly, then answer in one sentence why token usage should be reported.",
-                )
-                .preamble(SYSTEM_PROMPT.to_string())
-                .max_tokens(256)
-                .build();
+            let model = rig::model(client.chat(model_name()));
+            let request = CompletionRequestBuilder::new(
+                "Think briefly, then answer in one sentence why token usage should be reported.",
+            )
+            .preamble(SYSTEM_PROMPT.to_string())
+            .max_tokens(256)
+            .build();
             // A single cassette interaction: `raw` is mistral.rs's own reply
             // document, captured by the driver on the very response the
             // completion path folded.
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("chat completion should succeed");
             let raw = &response.raw;
@@ -63,7 +61,7 @@ async fn chat_completions_agent_prompt_completes() {
     with_mistralrs_completions_cassette(
         "chat_completions/chat_completions_agent_prompt_completes",
         |client| async move {
-            let agent = client.agent(model_name())
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(model_name())))
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
                 .build();

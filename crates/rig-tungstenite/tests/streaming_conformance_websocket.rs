@@ -22,8 +22,8 @@
 
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
-use rig_core::completion::CompletionModel as _;
-use rig_core::driver::Bound;
+use rig_core::completion::CompletionRequestBuilder;
+use rig_core::driver::Model;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
@@ -164,9 +164,11 @@ async fn drain_openai_responses_websocket_events(
         accumulator.finish(&mut out);
     }
 
-    let stream = rig_core::streaming::StreamingCompletionResponse::stream(
+    let stream = rig_core::streaming::CompletionStream::relay(
         provider,
-        Box::pin(futures::stream::iter(out.into_items())),
+        Box::pin(futures::stream::iter(out.into_items().into_iter().map(
+            |item| item.map_err(|error| rig_core::error::ErrorReport::from(&error)),
+        ))),
     );
     conformance::fixtures::drain(stream).await
 }
@@ -188,10 +190,10 @@ fn driver() -> conformance::WireDriver {
             let wire = OpenAI::new("test-key")
                 .with_base_url(format!("http://{address}/v1"))
                 .responses("gpt-5.4");
-            let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
+            let bound = Model::new(wire, RecordingHttpClient::new("{}"));
             let mut session = bound.responses_websocket().await?;
             session
-                .send(bound.completion_request("hello").build())
+                .send(CompletionRequestBuilder::new("hello").build())
                 .await?;
 
             // Collect the turn exactly as the production session loop does:

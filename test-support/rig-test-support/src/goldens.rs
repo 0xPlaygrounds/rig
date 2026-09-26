@@ -509,10 +509,17 @@ pub const ADD_THEN_SUBTRACT_PROMPT: &str = "First add 20 and 5 with the add tool
 
 /// The facts, embedded by `model`, as an in-memory index (ids `doc0`..).
 #[allow(dead_code)]
-pub async fn facts_index<M: rig_core::embeddings::EmbeddingModel + Clone>(
-    model: M,
+pub async fn facts_index<W, Tr>(
+    model: rig_core::driver::Model<W, Tr>,
     facts: &[&str],
-) -> rig_core::vector_store::in_memory_store::InMemoryVectorIndex<String, M> {
+) -> rig_core::vector_store::in_memory_store::InMemoryVectorIndex<
+    String,
+    rig_core::driver::Model<W, Tr>,
+>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     let store = if facts.is_empty() {
         rig_core::vector_store::in_memory_store::InMemoryVectorStore::<String>::default()
     } else {
@@ -530,10 +537,16 @@ pub async fn facts_index<M: rig_core::embeddings::EmbeddingModel + Clone>(
 /// The toolset's embeddable schemas, embedded by `model`, as an index keyed
 /// by tool name.
 #[allow(dead_code)]
-pub async fn tool_index<M: rig_core::embeddings::EmbeddingModel + Clone>(
-    model: M,
+pub async fn tool_index<W, Tr>(
+    model: rig_core::driver::Model<W, Tr>,
     toolset: &rig_agent::tool::ToolSet,
-) -> rig_core::vector_store::in_memory_store::InMemoryVectorIndex<rig_core::embeddings::ToolSchema, M>
+) -> rig_core::vector_store::in_memory_store::InMemoryVectorIndex<
+    rig_core::embeddings::ToolSchema,
+    rig_core::driver::Model<W, Tr>,
+>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
 {
     let embeddings = rig_core::embeddings::EmbeddingsBuilder::new(model.clone())
         .documents(toolset.schemas().expect("tool schemas should build"))
@@ -1479,22 +1492,70 @@ pub const RERANK_KEY: &str = "host/rerank";
 /// Fixed documents used by reranking corpus cells.
 pub const RERANK_DOCUMENTS: [&str; 2] = ["the harbor label", "the orchard label"];
 
-/// A reranker that ranks by document length, longest first: a mock behind
-/// a `RerankAdapter`, since no keyed provider in the tree has a rerank
-/// cassette suite.
+/// A reranker that ranks by document length, longest first: the mock rerank
+/// wire and its own transport, since no keyed provider in the tree has a
+/// rerank cassette suite.
 #[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct MockRerank;
 
-impl rig_core::rerank::RerankModel for MockRerank {
-    fn max_documents(&self) -> usize {
+impl rig_core::wire::Wire for MockRerank {
+    type Op = rig_core::operation::Rerank;
+    type Payload = Vec<String>;
+    type Frame = Vec<String>;
+    type Decoder = MockRerank;
+
+    fn name(&self) -> &str {
+        "mock"
+    }
+
+    fn capabilities(&self) -> usize {
         16
     }
 
-    async fn rerank(
+    fn encode(
         &self,
-        _query: &str,
+        request: rig_core::operation::RerankRequest,
+        _mode: rig_core::wire::Mode,
+    ) -> Result<Vec<String>, rig_core::error::EncodeError> {
+        Ok(request.documents)
+    }
+
+    fn decoder(&self, _mode: rig_core::wire::Mode) -> MockRerank {
+        MockRerank
+    }
+}
+
+impl rig_core::driver::Transport<MockRerank> for MockRerank {
+    fn send(
+        &self,
         documents: Vec<String>,
-    ) -> Result<rig_core::rerank::RerankResponse, rig_core::error::ProviderError> {
+        _mode: rig_core::wire::Mode,
+        _observation: Option<rig_core::driver::Observation>,
+    ) -> Result<
+        impl Future<Output = rig_core::driver::Opened<Vec<String>, Vec<String>>>
+        + Send
+        + 'static
+        + use<>,
+        rig_core::error::ProviderError,
+    > {
+        Ok(async move { rig_core::driver::Opened::new(futures::stream::iter([Ok(documents)])) })
+    }
+}
+
+impl rig_core::wire::Decoder<rig_core::operation::Rerank, Vec<String>> for MockRerank {
+    type Event = Vec<String>;
+
+    fn classify(&self, documents: Vec<String>) -> rig_core::wire::WireEvent<Vec<String>> {
+        rig_core::wire::WireEvent::Known(documents)
+    }
+
+    fn interpret(
+        &mut self,
+        documents: Vec<String>,
+        out: &mut rig_core::wire::Output<rig_core::operation::Rerank>,
+    ) {
+        use rig_core::wire::Sink as _;
         let mut results: Vec<rig_core::rerank::RerankResult> = documents
             .iter()
             .enumerate()
@@ -1507,7 +1568,7 @@ impl rig_core::rerank::RerankModel for MockRerank {
         results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
         let mut response = rig_core::rerank::RerankResponse::new(results, "mock");
         response.model = Some("mock-rerank".to_owned());
-        Ok(response)
+        out.push(Ok(response));
     }
 }
 
@@ -1684,7 +1745,7 @@ impl Lookup {
                 let model: rig_agent::bus::ModelHandle =
                     dispatcher.handle(&self.model_key).expect("the model");
                 let mut request =
-                    rig_core::completion::CompletionRequestBuilder::unbound(args.q.as_str())
+                    rig_core::completion::CompletionRequestBuilder::new(args.q.as_str())
                         .preamble(NESTED_PREAMBLE.to_owned());
                 if !self.nesting.no_temperature {
                     request = request.temperature(0.0);

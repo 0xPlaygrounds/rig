@@ -8,7 +8,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use crate::support::assert_nonempty_response;
@@ -60,8 +59,7 @@ async fn request_hook_records_prompt_and_response() {
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
             let hook = ObservingHook::default();
-            let response = client
-                .agent(DEFAULT_MODEL)
+            let response = rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
                 .build()
                 .prompt("Entertain me with one short joke.")
                 .add_hook(hook.clone())

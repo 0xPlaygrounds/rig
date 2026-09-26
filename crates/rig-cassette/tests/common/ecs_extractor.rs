@@ -7,10 +7,7 @@ use std::marker::PhantomData;
 
 use anyhow::{Result, anyhow, ensure};
 use bevy_ecs::prelude::*;
-use rig_core::{
-    completion::CompletionModel,
-    message::{AssistantContent, Message, ToolChoice},
-};
+use rig_core::message::{AssistantContent, Message, ToolChoice};
 use rig_ecs::{
     agent::{
         AdditionalParams, DefaultMaxTurns, InvalidCalls, Output, OutputKind, OutputToolConfig,
@@ -38,8 +35,11 @@ pub(crate) struct EcsExtractor<T> {
 }
 
 impl<T: JsonSchema + DeserializeOwned> EcsExtractor<T> {
-    pub fn new(
-        model: impl CompletionModel + 'static,
+    pub fn new<
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        Tr: rig_core::driver::Transport<W>,
+    >(
+        model: rig_core::driver::Model<W, Tr>,
         extra_preamble: Option<&str>,
         params: Option<serde_json::Value>,
     ) -> Self {

@@ -5,7 +5,6 @@
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::extractor::ExtractorBuilder;
-use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -37,8 +36,8 @@ fn sample_inputs() -> Vec<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = OpenAI::from_env()?.bound()?;
-    let model = client.completion(openai::GPT_4O_MINI);
+    let client = OpenAI::from_env()?;
+    let model = rig::model(client.completion(openai::GPT_4O_MINI));
     let names_extractor = ExtractorBuilder::<Names>::new(model.clone())
         .append_preamble("Extract names from the given text.")
         .retries(2)

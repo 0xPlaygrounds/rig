@@ -40,12 +40,12 @@
 //! sent — rather than against what the test expected to happen.
 
 use axum::http;
-use rig::embeddings::{EmbeddingModel, EmbeddingsBuilder};
+use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::doubleword;
 
-use super::super::support::{
-    BoundDoubleword, RecordedEmbeddingCall, with_doubleword_embedding_cassette,
-};
+use super::super::support::{RecordedEmbeddingCall, with_doubleword_embedding_cassette};
+use rig::providers::openai::OpenAI;
+use rig::wire::Wire;
 
 const MODEL: &str = doubleword::QWEN3_EMBEDDING_8B;
 /// The width Doubleword returns when a request names none.
@@ -119,40 +119,45 @@ fn assert_single_input_width(calls: Vec<RecordedEmbeddingCall>, width: usize) {
     assert_recorded(&calls, &[Some(width)], width, &[1]);
 }
 
-fn embedding_model(client: &BoundDoubleword, width: Option<usize>) -> impl EmbeddingModel {
-    client.embedding(MODEL, width)
+fn embedding_model(
+    client: &OpenAI,
+    width: Option<usize>,
+) -> rig::Model<rig::providers::openai::wire::Embeddings> {
+    rig::model(client.embedding(MODEL, width))
 }
 
 /// Runs one input through the model and proves `ndims()` described the vector
 /// that came back. Returns nothing: the cassette bytes are checked by the
 /// caller, so a cell that stops exercising the model cannot pass silently.
-async fn embed_one(client: &BoundDoubleword, width: Option<usize>, input: &str) {
+async fn embed_one(client: &OpenAI, width: Option<usize>, input: &str) {
     let model = embedding_model(client, width);
     let embeddings = model
-        .embed_texts([input.to_string()])
+        .call(vec![input.to_string()])
         .await
+        .map(|response| response.embeddings)
         .expect("embedding request should succeed");
 
     assert_eq!(embeddings.len(), 1);
     assert_eq!(
         embeddings[0].vec.len(),
-        model.ndims(),
+        model.wire.capabilities().ndims,
         "the returned vector must be exactly as wide as `ndims()` reports"
     );
 }
 
-async fn embed_batch(client: &BoundDoubleword, width: Option<usize>, inputs: &[&str]) {
+async fn embed_batch(client: &OpenAI, width: Option<usize>, inputs: &[&str]) {
     let model = embedding_model(client, width);
     let embeddings = model
-        .embed_texts(inputs.iter().map(|input| (*input).to_string()))
+        .call(inputs.iter().map(|input| (*input).to_string()).collect())
         .await
+        .map(|response| response.embeddings)
         .expect("embedding request should succeed");
 
     assert_eq!(embeddings.len(), inputs.len());
     for embedding in &embeddings {
         assert_eq!(
             embedding.vec.len(),
-            model.ndims(),
+            model.wire.capabilities().ndims,
             "every returned vector must be exactly as wide as `ndims()` reports"
         );
     }
@@ -160,11 +165,11 @@ async fn embed_batch(client: &BoundDoubleword, width: Option<usize>, inputs: &[&
 
 /// An input Doubleword itself refuses, at a width that still had to reach the
 /// wire for the refusal to be the provider's rather than rig's.
-async fn assert_rejected_input(client: &BoundDoubleword, input: &str) {
-    let error = client
-        .embedding(MODEL, Some(512))
-        .embed_texts([input.to_string()])
+async fn assert_rejected_input(client: &OpenAI, input: &str) {
+    let error = rig::model(client.embedding(MODEL, Some(512)))
+        .call(vec![input.to_string()])
         .await
+        .map(|response| response.embeddings)
         .expect_err("Doubleword should reject a contentless input");
 
     assert_eq!(
@@ -346,14 +351,17 @@ async fn usage_survives_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/usage_survives_a_requested_width",
         |client| async move {
-            let model = client.embedding(MODEL, Some(256));
+            let model = rig::model(client.embedding(MODEL, Some(256)));
             let response = model
-                .embed_texts_response([PROBE.to_string()])
+                .call(vec![PROBE.to_string()])
                 .await
                 .expect("embedding request should succeed");
 
             assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].vec.len(), model.ndims());
+            assert_eq!(
+                response.embeddings[0].vec.len(),
+                model.wire.capabilities().ndims
+            );
             assert!(
                 response.usage.input_tokens.is_some_and(|n| n > 0)
                     && response.usage.total_tokens.is_some_and(|n| n > 0),
@@ -374,14 +382,17 @@ async fn usage_at_the_default_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/usage_at_the_default_width",
         |client| async move {
-            let model = client.embedding(MODEL, None);
+            let model = rig::model(client.embedding(MODEL, None));
             let response = model
-                .embed_texts_response([PROBE.to_string()])
+                .call(vec![PROBE.to_string()])
                 .await
                 .expect("embedding request should succeed");
 
             assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(response.embeddings[0].vec.len(), model.ndims());
+            assert_eq!(
+                response.embeddings[0].vec.len(),
+                model.wire.capabilities().ndims
+            );
             assert!(
                 response.usage.input_tokens.is_some_and(|n| n > 0)
                     && response.usage.total_tokens.is_some_and(|n| n > 0),
@@ -399,7 +410,7 @@ async fn builder_documents_at_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/builder_documents_at_a_requested_width",
         |client| async move {
-            let model = client.embedding(MODEL, Some(128));
+            let model = rig::model(client.embedding(MODEL, Some(128)));
             let documents = EmbeddingsBuilder::new(model.clone())
                 .document("first note".to_string())
                 .expect("document should embed")
@@ -412,7 +423,7 @@ async fn builder_documents_at_a_requested_width() {
             assert_eq!(documents.len(), 2);
             for (_, embeddings) in &documents {
                 for embedding in embeddings.iter() {
-                    assert_eq!(embedding.vec.len(), model.ndims());
+                    assert_eq!(embedding.vec.len(), model.wire.capabilities().ndims);
                 }
             }
         },
@@ -428,7 +439,7 @@ async fn builder_documents_at_the_default_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/builder_documents_at_the_default_width",
         |client| async move {
-            let model = client.embedding(MODEL, None);
+            let model = rig::model(client.embedding(MODEL, None));
             let documents = EmbeddingsBuilder::new(model.clone())
                 .document("first note".to_string())
                 .expect("document should embed")
@@ -441,7 +452,7 @@ async fn builder_documents_at_the_default_width() {
             assert_eq!(documents.len(), 2);
             for (_, embeddings) in &documents {
                 for embedding in embeddings.iter() {
-                    assert_eq!(embedding.vec.len(), model.ndims());
+                    assert_eq!(embedding.vec.len(), model.wire.capabilities().ndims);
                 }
             }
         },
@@ -547,11 +558,13 @@ async fn an_unknown_model_still_puts_the_requested_width_on_the_wire() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/an_unknown_model_still_puts_the_requested_width_on_the_wire",
         |client| async move {
-            let model = client.embedding("Qwen/Qwen4-Embedding-Unreleased", Some(8_192));
-            assert_eq!(model.ndims(), 8_192);
+            let model =
+                rig::model(client.embedding("Qwen/Qwen4-Embedding-Unreleased", Some(8_192)));
+            assert_eq!(model.wire.capabilities().ndims, 8_192);
             let error = model
-                .embed_texts([PROBE.to_string()])
+                .call(vec![PROBE.to_string()])
                 .await
+                .map(|response| response.embeddings)
                 .expect_err("an unserved model should fail");
             assert_eq!(
                 error.provider_response_status(),

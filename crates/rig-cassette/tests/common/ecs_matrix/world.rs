@@ -26,16 +26,7 @@ use bevy_app::App;
 use bevy_ecs::prelude::*;
 use futures::StreamExt;
 
-use rig_agent::completion::CompletionModel;
-
-use rig_agent::completion::CompletionRequest;
-
-use rig_agent::completion::CompletionResponse;
-
-use rig_agent::completion::ProviderCapabilities;
-
 use rig_core::effect::EffectFamily;
-use rig_core::error::ProviderError;
 
 use rig_core::effect::EffectKind;
 
@@ -49,7 +40,7 @@ use rig_core::serve::ErasedHandler;
 
 use rig_core::serve::Serve;
 
-use rig_core::serve::adapters::CompletionAdapter;
+use rig_core::serve::adapters::ModelAdapter;
 
 use rig_core::serve::adapters::MemoryAdapter;
 
@@ -60,8 +51,6 @@ use rig_core::streaming::Delta;
 use rig_core::streaming::StreamEvent;
 
 use rig_core::streaming::StreamEvents;
-
-use rig_core::streaming::StreamingCompletionResponse;
 
 use rig_core::tool::Tool;
 
@@ -130,38 +119,30 @@ pub(crate) struct Gates {
 /// can publish more of the stream (the anthropic `FirstDelta` gate,
 /// for both delta hooks); a driver that saves a scene mid-stream releases
 /// the gate afterwards.
-pub(crate) struct FirstDelta<M> {
-    pub(crate) inner: M,
+pub(crate) struct FirstDelta<S> {
+    pub(crate) inner: S,
     pub(crate) tool: bool,
     pub(crate) release: Arc<Semaphore>,
 }
 
-impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        self.inner.completion(request).await
+impl<S: Serve + 'static> Serve for FirstDelta<S> {
+    type Family = S::Family;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        self.inner.descriptor()
     }
 
-    async fn stream(
+    async fn serve(
         &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        let stream = self.inner.stream(request).await?;
-        let provider = stream.provider().to_owned();
-        let message_id = stream.message_id.clone();
-        let tool = self.tool;
-        let mut gated = StreamingCompletionResponse::from_events(
-            provider,
-            gate_events(Box::pin(stream), tool, self.release.clone()),
-        );
-        gated.message_id = message_id;
-        Ok(gated)
-    }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        self.inner.capabilities()
+        kind: EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        match self.inner.serve(kind, dispatch).await {
+            rig_core::serve::Reply::Stream(stream) => {
+                rig_core::serve::Reply::Stream(gate_events(stream, self.tool, self.release.clone()))
+            }
+            outcome => outcome,
+        }
     }
 }
 
@@ -412,11 +393,15 @@ fn parks_tool(cell: &Cell) -> bool {
 /// The world over `wire`, with the cell's handlers registered in the
 /// producer's order (memory, model, route, the host's note taker, tools,
 /// a late route) and the program's agent graph spawned.
-pub(crate) fn open<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) fn open<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     program: &Program,
-) -> (App, Entity, EffectLogRecorder, Gates) {
+) -> (App, Entity, EffectLogRecorder, Gates)
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     let gate = program
         .hooks
         .iter()
@@ -433,25 +418,33 @@ pub(crate) fn open<M: CompletionModel + Clone + 'static>(
 /// text, `Some(true)` tool call) or not (`None`), whatever the cell says:
 /// for a driver that needs the stream parked at a cut the cell has no
 /// hook for.
-pub(crate) fn open_gated<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) fn open_gated<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     program: &Program,
     gate: Option<bool>,
-) -> (App, Entity, EffectLogRecorder, Gates) {
+) -> (App, Entity, EffectLogRecorder, Gates)
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     open_inner(wire, cell, program, gate, None, None)
 }
 
 /// Bind fresh live handlers, optionally restoring a graph before installing
 /// its hooks. The observation sink belongs to the host, not the saved world.
-fn open_inner<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+fn open_inner<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     program: &Program,
     gate: Option<bool>,
     scene: Option<&rig_ecs::checkpoint::Checkpoint>,
     witness: Option<Arc<rig_core::observe::ObservationLog>>,
-) -> (App, Entity, EffectLogRecorder, Gates) {
+) -> (App, Entity, EffectLogRecorder, Gates)
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     one_thread_pool();
     let policy = cell.bus.policy();
     let mut app = App::new();
@@ -532,8 +525,8 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
     if cell.bus.declared() {
         memory = register_memory(world);
     }
-    let model_handler = |model: M, label: &str| {
-        let adapter = CompletionAdapter::new(label, model);
+    let model_handler = |model: rig::driver::Model<W, T>, label: &str| {
+        let adapter = ModelAdapter::new(label, model);
         ErasedHandler::new(RuntimeHandler {
             inner: Arc::new(adapter),
             runtime: runtime.clone(),
@@ -561,7 +554,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             // exactly as the hand-registered adapter over the wire's own
             // model would, so a wire with model-level settings the
             // configuration does not carry cannot diverge silently.
-            let by_hand = CompletionAdapter::new(DEFAULT_LABEL, wire.model.clone()).descriptor();
+            let by_hand = ModelAdapter::new(DEFAULT_LABEL, wire.model.clone()).descriptor();
             let built = handler.descriptor();
             assert_eq!(
                 (&built.family, &built.layers),
@@ -585,14 +578,11 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         None => {
             let model = match gate {
                 Some(tool) => ErasedHandler::new(RuntimeHandler {
-                    inner: Arc::new(CompletionAdapter::new(
-                        DEFAULT_LABEL,
-                        FirstDelta {
-                            inner: wire.model.clone(),
-                            tool,
-                            release: gates.stream.clone(),
-                        },
-                    )),
+                    inner: Arc::new(FirstDelta {
+                        inner: ModelAdapter::new(DEFAULT_LABEL, wire.model.clone()),
+                        tool,
+                        release: gates.stream.clone(),
+                    }),
                     runtime: runtime.clone(),
                 }),
                 None => model_handler(wire.model.clone(), DEFAULT_LABEL),
@@ -1741,11 +1731,15 @@ fn assert_mid_stream_scene_refused(app: &mut App, cell: &Cell, program: &Program
 /// The world cell: the program over `wire` through `spawn_run`, its log,
 /// its graph and its despawn asserted against the cell,
 /// and its cut resumed where the cell names one.
-pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) async fn run_world<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),
-) -> EffectLog {
+) -> EffectLog
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     let program = wire.program(cell);
     let (mut app, mut agent, mut recorder, mut gates) = open(wire, cell, &program);
     let two_signals = two_signals(cell);
@@ -2122,11 +2116,15 @@ fn join_logs(mut head: EffectLog, tail: EffectLog) -> EffectLog {
 mod tests;
 
 /// Run each runtime over its own scripted transport and pin the world's log.
-pub(crate) async fn run_scripted<M: CompletionModel + Clone + 'static>(
+pub(crate) async fn run_scripted<W, T>(
     cell: &Cell,
-    wire: impl Fn() -> Wire<M>,
+    wire: impl Fn() -> Wire<rig::driver::Model<W, T>>,
     golden: impl FnOnce(&EffectLog),
-) -> EffectLog {
+) -> EffectLog
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+{
     super::agent::run_agent(&wire(), cell, |_| {}).await;
     run_world(&wire(), cell, golden).await
 }

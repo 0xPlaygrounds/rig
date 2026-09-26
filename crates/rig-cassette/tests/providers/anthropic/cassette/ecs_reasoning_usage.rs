@@ -21,7 +21,7 @@ async fn agent_blocking_thinking() {
                 "reasoning_usage_matrix/agent_blocking_thinking",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+                        rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)),
                         "You are a meticulous arithmetic assistant.",
                         1,
                     );

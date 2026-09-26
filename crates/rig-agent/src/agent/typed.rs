@@ -265,9 +265,10 @@ macro_rules! forward_runner_setters {
         }
 
         /// Erase and set a typed default model for this run.
-        pub fn using_model_value<M>(mut self, model: M) -> Self
+        pub fn using_model_value<W, Tr>(mut self, model: rig_core::driver::Model<W, Tr>) -> Self
         where
-            M: $crate::completion::CompletionModel + 'static,
+            W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+            Tr: rig_core::driver::Transport<W>,
         {
             self.runner = self.runner.using_model_value(model);
             self

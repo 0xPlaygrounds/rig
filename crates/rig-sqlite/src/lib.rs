@@ -8,7 +8,7 @@
 //! `sqlite` feature is enabled.
 
 use rig_core::Embed;
-use rig_core::embeddings::{Embedding, EmbeddingModel};
+use rig_core::embeddings::Embedding;
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -410,10 +410,14 @@ where
     T: SqliteVectorStoreTable + 'static,
 {
     /// Creates a SQLite vector store using cosine similarity.
-    pub async fn new(
+    pub async fn new<W, Tr>(
         conn: Connection,
-        embedding_model: &impl EmbeddingModel,
-    ) -> Result<Self, VectorStoreError> {
+        embedding_model: &rig_core::driver::Model<W, Tr>,
+    ) -> Result<Self, VectorStoreError>
+    where
+        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+        Tr: rig_core::driver::Transport<W>,
+    {
         Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
     }
 
@@ -422,12 +426,16 @@ where
     /// The metric is written into the sqlite-vec virtual table definition so
     /// candidate search uses the same metric as thresholding, ordering, and the
     /// returned score values.
-    pub async fn with_distance_metric(
+    pub async fn with_distance_metric<W, Tr>(
         conn: Connection,
-        embedding_model: &impl EmbeddingModel,
+        embedding_model: &rig_core::driver::Model<W, Tr>,
         distance_metric: SqliteDistanceMetric,
-    ) -> Result<Self, VectorStoreError> {
-        let dims = embedding_model.ndims();
+    ) -> Result<Self, VectorStoreError>
+    where
+        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+        Tr: rig_core::driver::Transport<W>,
+    {
+        let dims = embedding_model.wire.capabilities().ndims;
         let table_name = T::name();
         let embeddings_table_name = format!("{table_name}_embeddings");
         let embeddings_table_name_for_sql = embeddings_table_name.clone();
@@ -547,7 +555,14 @@ where
         })
     }
 
-    pub fn index<M: EmbeddingModel>(self, model: M) -> SqliteVectorIndex<T, M> {
+    pub fn index<W, Tr>(
+        self,
+        model: rig_core::driver::Model<W, Tr>,
+    ) -> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
+    where
+        W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+        Tr: rig_core::driver::Transport<W>,
+    {
         SqliteVectorIndex::new(model, self)
     }
 
@@ -1453,7 +1468,6 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
-/// use rig_reqwest::prelude::*;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
@@ -1488,8 +1502,9 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// }
 ///
 /// let conn = Connection::open("vector_store.db").await?;
-/// let openai = OpenAI::new("YOUR_API_KEY").bound()?;
-/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None);
+/// let openai = OpenAI::new("YOUR_API_KEY");
+/// let http = rig_reqwest::shared();
+/// let model = rig_core::Model::new(openai.embedding(TEXT_EMBEDDING_ADA_002, None), http);
 ///
 /// // Initialize vector store
 /// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(
@@ -1540,11 +1555,16 @@ pub struct SqliteVectorIndex<T, M> {
     embedding_model: M,
 }
 
-impl<T, M: EmbeddingModel> SqliteVectorIndex<T, M>
+impl<T, W, Tr> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     T: SqliteVectorStoreTable,
 {
-    pub fn new(embedding_model: M, store: SqliteVectorStore<T>) -> Self {
+    pub fn new(
+        embedding_model: rig_core::driver::Model<W, Tr>,
+        store: SqliteVectorStore<T>,
+    ) -> Self {
         Self {
             store,
             embedding_model,
@@ -1552,8 +1572,10 @@ where
     }
 }
 
-impl<T, M: EmbeddingModel> SqliteVectorIndex<T, M>
+impl<T, W, Tr> SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
 where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
     T: SqliteVectorStoreTable,
 {
     /// Runs the shared candidate search for `top_n`/`top_n_ids`.
@@ -1915,7 +1937,12 @@ fn sqlite_id_value_to_string(index: usize, value: ValueRef<'_>) -> rusqlite::Res
     }
 }
 
-impl<T: SqliteVectorStoreTable, M: EmbeddingModel> VectorStoreIndex for SqliteVectorIndex<T, M> {
+impl<T: SqliteVectorStoreTable, W, Tr> VectorStoreIndex
+    for SqliteVectorIndex<T, rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     type Filter = SqliteSearchFilter;
 
     async fn top_n<D>(

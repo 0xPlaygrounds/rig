@@ -56,7 +56,6 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_stream_capture_matrix -- --test-threads=1`
 
-use rig::completion::CompletionModel;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -66,12 +65,15 @@ use crate::raw_capture::{
     assert_normalized_lacks, capture_sole_terminal, chat, stream_normalized_without_raw,
 };
 use crate::support::Observed;
+use rig::completion::CompletionRequestBuilder;
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(1024).build()
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
+        .max_tokens(1024)
+        .build()
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +86,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     let sink = Observed::default();
     with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
-        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request, sink.clone()),
+        |client| {
+            capture_sole_terminal(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_terminal_round_trips_provider_type should replay from its cassette");
@@ -118,7 +126,13 @@ async fn stream_raw_exposes_envelope_fields() {
     let sink = Observed::default();
     with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
-        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request, sink.clone()),
+        |client| {
+            capture_sole_terminal(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_exposes_envelope_fields should replay from its cassette");
@@ -194,7 +208,13 @@ async fn stream_raw_preserves_llamacpp_timings() {
 
     with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings",
-        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request, sink.clone()),
+        |client| {
+            capture_sole_terminal(
+                rig::model(client.completion(CASSETTE_MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_preserves_llamacpp_timings should replay from its cassette");

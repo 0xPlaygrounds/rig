@@ -9,7 +9,8 @@
         clippy::unreachable
     )
 )]
-//! The bundled reqwest HTTP transport and default transport constructors for Rig.
+//! The bundled reqwest HTTP transport for Rig, and the process-wide default
+//! transport built from it.
 //!
 //! Native requests and bodies enter the captured Tokio context on each poll,
 //! using a lazy fallback when no runtime is current. Callers retain ownership;
@@ -18,8 +19,8 @@
 //! finish. Missing drivers can panic; a stopped runtime causes I/O failure.
 //!
 //! ```no_run
-//! let transport = rig_reqwest::client::bundled()?;
-//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! let transport = rig_reqwest::shared();
+//! # let _ = transport;
 //! ```
 
 pub use reqwest;
@@ -141,14 +142,8 @@ impl AsRef<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient
     }
 }
 
-pub mod client;
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
-
-/// Bring the construction traits into scope.
-pub mod prelude {
-    pub use crate::client::DefaultTransport;
-}
 
 use bytes::Bytes;
 use rig_core::http_client::{
@@ -157,6 +152,115 @@ use rig_core::http_client::{
 };
 use rig_core::wasm_compat::*;
 use std::pin::Pin;
+use std::sync::Arc;
+
+/// The process-wide bundled transport: one erased reqwest client, built on
+/// first use and shared by every clone. Construction never fails. When
+/// reqwest cannot build its client (a host with no CA store, say), every
+/// send on the transport reports that build failure in-band as
+/// [`ProviderError::Http`](rig_core::error::ProviderError::Http).
+///
+/// ```no_run
+/// use rig_core::{Model, providers::openai::OpenAI};
+///
+/// # fn main() -> Result<(), rig_core::client::EnvError> {
+/// let model = Model::new(OpenAI::from_env()?.completion("gpt-5.2"), rig_reqwest::shared());
+/// # let _ = model;
+/// # Ok(())
+/// # }
+/// ```
+pub fn shared() -> BoxedHttpClient {
+    fn build() -> BoxedHttpClient {
+        match reqwest::Client::builder().build() {
+            Ok(client) => ReqwestClient::new(client).boxed(),
+            Err(error) => BoxedHttpClient::new(Unbuilt(Arc::new(error))),
+        }
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        static SHARED: std::sync::LazyLock<BoxedHttpClient> = std::sync::LazyLock::new(build);
+        SHARED.clone()
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        thread_local! {
+            static SHARED: BoxedHttpClient = build();
+        }
+        SHARED.with(Clone::clone)
+    }
+}
+
+/// The bundled transport whose reqwest client could not be built: every send
+/// fails with the build error, so the failure surfaces where the first
+/// request is made rather than where the transport was named.
+#[derive(Clone, Debug)]
+struct Unbuilt(Arc<reqwest::Error>);
+
+impl Unbuilt {
+    fn error(&self) -> Error {
+        Error::instance(TransportBuildError(Arc::clone(&self.0)))
+    }
+}
+
+impl HttpClientExt for Unbuilt {
+    fn send<T, U>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes>,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        std::future::ready(Err(self.error()))
+    }
+
+    fn send_multipart<U>(
+        &self,
+        _req: Request<MultipartForm>,
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        std::future::ready(Err(self.error()))
+    }
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        std::future::ready(Err(self.error()))
+    }
+}
+
+/// A transport build failure that displays the source chain and retains the
+/// original reqwest error as its source.
+#[derive(Debug)]
+struct TransportBuildError(Arc<reqwest::Error>);
+
+impl std::fmt::Display for TransportBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "could not build the bundled reqwest transport: {}",
+            self.0
+        )?;
+        let mut source = std::error::Error::source(&*self.0);
+        while let Some(cause) = source {
+            write!(f, ": {cause}")?;
+            source = cause.source();
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for TransportBuildError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.0)
+    }
+}
 
 /// Wrap a reqwest transport error as [`Error::Instance`], retaining its source.
 ///

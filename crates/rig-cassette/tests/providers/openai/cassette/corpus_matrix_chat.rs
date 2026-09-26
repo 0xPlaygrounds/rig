@@ -9,17 +9,16 @@
 //! the grid missing from this file reuses a recording the corpus already
 //! had, whose producer stays where it is.
 
-use rig::completion::CompletionModel;
 use rig::providers::openai::{GPT_5_MINI, GPT_5_NANO};
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat(GPT_5_MINI),
-        route: Some(client.openai.chat(GPT_5_NANO)),
+        model: rig::model(client.openai.chat(GPT_5_MINI)),
+        route: Some(rig::model(client.openai.chat(GPT_5_NANO))),
         temperature: None,
         additional_params: None,
     }
@@ -221,10 +220,10 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: client.openai.chat(rig::providers::openai::GPT_5_MINI),
+        model: rig::model(client.openai.chat(rig::providers::openai::GPT_5_MINI)),
         route: None,
         temperature: None,
         additional_params: None,

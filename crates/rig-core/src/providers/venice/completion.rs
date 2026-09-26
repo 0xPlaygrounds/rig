@@ -58,7 +58,7 @@ pub enum WebSearchMode {
 /// use rig_core::completion::CompletionRequestBuilder;
 /// use rig_core::providers::venice::{VeniceParameters, WebSearchMode};
 ///
-/// let request = CompletionRequestBuilder::unbound("Summarize today's Rust news.")
+/// let request = CompletionRequestBuilder::new("Summarize today's Rust news.")
 ///     .additional_params(
 ///         VeniceParameters::new()
 ///             .enable_web_search(WebSearchMode::On)

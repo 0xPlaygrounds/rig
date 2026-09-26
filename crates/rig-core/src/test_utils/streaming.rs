@@ -301,7 +301,7 @@ impl MockStreamEvent {
                 if let Some(call_id) = call_id {
                     end = end.with_call_id(call_id);
                 }
-                out.tool_call(key, end);
+                out.tool_end(key, end);
             }
             Self::ToolCallNameDelta { id, name } => out.tool_name(&fixture_part_id(id), name),
             Self::ToolCallArgumentsDelta { id, arguments } => {

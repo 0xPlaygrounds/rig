@@ -9,7 +9,6 @@ use crate::{
     support::{Adder, BASIC_PREAMBLE, TOOLS_PREAMBLE},
 };
 use bevy_ecs::{prelude::*, system::RunSystemOnce};
-use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::EffectFamily, providers::anthropic::completion::CLAUDE_SONNET_4_6, serve::ServingPolicy,
@@ -55,8 +54,11 @@ const PLAIN: Host = Host {
     with_tool: false,
 };
 
-fn agent(
-    model: impl rig::completion::CompletionModel + 'static,
+fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     host: &Host,
     hooks: Hooks,
 ) -> EcsAgent {
@@ -169,11 +171,15 @@ async fn run_prompt(ecs: &mut EcsAgent, host: &Host) -> String {
     output
 }
 async fn over_host(
-    client: Bound<Anthropic>,
+    client: Anthropic,
     host: Host,
     hooks: Hooks,
 ) -> rig::cassette::effect_log::EffectLog {
-    let mut ecs = agent(client.completion(CLAUDE_SONNET_4_6), &host, hooks);
+    let mut ecs = agent(
+        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        &host,
+        hooks,
+    );
     let output = run_prompt(&mut ecs, &host).await;
     if host.with_tool {
         assert!(output.contains("42"), "{output}");

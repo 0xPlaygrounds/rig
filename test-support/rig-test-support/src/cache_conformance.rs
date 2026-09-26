@@ -51,8 +51,6 @@
 //!   economics suite catches the provider changing its cache semantics under us.
 #![allow(dead_code)]
 
-use rig_agent::completion::CompletionModel;
-
 use rig_agent::completion::CompletionRequest;
 
 use rig_agent::completion::CompletionResponse;
@@ -430,9 +428,13 @@ impl CacheObservation {
 /// message-normalization path, and a normalizer that rewrites the assistant turn
 /// on the way back in is precisely the loop-level prefix move
 /// [`assert_growth_still_hits`] is looking for.
-pub async fn run_cache_probe<M>(model: &M, probe: &CacheProbe) -> CacheObservation
+pub async fn run_cache_probe<W, T>(
+    model: &rig_core::driver::Model<W, T>,
+    probe: &CacheProbe,
+) -> CacheObservation
 where
-    M: CompletionModel,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     let opening = Message::User {
         content: vec![UserContent::text(probe.prompt)],
@@ -461,17 +463,18 @@ where
     }
 }
 
-async fn send<M>(
-    model: &M,
+async fn send<W, T>(
+    model: &rig_core::driver::Model<W, T>,
     probe: &CacheProbe,
     chat_history: Vec<Message>,
     label: &str,
 ) -> CompletionResponse
 where
-    M: CompletionModel,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     model
-        .completion(probe.request(chat_history))
+        .call(probe.request(chat_history))
         .await
         .unwrap_or_else(|error| panic!("cache probe {label} should succeed: {error}"))
 }
@@ -486,9 +489,13 @@ where
 /// class — see the carry-forward logic in
 /// `crates/rig-core/src/providers/anthropic/streaming.rs` — and only a streamed
 /// probe can see it.
-pub async fn run_cache_probe_streaming<M>(model: &M, probe: &CacheProbe) -> CacheObservation
+pub async fn run_cache_probe_streaming<W, T>(
+    model: &rig_core::driver::Model<W, T>,
+    probe: &CacheProbe,
+) -> CacheObservation
 where
-    M: CompletionModel,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     let opening = Message::User {
         content: vec![UserContent::text(probe.prompt)],
@@ -532,14 +539,15 @@ where
 
 /// Drive one streamed turn, returning its final usage, accumulated text, and
 /// message id.
-async fn stream_turn<M>(
-    model: &M,
+async fn stream_turn<W, T>(
+    model: &rig_core::driver::Model<W, T>,
     probe: &CacheProbe,
     chat_history: Vec<Message>,
     label: &str,
 ) -> (Usage, String, Option<String>)
 where
-    M: CompletionModel,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     use futures::StreamExt;
 
@@ -549,7 +557,6 @@ where
 
     let mut stream = model
         .stream(probe.request(chat_history))
-        .await
         .unwrap_or_else(|error| panic!("streamed cache probe {label} should start: {error}"));
 
     let mut text = String::new();
@@ -574,7 +581,7 @@ where
              which is exactly the streaming-path bug class this probe exists to catch"
         )
     });
-    (usage, text, stream.message_id.clone())
+    (usage, text, stream.folded().message_id().map(str::to_owned))
 }
 
 /// Turn 1 must create a cache entry, or read one that was already warm.

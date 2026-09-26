@@ -29,8 +29,6 @@ use rig_agent::agent::StreamingError;
 
 use rig_agent::completion;
 
-use rig_agent::completion::CompletionModel;
-
 use rig_core::message::AssistantContent;
 
 use rig_core::message::Message;
@@ -137,12 +135,13 @@ impl AgentHook for ReasoningDeltaHookRecorder {
 
 /// Drive one real provider stream through the managed agent surface and pin
 /// the `ReasoningDelta` hook contract against the emitted normalized deltas.
-pub async fn run_reasoning_delta_hook_streaming<M>(
-    model: M,
+pub async fn run_reasoning_delta_hook_streaming<W, T>(
+    model: rig_core::driver::Model<W, T>,
     additional_params: serde_json::Value,
     provider: &str,
 ) where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     let hook = ReasoningDeltaHookRecorder::default();
     let probe = hook.clone();
@@ -252,7 +251,7 @@ Now suppose both trains slow down by 10 km/h after traveling half \
 the original distance. When do they meet now?";
 
 /// Model and request configuration for a two-turn reasoning-history check.
-pub struct ReasoningRoundtripAgent<M: CompletionModel> {
+pub struct ReasoningRoundtripAgent<M> {
     /// Completion model used for both turns.
     pub model: M,
     /// System instruction included in the roundtrip requests.
@@ -268,12 +267,16 @@ pub struct ReasoningRoundtripAgent<M: CompletionModel> {
     pub expects_signed_reasoning_block: bool,
 }
 
-impl<M> ReasoningRoundtripAgent<M>
+impl<W, Tr> ReasoningRoundtripAgent<rig_core::driver::Model<W, Tr>>
 where
-    M: CompletionModel,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    Tr: rig_core::driver::Transport<W>,
 {
     /// Configure the roundtrip with the shared preamble and unsigned-reasoning default.
-    pub fn new(model: M, additional_params: Option<serde_json::Value>) -> Self {
+    pub fn new(
+        model: rig_core::driver::Model<W, Tr>,
+        additional_params: Option<serde_json::Value>,
+    ) -> Self {
         Self {
             model,
             preamble: ROUNDTRIP_PREAMBLE.to_owned(),
@@ -290,19 +293,22 @@ where
 }
 
 /// Run and assert the two-turn streaming reasoning-history roundtrip.
-pub async fn run_reasoning_roundtrip_streaming<M>(agent: ReasoningRoundtripAgent<M>)
-where
-    M: CompletionModel,
+pub async fn run_reasoning_roundtrip_streaming<W, T>(
+    agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
+) where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
 }
 
 /// Run the streaming roundtrip and inspect each provider final with a custom oracle.
-pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
-    agent: ReasoningRoundtripAgent<M>,
+pub async fn run_reasoning_roundtrip_streaming_with_final<W, T, F>(
+    agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
     mut inspect_final: F,
 ) where
-    M: CompletionModel,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
     F: FnMut(&rig_core::streaming::StreamFinal),
 {
     let turn1_prompt = Message::User {
@@ -325,7 +331,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         record_telemetry_content: false,
     };
 
-    let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
+    let mut stream = agent.model.stream(request).expect("Turn 1 stream");
 
     let mut assistant_content = Vec::new();
     let mut saw_reasoning_block = false;
@@ -395,7 +401,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     assistant_content.push(AssistantContent::text(&streamed_text));
 
     let turn1_assistant = Message::Assistant {
-        id: stream.message_id.clone(),
+        id: stream.folded().message_id().map(str::to_owned),
         content: assistant_content,
     };
 
@@ -421,7 +427,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         record_telemetry_content: false,
     };
 
-    let mut stream2 = agent.model.stream(request2).await.expect("Turn 2 stream");
+    let mut stream2 = agent.model.stream(request2).expect("Turn 2 stream");
     let mut turn2_text = String::new();
 
     while let Some(chunk) = stream2.next().await {
@@ -454,9 +460,11 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
 }
 
 /// Run and assert the two-turn nonstreaming reasoning-history roundtrip.
-pub async fn run_reasoning_roundtrip_nonstreaming<M>(agent: ReasoningRoundtripAgent<M>)
-where
-    M: CompletionModel,
+pub async fn run_reasoning_roundtrip_nonstreaming<W, T>(
+    agent: ReasoningRoundtripAgent<rig_core::driver::Model<W, T>>,
+) where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     let turn1_prompt = Message::User {
         content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
@@ -478,11 +486,7 @@ where
         record_telemetry_content: false,
     };
 
-    let response = agent
-        .model
-        .completion(request)
-        .await
-        .expect("Turn 1 completion");
+    let response = agent.model.call(request).await.expect("Turn 1 completion");
 
     let mut text_parts = String::new();
 
@@ -530,7 +534,7 @@ where
 
     let response2 = agent
         .model
-        .completion(request2)
+        .call(request2)
         .await
         .expect("Turn 2 completion - provider may have rejected reasoning in chat history");
 

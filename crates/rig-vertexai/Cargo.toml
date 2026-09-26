@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 base64 = { workspace = true }
+futures = { workspace = true }
 google-cloud-aiplatform-v1 = { workspace = true }
 google-cloud-auth = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }

@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::{together, openai::wire::{OpenAI, TOGETHER}};
 //! let wire = OpenAI::from_env_with(&TOGETHER)?
-//!     .embeddings(together::BGE_BASE_EN_V1_5, None);
+//!     .embedding(together::BGE_BASE_EN_V1_5, None);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

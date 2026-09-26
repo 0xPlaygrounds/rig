@@ -1,7 +1,5 @@
 //! Copilot non-interactive OAuth cassette coverage.
 
-use rig::prelude::*;
-
 use crate::copilot::{LIVE_MODEL, with_copilot_noninteractive_oauth_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -16,8 +14,7 @@ async fn cached_oauth_allows_noninteractive_completion() {
             // false`, so a credential that needed a device flow would have
             // failed there rather than prompting.
 
-            let response = client
-                .agent(LIVE_MODEL)
+            let response = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
                 .preamble(BASIC_PREAMBLE)
                 .build()
                 .prompt(BASIC_PROMPT)

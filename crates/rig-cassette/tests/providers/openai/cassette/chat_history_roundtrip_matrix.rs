@@ -33,15 +33,14 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, Message};
-use rig::driver::Bound;
+use rig::completion::Message;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::providers::openai::wire::Chat;
 use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_history_roundtrip_cassette_result};
+use rig::completion::CompletionRequestBuilder;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -162,8 +161,8 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
-    let mut builder = model.completion_request(prompt(cell.shape)).max_tokens(24);
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape)).max_tokens(24);
     for message in history(cell.shape) {
         builder = builder.message(message);
     }
@@ -208,21 +207,21 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = rig::model(client.openai.chat(model_name(cell.model)));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The raw surface is the same reply: the native chat-completions
             // response rides serialized on `CompletionResponse::raw`, so this
             // cell reads the text off the provider's own fields where the
             // normalized cell below reads rig's.
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(cell)).await?;
             Observation {
                 text: provider_text(&response.raw)?,
                 saw_terminal: true,
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
-            let response = model.completion(request(&model, cell)).await?;
+            let response = model.call(request(cell)).await?;
             Observation {
                 text: normalized_text(&response.choice),
                 saw_terminal: true,
@@ -232,7 +231,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // The raw surface is the same event stream; the native terminal
             // record rides on `StreamFinal::raw`, so the raw cell asserts the
             // terminal decodes back to the chat-completions native type.
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
@@ -255,7 +254,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             observation
         }
         (Transport::Streaming, Surface::Normalized) => {
-            let mut stream = model.stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(cell))?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,

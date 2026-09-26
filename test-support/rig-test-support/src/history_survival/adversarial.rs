@@ -9,7 +9,6 @@
 
 use serde_json::Value;
 
-use rig_agent::completion::CompletionModel;
 use rig_core::completion::{CompletionRequest, CompletionResponse, ToolDefinition};
 use rig_core::message::{
     AssistantContent, Message, ProviderCallId, ReasoningContent, ToolCallId, ToolResultContent,
@@ -19,7 +18,6 @@ use rig_core::providers::anthropic::wire::Anthropic;
 use rig_core::providers::gemini::Gemini;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::openai::wire::OpenAI;
-use rig_core::wire::HasCompletion;
 
 use super::portability::{FOLLOW_UP, Source, decode_whole_reply};
 use super::{Dialect, lost_tokens, response_tokens};
@@ -93,7 +91,14 @@ fn assistant(reply: &CompletionResponse) -> Message {
 
 /// Two completed lookups that both used the call id `id`, then a question
 /// only the correctly paired results answer.
-pub async fn colliding_ids<M: CompletionModel>(model: &M, id: &str, params: Option<Value>) {
+pub async fn colliding_ids<W, T>(
+    model: &rig_core::driver::Model<W, T>,
+    id: &str,
+    params: Option<Value>,
+) where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+{
     let mut history = vec![Message::user("Look up record alpha.")];
     for (index, (record, _)) in CODES.iter().enumerate() {
         if index > 0 {
@@ -116,7 +121,7 @@ pub async fn colliding_ids<M: CompletionModel>(model: &M, id: &str, params: Opti
         "Without calling any tool, reply exactly `alpha=<code> beta=<code>` using the lookups above.",
     ));
     let reply = model
-        .completion(request(history, params, 2048))
+        .call(request(history, params, 2048))
         .await
         .expect("the provider accepts a history that reuses a call id across turns");
     let answer = text(&reply.choice);
@@ -157,12 +162,18 @@ pub fn assert_colliding_recorded(provider: &str, scenario: &str) {
 
 /// Ask for both lookups in one turn, answer them in reverse order, and
 /// check the model attributes each code to its record.
-pub async fn out_of_order_results<M: CompletionModel>(model: &M, params: Option<Value>) {
+pub async fn out_of_order_results<W, T>(
+    model: &rig_core::driver::Model<W, T>,
+    params: Option<Value>,
+) where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+{
     let prompt = Message::user(
         "Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.",
     );
     let first = model
-        .completion(request(vec![prompt.clone()], params.clone(), 4096))
+        .call(request(vec![prompt.clone()], params.clone(), 4096))
         .await
         .expect("turn one");
     let calls: Vec<_> = first
@@ -193,7 +204,7 @@ pub async fn out_of_order_results<M: CompletionModel>(model: &M, params: Option<
         Message::user("Without calling any tool, reply exactly `alpha=<code> beta=<code>`."),
     ];
     let reply = model
-        .completion(request(history, params, 4096))
+        .call(request(history, params, 4096))
         .await
         .expect("the provider accepts results in reverse order");
     let answer = text(&reply.choice);
@@ -227,16 +238,20 @@ pub fn assert_carried(provider: &str, scenario: &str, kind: &str, min_len: usize
     );
 }
 
-async fn complete<M: CompletionModel>(
-    model: &M,
+async fn complete<W, T>(
+    model: &rig_core::driver::Model<W, T>,
     request: CompletionRequest,
     streamed: bool,
-) -> Result<CompletionResponse, rig_core::error::ProviderError> {
+) -> Result<CompletionResponse, rig_core::error::ProviderError>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+{
     if !streamed {
-        return model.completion(request).await;
+        return model.call(request).await;
     }
     use futures::StreamExt;
-    let mut stream = model.stream(request).await?;
+    let mut stream = model.stream(request)?;
     while let Some(item) = stream.next().await {
         if let Err(error) = item {
             return Err(rig_core::error::ProviderError::Response(error.to_string()));
@@ -248,13 +263,17 @@ async fn complete<M: CompletionModel>(
 /// A reasoning turn with a tool call, streamed or not, answered and
 /// continued. Returns the first reply so a cell can check the shape of what
 /// was delivered.
-pub async fn reasoning_round_trip<M: CompletionModel>(
-    model: &M,
+pub async fn reasoning_round_trip<W, T>(
+    model: &rig_core::driver::Model<W, T>,
     prompt: &str,
     params: Option<Value>,
     max_tokens: u64,
     streamed: bool,
-) -> CompletionResponse {
+) -> CompletionResponse
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+{
     let prompt = Message::user(prompt);
     let first = complete(
         model,
@@ -375,9 +394,16 @@ impl Hop {
 }
 
 /// Send one hop of the round trip.
-pub async fn round_trip_hop<M: CompletionModel>(model: &M, hop: Hop, params: Option<Value>) {
+pub async fn round_trip_hop<W, T>(
+    model: &rig_core::driver::Model<W, T>,
+    hop: Hop,
+    params: Option<Value>,
+) where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+{
     let reply = model
-        .completion(request(hop.history(), params, 4096))
+        .call(request(hop.history(), params, 4096))
         .await
         .unwrap_or_else(|error| panic!("{hop:?} accepts the carried history: {error}"));
     assert!(!text(&reply.choice).trim().is_empty(), "{hop:?} answers");

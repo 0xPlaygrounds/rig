@@ -99,17 +99,17 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition, Usage};
-use rig::driver::Bound;
-use rig::prelude::*;
+use rig::completion::{CompletionRequest, ToolDefinition, Usage};
+use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Messages;
 use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_reasoning_usage_cassette};
+use rig::completion::CompletionRequestBuilder;
 
-type AnthropicModel = Bound<Messages>;
+type AnthropicModel = Model<Messages>;
 
 /// Anthropic's documented test string that forces `redacted_thinking` blocks.
 const REDACTED_THINKING_MAGIC_STRING: &str = "ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB";
@@ -324,14 +324,8 @@ fn recorded_streamed_stop_reason(scenario: &str) -> Option<String> {
     after.split('"').next().map(str::to_string)
 }
 
-fn request(
-    model: &AnthropicModel,
-    prompt: &str,
-    params: serde_json::Value,
-    max_tokens: u64,
-) -> CompletionRequest {
-    model
-        .completion_request(prompt)
+fn request(prompt: &str, params: serde_json::Value, max_tokens: u64) -> CompletionRequest {
+    CompletionRequestBuilder::new(prompt)
         .max_tokens(max_tokens)
         .additional_params(params)
         .build()
@@ -339,7 +333,7 @@ fn request(
 
 async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> Usage {
     model
-        .completion(request)
+        .call(request)
         .await
         .expect("completion should succeed")
         .usage
@@ -347,7 +341,7 @@ async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> U
 
 /// Drain a provider-native stream and return its terminal record's usage.
 async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> Usage {
-    let mut stream = model.stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request).expect("stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         if let StreamEvent::Final(record) = item.expect("stream item should not error") {
@@ -368,11 +362,11 @@ async fn blocking_budget_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_budget_thinking",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 blocking_usage(
                     &model,
-                    request(&model, THINKING_PROMPT, budget_thinking(1024), 2048),
+                    request(THINKING_PROMPT, budget_thinking(1024), 2048),
                 )
                 .await,
             );
@@ -391,11 +385,11 @@ async fn blocking_adaptive_declines_to_think() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_adaptive_declines_to_think",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_OPUS_4_7);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_OPUS_4_7));
             slot.record(
                 blocking_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
+                    request(LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
                 )
                 .await,
             );
@@ -415,11 +409,11 @@ async fn blocking_larger_budget() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_larger_budget",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 blocking_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, budget_thinking(4096), 8192),
+                    request(LONG_REASONING_PROMPT, budget_thinking(4096), 8192),
                 )
                 .await,
             );
@@ -438,9 +432,8 @@ async fn blocking_with_tools() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_with_tools",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request("Say the single word READY.")
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let request = CompletionRequestBuilder::new("Say the single word READY.")
                 .max_tokens(2048)
                 .additional_params(budget_thinking(1024))
                 .tool(multiply_tool())
@@ -461,13 +454,13 @@ async fn blocking_tool_use_terminal() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_tool_use_terminal",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request("Use the multiply tool to compute 17 times 23.")
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024))
-                .tool(multiply_tool())
-                .build();
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let request =
+                CompletionRequestBuilder::new("Use the multiply tool to compute 17 times 23.")
+                    .max_tokens(2048)
+                    .additional_params(budget_thinking(1024))
+                    .tool(multiply_tool())
+                    .build();
             slot.record(blocking_usage(&model, request).await);
         },
     )
@@ -484,9 +477,8 @@ async fn blocking_with_preamble() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_with_preamble",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .preamble("You are a careful arithmetic assistant.".to_string())
                 .max_tokens(2048)
                 .additional_params(budget_thinking(1024))
@@ -507,13 +499,12 @@ async fn blocking_with_prompt_caching() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_with_prompt_caching",
         |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour)
-                });
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let model = rig::model(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour),
+            );
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .preamble("You are a careful arithmetic assistant. ".repeat(200))
                 .max_tokens(2048)
                 .additional_params(budget_thinking(1024))
@@ -534,14 +525,10 @@ async fn blocking_redacted_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_redacted_thinking",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let prompt = format!("{REDACTED_THINKING_MAGIC_STRING} Reply with the single word OK.");
             slot.record(
-                blocking_usage(
-                    &model,
-                    request(&model, &prompt, budget_thinking(1024), 2048),
-                )
-                .await,
+                blocking_usage(&model, request(&prompt, budget_thinking(1024), 2048)).await,
             );
         },
     )
@@ -562,11 +549,11 @@ async fn blocking_max_tokens_truncation() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_max_tokens_truncation",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 blocking_usage(
                     &model,
-                    request(&model, TRUNCATING_PROMPT, budget_thinking(1024), 1025),
+                    request(TRUNCATING_PROMPT, budget_thinking(1024), 1025),
                 )
                 .await,
             );
@@ -593,11 +580,11 @@ async fn blocking_opus_model() {
             // Opus 4.8 rejects `thinking.type.enabled` outright — it takes
             // `adaptive` plus `output_config.effort` instead — so the second
             // model family can only be covered on the adaptive path.
-            let model = client.completion(anthropic::completion::CLAUDE_OPUS_4_8);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_OPUS_4_8));
             slot.record(
                 blocking_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
+                    request(LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
                 )
                 .await,
             );
@@ -616,11 +603,11 @@ async fn blocking_long_reasoning() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_long_reasoning",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 blocking_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, budget_thinking(8192), 12288),
+                    request(LONG_REASONING_PROMPT, budget_thinking(8192), 12288),
                 )
                 .await,
             );
@@ -644,9 +631,8 @@ async fn blocking_thinking_disabled_control() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_thinking_disabled_control",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .max_tokens(64)
                 .build();
             slot.record(blocking_usage(&model, request).await);
@@ -665,9 +651,8 @@ async fn blocking_haiku_no_thinking_control() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/blocking_haiku_no_thinking_control",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .max_tokens(64)
                 .build();
             slot.record(blocking_usage(&model, request).await);
@@ -688,11 +673,11 @@ async fn streaming_budget_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_budget_thinking",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 streamed_usage(
                     &model,
-                    request(&model, THINKING_PROMPT, budget_thinking(1024), 2048),
+                    request(THINKING_PROMPT, budget_thinking(1024), 2048),
                 )
                 .await,
             );
@@ -711,11 +696,11 @@ async fn streaming_adaptive_declines_to_think() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_adaptive_declines_to_think",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_OPUS_4_7);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_OPUS_4_7));
             slot.record(
                 streamed_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
+                    request(LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
                 )
                 .await,
             );
@@ -735,11 +720,11 @@ async fn streaming_larger_budget() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_larger_budget",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 streamed_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, budget_thinking(4096), 8192),
+                    request(LONG_REASONING_PROMPT, budget_thinking(4096), 8192),
                 )
                 .await,
             );
@@ -758,9 +743,8 @@ async fn streaming_with_tools() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_with_tools",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request("Say the single word READY.")
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let request = CompletionRequestBuilder::new("Say the single word READY.")
                 .max_tokens(2048)
                 .additional_params(budget_thinking(1024))
                 .tool(multiply_tool())
@@ -781,13 +765,13 @@ async fn streaming_tool_use_terminal() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_tool_use_terminal",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request("Use the multiply tool to compute 17 times 23.")
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024))
-                .tool(multiply_tool())
-                .build();
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let request =
+                CompletionRequestBuilder::new("Use the multiply tool to compute 17 times 23.")
+                    .max_tokens(2048)
+                    .additional_params(budget_thinking(1024))
+                    .tool(multiply_tool())
+                    .build();
             slot.record(streamed_usage(&model, request).await);
         },
     )
@@ -804,9 +788,8 @@ async fn streaming_with_preamble() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_with_preamble",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .preamble("You are a careful arithmetic assistant.".to_string())
                 .max_tokens(2048)
                 .additional_params(budget_thinking(1024))
@@ -827,13 +810,12 @@ async fn streaming_with_prompt_caching() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_with_prompt_caching",
         |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour)
-                });
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let model = rig::model(
+                client
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour),
+            );
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .preamble("You are a careful arithmetic assistant. ".repeat(200))
                 .max_tokens(2048)
                 .additional_params(budget_thinking(1024))
@@ -854,14 +836,10 @@ async fn streaming_redacted_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_redacted_thinking",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let prompt = format!("{REDACTED_THINKING_MAGIC_STRING} Reply with the single word OK.");
             slot.record(
-                streamed_usage(
-                    &model,
-                    request(&model, &prompt, budget_thinking(1024), 2048),
-                )
-                .await,
+                streamed_usage(&model, request(&prompt, budget_thinking(1024), 2048)).await,
             );
         },
     )
@@ -878,11 +856,11 @@ async fn streaming_max_tokens_truncation() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_max_tokens_truncation",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 streamed_usage(
                     &model,
-                    request(&model, TRUNCATING_PROMPT, budget_thinking(1024), 1025),
+                    request(TRUNCATING_PROMPT, budget_thinking(1024), 1025),
                 )
                 .await,
             );
@@ -907,11 +885,11 @@ async fn streaming_opus_model() {
         "reasoning_usage_matrix/streaming_opus_model",
         |client| async move {
             // Opus 4.8 rejects `thinking.type.enabled`; see the blocking twin.
-            let model = client.completion(anthropic::completion::CLAUDE_OPUS_4_8);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_OPUS_4_8));
             slot.record(
                 streamed_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
+                    request(LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
                 )
                 .await,
             );
@@ -930,11 +908,11 @@ async fn streaming_long_reasoning() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_long_reasoning",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             slot.record(
                 streamed_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, budget_thinking(8192), 12288),
+                    request(LONG_REASONING_PROMPT, budget_thinking(8192), 12288),
                 )
                 .await,
             );
@@ -958,9 +936,8 @@ async fn streaming_thinking_disabled_control() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/streaming_thinking_disabled_control",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(THINKING_PROMPT)
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
                 .max_tokens(64)
                 .build();
             slot.record(streamed_usage(&model, request).await);
@@ -983,18 +960,12 @@ async fn normalized_stream_budget_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/normalized_stream_budget_thinking",
         |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
             let mut stream = model
-                .stream(request(
-                    &model,
-                    THINKING_PROMPT,
-                    budget_thinking(1024),
-                    2048,
-                ))
-                .await
+                .stream(request(THINKING_PROMPT, budget_thinking(1024), 2048))
                 .expect("stream should open");
             while stream.next().await.is_some() {}
-            slot.record(stream.usage());
+            slot.record(stream.folded().usage());
         },
     )
     .await;
@@ -1017,12 +988,13 @@ async fn agent_blocking_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/agent_blocking_thinking",
         |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble("You are a meticulous arithmetic assistant.")
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024))
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+            ))
+            .preamble("You are a meticulous arithmetic assistant.")
+            .max_tokens(2048)
+            .additional_params(budget_thinking(1024))
+            .build();
             let response = agent
                 .prompt(THINKING_PROMPT)
                 .await

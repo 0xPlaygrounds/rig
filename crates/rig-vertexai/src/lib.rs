@@ -8,16 +8,19 @@
         clippy::unreachable
     )
 )]
-//! Vertex AI model completions through Rig's completion traits.
-//! Configure Application Default Credentials or supply credentials or a prediction
-//! service through [`ClientBuilder`]. ADC construction requires a Tokio runtime
-//! that remains alive and driven for the client's lifetime.
+//! The Vertex AI completion wire and the [`VertexAi`] transport it is sent
+//! through. Configure Application Default Credentials or supply credentials
+//! or a prediction service through [`VertexAiBuilder`]. ADC construction
+//! requires a Tokio runtime that remains alive and driven for the
+//! transport's lifetime.
 //!
 //! ```no_run
-//! use rig_vertexai::Client;
+//! use rig_core::Model;
+//! use rig_vertexai::{VertexAi, completion::{GEMINI_2_5_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), rig_vertexai::client::VertexAiClientError> {
-//! let client = Client::from_env()?;
+//! let model = Model::new(GenerateContent::new(GEMINI_2_5_FLASH), VertexAi::from_env()?);
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
@@ -26,5 +29,5 @@ pub mod client;
 pub mod completion;
 pub(crate) mod types;
 
-pub use client::{Client, ClientBuilder};
+pub use client::{VertexAi, VertexAiBuilder};
 pub use types::completion_response::VERTEX_TEXT_EXTRAS_KEY;

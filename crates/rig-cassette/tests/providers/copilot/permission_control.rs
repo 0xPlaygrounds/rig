@@ -4,7 +4,6 @@ use anyhow::Result;
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
 };
-use rig::prelude::*;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -156,8 +155,7 @@ async fn permission_control_prompt_example() -> Result<()> {
         |client| async move {
             let _cleanup = FileCleanup::new()?;
 
-            let agent = client
-                .agent(LIVE_LIGHT_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_LIGHT_MODEL)))
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",
                 )
@@ -198,13 +196,12 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = live_client()
-        .await
-        .agent(LIVE_LIGHT_MODEL)
-        .preamble("You are a helpful assistant that can read files using different methods.")
-        .tool(ReadFileHead)
-        .tool(ReadFileTail)
-        .build();
+    let agent =
+        rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_LIGHT_MODEL)))
+            .preamble("You are a helpful assistant that can read files using different methods.")
+            .tool(ReadFileHead)
+            .tool(ReadFileTail)
+            .build();
 
     let call_count = Arc::new(AtomicUsize::new(0));
     let last_result = Arc::new(Mutex::new(None));

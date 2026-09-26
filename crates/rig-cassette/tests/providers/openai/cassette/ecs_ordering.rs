@@ -19,7 +19,7 @@ async fn responses_stream_preserves_tool_result_flow() {
                 "streaming_tools/responses_stream_preserves_tool_result_flow",
                 |client| async move {
                     let mut ecs = EcsAgent::new(
-                        client.openai.completion(openai::GPT_4O),
+                        rig::model(client.openai.completion(openai::GPT_4O)),
                         ORDERED_TOOL_STREAM_PREAMBLE,
                         1,
                     );

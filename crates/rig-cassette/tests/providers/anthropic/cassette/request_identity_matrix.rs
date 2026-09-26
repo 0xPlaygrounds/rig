@@ -11,8 +11,8 @@ async fn messages() {
     with_anthropic_cassette("request_identity_matrix/messages", |client| async move {
         request_identity::run(
             cell,
-            client.completion("claude-haiku-4-5"),
-            client.completion("claude-no-such-model"),
+            rig::model(client.completion("claude-haiku-4-5")),
+            rig::model(client.completion("claude-no-such-model")),
             None,
             |request| request,
         )

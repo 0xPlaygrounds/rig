@@ -11,7 +11,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let doubleword = OpenAI::from_env_with(&DOUBLEWORD)?;
 //! let chat = doubleword.chat(doubleword::QWEN3_5_9B);
-//! let embedding = doubleword.embeddings(doubleword::QWEN3_EMBEDDING_8B, None);
+//! let embedding = doubleword.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
 //! # let _ = (chat, embedding);
 //! # Ok(())
 //! # }

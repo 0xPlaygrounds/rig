@@ -13,7 +13,6 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use rig_agent::agent::{AgentBuilder, MultiTurnStreamItem};
-use rig_agent::completion::CompletionModel;
 use rig_core::message::{
     AssistantContent, ImageMediaType, Message, ReasoningContent, ToolResultContent, UserContent,
 };
@@ -302,9 +301,10 @@ fn prompts(with_image: bool) -> [String; 3] {
 }
 
 /// Drive the three-prompt run and return what happened.
-pub async fn run<M>(model: M, cell: Cell) -> Observation
+pub async fn run<W, T>(model: rig_core::driver::Model<W, T>, cell: Cell) -> Observation
 where
-    M: CompletionModel + 'static,
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
 {
     let journal = Arc::new(Mutex::new(Journal::default()));
     let mut builder = AgentBuilder::new(model)

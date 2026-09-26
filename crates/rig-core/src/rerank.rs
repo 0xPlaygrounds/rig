@@ -1,38 +1,28 @@
 //! Provider-agnostic reranking abstractions.
 //!
 //! Reranking models reorder a list of documents by relevance to a query.
-//! The [`RerankModel`] trait defines the interface, and [`RerankResponse`]
-//! carries both the scored results and token usage.
+//! A [`Model`](crate::driver::Model) over a rerank wire calls one, and
+//! [`RerankResponse`] carries both the scored results and token usage.
 //!
 //! ```no_run
-//! use rig_core::rerank::RerankModel;
+//! use rig_core::driver::{Model, Transport};
+//! use rig_core::operation::{Rerank, RerankRequest};
+//! use rig_core::wire::Wire;
 //!
-//! # async fn example(model: &impl RerankModel) -> Result<(), Box<dyn std::error::Error>> {
-//! let response = model.rerank("Rust", vec!["A systems programming language".into()]).await?;
+//! # async fn example<W, T>(model: &Model<W, T>) -> Result<(), Box<dyn std::error::Error>>
+//! # where W: Wire<Op = Rerank> + Clone, T: Transport<W> {
+//! let request = RerankRequest {
+//!     query: "Rust".into(),
+//!     documents: vec!["A systems programming language".into()],
+//! };
+//! let response = model.call(request).await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }
 //! ```
 
-use crate::error::ProviderError;
-use crate::{
-    completion::{ResponseIdentity, Usage},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::completion::{ResponseIdentity, Usage};
 use serde::{Deserialize, Serialize};
-
-/// Trait for reranking models that score documents by relevance to a query.
-pub trait RerankModel: WasmCompatSend + WasmCompatSync {
-    /// Maximum documents accepted in one request.
-    fn max_documents(&self) -> usize;
-
-    /// Rerank a list of documents against a query.
-    fn rerank(
-        &self,
-        query: &str,
-        documents: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<RerankResponse, ProviderError>> + WasmCompatSend;
-}
 
 /// A single reranked document result.
 #[derive(Debug, Clone, Serialize, Deserialize)]

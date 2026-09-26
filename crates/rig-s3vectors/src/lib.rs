@@ -13,7 +13,6 @@ use aws_sdk_s3vectors::{
 };
 use aws_smithy_types::Document;
 use rig_core::{
-    embeddings::EmbeddingModel,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -135,9 +134,13 @@ pub struct S3VectorsVectorStore<M> {
     index_name: String,
 }
 
-impl<M: EmbeddingModel> S3VectorsVectorStore<M> {
+impl<W, Tr> S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     pub fn new(
-        embedding_model: M,
+        embedding_model: rig_core::driver::Model<W, Tr>,
         client: aws_sdk_s3vectors::Client,
         bucket_name: &str,
         index_name: &str,
@@ -228,7 +231,11 @@ impl<M: EmbeddingModel> S3VectorsVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> InsertDocuments for S3VectorsVectorStore<M> {
+impl<W, Tr> InsertDocuments for S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
@@ -319,7 +326,11 @@ fn document_to_json_value(value: &Document) -> Value {
     }
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for S3VectorsVectorStore<M> {
+impl<W, Tr> VectorStoreIndex for S3VectorsVectorStore<rig_core::driver::Model<W, Tr>>
+where
+    W: rig_core::wire::Wire<Op = rig_core::operation::Embedding> + Clone,
+    Tr: rig_core::driver::Transport<W>,
+{
     type Filter = S3SearchFilter;
 
     /// Returns matches as `(distance, vector key, metadata)`, where the metadata

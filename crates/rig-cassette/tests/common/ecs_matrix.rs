@@ -59,9 +59,7 @@ pub(crate) mod stream_delivery;
 #[path = "ecs_matrix/world.rs"]
 pub(crate) mod world;
 
-use rig_agent::completion::CompletionModel;
-
-use rig_core::driver::Bound;
+use rig_core::driver::Model;
 use rig_core::http_client::BoxedHttpClient;
 use rig_core::providers::anthropic::wire as anthropic;
 use rig_core::providers::gemini::completion as gemini;
@@ -96,7 +94,11 @@ pub(crate) struct Wire<M> {
     pub(crate) additional_params: Option<fn() -> serde_json::Value>,
 }
 
-impl<M: CompletionModel + Clone + 'static> Wire<M> {
+impl<W, Tr> Wire<rig::driver::Model<W, Tr>>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    Tr: rig::driver::Transport<W>,
+{
     /// The cell's program on this wire.
     pub(crate) fn program(&self, cell: &Cell) -> Program {
         let mut program = cell.program;
@@ -126,7 +128,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     }
 
     /// The route model, for a cell that selects one.
-    pub(crate) fn route(&self) -> M {
+    pub(crate) fn route(&self) -> rig::driver::Model<W, Tr> {
         self.route.clone().expect("the wire names a route model")
     }
 
@@ -150,17 +152,17 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 transport: transport.clone(),
             })
         };
-        if let Some(bound) = model.downcast_ref::<Bound<anthropic::Messages, BoxedHttpClient>>() {
+        if let Some(bound) = model.downcast_ref::<Model<anthropic::Messages>>() {
             // ProviderConfig does not retain model-level cache and tool options.
             // Keep the original adapter when rebuilding would discard them.
-            if bound.wire != bound.wire.provider.messages(bound.wire.model.clone()) {
+            if bound.wire != bound.wire.provider.completion(bound.wire.model.clone()) {
                 return None;
             }
             return describe(
                 ProviderConfig::Anthropic(bound.wire.provider.clone()),
                 &bound.wire.model,
                 &bound.wire.provider.api_key,
-                &bound.http,
+                &bound.transport,
             );
         }
         let chat = |wire: &openai::Chat, http: &BoxedHttpClient| {
@@ -185,33 +187,27 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 http,
             )
         };
-        if let Some(bound) = model.downcast_ref::<Bound<openai::Chat, BoxedHttpClient>>() {
-            return chat(&bound.wire, &bound.http);
+        if let Some(bound) = model.downcast_ref::<Model<openai::Chat>>() {
+            return chat(&bound.wire, &bound.transport);
         }
-        if let Some(bound) = model.downcast_ref::<Bound<responses::Responses, BoxedHttpClient>>() {
-            return responses(&bound.wire, &bound.http);
+        if let Some(bound) = model.downcast_ref::<Model<responses::Responses>>() {
+            return responses(&bound.wire, &bound.transport);
         }
-        if let Some(bound) = model.downcast_ref::<Bound<openai::OpenAiWire, BoxedHttpClient>>() {
+        if let Some(bound) = model.downcast_ref::<Model<openai::OpenAiWire>>() {
             return match &bound.wire {
-                openai::OpenAiWire::Chat(wire) => chat(wire, &bound.http),
-                openai::OpenAiWire::Responses(wire) => responses(wire, &bound.http),
+                openai::OpenAiWire::Chat(wire) => chat(wire, &bound.transport),
+                openai::OpenAiWire::Responses(wire) => responses(wire, &bound.transport),
             };
         }
-        if let Some(bound) = model.downcast_ref::<Bound<gemini::GenerateContent, BoxedHttpClient>>()
-        {
-            if bound.wire
-                != bound
-                    .wire
-                    .provider
-                    .generate_content(bound.wire.model.clone())
-            {
+        if let Some(bound) = model.downcast_ref::<Model<gemini::GenerateContent>>() {
+            if bound.wire != bound.wire.provider.completion(bound.wire.model.clone()) {
                 return None;
             }
             return describe(
                 ProviderConfig::Gemini(bound.wire.provider.clone()),
                 &bound.wire.model,
                 &bound.wire.provider.api_key,
-                &bound.http,
+                &bound.transport,
             );
         }
         None

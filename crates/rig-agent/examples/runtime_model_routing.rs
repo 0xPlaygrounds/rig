@@ -1,4 +1,4 @@
-//! Route one agent across two concrete model types without credentials.
+//! Route one agent across two models without credentials.
 //!
 //! The first scripted model calls a search tool. After Rig commits the tool
 //! result to provider-neutral history, the second scripted model writes the
@@ -13,12 +13,15 @@ use futures::stream;
 use rig_agent::{
     AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
-    completion::{CompletionModel, CompletionRequest, CompletionResponse, Usage},
-    streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse, ToolCallEnd},
+    completion::{CompletionRequest, Usage},
+    streaming::StreamFinal,
     tool::{Tool, ToolContext},
 };
-use rig_core::error::ProviderError;
+use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::error::{EncodeError, ProviderError};
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
+use rig_core::wire::{Decoder, Mode, Wire, WireEvent};
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
@@ -28,108 +31,107 @@ fn usage(total_tokens: u64) -> Usage {
     }
 }
 
-fn response(
+/// A local model: `answer` decides its reply from the request. It is its
+/// own wire (a request becomes its answer), transport (it returns the
+/// answer) and decoder (the answer as stream events), so the blocking and
+/// streaming surfaces reply alike.
+#[derive(Clone)]
+struct Local {
     provider: &'static str,
-    choice: AssistantContent,
     total_tokens: u64,
-) -> CompletionResponse {
-    CompletionResponse::new(
-        vec![choice],
-        usage(total_tokens),
-        provider,
-        serde_json::json!({}),
-    )
-    .with_message_id(format!("{provider}-message"))
+    answer: fn(&CompletionRequest) -> AssistantContent,
 }
 
-#[derive(Clone)]
-struct FastResearchModel;
+impl Wire for Local {
+    type Op = Completion;
+    type Payload = AssistantContent;
+    type Frame = AssistantContent;
+    type Decoder = Self;
 
-impl CompletionModel for FastResearchModel {
-    async fn completion(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        Ok(response(
-            "fast",
-            AssistantContent::ToolCall(ToolCall::from_wire(
-                "search-1",
-                ToolFunction::new(
-                    "search".to_owned(),
-                    serde_json::json!({"query": "runtime model routing"}),
-                ),
-            )),
-            3,
-        ))
+    fn name(&self) -> &str {
+        self.provider
     }
 
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Ok(StreamingCompletionResponse::stream(
-            "fast",
-            Box::pin(stream::iter([
-                Ok(StreamEvent::BlockEnd {
-                    id: BlockId::wire("search-1"),
-                    end: rig_agent::streaming::BlockClose::ToolCall(
-                        ToolCallEnd::whole(
-                            "search",
-                            serde_json::json!({"query": "runtime model routing"}),
-                        )
-                        .with_tool_id("search-1"),
-                    ),
-                    block: None,
-                }),
-                Ok(StreamEvent::Final(StreamFinal::new(
-                    "fast",
-                    usage(3),
-                    serde_json::json!({}),
-                ))),
-            ])),
-        ))
-    }
-}
-
-#[derive(Clone)]
-struct StrongSynthesisModel;
-
-impl CompletionModel for StrongSynthesisModel {
-    async fn completion(
+    fn encode(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        let saw_tool_result = request.chat_history.iter().any(|message| {
-            matches!(message, rig_core::message::Message::User { content }
-                if content.iter().any(|item| matches!(item, rig_core::message::UserContent::ToolResult(_))))
-        });
-        let answer = if saw_tool_result {
-            "The strong model synthesized the committed search result."
-        } else {
-            "The tool result was missing."
-        };
-        Ok(response("strong", AssistantContent::text(answer), 5))
+        _mode: Mode,
+    ) -> Result<AssistantContent, EncodeError> {
+        Ok((self.answer)(&request))
     }
 
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        Ok(StreamingCompletionResponse::stream(
-            "strong",
-            Box::pin(stream::iter([
-                Ok(StreamEvent::text(
-                    BlockId::wire("text-1"),
-                    "The strong model synthesized the committed search result.",
-                )),
-                Ok(StreamEvent::Final(StreamFinal::new(
-                    "strong",
-                    usage(5),
-                    serde_json::json!({}),
-                ))),
-            ])),
-        ))
+    fn decoder(&self, _mode: Mode) -> Self {
+        self.clone()
     }
+}
+
+impl Transport<Local> for Local {
+    fn send(
+        &self,
+        answer: AssistantContent,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<AssistantContent, AssistantContent>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        Ok(std::future::ready(Opened::new(stream::iter([Ok(answer)]))))
+    }
+}
+
+impl Decoder<Completion, AssistantContent> for Local {
+    type Event = AssistantContent;
+
+    fn classify(&self, answer: AssistantContent) -> WireEvent<AssistantContent> {
+        WireEvent::Known(answer)
+    }
+
+    fn interpret(&mut self, answer: AssistantContent, out: &mut AdapterOutput) {
+        out.message_id(format!("{}-message", self.provider));
+        out.content(&[answer], ImagePart::Block);
+        out.final_record(StreamFinal::new(
+            self.provider,
+            usage(self.total_tokens),
+            serde_json::Value::Null,
+        ));
+    }
+}
+
+fn local(
+    provider: &'static str,
+    total_tokens: u64,
+    answer: fn(&CompletionRequest) -> AssistantContent,
+) -> Model<Local, Local> {
+    let model = Local {
+        provider,
+        total_tokens,
+        answer,
+    };
+    Model::new(model.clone(), model)
+}
+
+/// Calls the search tool.
+fn fast_research(_request: &CompletionRequest) -> AssistantContent {
+    AssistantContent::ToolCall(ToolCall::from_wire(
+        "search-1",
+        ToolFunction::new(
+            "search".to_owned(),
+            serde_json::json!({"query": "runtime model routing"}),
+        ),
+    ))
+}
+
+/// Answers from the committed search result.
+fn strong_synthesis(request: &CompletionRequest) -> AssistantContent {
+    let saw_tool_result = request.chat_history.iter().any(|message| {
+        matches!(message, rig_core::message::Message::User { content }
+            if content.iter().any(|item| matches!(item, rig_core::message::UserContent::ToolResult(_))))
+    });
+    AssistantContent::text(if saw_tool_result {
+        "The strong model synthesized the committed search result."
+    } else {
+        "The tool result was missing."
+    })
 }
 
 #[derive(Deserialize)]
@@ -186,8 +188,8 @@ impl AgentHook for RouteModels {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = AgentBuilder::named_model("fast", FastResearchModel)
-        .model_route("strong", StrongSynthesisModel)
+    let agent = AgentBuilder::named_model("fast", local("fast", 3, fast_research))
+        .model_route("strong", local("strong", 5, strong_synthesis))
         .tool(Search)
         .build();
     let answer = agent

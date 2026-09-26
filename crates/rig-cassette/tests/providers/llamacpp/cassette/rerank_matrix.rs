@@ -35,7 +35,6 @@
 //! corrects the doc comment; [`scores_are_raw_logits_and_may_be_negative`]
 //! is what keeps the corrected wording honest.
 
-use rig::rerank::RerankModel as _;
 use serde_json::Value;
 
 use crate::cassettes::{
@@ -43,6 +42,7 @@ use crate::cassettes::{
 };
 
 use super::super::cassette_support::*;
+use rig::operation::RerankRequest;
 
 /// Three documents whose relevance to the query is unambiguous, so an
 /// assertion on the *ordering* is a real assertion rather than a coin flip.
@@ -75,9 +75,11 @@ fn recorded_results(scenario: &str) -> Vec<Value> {
 #[tokio::test]
 async fn multiple_documents_come_back_ranked() {
     with_llamacpp_rerank_cassette("rerank_matrix/multiple_documents", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .rerank(QUERY, documents())
+        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL))
+            .call(RerankRequest {
+                query: QUERY.to_owned(),
+                documents: documents(),
+            })
             .await
             .expect("a multi-document rerank should succeed");
 
@@ -142,9 +144,11 @@ async fn multiple_documents_come_back_ranked() {
 #[tokio::test]
 async fn scores_are_raw_logits_and_may_be_negative() {
     with_llamacpp_rerank_cassette("rerank_matrix/negative_scores", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .rerank(QUERY, documents())
+        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL))
+            .call(RerankRequest {
+                query: QUERY.to_owned(),
+                documents: documents(),
+            })
             .await
             .expect("rerank should succeed");
 
@@ -181,9 +185,11 @@ async fn scores_are_raw_logits_and_may_be_negative() {
 #[tokio::test]
 async fn a_single_document_is_still_a_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/single_document", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .rerank(QUERY, vec!["it is a bear".to_string()])
+        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL))
+            .call(RerankRequest {
+                query: QUERY.to_owned(),
+                documents: vec!["it is a bear".to_string()],
+            })
             .await
             .expect("a single-document rerank should succeed");
 
@@ -204,10 +210,11 @@ async fn a_single_document_is_still_a_ranking() {
 #[tokio::test]
 async fn top_n_beyond_the_document_count_is_clamped() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_beyond_count", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .map_wire(|wire| wire.with_top_n(99))
-            .rerank(QUERY, documents())
+        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL).with_top_n(99))
+            .call(RerankRequest {
+                query: QUERY.to_owned(),
+                documents: documents(),
+            })
             .await
             .expect("an over-large top_n is clamped, not refused");
 
@@ -237,10 +244,11 @@ async fn top_n_beyond_the_document_count_is_clamped() {
 #[tokio::test]
 async fn top_n_below_the_document_count_truncates() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_truncates", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .map_wire(|wire| wire.with_top_n(1))
-            .rerank(QUERY, documents())
+        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL).with_top_n(1))
+            .call(RerankRequest {
+                query: QUERY.to_owned(),
+                documents: documents(),
+            })
             .await
             .expect("a truncating top_n should succeed");
 
@@ -271,10 +279,11 @@ async fn top_n_below_the_document_count_truncates() {
 #[tokio::test]
 async fn top_n_zero_returns_an_empty_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_zero", |client| async move {
-        let reranked = client
-            .rerank(CASSETTE_RERANK_MODEL)
-            .map_wire(|wire| wire.with_top_n(0))
-            .rerank(QUERY, documents())
+        let reranked = rig::model(client.rerank(CASSETTE_RERANK_MODEL).with_top_n(0))
+            .call(RerankRequest {
+                query: QUERY.to_owned(),
+                documents: documents(),
+            })
             .await
             .expect("top_n 0 is a valid request, not an error");
 

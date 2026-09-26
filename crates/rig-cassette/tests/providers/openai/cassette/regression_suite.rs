@@ -4,7 +4,6 @@
 //! See `many_rigs/rig-regression-cassette-suite-proposal.md` for the catalogue.
 
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_completions_cassette;
@@ -28,8 +27,7 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
     with_openai_completions_cassette(
         "regression/chat_compat_finish_reason",
         |client| async move {
-            let agent = client
-                .agent(openai::GPT_4O)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(openai::GPT_4O)))
                 .preamble(STREAMING_PREAMBLE)
                 .max_tokens(8)
                 .build();
@@ -57,8 +55,7 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
     with_openai_completions_cassette(
         "regression/chat_compat_finish_reason_natural",
         |client| async move {
-            let agent = client
-                .agent(openai::GPT_4O)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(openai::GPT_4O)))
                 .preamble(STREAMING_PREAMBLE)
                 .max_tokens(512)
                 .build();

@@ -1,6 +1,5 @@
 //! xAI context smoke test.
 
-use rig::prelude::*;
 use rig::providers::xai;
 
 use super::support::with_xai_cassette;
@@ -18,9 +17,10 @@ async fn context_smoke() {
         let agent = XAI_CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(xai::GROK_4), |builder, doc| {
-                builder.context(doc)
-            })
+            .fold(
+                rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_4))),
+                |builder, doc| builder.context(doc),
+            )
             .preamble(
                 "Use only the provided context snippets. \
                  One snippet explicitly defines glarb-glarb. \

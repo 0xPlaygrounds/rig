@@ -1,3 +1,4 @@
+use rig::extractor::ExtractorBuilder;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
@@ -23,10 +24,9 @@ All operations should be O(1).
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI Responses API to the default transport
-    let openai_client = OpenAI::from_env()?.bound()?;
+    let openai_client = OpenAI::from_env()?;
 
-    let generator_agent = openai_client
-        .agent(openai::GPT_4)
+    let generator_agent = AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4)))
         .preamble(
             "
             Your goal is to complete the task based on <user input>. If there are feedback
@@ -43,7 +43,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .build();
 
-    let evaluator_agent = openai_client.extractor::<Evaluation>(openai::GPT_4)
+    let evaluator_agent = ExtractorBuilder::<Evaluation>::new(rig::model(openai_client.completion(openai::GPT_4)))
         .append_preamble("
             Evaluate this following code implementation for:
             1. code correctness

@@ -16,11 +16,10 @@ use bevy_app::App;
 use bevy_ecs::prelude::*;
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
-    completion::CompletionModel,
     effect::{EffectKind, HandlerDescriptor},
     serve::{
         Dispatch, Reply, Serve, ServingPolicy,
-        adapters::{CompletionAdapter, ToolAdapter},
+        adapters::{ModelAdapter, ToolAdapter},
     },
     tool::Tool,
 };
@@ -112,13 +111,23 @@ pub struct EcsAgent {
 
 impl EcsAgent {
     /// Create a native agent with the supplied model, preamble, and turn budget.
-    pub fn new(model: impl CompletionModel + 'static, preamble: &str, turns: usize) -> Self {
+    pub fn new<
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
+    >(
+        model: rig_core::driver::Model<W, T>,
+        preamble: &str,
+        turns: usize,
+    ) -> Self {
         Self::configured(model, preamble, turns, false, true, |_| {})
     }
 
     /// Create a one-turn parity agent, optionally retaining recorded stream events.
-    pub fn for_golden(
-        model: impl CompletionModel + 'static,
+    pub fn for_golden<
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
+    >(
+        model: rig_core::driver::Model<W, T>,
         preamble: &str,
         keep_events: bool,
     ) -> Self {
@@ -127,8 +136,11 @@ impl EcsAgent {
 
     /// Register application-owned handlers before the model, preserving the
     /// producer's handler registration order in the complete recorder header.
-    pub fn for_golden_with_setup(
-        model: impl CompletionModel + 'static,
+    pub fn for_golden_with_setup<
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
+    >(
+        model: rig_core::driver::Model<W, T>,
         preamble: &str,
         keep_events: bool,
         setup: impl FnOnce(&mut World),
@@ -136,8 +148,49 @@ impl EcsAgent {
         Self::configured(model, preamble, 1, true, keep_events, setup)
     }
 
-    fn configured(
-        model: impl CompletionModel + 'static,
+    /// Create a native agent served by the handler `serve` builds for the
+    /// model label, with a preamble and turn budget.
+    pub fn serving<S: Serve + 'static>(
+        serve: impl FnOnce(&str) -> S,
+        preamble: &str,
+        turns: usize,
+    ) -> Self {
+        Self::served(serve, preamble, turns, false, true, |_| {})
+    }
+
+    /// Create a one-turn parity agent served by the handler `serve` builds
+    /// for the model label, optionally retaining recorded stream events.
+    pub fn for_golden_serving<S: Serve + 'static>(
+        serve: impl FnOnce(&str) -> S,
+        preamble: &str,
+        keep_events: bool,
+    ) -> Self {
+        Self::served(serve, preamble, 1, true, keep_events, |_| {})
+    }
+
+    fn configured<
+        W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+        T: rig_core::driver::Transport<W>,
+    >(
+        model: rig_core::driver::Model<W, T>,
+        preamble: &str,
+        turns: usize,
+        golden_identity: bool,
+        keep_events: bool,
+        setup: impl FnOnce(&mut World),
+    ) -> Self {
+        Self::served(
+            |label| ModelAdapter::new(label, model),
+            preamble,
+            turns,
+            golden_identity,
+            keep_events,
+            setup,
+        )
+    }
+
+    fn served<S: Serve + 'static>(
+        serve: impl FnOnce(&str) -> S,
         preamble: &str,
         turns: usize,
         golden_identity: bool,
@@ -164,10 +217,7 @@ impl EcsAgent {
                     "parity/model"
                 },
                 RuntimeHandler {
-                    inner: Arc::new(CompletionAdapter::new(
-                        if golden_identity { "default" } else { "parity" },
-                        model,
-                    )),
+                    inner: Arc::new(serve(if golden_identity { "default" } else { "parity" })),
                     runtime: io_runtime(),
                 },
             )

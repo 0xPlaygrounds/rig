@@ -1,7 +1,6 @@
 //! AWS Bedrock streaming replay smoke tests.
 
 use rig::bedrock;
-use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{

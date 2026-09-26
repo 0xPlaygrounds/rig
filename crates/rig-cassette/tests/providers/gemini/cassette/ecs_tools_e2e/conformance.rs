@@ -2,7 +2,6 @@
 // Keep the original conformance error type and unchanged predicate signatures.
 use super::runtime::{NativeResponse, configured, execute};
 use rig::{
-    completion::CompletionModel,
     message::{AssistantContent, Message, UserContent},
     tool::{Tool, ToolContext},
 };
@@ -320,8 +319,11 @@ fn value_matches_integer(value: &serde_json::Value, expected: i64) -> bool {
             .and_then(|text| text.trim().parse::<i64>().ok())
             == Some(expected)
 }
-pub(super) async fn parallel_tools(
-    model: impl CompletionModel + 'static,
+pub(super) async fn parallel_tools<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     tool_concurrency: Option<usize>,
 ) -> Result<ScenarioReport, ScenarioError> {
     let add_calls = Arc::new(AtomicUsize::new(0));
@@ -392,8 +394,11 @@ pub(super) async fn parallel_tools(
     }
     report_from_response(scenario, started, add + subtract, response)
 }
-pub(super) async fn zero_argument_tool(
-    model: impl CompletionModel + 'static,
+pub(super) async fn zero_argument_tool<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
 ) -> Result<ScenarioReport, ScenarioError> {
     const SCENARIO: &str = "zero_argument_tool";
     let calls = Arc::new(AtomicUsize::new(0));
@@ -430,8 +435,11 @@ pub(super) async fn zero_argument_tool(
     }
     report_from_response(SCENARIO, started, 1, response)
 }
-pub(super) async fn tool_output_serialization(
-    model: impl CompletionModel + 'static,
+pub(super) async fn tool_output_serialization<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion> + Clone,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
 ) -> Result<ScenarioReport, ScenarioError> {
     const SCENARIO: &str = "tool_output_serialization";
     let started = Instant::now();

@@ -32,7 +32,7 @@
 //! [`chat::recorded_agreeing_usage_frames`], a different premise from the
 //! sole-terminal-frame rule its single-frame siblings use.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use serde_json::json;
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
@@ -42,13 +42,14 @@ use crate::raw_capture::{
     assert_contracted_request_id, capture_terminal, capture_text_and_terminal, chat,
 };
 use crate::support::{Observed, assert_matches_recorded_token};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(16).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
 }
 
 /// The `x-request-id` the recorded SSE response carried.
@@ -68,8 +69,8 @@ async fn stream_raw_round_trips_terminal_type() {
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| {
             capture_text_and_terminal(
-                client.completion(RAW_CAPTURE_MATRIX_MODEL),
-                request,
+                rig::model(client.completion(RAW_CAPTURE_MATRIX_MODEL)),
+                request(),
                 sink.clone(),
             )
         },
@@ -104,8 +105,8 @@ async fn stream_raw_exposes_terminal_queue_time() {
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time",
         |client| {
             capture_terminal(
-                client.completion(RAW_CAPTURE_MATRIX_MODEL),
-                request,
+                rig::model(client.completion(RAW_CAPTURE_MATRIX_MODEL)),
+                request(),
                 sink.clone(),
             )
         },

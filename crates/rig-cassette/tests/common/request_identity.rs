@@ -9,7 +9,7 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequestBuilder};
+use rig::completion::CompletionRequestBuilder;
 use rig::error::ProviderError;
 use rig::streaming::StreamEvent;
 use serde_json::Value;
@@ -74,33 +74,38 @@ pub fn take(slot: &Slot) -> Observed {
 /// `slot`. The provider must refuse `rejected` once `reject` shapes the
 /// request: an unknown model, or an argument out of range where the
 /// unknown-model error names the account.
-pub async fn run<M, R>(
+pub async fn run<W, T, Wm, Tr>(
     slot: Slot,
-    model: M,
-    rejected: R,
+    model: rig::driver::Model<W, T>,
+    rejected: rig::driver::Model<Wm, Tr>,
     params: Option<Value>,
-    reject: impl FnOnce(CompletionRequestBuilder<R>) -> CompletionRequestBuilder<R>,
+    reject: impl FnOnce(CompletionRequestBuilder) -> CompletionRequestBuilder,
 ) where
-    M: CompletionModel + Clone,
-    R: CompletionModel + Clone,
+    W: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    T: rig::driver::Transport<W>,
+    Wm: rig::wire::Wire<Op = rig::operation::Completion> + Clone,
+    Tr: rig::driver::Transport<Wm>,
 {
     let recorded = Recorded::default();
     let subscriber = tracing_subscriber::registry().with(Capture(recorded.clone()));
     let _guard = tracing::subscriber::set_default(subscriber);
 
     let unary = model
-        .completion_request("Reply with exactly: identity probe")
-        .max_tokens(64)
-        .additional_params(params.clone())
-        .send()
+        .call(
+            CompletionRequestBuilder::new("Reply with exactly: identity probe")
+                .max_tokens(64)
+                .additional_params(params.clone())
+                .build(),
+        )
         .await
         .expect("unary call");
     let mut stream = model
-        .completion_request("Reply with exactly: stream identity probe")
-        .max_tokens(64)
-        .additional_params(params.clone())
-        .stream()
-        .await
+        .stream(
+            CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                .max_tokens(64)
+                .additional_params(params.clone())
+                .build(),
+        )
         .expect("stream opens");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -109,15 +114,17 @@ pub async fn run<M, R>(
         }
     }
     let terminal = terminal.expect("the stream ends with a final record");
-    let error: ProviderError = reject(
-        rejected
-            .completion_request("Reply with exactly: rejected")
-            .max_tokens(64)
-            .additional_params(params.clone()),
-    )
-    .send()
-    .await
-    .expect_err("the provider rejects the model");
+    let error: ProviderError = rejected
+        .call(
+            reject(
+                CompletionRequestBuilder::new("Reply with exactly: rejected")
+                    .max_tokens(64)
+                    .additional_params(params.clone()),
+            )
+            .build(),
+        )
+        .await
+        .expect_err("the provider rejects the model");
 
     let spans = recorded
         .0

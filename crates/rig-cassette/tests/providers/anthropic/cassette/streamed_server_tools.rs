@@ -16,13 +16,14 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, ProviderToolDefinition};
+use rig::completion::ProviderToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use rig::streaming::{BlockKind, StreamEvent};
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 const WEB_SEARCH_PROMPT: &str = "Use web search to check the color of a clear daytime sky. Keep the final answer under five words.";
 
@@ -67,16 +68,13 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
     with_anthropic_cassette(
         "streamed_server_tools/streamed_web_search_preserves_server_tool_blocks",
         |client| async move {
-            let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = model
-                .completion_request(WEB_SEARCH_PROMPT)
+            let model = rig::model(client.completion(CLAUDE_OPUS_4_8));
+            let request = CompletionRequestBuilder::new(WEB_SEARCH_PROMPT)
                 .provider_tool(web_search_tool())
-                .max_tokens(1024)
-                .build();
+                .max_tokens(1024).build();
 
             let mut stream = model
                 .stream(request)
-                .await
                 .expect("streaming web-search request should open");
 
             let mut raw_types = Vec::new();
@@ -132,15 +130,13 @@ async fn blocking_web_search_preserves_server_tool_blocks() {
     with_anthropic_cassette(
         "streamed_server_tools/blocking_web_search_preserves_server_tool_blocks",
         |client| async move {
-            let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = model
-                .completion_request(WEB_SEARCH_PROMPT)
+            let model = rig::model(client.completion(CLAUDE_OPUS_4_8));
+            let request = CompletionRequestBuilder::new(WEB_SEARCH_PROMPT)
                 .provider_tool(web_search_tool())
-                .max_tokens(1024)
-                .build();
+                .max_tokens(1024).build();
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("blocking web-search request should succeed");
 

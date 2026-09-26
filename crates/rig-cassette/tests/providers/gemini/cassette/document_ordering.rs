@@ -1,10 +1,11 @@
 //! Focused Gemini cassette coverage for request document ordering.
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
 use rig::providers::gemini;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::support::assert_contains_any_case_insensitive;
+use rig::completion::CompletionRequestBuilder;
 
 const SYSTEM_INSTRUCTION: &str = "Answer with the exact token from the document only.";
 const DOCUMENT_ANSWER: &str = "violet-needle";
@@ -44,22 +45,23 @@ async fn generate_content_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_cassette(
         "document_ordering/generate_content_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = client
-                .completion(gemini::completion::GEMINI_2_5_FLASH)
-                .completion_request(PROMPT)
-                .message(Message::system(SYSTEM_INSTRUCTION))
-                .message(Message::assistant("Acknowledged."))
-                .document(ordering_document())
-                .temperature(0.0)
-                // 32 was enough only while `max_tokens` was being dropped before
-                // it reached `generationConfig` (see the gemini `create_request_body`
-                // fix): the model had an unbounded budget regardless. Now that the
-                // value is actually sent, gemini-2.5-flash spends part of it
-                // thinking and cannot reach the token in 32. This test is about
-                // document *ordering* in the request, not truncation, so the bound
-                // just has to be loose enough for an answer.
-                .max_tokens(512)
-                .send()
+            let response = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                .call(
+                    CompletionRequestBuilder::new(PROMPT)
+                        .message(Message::system(SYSTEM_INSTRUCTION))
+                        .message(Message::assistant("Acknowledged."))
+                        .document(ordering_document())
+                        .temperature(0.0)
+                        // 32 was enough only while `max_tokens` was being dropped before
+                        // it reached `generationConfig` (see the gemini `create_request_body`
+                        // fix): the model had an unbounded budget regardless. Now that the
+                        // value is actually sent, gemini-2.5-flash spends part of it
+                        // thinking and cannot reach the token in 32. This test is about
+                        // document *ordering* in the request, not truncation, so the bound
+                        // just has to be loose enough for an answer.
+                        .max_tokens(512)
+                        .build(),
+                )
                 .await
                 .expect("Gemini document ordering request should succeed");
 
@@ -81,15 +83,16 @@ async fn interactions_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_interactions_cassette(
         "document_ordering/interactions_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = client
-                .map_wire(|config| config.interactions("gemini-3-flash-preview"))
-                .completion_request(PROMPT)
-                .message(Message::system(SYSTEM_INSTRUCTION))
-                .message(Message::assistant("Acknowledged."))
-                .document(ordering_document())
-                .temperature(0.0)
-                .max_tokens(512)
-                .send()
+            let response = rig::model(client.interactions("gemini-3-flash-preview"))
+                .call(
+                    CompletionRequestBuilder::new(PROMPT)
+                        .message(Message::system(SYSTEM_INSTRUCTION))
+                        .message(Message::assistant("Acknowledged."))
+                        .document(ordering_document())
+                        .temperature(0.0)
+                        .max_tokens(512)
+                        .build(),
+                )
                 .await
                 .expect("Gemini interactions document ordering request should succeed");
 

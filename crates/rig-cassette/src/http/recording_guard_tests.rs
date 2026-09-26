@@ -32,7 +32,7 @@ impl Session {
 
     async fn start(&self, spec: CassetteSpec, upstream: &httpmock::MockServer) -> ProviderCassette {
         ProviderCassette::start_with_attempts(
-            Transport::Proxy,
+            RecordVia::Proxy,
             "openai",
             spec,
             &format!("{}/v1", upstream.base_url()),

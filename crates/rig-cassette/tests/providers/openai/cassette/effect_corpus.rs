@@ -6,7 +6,6 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -62,9 +61,7 @@ fn assert_dual_ids(calls: &[rig::message::ToolCall]) {
 async fn streaming_with_events_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/streaming_with_events", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .name("golden")
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -111,9 +108,7 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
 async fn tool_call_turns_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/tool_call_turns", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .name("golden")
             .preamble(CHAIN_PREAMBLE)
             .temperature(0.0)

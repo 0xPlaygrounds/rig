@@ -25,7 +25,7 @@ use rig_agent::{
     tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
 };
 use rig_core::serve::ServingPolicy;
-use rig_core::serve::adapters::CompletionAdapter;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::{
     effect::{EffectFamily, EffectKind, HandlerKey},
     error::ErrorKind,
@@ -192,7 +192,7 @@ async fn a_run_over_a_dropped_host_bus_answers_bus_closed_not_a_hang() {
     driver
         .register(
             "model:host",
-            CompletionAdapter::new("host", MockCompletionModel::text("never")),
+            ModelAdapter::new("host", MockCompletionModel::text("never")),
         )
         .expect("register");
     let agent = AgentBuilder::over_bus(
@@ -809,7 +809,7 @@ async fn a_nested_call_over_the_calls_scope_under_serial_serving_fails_fast() {
     driver
         .register_erased(
             model_key.clone(),
-            rig_core::serve::ErasedHandler::new(CompletionAdapter::new(
+            rig_core::serve::ErasedHandler::new(ModelAdapter::new(
                 "default",
                 MockCompletionModel::from_turns([
                     call_same(),
@@ -1301,7 +1301,7 @@ async fn two_agents_on_one_host_bus_keep_their_own_keys() {
         driver
             .register(
                 format!("model:{label}"),
-                CompletionAdapter::new(label, two_tool_calls_then_done()),
+                ModelAdapter::new(label, two_tool_calls_then_done()),
             )
             .expect("register");
     }
@@ -1711,7 +1711,7 @@ async fn a_bus_failure_on_a_tool_dispatch_is_a_run_error_not_a_tool_result() {
     driver
         .register(
             "model:host",
-            CompletionAdapter::new("host", two_tool_calls_then_done()),
+            ModelAdapter::new("host", two_tool_calls_then_done()),
         )
         .expect("register");
     let agent = AgentBuilder::over_bus(
@@ -1791,7 +1791,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
     let unary = within(model.complete(request("hi"))).await.expect("unary");
     let mut stream = streamer.stream(request("hi"));
     assert_eq!(
-        stream.provider(),
+        stream.folded().provider(),
         "streamer",
         "before the terminal record the stream carries the handler's label"
     );
@@ -1837,7 +1837,7 @@ async fn a_model_registered_through_the_parts_registrar_serves_the_next_run() {
     registrar
         .register(
             key.clone(),
-            CompletionAdapter::new("late", MockCompletionModel::text("late")),
+            ModelAdapter::new("late", MockCompletionModel::text("late")),
         )
         .expect("a fresh key");
     assert!(
