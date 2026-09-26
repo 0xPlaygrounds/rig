@@ -808,3 +808,24 @@ fn request_building_failures_share_one_shape() {
         assert_eq!(error.boundary(), AdapterErrorBoundary::Request);
     }
 }
+
+/// A relayed failure keeps the provider's reply it was reported with: the
+/// preserved response reads back through the error, and the error reports as
+/// the relayed report unchanged.
+#[test]
+fn a_relayed_report_keeps_its_provider_response() {
+    let report = ErrorReport::from(&http_error(503));
+    let relayed = ProviderError::Relayed(Box::new(report.clone()));
+    assert_eq!(
+        relayed.provider_response(),
+        report.provider_response.as_ref()
+    );
+    assert_eq!(relayed.provider_response_body(), Some("body"));
+    assert_eq!(
+        relayed.provider_response_status(),
+        Some(StatusCode::SERVICE_UNAVAILABLE)
+    );
+    assert_eq!(relayed.kind(), ErrorKind::ProviderResponse);
+    assert!(relayed.is_retryable());
+    assert_eq!(ErrorReport::from(&relayed), report);
+}
