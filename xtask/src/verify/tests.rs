@@ -516,6 +516,79 @@ fn prioritized_tests_exist() {
 }
 
 #[test]
+fn local_profile_excludes_nested_builds_without_excluding_their_sibling_tests() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let config = std::fs::read_to_string(root.join(".config/nextest.toml")).unwrap();
+    let local = config.split("[profile.local]").nth(1).unwrap();
+    let filter = local
+        .split("default-filter = '''")
+        .nth(1)
+        .unwrap()
+        .split("'''")
+        .next()
+        .unwrap();
+    let guards = [
+        (
+            "tests/tool_facade_features.rs",
+            "portable_tool_facade_is_feature_additive",
+        ),
+        (
+            "crates/rig-reqwest/tests/middleware_features.rs",
+            "middleware_clients_are_available_for_each_tls_selector",
+        ),
+        (
+            "tests/core/agent_run_stepper.rs",
+            "agent_run_is_steppable_without_the_futures_driver",
+        ),
+        (
+            "crates/rig-derive/tests/dependency_rename.rs",
+            "generated_paths_follow_cargo_dependency_renames",
+        ),
+        (
+            "crates/rig-derive/tests/dependency_rename.rs",
+            "contextual_tool_compiles_with_rig_core_only",
+        ),
+        (
+            "crates/rig-derive/tests/tool_args.rs",
+            "invalid_tool_arguments_are_rejected",
+        ),
+        (
+            "crates/rig-derive/tests/custom_name.rs",
+            "test_custom_name_trybuild_cases",
+        ),
+        (
+            "crates/rig-derive/tests/serve.rs",
+            "a_type_that_is_not_a_serve_is_told_to_implement_serve",
+        ),
+        (
+            "crates/rig-derive/tests/embed_attrs.rs",
+            "conflicting_embed_attributes_are_rejected",
+        ),
+        (
+            "crates/rig-derive/tests/context_value.rs",
+            "a_bare_value_is_rejected_with_the_fix_named",
+        ),
+        (
+            "crates/rig-derive/tests/tool_context.rs",
+            "invalid_context_parameters_are_rejected",
+        ),
+    ];
+    let mut selectors = vec![
+        "package(rig-service-tests)".to_owned(),
+        "binary(macro_hygiene)".to_owned(),
+    ];
+    for (path, name) in guards {
+        let source = std::fs::read_to_string(root.join(path)).unwrap();
+        assert!(source.contains(&format!("fn {name}(")), "{path}: {name}");
+        selectors.push(format!("test({name})"));
+    }
+    // Pin the entire exclusion, not just the presence of names: excluding a
+    // whole derive package or binary would also hide its ordinary unit tests.
+    let compact: String = filter.chars().filter(|c| !c.is_whitespace()).collect();
+    assert_eq!(compact, format!("not({})", selectors.join("|")));
+}
+
+#[test]
 fn pr_broad_reason_names_verification_inputs() {
     let plan = selection::plan(
         Path::new("/repo"),

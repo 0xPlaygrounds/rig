@@ -6,7 +6,7 @@
 required = "0.9.77"
 recommended = "0.9.91"
 
-# The two tests that shell out to a nested Cargo build are the slowest in the
+# These two nested-Cargo tests are the slowest in the
 # tree by an order of magnitude (the facade feature-forwarding guard runs
 # four `cargo check`s over the facade's dependency graph). In lexicographic
 # order they start late and finish minutes after every other test, so the
@@ -25,8 +25,23 @@ filter = 'test(telemetry::) + test(span_safety_net::)'
 retries = 0
 
 # The inner loop: skips the service suites (`rig-service-tests`, mostly
-# Docker-backed) and the two nested-Cargo tests above. CI still runs all of them.
+# Docker-backed) and nested-Cargo guards, including trybuild cases. Ordinary
+# tests in the same binaries still run. CI still runs all of them.
 [profile.local]
 retries = 0
 fail-fast = true
-default-filter = 'not (package(rig-service-tests) | test(portable_tool_facade_is_feature_additive) | binary(macro_hygiene))'
+default-filter = '''not (
+    package(rig-service-tests)
+    | binary(macro_hygiene)
+    | test(portable_tool_facade_is_feature_additive)
+    | test(middleware_clients_are_available_for_each_tls_selector)
+    | test(agent_run_is_steppable_without_the_futures_driver)
+    | test(generated_paths_follow_cargo_dependency_renames)
+    | test(contextual_tool_compiles_with_rig_core_only)
+    | test(invalid_tool_arguments_are_rejected)
+    | test(test_custom_name_trybuild_cases)
+    | test(a_type_that_is_not_a_serve_is_told_to_implement_serve)
+    | test(conflicting_embed_attributes_are_rejected)
+    | test(a_bare_value_is_rejected_with_the_fix_named)
+    | test(invalid_context_parameters_are_rejected)
+)'''

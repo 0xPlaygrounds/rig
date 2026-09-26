@@ -120,9 +120,11 @@ than on its own PR; that tradeoff is deliberate.
 - The `local` nextest profile (`cargo nextest run --profile local`) is the
   inner loop: no retries, and it stops at the first failure. Its default
   filter skips the service suites (`rig-service-tests`, mostly Docker-backed)
-  and the two tests that shell out to a nested Cargo build
-  (`portable_tool_facade_is_feature_additive`, `binary(macro_hygiene)`). CI
-  runs all of them. Add `--ignore-default-filter` to run one by hand.
+  and tests that launch nested Cargo builds: facade feature forwarding,
+  macro hygiene, reqwest middleware TLS selectors, the agent-run stepper,
+  and rig-derive's dependency-rename and trybuild cases. Ordinary tests in
+  the same binaries still run. CI runs all of them. Add
+  `--ignore-default-filter` to run a skipped test by hand.
 - The dev profile keeps line tables for workspace code, so backtraces still
   show file and line, and emits no debuginfo for dependencies. For a debugger
   session, add
@@ -235,9 +237,9 @@ Add it to `checks::all()` with a stable id, decide which selection rule owns
 it in `selection.rs` (or leave it in the fast set every `--pr` runs), add a
 `cargo xtask verify --check <id>` step to the matching ci.yaml job, and update
 the tests in `xtask/src/verify/tests.rs` that pin ids and lanes. Checks that
-shell out to a nested Cargo build (the facade guard, macro hygiene) get a
-nextest priority so they start first, and the `local` profile's filter skips
-them.
+shell out to a nested Cargo build belong in the `local` profile's filter.
+The slowest guards (facade feature forwarding and macro hygiene) also get a
+nextest priority so they start first in CI.
 
 ## PR completion
 
