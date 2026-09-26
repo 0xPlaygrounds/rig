@@ -708,3 +708,30 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
         .collect();
     assert_eq!(issuers, ["anthropic"]);
 }
+
+/// A handler that writes raw events, text left open at the terminal, folds to
+/// the same outcome as one that writes through the completion sink.
+#[test]
+fn the_tap_folds_a_raw_handler_stream_like_a_canonical_one() {
+    let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
+    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
+        Ok(StreamEvent::text(text, "hello")),
+        Ok(StreamEvent::Final(StreamFinal::new(
+            "local",
+            Default::default(),
+            serde_json::Value::Null,
+        ))),
+    ];
+    let mut tap = StreamTap::new();
+    let outcome = raw
+        .iter()
+        .find_map(|item| tap.observe(item))
+        .expect("the terminal yields an outcome");
+    let Ok(Outcome::Completion(response)) = outcome else {
+        panic!("expected a completion, got {outcome:?}");
+    };
+    assert_eq!(
+        response.choice,
+        vec![crate::message::AssistantContent::text("hello")]
+    );
+}

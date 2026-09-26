@@ -1489,3 +1489,75 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
         assert_ne!(calls[0].id, calls[1].id);
     }
 }
+
+/// A relayed stream passes the completion sink: a stream that is not
+/// canonical (text left open, a second terminal) comes out canonical, and
+/// content after the terminal still reaches the consumer.
+#[tokio::test]
+async fn a_relayed_stream_comes_out_canonical() {
+    let text = BlockId::minted(MintKind::Text, 0);
+    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
+        Ok(StreamEvent::BlockStart {
+            id: text.clone(),
+            kind: BlockKind::Text {
+                additional_params: None,
+            },
+        }),
+        Ok(StreamEvent::text(text.clone(), "hi")),
+        Ok(StreamEvent::Final(mock_final_with_total_tokens(1))),
+        Ok(StreamEvent::Final(mock_final_with_total_tokens(2))),
+        Ok(StreamEvent::Unknown(
+            serde_json::json!({"after": true}).into(),
+        )),
+    ];
+    let mut stream = CompletionStream::relay("label", Box::pin(futures::stream::iter(raw)));
+    let mut items = Vec::new();
+    while let Some(item) = stream.next().await {
+        items.push(item.expect("no error"));
+    }
+    assert!(
+        matches!(
+            items.get(2),
+            Some(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Text(Text { text, .. })),
+                ..
+            }) if text == "hi"
+        ),
+        "the open text closes before the terminal, carrying its block: {items:?}"
+    );
+    assert_eq!(
+        items
+            .iter()
+            .filter(|item| matches!(item, StreamEvent::Final(_)))
+            .count(),
+        1,
+        "the second terminal is dropped"
+    );
+    assert!(matches!(items.last(), Some(StreamEvent::Unknown(_))));
+    assert_eq!(
+        stream.finish().expect("a terminal record").choice,
+        vec![AssistantContent::text("hi")]
+    );
+}
+
+/// A truncated relayed stream is ended as the driver ends a reply: its open
+/// text closes at EOF, and the stream still refuses to finish.
+#[tokio::test]
+async fn a_truncated_relayed_stream_closes_its_open_text() {
+    let text = BlockId::minted(MintKind::Text, 0);
+    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![Ok(StreamEvent::text(text, "partial"))];
+    let mut stream = CompletionStream::relay("label", Box::pin(futures::stream::iter(raw)));
+    let mut items = Vec::new();
+    while let Some(item) = stream.next().await {
+        items.push(item.expect("no error"));
+    }
+    assert!(matches!(
+        items.last(),
+        Some(StreamEvent::BlockEnd { block: Some(_), .. })
+    ));
+    assert_eq!(
+        stream.folded().snapshot(),
+        vec![AssistantContent::text("partial")]
+    );
+    assert!(stream.finish().is_err(), "no terminal record, truncated");
+}

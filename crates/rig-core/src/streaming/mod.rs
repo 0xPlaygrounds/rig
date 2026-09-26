@@ -17,9 +17,9 @@ use crate::driver::{Step, record_request_id};
 use crate::error::ErrorReport;
 use crate::error::ProviderError;
 use crate::message::{AssistantContent, ToolResult};
-use crate::operation::{Completion, CompletionFold};
+use crate::operation::{AdapterOutput, Completion, CompletionFold};
 use crate::wasm_compat::WasmBoxedStream;
-use crate::wire::{Fold, Mode, Operation, Reply};
+use crate::wire::{Fold, Mode, Operation, Reply, Sink};
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
 pub use event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCallEnd};
 use futures::{Stream, StreamExt};
@@ -409,15 +409,25 @@ impl<Op: Operation> Streamed<Op> {
 
 impl Streamed<Completion> {
     /// A stream relayed over the bus under `label`, whose terminal record
-    /// names the provider behind it. Its events must be canonical already,
-    /// as the origin's sink made them: the relay's fold collects and never
-    /// assembles.
+    /// names the provider behind it. The events pass the completion sink,
+    /// which leaves a stream the origin's sink made canonical as it is and
+    /// makes any other stream canonical.
     pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
         let label = label.into();
-        let steps = events.map(|item| {
-            item.map(Step::Event)
-                .map_err(|report| ProviderError::Relayed(Box::new(report)))
-        });
+        let steps = async_stream::stream! {
+            let mut events = events;
+            let mut sink = AdapterOutput::new();
+            while let Some(item) = events.next().await {
+                sink.push(item.map_err(|report| ProviderError::Relayed(Box::new(report))));
+                for item in sink.drain() {
+                    yield item.map(Step::Event);
+                }
+            }
+            Sink::<Completion>::finish(&mut sink);
+            for item in sink.drain() {
+                yield item.map(Step::Event);
+            }
+        };
         Self::new(
             Box::pin(steps),
             CompletionFold::relayed(label.clone()),
