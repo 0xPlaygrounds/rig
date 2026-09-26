@@ -8,12 +8,13 @@
 use crate::error::ProviderError;
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
-use crate::providers::internal::wire::{self, WireEvent};
+use crate::providers::internal::wire;
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
 use crate::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
 use crate::wire::Decoder;
+use crate::wire::WireEvent;
 use crate::wire::WireFrame;
 use serde::{Deserialize, Serialize};
 

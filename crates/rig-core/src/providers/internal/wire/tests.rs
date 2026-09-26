@@ -1,4 +1,5 @@
-use super::{WireEvent, classify_chat_completions_frame, classify_tagged_frame};
+use super::{classify_chat_completions_frame, classify_tagged_frame};
+use crate::wire::WireEvent;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "type")]

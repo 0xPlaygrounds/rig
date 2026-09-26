@@ -23,9 +23,10 @@ use rig_core::error::ProviderError;
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
 use rig_core::operation::{AdapterOutput, ImagePart};
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::providers::internal::wire;
 use rig_core::streaming::StreamFinal;
 use rig_core::wire::Mode;
+use rig_core::wire::{TypedEvent, WireEvent};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 

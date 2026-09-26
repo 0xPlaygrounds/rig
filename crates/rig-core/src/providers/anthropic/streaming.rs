@@ -6,8 +6,9 @@ use crate::error::ProviderError;
 use crate::message::ReasoningContent;
 use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
-use crate::providers::internal::wire::{self, WireEvent};
+use crate::providers::internal::wire;
 use crate::streaming::{self, BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
+use crate::wire::WireEvent;
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, ObservationSink, WireFrame,
 };

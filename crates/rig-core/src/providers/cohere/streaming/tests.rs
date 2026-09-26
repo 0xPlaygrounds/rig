@@ -14,7 +14,7 @@ fn cohere_model<H: Clone>(
     )
 }
 
-fn classify(data: &str) -> wire::WireEvent<StreamingEvent> {
+fn classify(data: &str) -> crate::wire::WireEvent<StreamingEvent> {
     wire::classify_tagged_frame(data, "type", |event_type| {
         KNOWN_EVENT_TYPES.contains(&event_type)
     })
@@ -29,7 +29,7 @@ fn classify_known_event_decodes() {
     .to_string();
     assert!(matches!(
         classify(&frame),
-        wire::WireEvent::Known(StreamingEvent::ContentDelta { .. })
+        crate::wire::WireEvent::Known(StreamingEvent::ContentDelta { .. })
     ));
 }
 
@@ -38,19 +38,25 @@ fn classify_unknown_event_type_is_unknown() {
     let frame = json!({"type": "citation-start"}).to_string();
     assert!(matches!(
         classify(&frame),
-        wire::WireEvent::Unknown { event_type, .. } if event_type == "citation-start"
+        crate::wire::WireEvent::Unknown { event_type, .. } if event_type == "citation-start"
     ));
 }
 
 #[test]
 fn classify_invalid_json_is_corrupt() {
-    assert!(matches!(classify("{not json"), wire::WireEvent::Corrupt(_)));
+    assert!(matches!(
+        classify("{not json"),
+        crate::wire::WireEvent::Corrupt(_)
+    ));
 }
 
 #[test]
 fn classify_known_event_with_defective_payload_is_corrupt() {
     let frame = json!({"type": "content-delta", "delta": 42}).to_string();
-    assert!(matches!(classify(&frame), wire::WireEvent::Corrupt(_)));
+    assert!(matches!(
+        classify(&frame),
+        crate::wire::WireEvent::Corrupt(_)
+    ));
 }
 
 #[tokio::test]

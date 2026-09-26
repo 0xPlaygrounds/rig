@@ -9,9 +9,10 @@ use rig_core::message::{
 };
 use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::providers::internal::wire;
 use rig_core::streaming::StreamFinal;
 use rig_core::wire::Decoder;
+use rig_core::wire::{TypedEvent, WireEvent};
 
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
