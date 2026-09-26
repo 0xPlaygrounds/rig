@@ -589,6 +589,23 @@ impl ProviderError {
                 name,
                 response: map(response),
             },
+            // The report restates what it read from the reply it preserves,
+            // so what the map fills reaches both. What it held is kept.
+            Self::Relayed(mut report) => {
+                if let Some(response) = report.provider_response.take() {
+                    let response = map(response);
+                    report.request_id = report
+                        .request_id
+                        .or_else(|| response.provider_request_id.clone());
+                    report.http_status = report
+                        .http_status
+                        .or_else(|| response.status.map(|status| status.as_u16()));
+                    report.code = report.code.or_else(|| response.machine_code());
+                    report.refusal |= response.refusal;
+                    report.provider_response = Some(response);
+                }
+                Self::Relayed(report)
+            }
             other => other,
         }
     }

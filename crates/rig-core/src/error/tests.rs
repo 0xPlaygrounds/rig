@@ -829,3 +829,36 @@ fn a_relayed_report_keeps_its_provider_response() {
     assert!(relayed.is_retryable());
     assert_eq!(ErrorReport::from(&relayed), report);
 }
+
+/// The transport's facts reach a relayed report as they reach the reply it
+/// preserves: an absent request id and absent headers are filled, and the
+/// report reads them back.
+#[test]
+fn a_relayed_report_takes_the_transport_s_request_id_and_headers() {
+    let report = ErrorReport::from(&ProviderError::ProviderResponse(
+        ProviderResponseError::new(StatusCode::SERVICE_UNAVAILABLE, "body"),
+    ));
+    assert_eq!(report.request_id, None);
+    let mut headers = http::HeaderMap::new();
+    headers.insert("retry-after", http::HeaderValue::from_static("7"));
+    let relayed = ProviderError::Relayed(Box::new(report))
+        .with_provider_request_id(Some("req_1".to_owned()))
+        .with_response_headers(Some(headers));
+    assert_eq!(relayed.provider_request_id(), Some("req_1"));
+    assert_eq!(
+        relayed
+            .provider_response()
+            .and_then(|response| response.headers.as_ref())
+            .and_then(|headers| headers.get("retry-after")),
+        Some(&http::HeaderValue::from_static("7"))
+    );
+    assert_eq!(
+        ErrorReport::from(&relayed).request_id.as_deref(),
+        Some("req_1")
+    );
+
+    // A captured id is kept.
+    let kept = ProviderError::Relayed(Box::new(ErrorReport::from(&relayed)))
+        .with_provider_request_id(Some("req_2".to_owned()));
+    assert_eq!(kept.provider_request_id(), Some("req_1"));
+}
