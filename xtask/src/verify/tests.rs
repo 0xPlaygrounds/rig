@@ -11,9 +11,10 @@ fn metadata() -> Value {
     // are targets of `rig-cassette`.
     serde_json::json!({"packages":[
         {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
-        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]}]},
+        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"features":{"default":[],"agent":[],"ecs":[],"http":[],"bedrock":["http"]},"targets":[{"name":"anthropic","kind":["test"],"required-features":["http","agent","ecs"]},{"name":"openai","kind":["test"],"required-features":["http","agent","ecs"]},{"name":"verify","kind":["test"],"required-features":["agent","ecs"]},{"name":"world_replay","kind":["test"],"required-features":["agent","ecs"]},{"name":"world_replay_world","kind":["test"],"required-features":["ecs"]}]},
         {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
-        {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},
+        {"name":"rig-core","manifest_path":"/repo/crates/rig-core/Cargo.toml","dependencies":[],"features":{"default":["derive"],"derive":[],"pdf":[]},"targets":[{"name":"rig_core","kind":["lib"]},{"name":"macro_hygiene","kind":["test"]}]},
+        {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[{"name":"rig-core"}],"features":{"assets":[]},"targets":[{"name":"rig_ecs","kind":["lib"]},{"name":"run_wasm","kind":["test"],"required-features":["assets"]}]},
         {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
         {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
     ]})
@@ -41,6 +42,7 @@ fn pr_requires_explicit_base() {
 #[test]
 fn conflicting_modes_fail() {
     assert!(Options::parse(vec!["--changed".into(), "--full".into()]).is_err());
+    assert!(Options::parse(vec!["--quick".into(), "--changed".into()]).is_err());
 }
 
 #[test]
@@ -891,4 +893,170 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     for flag in ["--features", "--all-features", "--no-default-features"] {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
     }
+}
+
+fn quick(paths: &[&str]) -> selection::Quick {
+    let quick = selection::quick(
+        Path::new("/repo"),
+        &metadata(),
+        &opts("--quick"),
+        &paths.iter().map(|s| (*s).into()).collect(),
+        &checks::all(),
+    )
+    .unwrap();
+    // Whatever the change set, --quick runs cargo check and the local
+    // nextest profile on named packages, never a workspace or all-features
+    // build, and lists the checks --pr selects for the same paths.
+    for step in quick.plan.iter().flat_map(|c| &c.steps) {
+        assert_eq!(step.program, "cargo");
+        assert!(step.args.contains(&"-p".into()), "{step:?}");
+        for flag in ["--workspace", "--all-features", "--retries"] {
+            assert!(!step.args.contains(&flag.into()), "{step:?}");
+        }
+        match step.args[0].as_str() {
+            "check" => {}
+            "nextest" => assert!(step.args.windows(2).any(|w| w == ["--profile", "local"])),
+            other => panic!("unexpected quick step {other}"),
+        }
+    }
+    let pr: BTreeSet<String> = quick.ci.iter().flatten().cloned().collect();
+    assert_eq!(pr, ids("--pr", paths));
+    quick
+}
+
+fn quick_ids(quick: &selection::Quick) -> BTreeSet<String> {
+    quick.plan.iter().map(|c| c.id.clone()).collect()
+}
+
+fn listed(quick: &selection::Quick, needle: &str) -> bool {
+    quick.deferred.iter().any(|line| line.contains(needle))
+}
+
+#[test]
+fn quick_checks_a_core_edit_and_lists_its_consumers_for_ci() {
+    let q = quick(&["crates/rig-core/src/agent/mod.rs"]);
+    assert_eq!(quick_ids(&q), BTreeSet::from(["package-rig-core".into()]));
+    let steps = &q.plan[0].steps;
+    assert_eq!(
+        steps[0].args,
+        ["check", "--locked", "-p", "rig-core", "--all-targets"]
+    );
+    assert_eq!(
+        steps[1].args,
+        [
+            "nextest",
+            "run",
+            "--locked",
+            "--profile",
+            "local",
+            "--no-tests=warn",
+            "-p",
+            "rig-core"
+        ]
+    );
+    assert!(listed(
+        &q,
+        "reverse dependencies of rig-core: example, rig-ecs"
+    ));
+    assert!(listed(&q, "rig-core: features not enabled here: pdf"));
+}
+
+#[test]
+fn quick_runs_only_the_edited_provider_target() {
+    let q = quick(&["crates/rig-cassette/tests/providers/openai/cassette/x.rs"]);
+    assert_eq!(quick_ids(&q), BTreeSet::from(["provider-openai".into()]));
+    for step in &q.plan[0].steps {
+        assert!(step.args.windows(2).any(|w| w == ["-p", "rig-cassette"]));
+        assert!(step.args.windows(2).any(|w| w == ["--test", "openai"]));
+        // The target's required features, not the package's `bedrock`.
+        assert!(
+            step.args
+                .windows(2)
+                .any(|w| w == ["--features", "agent,ecs,http"]),
+            "{step:?}"
+        );
+        assert!(!step.args.contains(&"--all-targets".into()));
+    }
+}
+
+#[test]
+fn quick_replays_an_edited_cassette_through_its_provider_target() {
+    let q = quick(&["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"]);
+    assert_eq!(quick_ids(&q), BTreeSet::from(["provider-anthropic".into()]));
+    assert!(
+        q.deferred
+            .iter()
+            .all(|line| !line.contains("reverse dependencies"))
+    );
+}
+
+#[test]
+fn quick_never_escalates_on_shared_inputs() {
+    for path in ["xtask/src/verify/selection.rs", "Cargo.toml"] {
+        let q = quick(&[path]);
+        assert!(q.plan.is_empty(), "{path}");
+        assert_eq!(
+            q.deferred,
+            [format!("{path}: shared build or verification input")]
+        );
+        // --pr runs every lane for these; --quick names them instead.
+        let ci = q.ci.unwrap();
+        assert!(ci.contains(&"full-tests".into()), "{path}");
+    }
+}
+
+#[test]
+fn quick_builds_nothing_for_a_docs_edit() {
+    let q = quick(&["README.md", "crates/rig-ecs/README.md", "docs/guide.md"]);
+    assert!(q.plan.is_empty());
+    assert_eq!(q.deferred.len(), 3);
+    assert!(
+        q.deferred
+            .iter()
+            .all(|line| line.ends_with(": documentation"))
+    );
+}
+
+#[test]
+fn quick_checks_two_unrelated_packages_separately() {
+    let q = quick(&["crates/rig-ecs/src/lib.rs", "crates/rig-sqlite/src/lib.rs"]);
+    assert_eq!(
+        quick_ids(&q),
+        BTreeSet::from(["package-rig-ecs".into(), "package-rig-sqlite".into()])
+    );
+    let ecs = q.plan.iter().find(|c| c.id == "package-rig-ecs").unwrap();
+    // A target's required feature is enabled so --all-targets builds it.
+    assert!(
+        ecs.steps[0]
+            .args
+            .windows(2)
+            .any(|w| w == ["--features", "assets"])
+    );
+    let sqlite = q
+        .plan
+        .iter()
+        .find(|c| c.id == "package-rig-sqlite")
+        .unwrap();
+    assert!(!sqlite.steps[0].args.contains(&"--features".into()));
+    // The example consumes rig-ecs; it is listed, not built.
+    assert!(listed(&q, "reverse dependencies of rig-ecs: example"));
+    assert!(
+        q.plan
+            .iter()
+            .flat_map(|c| &c.steps)
+            .all(|s| !s.args.contains(&"example".into()))
+    );
+}
+
+#[test]
+fn quick_without_a_base_lists_no_ci_ids() {
+    let quick = selection::quick(
+        Path::new("/repo"),
+        &metadata(),
+        &Options::parse(vec!["--quick".into()]).unwrap(),
+        &BTreeSet::from(["Cargo.toml".into()]),
+        &checks::all(),
+    )
+    .unwrap();
+    assert!(quick.ci.is_none());
 }
