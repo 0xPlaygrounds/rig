@@ -1,21 +1,54 @@
 //! Wire-conformance suite for the Gemini gRPC typed-event wire.
 //!
 //! Events-first (`WireInput::Event`): fixture frames are already-typed
-//! protobuf responses driven through
-//! [`rig_gemini_grpc::streaming::stream_from_events`] — the shared driver,
-//! canonical grammar, and terminal normalization — with no gRPC transport.
+//! protobuf responses replayed by a scripted transport through the
+//! `GenerateContent` wire — the shared driver, canonical grammar, and
+//! terminal normalization — with no gRPC channel.
 //! Frame-level malformed/unknown scenarios self-report as skipped: prost
 //! surfaces decode failures as transport `Status` errors, and its
 //! unknown-variant signal is the sub-frame `part.data` oneof decoding to
 //! `None`.
 
-use rig_core::completion::FinishReason;
+use rig_core::completion::{CompletionRequest, CompletionRequestBuilder, FinishReason};
+use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     InterleavedReasoningFixture, ProviderWireFixture, WireDriver, WireInput, event_frame,
     fixtures::drain,
 };
+use rig_core::wire::Mode;
+use rig_gemini_grpc::completion::{GenerateContent, GrpcFrame};
 use rig_gemini_grpc::proto;
+
+/// Replays scripted protobuf chunks as a streamed reply.
+#[derive(Clone)]
+struct Scripted(
+    std::sync::Arc<std::sync::Mutex<Vec<Result<proto::GenerateContentResponse, ProviderError>>>>,
+);
+
+impl Transport<GenerateContent> for Scripted {
+    fn send(
+        &self,
+        _request: proto::GenerateContentRequest,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<proto::GenerateContentRequest, GrpcFrame>> + Send + 'static + use<>,
+        ProviderError,
+    > {
+        let chunks = std::mem::take(
+            &mut *self
+                .0
+                .lock()
+                .map_err(|_| ProviderError::Provider("script lock poisoned".to_owned()))?,
+        );
+        Ok(async move {
+            Opened::new(futures::stream::iter(
+                chunks.into_iter().map(|chunk| chunk.map(GrpcFrame::Chunk)),
+            ))
+        })
+    }
+}
 
 fn driver() -> WireDriver {
     WireDriver::new("gemini-grpc", |chunks| {
@@ -35,8 +68,12 @@ fn driver() -> WireDriver {
                     Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
-            let stream =
-                rig_gemini_grpc::streaming::stream_from_events(futures::stream::iter(events));
+            let request: CompletionRequest = CompletionRequestBuilder::new("hello").build();
+            let stream = Model::new(
+                GenerateContent::new("gemini-2.5-pro"),
+                Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
+            )
+            .stream(request)?;
             Ok(drain(stream).await)
         })
     })

@@ -1,7 +1,6 @@
 //! llama.cpp loaders smoke test.
 
 use rig::loaders::FileLoader;
-use rig::prelude::*;
 
 use super::super::cassette_support::*;
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
@@ -17,7 +16,7 @@ async fn loaders_smoke() {
             .into_iter();
 
         let agent = examples
-            .fold(client.agent(CASSETTE_MODEL), |builder, (path, content)| {
+            .fold(rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL))), |builder, (path, content)| {
                 builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
             })
             .preamble(

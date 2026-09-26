@@ -27,10 +27,8 @@
 //! rather than from a reply body, so neither the premise reader nor
 //! [`assert_terminal_reproduces_event`] is the shared body contract.
 
-use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
-use rig::driver::Bound;
+use rig::completion::{CompletionRequest, FinishReason};
 use rig::providers::openai::responses_api;
-use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
 use rig::streaming::StreamFinal;
 use serde_json::{Value, json};
@@ -42,14 +40,15 @@ use crate::raw_capture::{
     capture_text_and_terminal, responses, stream_normalized_without_raw,
 };
 use crate::support::{Observed, assert_matches_recorded_token};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &Bound<OpenAiWire>) -> CompletionRequest {
-    model.completion_request(PROMPT).build()
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT).build()
 }
 
 /// The `response` object of the single recorded `response.completed` event.
@@ -131,7 +130,13 @@ async fn stream_raw_round_trips_terminal_type() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -181,7 +186,13 @@ async fn stream_raw_exposes_terminal_status() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
-        |client| capture_terminal(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_terminal(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_status should replay from its cassette");

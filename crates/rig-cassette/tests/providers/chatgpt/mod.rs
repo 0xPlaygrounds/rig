@@ -26,11 +26,9 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
-use rig::driver::{Bind as _, Bound};
-use rig::http_client::BoxedHttpClient;
+use rig::http_client::DynHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
-use rig::rig_reqwest::client::bundled;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -51,7 +49,7 @@ struct CachedAuthRecord {
 /// speaks over. The OAuth cache wins when there is a usable one, exactly as
 /// the deleted builder's default did; otherwise the variables the dialect
 /// names describe the provider outright.
-async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
+async fn live_provider(http: &DynHttpClient) -> OpenAI {
     if !has_usable_oauth_cache() && std::env::var_os("CHATGPT_ACCESS_TOKEN").is_some() {
         return OpenAI::from_env_with(&chatgpt::DIALECT)
             .expect("the ChatGPT environment should describe a provider");
@@ -85,9 +83,9 @@ async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
     provider
 }
 
-pub(crate) async fn live_client() -> Bound<OpenAI> {
-    let http = bundled().expect("the bundled transport should build");
-    live_provider(&http).await.bind(http)
+pub(crate) async fn live_client() -> OpenAI {
+    let http = rig::rig_reqwest::shared();
+    live_provider(&http).await
 }
 
 fn has_usable_oauth_cache() -> bool {

@@ -5,8 +5,6 @@
 //! `tests/common/ecs_matrix/extra.rs`; this file holds the scenario
 //! literals and the wire's models.
 
-use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{
     GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW,
@@ -20,21 +18,35 @@ use crate::ecs_matrix::{
     },
 };
 
-fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &Gemini,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::DynHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_3_FLASH_PREVIEW),
-        route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
+        model: rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
+        route: Some(rig::model(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW))),
         temperature: Some(0.0),
         additional_params: None,
     }
 }
 
 /// The recording's own model, for the cell over a breadth recording.
-fn legacy<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn legacy(
+    client: &Gemini,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::DynHttpClient,
+    >,
+> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion(GEMINI_2_5_FLASH),
+        model: rig::model(client.completion(GEMINI_2_5_FLASH)),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -65,7 +77,7 @@ async fn error_facts_unary() {
             "error_envelope/nonexistent_model_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    client.completion("gemini-nonexistent-rig-test"),
+                    rig::model(client.completion("gemini-nonexistent-rig-test")),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),
@@ -97,7 +109,7 @@ async fn error_facts_streamed() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    client.completion("gemini-nonexistent-rig-test"),
+                    rig::model(client.completion("gemini-nonexistent-rig-test")),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),

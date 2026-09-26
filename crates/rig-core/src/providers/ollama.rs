@@ -6,18 +6,19 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = ollama::Ollama::new();
 //!
-//! let qwen = provider.chat("qwen2.5:14b");
-//! let embeddings = provider.embeddings(ollama::ALL_MINILM, Some(384));
+//! let qwen = provider.completion("qwen2.5:14b");
+//! let embeddings = provider.embedding(ollama::ALL_MINILM, Some(384));
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! Bind a wire to a transport to execute it. `Ollama::from_env` reads
+//! Pair a wire with a transport in a [`crate::Model`] to execute it.
+//! `Ollama::from_env` reads
 //! `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for remote or authenticated daemons.
 use crate::completion::Usage;
 use crate::error::EncodeError;
 use crate::message::DocumentSourceKind;
-use crate::model::Model;
+use crate::model::ModelInfo;
 use crate::operation::Completion;
 use crate::providers::internal;
 use crate::streaming::{StreamFinal, ToolCallEnd};
@@ -400,7 +401,7 @@ impl OllamaDecoder {
                 if let Some(wire_id) = key.wire_str() {
                     end = end.with_tool_id(wire_id);
                 }
-                tool_events.tool_call(key, end);
+                tool_events.tool_end(key, end);
             }
 
             // Split embedded reasoning only in terminal content without explicit
@@ -503,9 +504,9 @@ pub struct ListModelEntry {
     pub model: String,
 }
 
-impl From<ListModelEntry> for Model {
+impl From<ListModelEntry> for ModelInfo {
     fn from(value: ListModelEntry) -> Self {
-        Model::new(value.model, value.name)
+        ModelInfo::new(value.model, value.name)
     }
 }
 

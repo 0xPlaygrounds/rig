@@ -11,7 +11,6 @@
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_rewritten_arguments;
@@ -147,12 +146,13 @@ async fn tool_call_args_rewritten_by_hook_blocking() {
     with_anthropic_cassette(
         "tool_call_rewrite_args/tool_call_args_rewritten_by_hook_blocking",
         move |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
-                .tool(weather)
-                .add_hook(PinUnitsToCelsius)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+            ))
+            .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
+            .tool(weather)
+            .add_hook(PinUnitsToCelsius)
+            .build();
 
             let response = agent
                 .prompt(WEATHER_PROMPT)
@@ -177,12 +177,13 @@ async fn tool_call_args_rewritten_by_hook_streaming() {
     with_anthropic_cassette(
         "tool_call_rewrite_args/tool_call_args_rewritten_by_hook_streaming",
         move |client| async move {
-            let agent = client
-                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
-                .tool(weather)
-                .add_hook(PinUnitsToCelsius)
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+            ))
+            .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
+            .tool(weather)
+            .add_hook(PinUnitsToCelsius)
+            .build();
 
             let mut stream = agent.prompt(WEATHER_PROMPT).max_turns(5).stream();
             let response = collect_stream_final_response(&mut stream)

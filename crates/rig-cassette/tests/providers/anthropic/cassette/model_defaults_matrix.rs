@@ -35,8 +35,7 @@
 //! `crates/rig-core/src/providers/anthropic/completion/tests.rs`); these
 //! cells prove the provider accepts what the table says.
 
-use rig::completion::{CompletionModel, Message};
-use rig::driver::Bound;
+use rig::completion::Message;
 use rig::providers::anthropic::completion::{
     CLAUDE_FABLE_5_1, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5,
 };
@@ -45,6 +44,7 @@ use serde_json::Value;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{assert_contains_any_case_insensitive, assistant_text_response};
+use rig::completion::CompletionRequestBuilder;
 
 const PROMPT: &str = "Reply with the single word OK.";
 const SYSTEM_ROLE_INSTRUCTION: &str = "For the rest of this conversation, answer in Spanish only.";
@@ -128,21 +128,20 @@ fn assert_recorded_system_role_hoisted(scenario: &str) {
     );
 }
 
-async fn assert_uncapped_turn(client: Bound<Anthropic>, model_id: &str) {
-    let model = client.completion(model_id);
-    let request = model.completion_request(PROMPT).build();
+async fn assert_uncapped_turn(client: Anthropic, model_id: &str) {
+    let model = rig::model(client.completion(model_id));
+    let request = CompletionRequestBuilder::new(PROMPT).build();
     let response = model
-        .completion(request)
+        .call(request)
         .await
         .expect("an uncapped request must be accepted with the derived max_tokens");
     let text = assistant_text_response(&response.choice).expect("assistant text");
     assert_contains_any_case_insensitive(&text, &["ok"]);
 }
 
-async fn assert_mid_conversation_system_turn(client: Bound<Anthropic>, model_id: &str) {
-    let model = client.completion(model_id);
-    let request = model
-        .completion_request(SKY_PROMPT)
+async fn assert_mid_conversation_system_turn(client: Anthropic, model_id: &str) {
+    let model = rig::model(client.completion(model_id));
+    let request = CompletionRequestBuilder::new(SKY_PROMPT)
         .messages([
             Message::user("Start a short language compliance check."),
             Message::system(SYSTEM_ROLE_INSTRUCTION),
@@ -150,7 +149,7 @@ async fn assert_mid_conversation_system_turn(client: Bound<Anthropic>, model_id:
         ])
         .build();
     let response = model
-        .completion(request)
+        .call(request)
         .await
         .expect("a mid-conversation system message must be accepted on both placements");
     let text = assistant_text_response(&response.choice).expect("assistant text");

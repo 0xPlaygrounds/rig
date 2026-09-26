@@ -5,8 +5,7 @@
 //! cassettes are read-only here.
 
 use super::*;
-use crate::completion::{CompletionModel, CompletionRequest};
-use crate::driver::Bound;
+use crate::completion::CompletionRequest;
 use crate::message::{self, Message};
 use crate::providers::chatgpt::DIALECT as CHATGPT;
 use crate::providers::xai::DIALECT as XAI;
@@ -100,25 +99,25 @@ fn prompt() -> CompletionRequest {
     }
 }
 
-/// Fold a recorded unary body through the wire, as [`crate::driver::call`]
+/// Fold a recorded unary body through the wire, as `Model::call`
 /// does.
 async fn folded_unary(wire: Responses, body: &str) -> completion::CompletionResponse {
-    Bound::new(wire, RecordingHttpClient::new(Bytes::from(body.to_owned())))
-        .completion(prompt())
+    crate::driver::Model::new(wire, RecordingHttpClient::new(Bytes::from(body.to_owned())))
+        .call(prompt())
         .await
         .expect("the recorded body folds")
 }
 
-/// Fold a recorded SSE body through the wire, as [`crate::driver::stream`]
+/// Fold a recorded SSE body through the wire, as `Model::stream`
 /// does, draining every event first.
 async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionResponse {
-    let bound = Bound::new(
+    let bound = crate::driver::Model::new(
         wire,
         MockStreamingClient {
             sse_bytes: Bytes::from(body.to_owned()),
         },
     );
-    let mut response = bound.stream(prompt()).await.expect("the stream opens");
+    let mut response = bound.stream(prompt()).expect("the stream opens");
     while response.next().await.is_some() {}
     response
         .finish()
@@ -568,13 +567,13 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
 /// that way.
 #[tokio::test]
 async fn an_error_envelope_on_a_success_fails_the_xai_call() {
-    let error = Bound::new(
+    let error = crate::driver::Model::new(
         xai(),
         RecordingHttpClient::new(Bytes::from_static(
             br#"{"error":{"message":"no capacity","code":"overloaded"}}"#,
         )),
     )
-    .completion(prompt())
+    .call(prompt())
     .await
     .expect_err("an error envelope fails the call");
 

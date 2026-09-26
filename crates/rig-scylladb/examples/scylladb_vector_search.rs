@@ -1,10 +1,10 @@
+use rig_core::Model;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
     providers::openai::{self, wire::OpenAI},
     vector_store::{InsertDocuments, VectorStoreIndex, request::VectorSearchRequest},
 };
-use rig_reqwest::prelude::*;
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +25,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let session = create_session("127.0.0.1:9042").await?;
 
     // Bind the OpenAI embeddings endpoint and select an embedding model
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let openai_client = OpenAI::from_env()?;
+    let model = Model::new(
+        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
+        rig_reqwest::shared(),
+    )
+    .erase();
 
     // Create ScyllaDB vector store
     let vector_store = ScyllaDbVectorStore::new(
@@ -65,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
     ];
 
     // Generate embeddings for the documents
-    let embeddings = EmbeddingsBuilder::new(model.clone())
+    let embeddings = EmbeddingsBuilder::new(model)
         .documents(words.clone())?
         .build()
         .await?;

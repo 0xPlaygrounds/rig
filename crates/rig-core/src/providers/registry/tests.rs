@@ -8,8 +8,8 @@ use crate::test_utils::RecordingHttpClient;
 
 /// A transport that sends nothing: every assertion here is about what is
 /// built, never about a reply.
-fn transport() -> crate::http_client::BoxedHttpClient {
-    crate::http_client::BoxedHttpClient::new(RecordingHttpClient::new("{}"))
+fn transport() -> crate::http_client::DynHttpClient {
+    crate::http_client::DynHttpClient::new(RecordingHttpClient::new("{}"))
 }
 
 /// Every registered selection has a qualified spelling that parses back to
@@ -516,7 +516,7 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
     use crate::wire::{Mode, Wire};
 
     let request = || {
-        CompletionRequestBuilder::unbound("hello")
+        CompletionRequestBuilder::new("hello")
             .preamble("be brief".to_owned())
             .build()
     };
@@ -587,11 +587,8 @@ fn the_configured_version_and_betas_reach_the_request_headers() {
         panic!("a Messages configuration");
     };
     let mut encoded = config
-        .messages(reference.model())
-        .encode(
-            CompletionRequestBuilder::unbound("hello").build(),
-            Mode::Unary,
-        )
+        .completion(reference.model())
+        .encode(CompletionRequestBuilder::new("hello").build(), Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.pop().expect("one request");
     let header = |name: &str| {

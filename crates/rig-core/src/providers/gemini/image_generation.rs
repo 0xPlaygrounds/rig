@@ -171,13 +171,15 @@ impl Images {
 
 impl Wire for Images {
     type Op = ImageGeneration;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ImagesDecoder;
 
     fn name(&self) -> &str {
         super::PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 

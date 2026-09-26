@@ -1,6 +1,5 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
@@ -12,9 +11,7 @@ use crate::support::{
 #[tokio::test]
 async fn streaming_smoke() {
     with_openai_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -37,9 +34,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 async fn example_streaming_prompt() {
     with_openai_cassette("streaming/example_streaming_prompt", |client| async move {
-        let agent = client
-            .openai
-            .agent(openai::GPT_4O)
+        let agent = rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
             .preamble("Be precise and concise.")
             .temperature(0.5)
             .build();

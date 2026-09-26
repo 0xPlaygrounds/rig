@@ -13,14 +13,19 @@ use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 use super::*;
-use crate::completion::{CompletionRequestBuilder, CompletionResponse};
+use crate::completion::{CompletionRequest, CompletionRequestBuilder, CompletionResponse};
+use crate::driver::{Model, Observation, Opened, Transport};
 use crate::embeddings::EmbeddingResponse;
-use crate::error::ProviderError;
+use crate::error::{EncodeError, ProviderError};
+use crate::operation::AdapterOutput;
 use crate::operation::{Completion, Embedding, Rerank, RerankRequest, Transcription};
 use crate::rerank::RerankResponse;
 use crate::streaming::{StreamEvent, StreamFinal};
 use crate::transcription::{TranscriptionRequest, TranscriptionResponse};
+use crate::wasm_compat::WasmCompatSend;
 use crate::wire::Operation;
+use crate::wire::{Decoder, Mode, Wire, WireEvent};
+use futures::StreamExt;
 
 /// One JSON line per case, in the order [`cases`] runs them.
 const EXPECTED: &str = r#"{"case":"fresh completion chat","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
@@ -46,8 +51,6 @@ const EXPECTED: &str = r#"{"case":"fresh completion chat","spans":[{"fields":["g
 {"case":"modality image_generation","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"image_generation","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"image_generation","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
 {"case":"modality audio_generation","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"audio_generation","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"audio_generation","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
 {"case":"modality span under a completion parent stays fresh","spans":[{"fields":["rig.completion_parent","gen_ai.operation.name","gen_ai.system_instructions","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"agent_chat","parent":null,"target":"runtime","values":{"gen_ai.operation.name":"chat","rig.completion_parent":true}},{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"embeddings","parent":"agent_chat","target":"rig::modalities","values":{"gen_ai.operation.name":"embeddings","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
-{"case":"instrument_modality ok","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"embeddings","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"embeddings","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.id":"emb_id","gen_ai.response.model":"emb_model","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
-{"case":"instrument_modality err","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"embeddings","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"embeddings","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
 {"case":"completion operation span+record (message id fallback)","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.id":"msg_1","gen_ai.response.model":"resp_model","gen_ai.system_instructions":"[{\"type\":\"text\",\"content\":\"sys\"}]","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
 {"case":"completion operation streaming span+record_event","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat_streaming","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat_streaming","gen_ai.provider.name":"prov","gen_ai.request.model":"override","gen_ai.response.id":"resp_1","gen_ai.response.model":"m2","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
 {"case":"embedding operation span+record","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"embeddings","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"embeddings","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.id":"emb_id","gen_ai.response.model":"emb_model","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
@@ -219,31 +222,11 @@ fn cases() -> Vec<Value> {
             SpanBuilder::new("prov", "model", GenAiOperation::Embeddings).build();
         },
     );
-    run("instrument_modality ok", &mut out, || {
-        let response = EmbeddingResponse::new(vec![], "prov")
-            .with_response_id("emb_id")
-            .with_model("emb_model")
-            .with_usage(usage());
-        let result = futures::executor::block_on(instrument_modality::<Embedding, _>(
-            "prov",
-            "model",
-            async move { Ok::<_, ProviderError>(response) },
-        ));
-        assert!(result.is_ok());
-    });
-    run("instrument_modality err", &mut out, || {
-        let result = futures::executor::block_on(instrument_modality::<Embedding, _>(
-            "prov",
-            "model",
-            async move { Err::<EmbeddingResponse, _>(ProviderError::Provider("no".into())) },
-        ));
-        assert!(result.is_err());
-    });
     run(
         "completion operation span+record (message id fallback)",
         &mut out,
         || {
-            let request = CompletionRequestBuilder::unbound("hi")
+            let request = CompletionRequestBuilder::new("hi")
                 .preamble("sys".into())
                 .record_content_telemetry(true)
                 .build();
@@ -263,16 +246,18 @@ fn cases() -> Vec<Value> {
         "completion operation streaming span+record_event",
         &mut out,
         || {
-            let request = CompletionRequestBuilder::unbound("hi")
+            let request = CompletionRequestBuilder::new("hi")
                 .model("override")
                 .build();
-            let span =
-                Completion::span("prov", Some("model"), Completion::telemetry(true), &request);
             let terminal = StreamFinal::new("prov", usage(), Value::Null)
                 .with_response_id("resp_1")
                 .with_message_id("msg_1")
                 .with_model("m2");
-            Completion::record_event(&span, &StreamEvent::Final(terminal));
+            // The streamed call's span records the terminal as it passes.
+            let stream = Model::new(Scripted(terminal.clone()), Scripted(terminal))
+                .stream(request)
+                .expect("a scripted stream opens");
+            futures::executor::block_on(stream.collect::<Vec<_>>());
         },
     );
     run("embedding operation span+record", &mut out, || {
@@ -358,4 +343,64 @@ fn modality_spans_ignore_system_instructions() {
         SpanBuilder::new("prov", "model", GenAiOperation::Rerank).build();
     });
     assert_eq!(with, without);
+}
+
+/// A completion wire named `prov` for `model`, whose transport answers with
+/// one scripted terminal record.
+#[derive(Clone)]
+struct Scripted(StreamFinal);
+
+impl Wire for Scripted {
+    type Op = Completion;
+    type Payload = ();
+    type Frame = StreamEvent;
+    type Decoder = Relay;
+
+    fn name(&self) -> &str {
+        "prov"
+    }
+
+    fn id(&self) -> Option<&str> {
+        Some("model")
+    }
+
+    fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<(), EncodeError> {
+        Ok(())
+    }
+
+    fn decoder(&self, _mode: Mode) -> Relay {
+        Relay
+    }
+}
+
+impl Transport<Scripted> for Scripted {
+    fn send(
+        &self,
+        _payload: (),
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<(), StreamEvent>> + WasmCompatSend + 'static + use<>,
+        ProviderError,
+    > {
+        let terminal = self.0.clone();
+        Ok(std::future::ready(Opened::new(futures::stream::iter([
+            Ok(StreamEvent::Final(terminal)),
+        ]))))
+    }
+}
+
+/// Forwards each scripted event as is.
+struct Relay;
+
+impl Decoder<Completion, StreamEvent> for Relay {
+    type Event = StreamEvent;
+
+    fn classify(&self, frame: StreamEvent) -> WireEvent<StreamEvent> {
+        WireEvent::Known(frame)
+    }
+
+    fn interpret(&mut self, event: StreamEvent, out: &mut AdapterOutput) {
+        out.push(Ok(event));
+    }
 }

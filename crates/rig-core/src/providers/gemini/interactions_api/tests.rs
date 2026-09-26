@@ -1169,7 +1169,6 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
 // what the recorded traffic allows: no two committed cassettes record the
 // same interaction both ways.
 
-use crate::driver::Bound;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::{Mode, Wire};
 use futures::StreamExt;
@@ -1215,10 +1214,9 @@ fn probe() -> CompletionRequest {
 /// Fold an interaction resource, as the unary reply's body, through the
 /// bound wire the way a caller's `completion()` does.
 async fn fold_resource(interaction: &Interaction) -> crate::completion::CompletionResponse {
-    use crate::completion::CompletionModel as _;
     let body = serde_json::to_string(interaction).expect("the resource serializes");
-    Bound::new(interactions_wire(), RecordingHttpClient::new(body))
-        .completion(probe())
+    crate::driver::Model::new(interactions_wire(), RecordingHttpClient::new(body))
+        .call(probe())
         .await
         .expect("the interaction resource decodes")
 }
@@ -1248,24 +1246,21 @@ fn shape(response: &crate::completion::CompletionResponse) -> (Vec<&'static str>
 
 #[tokio::test]
 async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
-    use crate::completion::CompletionModel as _;
-
-    let buffered = Bound::new(
+    let buffered = crate::driver::Model::new(
         interactions_wire(),
         RecordingHttpClient::new(UNARY_INTERACTION),
     )
-    .completion(probe())
+    .call(probe())
     .await
     .expect("the recorded interaction resource decodes");
 
-    let mut stream = Bound::new(
+    let mut stream = crate::driver::Model::new(
         interactions_wire(),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(STREAMED_INTERACTION.as_bytes()),
         },
     )
     .stream(probe())
-    .await
     .expect("the stream opens");
     while let Some(item) = stream.next().await {
         item.expect("the recorded stream carries no in-band error");
@@ -1424,13 +1419,11 @@ fn one_interaction_is_polled_unary_and_resumed_streamed() {
 /// response's `raw` for a caller that wants the provider's own vocabulary.
 #[tokio::test]
 async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
-    use crate::completion::CompletionModel as _;
-
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         crate::providers::gemini::Gemini::new("test-key").interaction("v1_REDACTED_1"),
         RecordingHttpClient::new(UNARY_INTERACTION),
     )
-    .completion(probe())
+    .call(probe())
     .await
     .expect("the recorded interaction resource decodes");
 

@@ -1,10 +1,7 @@
 //! Application observers and turn patches; no legacy hooks or agent interpreter.
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
-use rig::{
-    completion::CompletionModel,
-    effect::{EffectKind, Outcome},
-};
+use rig::effect::{EffectKind, Outcome};
 use rig_ecs::{
     agent::{
         Cursor, DefaultMaxTurns, Outputs, Owner, RequestPatch, RunOf, Temperature, ToolCallSlot,
@@ -112,8 +109,11 @@ struct PatchCount(usize);
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 struct PatchSlot(usize);
 
-pub(super) fn agent(
-    model: impl CompletionModel + 'static,
+pub(super) fn agent<
+    W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
+    T: rig_core::driver::Transport<W>,
+>(
+    model: rig_core::driver::Model<W, T>,
     preamble: &str,
     name: Option<&str>,
     temperature: Option<f64>,

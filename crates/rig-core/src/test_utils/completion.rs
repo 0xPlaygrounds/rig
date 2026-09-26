@@ -5,11 +5,15 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use crate::error::ProviderError;
+use crate::driver::{Model, Observation, Opened, Transport};
+use crate::error::{EncodeError, ProviderError};
+use crate::operation::{AdapterOutput, Completion};
+use crate::streaming::SyntheticIds;
+use crate::wasm_compat::WasmCompatSend;
+use crate::wire::{Decoder, Mode, Wire, WireEvent};
 use crate::{
-    completion::{AssistantContent, CompletionModel, CompletionRequest, CompletionResponse, Usage},
+    completion::{AssistantContent, CompletionRequest, CompletionResponse, Usage},
     message::{ToolCall, ToolFunction},
-    streaming::StreamingCompletionResponse,
 };
 
 use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
@@ -48,7 +52,7 @@ impl MockError {
 /// A scripted non-streaming mock completion turn.
 ///
 /// A turn is data: a script serializes, so a scripted model can be written
-/// to a fixture and read back (see [`MockCompletionModel::script`]).
+/// to a fixture and read back (see `MockCompletionModel::script`).
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MockTurn {
     response: Result<MockTurnResponse, MockError>,
@@ -267,28 +271,32 @@ impl MockTurn {
 type MockInvocation = (CompletionRequest, Option<crate::observe::AdapterContext>);
 
 #[derive(Default)]
-struct MockCompletionModelState {
+struct MockScriptState {
     turns: Mutex<VecDeque<MockTurn>>,
     stream_turns: Mutex<VecDeque<Vec<MockStreamEvent>>>,
     requests: Mutex<Vec<MockInvocation>>,
 }
 
-/// A cloneable scripted [`CompletionModel`] for tests.
+/// The scripted transport behind [`MockCompletionModel`].
 ///
-/// Each completion or stream call consumes exactly one scripted turn. If no turn
-/// is available, the model returns [`ProviderError::Provider`] with a
-/// clear message instead of repeating previous responses.
+/// Each call consumes exactly one scripted turn. If no turn is available, the
+/// call fails with [`ProviderError::Provider`] and a clear message instead of
+/// repeating previous responses.
 #[derive(Clone, Default)]
-pub struct MockCompletionModel {
-    state: Arc<MockCompletionModelState>,
+pub struct MockScript {
+    state: Arc<MockScriptState>,
 }
 
-impl MockCompletionModel {
-    /// Create a mock model from scripted non-streaming turns.
-    pub fn new(turns: impl IntoIterator<Item = MockTurn>) -> Self {
-        Self::from_turns(turns)
-    }
+/// The mock completion endpoint: its payload is the request itself, and its
+/// replies are the scripted turns.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MockWire;
 
+/// A cloneable scripted completion model for tests: the mock wire over its
+/// script. Clones share the script and the recorded requests.
+pub type MockCompletionModel = Model<MockWire, MockScript>;
+
+impl MockCompletionModel {
     /// Create a mock model that returns one text completion.
     pub fn text(text: impl Into<String>) -> Self {
         Self::from_turns([MockTurn::text(text)])
@@ -296,36 +304,39 @@ impl MockCompletionModel {
 
     /// Create a mock model from scripted non-streaming turns.
     pub fn from_turns(turns: impl IntoIterator<Item = MockTurn>) -> Self {
-        Self {
-            state: Arc::new(MockCompletionModelState {
-                turns: Mutex::new(turns.into_iter().collect()),
-                stream_turns: Mutex::new(VecDeque::new()),
-                requests: Mutex::new(Vec::new()),
-            }),
-        }
+        Self::scripted(turns.into_iter().collect(), VecDeque::new())
     }
 
     /// Create a mock model from scripted streaming turns.
     pub fn from_stream_turns(
         stream_turns: impl IntoIterator<Item = impl IntoIterator<Item = MockStreamEvent>>,
     ) -> Self {
-        Self {
-            state: Arc::new(MockCompletionModelState {
-                turns: Mutex::new(VecDeque::new()),
-                stream_turns: Mutex::new(
-                    stream_turns
-                        .into_iter()
-                        .map(|turn| turn.into_iter().collect())
-                        .collect(),
-                ),
-                requests: Mutex::new(Vec::new()),
-            }),
-        }
+        Self::scripted(
+            VecDeque::new(),
+            stream_turns
+                .into_iter()
+                .map(|turn| turn.into_iter().collect())
+                .collect(),
+        )
+    }
+
+    fn scripted(turns: VecDeque<MockTurn>, stream_turns: VecDeque<Vec<MockStreamEvent>>) -> Self {
+        Model::new(
+            MockWire,
+            MockScript {
+                state: Arc::new(MockScriptState {
+                    turns: Mutex::new(turns),
+                    stream_turns: Mutex::new(stream_turns),
+                    requests: Mutex::new(Vec::new()),
+                }),
+            },
+        )
     }
 
     /// Return cloned requests received by this model.
     pub fn requests(&self) -> Vec<CompletionRequest> {
-        self.requests_guard()
+        self.transport
+            .requests_guard()
             .iter()
             .map(|(request, _)| request.clone())
             .collect()
@@ -333,7 +344,8 @@ impl MockCompletionModel {
 
     /// Return invocation contexts in the same order as the captured requests.
     pub fn contexts(&self) -> Vec<Option<crate::observe::AdapterContext>> {
-        self.requests_guard()
+        self.transport
+            .requests_guard()
             .iter()
             .map(|(_, context)| context.clone())
             .collect()
@@ -341,122 +353,143 @@ impl MockCompletionModel {
 
     /// Return the number of requests received by this model.
     pub fn request_count(&self) -> usize {
-        self.requests_guard().len()
+        self.transport.requests_guard().len()
     }
 
     /// The non-streaming turns not yet consumed, in order — the read-back
     /// half of the script, so a script is serde in and serde out.
     pub fn script(&self) -> Vec<MockTurn> {
-        self.turns_guard().iter().cloned().collect()
+        lock(&self.transport.state.turns).iter().cloned().collect()
     }
 
     /// The streaming turns not yet consumed, in order.
     pub fn stream_script(&self) -> Vec<Vec<MockStreamEvent>> {
-        self.stream_turns_guard().iter().cloned().collect()
+        lock(&self.transport.state.stream_turns)
+            .iter()
+            .cloned()
+            .collect()
+    }
+}
+
+impl MockScript {
+    fn requests_guard(&self) -> MutexGuard<'_, Vec<MockInvocation>> {
+        lock(&self.state.requests)
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+/// One reply unit of the mock endpoint: a whole scripted turn, or one
+/// scripted stream event.
+pub enum MockFrame {
+    /// A unary turn's response.
+    Response(Box<CompletionResponse>),
+    /// One scripted stream event.
+    Event(MockStreamEvent),
+}
+
+impl Wire for MockWire {
+    type Op = Completion;
+    type Payload = CompletionRequest;
+    type Frame = MockFrame;
+    type Decoder = MockDecoder;
+
+    fn name(&self) -> &str {
+        MOCK_PROVIDER
     }
 
-    fn record_request(
+    fn encode(
         &self,
         request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) {
-        self.requests_guard().push((request, context));
+        _mode: Mode,
+    ) -> Result<CompletionRequest, EncodeError> {
+        Ok(request)
     }
 
-    fn next_turn(&self) -> Option<MockTurn> {
-        self.turns_guard().pop_front()
-    }
-
-    fn next_stream_turn(&self) -> Option<Vec<MockStreamEvent>> {
-        self.stream_turns_guard().pop_front()
-    }
-
-    fn turns_guard(&self) -> MutexGuard<'_, VecDeque<MockTurn>> {
-        match self.state.turns.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-    }
-
-    fn stream_turns_guard(&self) -> MutexGuard<'_, VecDeque<Vec<MockStreamEvent>>> {
-        match self.state.stream_turns.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-    }
-
-    fn requests_guard(&self) -> MutexGuard<'_, Vec<MockInvocation>> {
-        match self.state.requests.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
+    fn decoder(&self, _mode: Mode) -> MockDecoder {
+        MockDecoder {
+            // An id-less scripted tool call mints per stream, like a wire
+            // that carries no ids (`tool-0`, `tool-1`, …).
+            tool_ids: SyntheticIds::tool(),
+            document: None,
         }
     }
 }
 
-impl CompletionModel for MockCompletionModel {
-    async fn completion(
+impl Transport<MockWire> for MockScript {
+    fn send(
         &self,
         request: CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, ProviderError> {
-        self.completion_with_context(request, None).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, ProviderError> {
-        self.stream_with_context(request, None).await
-    }
-
-    async fn completion_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<CompletionResponse, ProviderError> {
-        self.record_request(request, context);
-        let Some(turn) = self.next_turn() else {
-            return Err(ProviderError::Provider(
-                "mock completion model has no scripted completion turn".to_string(),
-            ));
+        mode: Mode,
+        observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<CompletionRequest, MockFrame>> + WasmCompatSend + 'static + use<>,
+        ProviderError,
+    > {
+        self.requests_guard()
+            .push((request, observation.map(|observation| observation.context)));
+        let frames = match mode {
+            Mode::Unary => {
+                let turn = lock(&self.state.turns).pop_front().ok_or_else(|| {
+                    ProviderError::Provider(
+                        "mock completion model has no scripted completion turn".to_string(),
+                    )
+                })?;
+                vec![
+                    turn.into_completion_response()
+                        .map(|response| MockFrame::Response(Box::new(response))),
+                ]
+            }
+            Mode::Streaming => lock(&self.state.stream_turns)
+                .pop_front()
+                .ok_or_else(|| {
+                    ProviderError::Provider(
+                        "mock completion model has no scripted streaming turn".to_string(),
+                    )
+                })?
+                .into_iter()
+                .map(|event| Ok(MockFrame::Event(event)))
+                .collect(),
         };
+        Ok(async move { Opened::new(futures::stream::iter(frames)) })
+    }
+}
 
-        turn.into_completion_response()
+/// Decodes scripted turns through the same [`AdapterOutput`] helpers every
+/// real adapter uses, so the mock speaks exactly the wire grammar.
+pub struct MockDecoder {
+    tool_ids: SyntheticIds,
+    document: Option<serde_json::Value>,
+}
+
+impl Decoder<Completion, MockFrame> for MockDecoder {
+    type Event = MockFrame;
+
+    fn classify(&self, frame: MockFrame) -> WireEvent<MockFrame> {
+        WireEvent::Known(frame)
     }
 
-    async fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        self.record_request(request, context);
-        let Some(events) = self.next_stream_turn() else {
-            return Err(ProviderError::Provider(
-                "mock completion model has no scripted streaming turn".to_string(),
-            ));
-        };
-
-        // Scripted events go through the same `AdapterOutput` helper every
-        // real adapter uses, so the mock speaks exactly the wire grammar —
-        // and the same `Stop` -> `ToolCalls` reconciliation callers see in
-        // production runs in `StreamingCompletionResponse` for both.
-        let stream = async_stream::stream! {
-            let mut out = crate::operation::AdapterOutput::new();
-            // An id-less scripted tool call mints per stream, like a wire
-            // that carries no ids (`tool-0`, `tool-1`, …).
-            let mut tool_ids = crate::streaming::SyntheticIds::tool();
-            for event in events {
-                if let Err(error) = event.emit(&mut out, &mut tool_ids) {
+    fn interpret(&mut self, frame: MockFrame, out: &mut AdapterOutput) {
+        match frame {
+            MockFrame::Response(response) => {
+                self.document = Some(response.raw.clone());
+                out.response(&response, crate::operation::ImagePart::Block);
+            }
+            MockFrame::Event(event) => {
+                if let Err(error) = event.emit(out, &mut self.tool_ids) {
                     out.error(error);
                 }
-                for item in out.drain() {
-                    yield item;
-                }
             }
-        };
-        Ok(StreamingCompletionResponse::stream(
-            MOCK_PROVIDER,
-            Box::pin(stream),
-        ))
+        }
+    }
+
+    fn document(&self) -> Option<serde_json::Value> {
+        self.document.clone()
     }
 }
 

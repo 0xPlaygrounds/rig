@@ -7,7 +7,6 @@ use futures::FutureExt;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::wire::{OpenAI, Route};
 use serde::Deserialize;
@@ -185,11 +184,8 @@ fn assert_page_label(response: &str, page_number: u8) {
 async fn responses_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
         let client = OpenAI::from_env()
-            .expect("config should build from env")
-            .bound()
-            .expect("transport should build");
-        let agent = client
-            .agent(openai::GPT_5_5)
+            .expect("config should build from env");
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(openai::GPT_5_5)))
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();
@@ -227,10 +223,8 @@ async fn chat_completions_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
         let client = OpenAI::from_env()
             .expect("config should build from env")
-            .with_route(Route::Chat)
-            .bound()
-            .expect("transport should build");
-        let agent = client.agent(openai::GPT_5_5)
+            .with_route(Route::Chat);
+        let agent = rig::AgentBuilder::new(rig::model(client.completion(openai::GPT_5_5)))
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();

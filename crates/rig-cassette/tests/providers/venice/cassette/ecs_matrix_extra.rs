@@ -5,20 +5,20 @@
 //! `tests/common/ecs_matrix/extra.rs`; this file holds the scenario
 //! literals and the wire's models.
 
-use rig::completion::CompletionModel;
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 
-use super::super::support::{BoundVenice, with_venice_cassette};
+use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{
     Wire, cells,
     extra::{Approval, ErrorProbe, batch_hold, despawn_waits_for_the_stream, error_facts},
 };
+use rig::providers::openai::OpenAI;
 
-fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion(MISTRAL_SMALL_3_2_24B),
-        route: Some(client.completion(MISTRAL_SMALL_3_2_24B)),
+        model: rig::model(client.completion(MISTRAL_SMALL_3_2_24B)),
+        route: Some(rig::model(client.completion(MISTRAL_SMALL_3_2_24B))),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -48,7 +48,7 @@ async fn error_facts_unary() {
             "error_envelope/nonexistent_model_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    client.completion("venice-nonexistent-rig-test"),
+                    rig::model(client.completion("venice-nonexistent-rig-test")),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),
@@ -80,7 +80,7 @@ async fn error_facts_streamed() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 error_facts(
-                    client.completion("venice-nonexistent-rig-test"),
+                    rig::model(client.completion("venice-nonexistent-rig-test")),
                     ErrorProbe {
                         prompt: "Say hi.",
                         max_tokens: Some(16),

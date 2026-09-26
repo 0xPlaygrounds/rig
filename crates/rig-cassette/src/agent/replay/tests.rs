@@ -21,7 +21,7 @@ use crate::effect_log::{EffectLog, EffectLogRecorder};
 
 use rig_core::serve::{
     Reply, Serve,
-    adapters::{CompletionAdapter, ToolAdapter},
+    adapters::{ModelAdapter, ToolAdapter},
 };
 
 use rig_core::{
@@ -143,7 +143,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
     let replay_model: rig_agent::bus::ModelHandle =
         dispatcher.handle(&HandlerKey::from("model")).unwrap();
     assert_eq!(replay_model.capabilities(), live_model.capabilities());
-    assert_eq!(replay_model.model_ref(), live_model.model_ref());
+    assert_eq!(replay_model.label(), live_model.label());
     assert!(
         replay_model
             .capabilities()
@@ -447,7 +447,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
         driver
             .register(
                 "model",
-                CompletionAdapter::new(
+                ModelAdapter::new(
                     "mock",
                     MockCompletionModel::from_stream_turns([vec![
                         MockStreamEvent::text("streamed"),
@@ -757,7 +757,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
         driver
             .register(
                 "model",
-                CompletionAdapter::new("mock", MockCompletionModel::from_stream_turns([events()])),
+                ModelAdapter::new("mock", MockCompletionModel::from_stream_turns([events()])),
             )
             .expect("register");
         driver.record_to(recorder.clone());
@@ -977,7 +977,7 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     driver
         .register(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::new(
                 "mock",
                 MockCompletionModel::from_stream_turns([vec![
                     MockStreamEvent::text("hel"),

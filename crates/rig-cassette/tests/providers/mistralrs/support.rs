@@ -2,9 +2,6 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::driver::Bound;
-use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::openai::wire::{OpenAI, Route};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
@@ -14,19 +11,6 @@ pub(super) const DEFAULT_API_KEY: &str = "local";
 pub(super) const DEFAULT_MODEL: &str = "Qwen/Qwen3-4B";
 pub(super) const SYSTEM_PROMPT: &str =
     "You are concise. Include a few details so streaming is visible.";
-
-/// mistral.rs's Responses surface, bound to the bundled transport.
-///
-/// mistral.rs is a local server rather than a hosted provider, so it has no
-/// dialect of its own: it speaks the plain OpenAI format at a base URL the
-/// caller supplies. Both surfaces are therefore the `OPENAI` dialect with an
-/// explicit base URL.
-pub(super) type BoundResponses = Bound<OpenAI, BoxedHttpClient>;
-
-/// mistral.rs's chat-completions surface, bound to the bundled transport:
-/// the same dialect routed to `/chat/completions` once, so a cell's
-/// `client.agent(model)` lands there.
-pub(super) type BoundCompletions = Bound<OpenAI, BoxedHttpClient>;
 
 pub(super) fn model_name() -> String {
     std::env::var("MISTRALRS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string())
@@ -41,7 +25,7 @@ fn server() -> (String, String) {
     )
 }
 
-async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundResponses) {
+async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
     let (real_base_url, api_key) = server();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -50,17 +34,14 @@ async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
         &real_base_url,
     )
     .await;
-    let responses = OpenAI::new(api_key)
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("mistral.rs Responses transport should build");
+    let responses = OpenAI::new(api_key).with_base_url(cassette.base_url());
 
     (cassette, responses)
 }
 
 async fn mistralrs_completions_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, BoundCompletions) {
+) -> (ProviderCassette, OpenAI) {
     let (real_base_url, api_key) = server();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -71,9 +52,7 @@ async fn mistralrs_completions_cassette(
     .await;
     let completions = OpenAI::new(api_key)
         .with_base_url(cassette.base_url())
-        .with_route(Route::Chat)
-        .bound()
-        .expect("mistral.rs chat-completions transport should build");
+        .with_route(Route::Chat);
 
     (cassette, completions)
 }
@@ -94,7 +73,7 @@ async fn mistralrs_raw_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCasse
 
 pub(super) async fn with_mistralrs_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(BoundResponses) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, responses) = mistralrs_cassette(spec).await;
@@ -111,7 +90,7 @@ pub(super) async fn with_mistralrs_completions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(BoundCompletions) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, completions) = mistralrs_completions_cassette(spec).await;

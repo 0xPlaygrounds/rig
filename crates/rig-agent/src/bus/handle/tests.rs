@@ -7,14 +7,18 @@ use super::*;
 use crate::bus::Bus;
 use rig_core::{
     completion::{CompletionRequest, Message},
+    driver::{Model, Observation, Opened, Transport},
     effect::{EffectFamily, HandlerKey, family},
-    embeddings::{Embedding, EmbeddingModel, EmbeddingResponse},
+    embeddings::{Embedding, EmbeddingResponse},
+    error::EncodeError,
     error::ErrorKind,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
-    serve::adapters::{CompletionAdapter, EmbedAdapter, MemoryAdapter, ToolAdapter},
+    operation::EmbeddingCapabilities,
+    serve::adapters::{MemoryAdapter, ModelAdapter, ToolAdapter},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolExecutionError},
+    wire::{Decoder, Mode, Output, Sink, Wire, WireEvent},
 };
 
 async fn within<T>(future: impl Future<Output = T>) -> T {
@@ -49,23 +53,57 @@ impl Tool for Double {
     }
 }
 
+/// A two-dimension embedding endpoint and its transport: each text embeds
+/// to its length and 1.0.
 #[derive(Clone)]
 struct Tiny;
 
-impl EmbeddingModel for Tiny {
-    fn max_documents(&self) -> usize {
-        8
+impl Wire for Tiny {
+    type Op = rig_core::operation::Embedding;
+    type Payload = Vec<String>;
+    type Frame = Vec<String>;
+    type Decoder = Tiny;
+
+    fn name(&self) -> &str {
+        "tiny"
     }
 
-    fn ndims(&self) -> usize {
-        2
+    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Vec<String>, EncodeError> {
+        Ok(texts)
     }
 
-    async fn embed_texts_response(
+    fn decoder(&self, _mode: Mode) -> Self {
+        Self
+    }
+
+    fn capabilities(&self) -> EmbeddingCapabilities {
+        EmbeddingCapabilities::new(8, 2)
+    }
+}
+
+impl Transport<Tiny> for Tiny {
+    fn send(
         &self,
-        texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<EmbeddingResponse, rig_core::error::ProviderError> {
-        Ok(EmbeddingResponse::new(
+        texts: Vec<String>,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<Vec<String>, Vec<String>>> + Send + 'static + use<>,
+        rig_core::error::ProviderError,
+    > {
+        Ok(async move { Opened::new(futures::stream::iter([Ok(texts)])) })
+    }
+}
+
+impl Decoder<rig_core::operation::Embedding, Vec<String>> for Tiny {
+    type Event = Vec<String>;
+
+    fn classify(&self, texts: Vec<String>) -> WireEvent<Vec<String>> {
+        WireEvent::Known(texts)
+    }
+
+    fn interpret(&mut self, texts: Vec<String>, out: &mut Output<rig_core::operation::Embedding>) {
+        out.push(Ok(EmbeddingResponse::new(
             texts
                 .into_iter()
                 .map(|document| Embedding {
@@ -74,7 +112,7 @@ impl EmbeddingModel for Tiny {
                 })
                 .collect(),
             "tiny",
-        ))
+        )));
     }
 }
 
@@ -102,7 +140,7 @@ fn bus() -> (
     driver
         .register(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::new(
                 "mock",
                 MockCompletionModel::from_turns([MockTurn::text("unary"), MockTurn::text("again")]),
             ),
@@ -111,7 +149,7 @@ fn bus() -> (
     driver
         .register(
             "streamer",
-            CompletionAdapter::new(
+            ModelAdapter::new(
                 "mock-stream",
                 MockCompletionModel::from_stream_turns([vec![
                     MockStreamEvent::text("str"),
@@ -131,7 +169,7 @@ fn bus() -> (
         )
         .expect("register");
     driver
-        .register("embed", EmbedAdapter::new("tiny", Tiny))
+        .register("embed", ModelAdapter::new("tiny", Model::new(Tiny, Tiny)))
         .expect("register");
     (dispatcher, registrar, tokio::spawn(driver))
 }
@@ -143,7 +181,7 @@ async fn binding_checks_the_family_typed_at_bind_time() {
         .handle(&HandlerKey::from("model"))
         .expect("model");
     assert_eq!(model.descriptor().family.family(), EffectFamily::Completion);
-    assert_eq!(model.model_ref().as_str(), "mock");
+    assert_eq!(model.label().as_str(), "mock");
 
     let report = dispatcher
         .handle::<family::Completion>(&HandlerKey::from("double"))
@@ -180,7 +218,7 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
         };
         let (dispatcher, _registrar, mut driver) = Bus::channel();
         driver
-            .register("model", CompletionAdapter::new("mock", provider.clone()))
+            .register("model", ModelAdapter::new("mock", provider.clone()))
             .unwrap();
         let task = tokio::spawn(driver);
         let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
@@ -188,16 +226,12 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
         let contexts: Vec<_> = ["operation/a", "operation/b"]
             .into_iter()
             .map(|operation| {
-                Some(AdapterContext::new(
-                    sink.clone(),
-                    Subject::scoped("direct"),
-                    operation,
-                ))
+                AdapterContext::new(sink.clone(), Subject::scoped("direct"), operation)
             })
             .collect();
         if streamed {
             let consume = |context| {
-                let mut stream = handle.stream_with_context(request(), context);
+                let mut stream = handle.stream_observed(request(), context);
                 async move {
                     while let Some(event) = within(stream.next()).await {
                         event.unwrap();
@@ -211,8 +245,8 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
             tokio::join!(consume(contexts[0].clone()), consume(contexts[1].clone()));
         } else {
             let (a, b) = tokio::join!(
-                within(handle.complete_with_context(request(), contexts[0].clone())),
-                within(handle.complete_with_context(request(), contexts[1].clone()))
+                within(handle.call_observed(request(), contexts[0].clone())),
+                within(handle.call_observed(request(), contexts[1].clone()))
             );
             assert_eq!(a.unwrap().choice, vec![AssistantContent::text("same")]);
             assert_eq!(b.unwrap().choice, vec![AssistantContent::text("same")]);
@@ -234,7 +268,7 @@ async fn model_handle_completes_and_streams() {
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("model");
-    let response = within(model.complete(request())).await.expect("completed");
+    let response = within(model.call(request())).await.expect("completed");
     assert_eq!(response.choice, vec![AssistantContent::text("unary")]);
     assert_eq!(model.capabilities(), ProviderCapabilities::default());
 
@@ -267,18 +301,18 @@ async fn handle_descriptor_follows_a_runtime_replacement() {
     registrar
         .register(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::new(
                 "swapped",
                 MockCompletionModel::from_turns([MockTurn::text("swapped")]),
             ),
         )
         .expect("register");
     assert_eq!(
-        model.model_ref().as_str(),
+        model.label().as_str(),
         "swapped",
         "re-read, not the snapshot"
     );
-    let response = within(model.complete(request())).await.expect("completed");
+    let response = within(model.call(request())).await.expect("completed");
     assert_eq!(response.choice, vec![AssistantContent::text("swapped")]);
 }
 

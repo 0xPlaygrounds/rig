@@ -9,7 +9,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::assert_nonempty_response;
@@ -72,9 +71,7 @@ impl AgentHook for SessionIdHook<'_> {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = live_client()
-        .await
-        .agent(LIVE_MODEL)
+    let agent = rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_MODEL)))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

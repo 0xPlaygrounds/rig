@@ -8,10 +8,10 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
+use rig::completion::CompletionRequestBuilder;
 use rig::{
-    completion::{CompletionModel, ToolDefinition},
+    completion::ToolDefinition,
     message::{AssistantContent, Message, UserContent},
-    prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
     tool::Tool,
 };
@@ -141,14 +141,16 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice",
         |client| async move {
-            let model = client.completion(CLAUDE_SONNET_4_6);
+            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
 
             let first_turn = model
-                .completion_request(TERMINAL_NOTIFY_PROMPT)
-                .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
-                .max_tokens(1024)
-                .tool(notify_tool_definition())
-                .send()
+                .call(
+                    CompletionRequestBuilder::new(TERMINAL_NOTIFY_PROMPT)
+                        .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
+                        .max_tokens(1024)
+                        .tool(notify_tool_definition())
+                        .build(),
+                )
                 .await
                 .expect("first Anthropic turn should succeed");
 
@@ -162,21 +164,23 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
                 .expect("first Anthropic turn should emit a notify tool call");
 
             let followup = model
-                .completion_request(Message::from(UserContent::tool_result_for(
-                    tool_call.id.clone(),
-                    tool_call.provider.clone(),
-                    tool_call.function.name.clone(),
-                    vec![rig::message::ToolResultContent::text(
-                        "sent: deploy finished",
-                    )],
-                )))
-                .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
-                .max_tokens(1024)
-                .message(Message::Assistant {
-                    id: first_turn.message_id.clone(),
-                    content: first_turn.choice.clone(),
-                })
-                .send()
+                .call(
+                    CompletionRequestBuilder::new(Message::from(UserContent::tool_result_for(
+                        tool_call.id.clone(),
+                        tool_call.provider.clone(),
+                        tool_call.function.name.clone(),
+                        vec![rig::message::ToolResultContent::text(
+                            "sent: deploy finished",
+                        )],
+                    )))
+                    .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
+                    .max_tokens(1024)
+                    .message(Message::Assistant {
+                        id: first_turn.message_id.clone(),
+                        content: first_turn.choice.clone(),
+                    })
+                    .build(),
+                )
                 .await
                 .expect("follow-up Anthropic turn should not error on empty end_turn");
 
@@ -200,8 +204,7 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/prompt_loop_accepts_empty_terminal_turn_after_tool_result",
         |client| async move {
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
                 .preamble(TERMINAL_NOTIFY_PREAMBLE)
                 .max_tokens(1024)
                 .tool(Notify::new(call_count.clone()))
@@ -247,8 +250,7 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
 async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
     let call_count = Arc::new(AtomicUsize::new(0));
     super::super::support::with_anthropic_cassette("empty_end_turn/prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty", |client| async move {
-    let agent = client
-        .agent(CLAUDE_SONNET_4_6)
+    let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
         .preamble(TERMINAL_NOTIFY_WITH_ACK_PREAMBLE)
         .max_tokens(1024)
         .tool(Notify::new(call_count.clone()))

@@ -1,4 +1,3 @@
-use rig::client::DefaultTransport as _;
 use rig::providers::openai;
 use rig::scylladb::{ScyllaDbVectorStore, create_session};
 use rig::vector_store::request::VectorSearchRequest;
@@ -74,12 +73,9 @@ async fn vector_search_test() {
 
     // Init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = openai::wire::OpenAI::new("TEST")
-        .with_base_url(openai_mock.base_url())
-        .bound()
-        .unwrap();
+    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(openai_mock.base_url());
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
 
     // Create test documents with mocked embeddings
     let words = vec![
@@ -345,12 +341,9 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
 async fn test_mock_server_setup() {
     // Test that our mock server setup works without requiring ScyllaDB
     let server = create_openai_mock_service().await;
-    let openai_client = openai::wire::OpenAI::new("TEST")
-        .with_base_url(server.base_url())
-        .bound()
-        .unwrap();
+    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
 
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
 
     // Test that we can create embeddings with the mock
     let words = vec![Word {

@@ -6,7 +6,6 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
-use rig::prelude::*;
 use rig::providers::openai::wire::{OPENROUTER, OpenAI};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::Value;
@@ -72,10 +71,7 @@ fn message_contains_base64_document(message: &RigMessage) -> bool {
 fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
     let encoded = OpenAI::with_key(&OPENROUTER, "k")
         .chat(DOCUMENT_MODEL)
-        .encode(
-            CompletionRequestBuilder::unbound(message).build(),
-            Mode::Unary,
-        )
+        .encode(CompletionRequestBuilder::new(message).build(), Mode::Unary)
         .expect("a history message should encode");
     let Body::Bytes(bytes) = encoded.requests[0].body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")
@@ -211,8 +207,7 @@ async fn document_file_data_roundtrip_live() {
     with_openrouter_cassette(
         "document_file_data/document_file_data_roundtrip_live",
         |client| async move {
-            let agent = client
-                .agent(DOCUMENT_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(DOCUMENT_MODEL)))
                 .preamble(DOCUMENT_PREAMBLE)
                 .build();
             let mut history = Vec::new();
@@ -256,8 +251,7 @@ async fn streaming_document_file_data_roundtrip_live() {
     with_openrouter_cassette(
         "document_file_data/streaming_document_file_data_roundtrip_live",
         |client| async move {
-            let agent = client
-                .agent(DOCUMENT_MODEL)
+            let agent = rig::AgentBuilder::new(rig::model(client.completion(DOCUMENT_MODEL)))
                 .preamble(DOCUMENT_PREAMBLE)
                 .build();
 

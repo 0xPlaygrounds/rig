@@ -61,8 +61,6 @@ use rig::agent::{
     MultiTurnStreamItem, StreamingError,
 };
 use rig::completion::PromptError;
-use rig::driver::Bound;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::streaming::StreamedUserContent;
@@ -155,14 +153,15 @@ impl AgentHook for OnMalformed {
     }
 }
 
-fn agent(client: Bound<Anthropic>) -> rig::agent::Agent {
-    client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-        .preamble(STREAMING_TOOLS_PREAMBLE)
-        .tool(Adder)
-        .tool(Subtract)
-        .default_max_turns(2)
-        .build()
+fn agent(client: Anthropic) -> rig::agent::Agent {
+    rig::AgentBuilder::new(rig::model(
+        client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
+    ))
+    .preamble(STREAMING_TOOLS_PREAMBLE)
+    .tool(Adder)
+    .tool(Subtract)
+    .default_max_turns(2)
+    .build()
 }
 
 #[tokio::test]

@@ -1,14 +1,17 @@
 use rig_agent::{agent::stream_to_stdout, prelude::*};
-use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
+use rig_bedrock::client::BedrockRuntime;
+use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
-    let agent = Client::from_env()?
-        .agent(AMAZON_NOVA_LITE)
-        .preamble("Be precise and concise.")
-        .temperature(0.5)
-        .build();
+    let agent = AgentBuilder::new(rig_core::Model::new(
+        Converse::new(AMAZON_NOVA_LITE),
+        BedrockRuntime::from_env(),
+    ))
+    .preamble("Be precise and concise.")
+    .temperature(0.5)
+    .build();
 
     // Stream the response and print chunks as they arrive
     let mut stream = agent

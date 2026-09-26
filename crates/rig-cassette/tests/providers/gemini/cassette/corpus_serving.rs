@@ -6,7 +6,6 @@
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -21,19 +20,20 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
         "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .name("stress-agent")
-                .configure_bus(rig::serve::ServingPolicy {
-                    serial_per_handler: true,
-                    ..rig::serve::ServingPolicy::default()
-                })
-                .preamble(CHAIN_PREAMBLE)
-                .temperature(0.0)
-                .tool(CountingAdd::default())
-                .tool(CountingSubtract::default())
-                .record_to(recorder.clone())
-                .build();
+            let agent = rig::AgentBuilder::new(rig::model(
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
+            ))
+            .name("stress-agent")
+            .configure_bus(rig::serve::ServingPolicy {
+                serial_per_handler: true,
+                ..rig::serve::ServingPolicy::default()
+            })
+            .preamble(CHAIN_PREAMBLE)
+            .temperature(0.0)
+            .tool(CountingAdd::default())
+            .tool(CountingSubtract::default())
+            .record_to(recorder.clone())
+            .build();
             let mut stream = agent
                 .prompt(
                     "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \

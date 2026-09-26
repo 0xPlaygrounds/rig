@@ -1,6 +1,5 @@
 //! DeepSeek tools smoke test.
 
-use rig::prelude::*;
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;
@@ -11,13 +10,13 @@ use crate::support::{
 #[tokio::test]
 async fn tools_smoke() {
     with_deepseek_cassette("tools/tools_smoke", |client| async move {
-        let agent = client
-            .agent(deepseek::DEEPSEEK_V4_FLASH)
-            .preamble(TOOLS_PREAMBLE)
-            .tool(Adder)
-            .tool(Subtract)
-            .default_max_turns(2)
-            .build();
+        let agent =
+            rig::AgentBuilder::new(rig::model(client.completion(deepseek::DEEPSEEK_V4_FLASH)))
+                .preamble(TOOLS_PREAMBLE)
+                .tool(Adder)
+                .tool(Subtract)
+                .default_max_turns(2)
+                .build();
 
         let response = agent
             .prompt(TOOLS_PROMPT)

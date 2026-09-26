@@ -7,7 +7,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn streaming() {
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-        live_client().await.completion(LIVE_MODEL),
+        rig::model(live_client().await.completion(LIVE_MODEL)),
         Some(serde_json::json!({
             "reasoning": { "effort": "medium" }
         })),

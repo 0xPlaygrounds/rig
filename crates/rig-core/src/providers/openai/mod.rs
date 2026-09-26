@@ -9,14 +9,13 @@
 //!
 //! let gpt_5_2 = provider.responses(openai::GPT_5_2);
 //! let chat = provider.chat(openai::GPT_5_2);
-//! let embeddings = provider.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None);
+//! let embeddings = provider.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! A wire says what to send and how to read the reply; `.bind(transport)`
-//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
-//! implements the consumer-facing model traits.
+//! A wire says what to send and how to read the reply; a
+//! [`Model`](crate::Model) pairs it with the transport that sends it.
 
 pub mod completion;
 pub mod embedding;

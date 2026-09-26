@@ -22,9 +22,8 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction};
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequestBuilder;
 use rig::message::UserContent;
-use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
@@ -91,8 +90,8 @@ impl AgentHook for ToolLoggerHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let openai = OpenAI::from_env()?.bound()?;
-    let model = openai.completion(openai::GPT_4O);
+    let openai = OpenAI::from_env()?;
+    let model = rig::model(openai.completion(openai::GPT_4O)).erase();
     let agent = rig::agent::AgentBuilder::new(model.clone())
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
@@ -115,14 +114,13 @@ async fn main() -> Result<()> {
                 // execution of the configured `Agent`. Its transport is an
                 // explicit raw model request and therefore has no agent hooks.
                 let response = model
-                    .completion_request(prompt)
+                    .call(CompletionRequestBuilder::new(prompt)
                     .messages(history)
                     .preamble(
                         "You are a calculator. Always use the provided tools to compute results."
                             .to_string(),
                     )
-                    .tools(tool_definitions.clone())
-                    .send()
+                    .tools(tool_definitions.clone()).build())
                     .await?;
 
                 // The tools advertised to the provider for this turn. With

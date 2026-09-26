@@ -10444,7 +10444,6 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "tracing",
- "tracing-futures",
  "tracing-subscriber",
 ]
 
@@ -10624,6 +10623,7 @@ version = "0.42.0"
 dependencies = [
  "anyhow",
  "fastembed",
+ "futures",
  "rig-core",
  "serde",
  "tokio",
@@ -10882,6 +10882,7 @@ name = "rig-sqlite"
 version = "0.42.0"
 dependencies = [
  "anyhow",
+ "futures",
  "httpmock",
  "rig-core",
  "rig-reqwest",
@@ -10901,6 +10902,7 @@ name = "rig-surrealdb"
 version = "0.42.0"
 dependencies = [
  "anyhow",
+ "futures",
  "rig-core",
  "rig-reqwest",
  "serde",
@@ -10993,6 +10995,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bevy_app",
+ "futures",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
  "google-cloud-gax",
