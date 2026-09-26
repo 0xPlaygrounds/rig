@@ -80,7 +80,7 @@ fn a_close_its_block_and_the_counts_it_shifts_are_explained() {
 }
 
 #[test]
-fn batches_other_than_the_base_s_grown_are_delivery_churn() {
+fn batches_not_grown_from_the_base_are_delivery_churn() {
     let base = log(
         json!([stream(1, 1), stream(2, 1), outcome(2)]),
         vec![delta("b", "a"), last()],
@@ -131,6 +131,25 @@ fn anything_else_is_other() {
         1,
         "an error position no insertion explains"
     );
+}
+
+#[test]
+fn a_close_the_rebase_cannot_place_is_other() {
+    // A cancelled stream delivered one of its two deltas; a close after the
+    // second could only be counted by delivering it.
+    let base = log(
+        json!([stream(1, 1)]),
+        vec![delta("b", "a"), delta("b", "b")],
+        None,
+    );
+    let head = log(
+        json!([stream(1, 1)]),
+        vec![delta("b", "a"), delta("b", "b"), text_end("b", Some("ab"))],
+        None,
+    );
+    let changes = classified(&base, &head);
+    assert_eq!(changes.closes_inserted, 1);
+    assert_eq!(changes.other.len(), 1, "{:?}", changes.other);
 }
 
 #[test]

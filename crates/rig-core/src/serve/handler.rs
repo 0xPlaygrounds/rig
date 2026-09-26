@@ -273,13 +273,13 @@ pub enum Reply {
     /// The completed unary answer or a setup error.
     Outcome(Result<Outcome, ErrorReport>),
     /// Events, including any frames after the first terminal record. They
-    /// must be canonical, as the completion sink makes them, because
-    /// [`StreamTap`] folds them to the outcome a unary consumer, the recorder
-    /// and a layer see: a handler writes through
+    /// must be canonical, as the completion sink makes them. [`StreamTap`]
+    /// folds them as they are to the outcome a unary consumer, the recorder
+    /// and a layer see. A handler writes through
     /// [`AdapterOutput`](crate::operation::AdapterOutput) or relays a stream
-    /// a model opened. A consumer's
+    /// a model opened.
     /// [`Streamed::relay`](crate::streaming::Streamed::relay) canonicalizes
-    /// them on its own.
+    /// them for a streaming consumer.
     Stream(StreamEvents),
 }
 

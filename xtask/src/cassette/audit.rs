@@ -193,13 +193,14 @@ impl Walk<'_> {
 
 /// Classify the header's delivery batches and stream error positions, then
 /// set them to the base's in `head`, so the structural walk compares the
-/// rest.
-fn classify_header(base: &Value, head: &mut Value, changes: &mut Changes) {
+/// rest. Returns why the rebase could not place the streams' changes, if
+/// it could not.
+fn classify_header(base: &Value, head: &mut Value, changes: &mut Changes) -> Option<String> {
     let base_deliveries = base.pointer("/header/deliveries").cloned();
     let head_deliveries = head.pointer("/header/deliveries");
-    // A stream change the rebase cannot place is the walk's to report; the
-    // deliveries are then judged against the base's alone.
-    match rebase_deliveries(base, head) {
+    let rebased = rebase_deliveries(base, head);
+    let refused = rebased.as_ref().err().cloned();
+    match rebased {
         Ok(Some(expected)) if head_deliveries == Some(&expected) => {
             changes.count_shifts += expected
                 .as_array()
@@ -271,15 +272,17 @@ fn classify_header(base: &Value, head: &mut Value, changes: &mut Changes) {
             }
         }
     }
+    refused
 }
 
 /// Add how `head` differs from `base` (one golden, as JSON) to `changes`.
 pub(crate) fn classify(base: &Value, head: &Value, changes: &mut Changes) {
     changes.files += 1;
     let mut head = head.clone();
-    if base.get("header").is_some() {
-        classify_header(base, &mut head, changes);
-    }
+    let others = changes.other.len();
+    let refused = base
+        .get("header")
+        .and_then(|_| classify_header(base, &mut head, changes));
     let mut walk = Walk {
         changes,
         inserted: BTreeMap::new(),
@@ -287,6 +290,13 @@ pub(crate) fn classify(base: &Value, head: &Value, changes: &mut Changes) {
     };
     walk.walk(base, &head, "");
     walk.check_validated(&head);
+    // A stream change the rebase cannot place is usually reported already;
+    // a placement it refuses on its own is reported here.
+    if let Some(refused) = refused
+        && changes.other.len() == others
+    {
+        changes.other.push(format!("/header/deliveries: {refused}"));
+    }
 }
 
 fn text(value: Option<&Value>) -> &str {

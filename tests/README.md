@@ -174,7 +174,7 @@ The other commands:
   batch that delivers the item after it, or the effect's last stream batch
   when nothing follows it. A golden whose change does not fit that rule, such
   as a new record or an edited event, keeps its regenerated deliveries and is
-  listed.
+  listed. With an explicit `--base`, such a golden fails the command.
 - `cassette audit [--base REF]` checks that every `block_end` block in every
   effect golden is what its block's deltas assemble, unless the end restates
   it. It classifies each golden change against `REF` (default `HEAD`) as a

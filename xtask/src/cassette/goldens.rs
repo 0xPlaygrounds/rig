@@ -8,8 +8,8 @@
 //! ref) is that field is restored. A golden whose content changed keeps the
 //! base's batches, with each batch's `items` grown by the stream events the
 //! regeneration inserted into it. A golden that does not fit that rule keeps
-//! its regenerated deliveries and is reported; `cargo xtask cassette audit`
-//! fails on it.
+//! its regenerated deliveries and is reported, and fails the command when
+//! `--base` names the base; `cargo xtask cassette audit` fails on it.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -415,12 +415,12 @@ pub(crate) fn rebase_goldens(root: &Path, base: &str) -> Result<Rebased, String>
 
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let mut targets = Vec::new();
-    let mut base = "HEAD".to_owned();
+    let mut base = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--test" => targets.push(args.next().cloned().ok_or("--test needs a target")?),
-            "--base" => base = args.next().cloned().ok_or("--base needs a ref")?,
+            "--base" => base = Some(args.next().cloned().ok_or("--base needs a ref")?),
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -446,6 +446,8 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         .env("RIG_REGENERATE_GOLDEN", "1")
         .status()
         .map_err(|error| format!("cargo nextest: {error}"))?;
+    let explicit = base.is_some();
+    let base = base.unwrap_or_else(|| "HEAD".to_owned());
     let summary = rebase_goldens(root, &base)?;
     for misfit in &summary.misfits {
         println!("kept the regenerated deliveries of {misfit}");
@@ -457,10 +459,16 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         summary.rebased,
         summary.misfits.len()
     );
-    if status.success() {
-        Ok(())
-    } else {
+    if !status.success() {
         Err("the regeneration run failed".into())
+    } else if explicit && !summary.misfits.is_empty() {
+        // A rebase onto a named base is a migration: every golden must fit.
+        Err(format!(
+            "{} golden(s) do not fit the rebase onto {base}",
+            summary.misfits.len()
+        ))
+    } else {
+        Ok(())
     }
 }
 

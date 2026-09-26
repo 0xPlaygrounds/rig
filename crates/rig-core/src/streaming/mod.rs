@@ -413,8 +413,10 @@ impl Streamed<Completion> {
     /// names the provider behind it. Its events pass one completion sink as
     /// they arrive, ended with [`Sink::finish`](crate::wire::Sink::finish) at
     /// the end of the stream, so the relay yields canonical events whatever
-    /// the origin sent. Canonical events pass unchanged, and items past the
-    /// terminal pass through, except a second terminal, which is dropped.
+    /// the origin sent. Canonical events pass unchanged. Items past the
+    /// terminal pass through, except a second terminal, which is dropped. An
+    /// error item passes when it arrives, so the closes the end of the stream
+    /// adds follow it.
     pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
         let label = label.into();
         let steps = Canonical {

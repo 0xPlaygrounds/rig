@@ -455,9 +455,15 @@ proptest! {
     /// A relay of canonical events yields them unchanged.
     #[test]
     fn a_relay_passes_canonical_events_unchanged(
+        self_closing in any::<bool>(),
         steps in proptest::collection::vec(step(), 0..24),
     ) {
-        let items = comparable(&canonicalize(AdapterOutput::new(), steps));
+        let out = if self_closing {
+            AdapterOutput::self_closing()
+        } else {
+            AdapterOutput::new()
+        };
+        let items = comparable(&canonicalize(out, steps));
         prop_assert_eq!(relayed(items.clone()), items);
     }
 }
