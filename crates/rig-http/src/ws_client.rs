@@ -2,15 +2,15 @@
 //! Backends preserve rejected upgrades as HTTP errors with status, headers, and body.
 //!
 //! ```
-//! use rig_core::ws_client::websocket_url;
+//! use rig_http::ws_client::websocket_url;
 //!
 //! assert_eq!(websocket_url("https://example.com/v1", "responses")?,
 //!            "wss://example.com/v1/responses");
-//! # Ok::<(), rig_core::http_client::Error>(())
+//! # Ok::<(), rig_http::http_client::Error>(())
 //! ```
 
 use crate::http_client::{Error, NoBody, Request, Result};
-use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{BoxFuture, MaybeSend, MaybeSync};
 use bytes::Bytes;
 use std::time::Duration;
 
@@ -64,44 +64,44 @@ impl ConnectOptions {
 /// Opens websocket connections from requests with WS(S) URIs and authentication
 /// headers. Backends supply websocket handshake headers such as
 /// `Sec-WebSocket-Key`; callers must not supply those headers.
-pub trait WebSocketClientExt: Clone + WasmCompatSend + WasmCompatSync + 'static {
+pub trait WebSocketClientExt: Clone + MaybeSend + MaybeSync + 'static {
     /// Opens a connection, preserving rejected upgrades with their HTTP status,
     /// headers, and response body.
     fn connect(
         &self,
         request: Request<NoBody>,
         options: ConnectOptions,
-    ) -> impl Future<Output = Result<BoxedWebSocketConnection>> + WasmCompatSend;
+    ) -> impl Future<Output = Result<BoxedWebSocketConnection>> + MaybeSend;
 }
 
 /// One open websocket connection, usable as a trait object.
 /// Calls are sequential: sessions must not poll send and receive concurrently.
 /// WASM-compatible bounds preserve the containing session's thread-safety contract.
-pub trait WebSocketConnection: WasmCompatSend + WasmCompatSync {
+pub trait WebSocketConnection: MaybeSend + MaybeSync {
     /// Write one frame.
-    fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, Result<()>>;
+    fn send(&mut self, frame: Frame) -> BoxFuture<'_, Result<()>>;
 
     /// Read the next frame; `Ok(None)` means the peer ended the stream.
-    fn recv(&mut self) -> WasmBoxedFuture<'_, Result<Option<Frame>>>;
+    fn recv(&mut self) -> BoxFuture<'_, Result<Option<Frame>>>;
 
     /// Completes a close handshake. Callers must avoid repeated closes;
     /// backends may return an error for an already closed socket.
-    fn close(&mut self, frame: Option<CloseFrame>) -> WasmBoxedFuture<'_, Result<()>>;
+    fn close(&mut self, frame: Option<CloseFrame>) -> BoxFuture<'_, Result<()>>;
 }
 
 /// A type-erased [`WebSocketConnection`].
 pub type BoxedWebSocketConnection = Box<dyn WebSocketConnection>;
 
 impl WebSocketConnection for BoxedWebSocketConnection {
-    fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, Result<()>> {
+    fn send(&mut self, frame: Frame) -> BoxFuture<'_, Result<()>> {
         (**self).send(frame)
     }
 
-    fn recv(&mut self) -> WasmBoxedFuture<'_, Result<Option<Frame>>> {
+    fn recv(&mut self) -> BoxFuture<'_, Result<Option<Frame>>> {
         (**self).recv()
     }
 
-    fn close(&mut self, frame: Option<CloseFrame>) -> WasmBoxedFuture<'_, Result<()>> {
+    fn close(&mut self, frame: Option<CloseFrame>) -> BoxFuture<'_, Result<()>> {
         (**self).close(frame)
     }
 }

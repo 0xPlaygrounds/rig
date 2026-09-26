@@ -2,7 +2,6 @@
 
 mod completion;
 mod embeddings;
-mod http;
 mod memory;
 pub mod observations;
 mod streaming;
@@ -14,12 +13,12 @@ mod tracing_isolation;
 
 pub use completion::{MockCompletionModel, MockError, MockTurn};
 pub use embeddings::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
-pub use http::{
+pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
+pub use rig_http::test_utils::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
     NonSuccessStreamingClient, RecordingHttpClient, SequencedHttpClient,
     SequencedStreamingHttpClient,
 };
-pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use streaming::{MOCK_PROVIDER, MockStreamEvent, mock_final, mock_final_with_total_tokens};
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,

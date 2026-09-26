@@ -1,8 +1,8 @@
 use rig_agent::prelude::*;
+use rig_core::driver::Bind;
 use rig_core::providers;
 use rig_core::providers::openai::OpenAI;
 use rig_derive::rig_tool;
-use rig_reqwest::prelude::*;
 
 // Demonstrates explicit attribute override.
 // The description and params() attributes override any doc comments.
@@ -42,7 +42,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
     let calculator_agent = OpenAI::from_env()?
-        .bound()?
+        .bind(rig_reqwest::client::shared())
         .agent(providers::openai::GPT_4O)
         .preamble("You are an agent with tools access, always use the tools")
         .max_tokens(1024)

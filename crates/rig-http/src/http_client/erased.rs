@@ -3,7 +3,7 @@
 //! bytes; lazy response bodies convert through `U::from`.
 //!
 //! ```
-//! use rig_core::http_client::{BoxedHttpClient, HttpClientExt};
+//! use rig_http::http_client::{BoxedHttpClient, HttpClientExt};
 //!
 //! fn erase(client: impl HttpClientExt + 'static) -> BoxedHttpClient {
 //!     BoxedHttpClient::new(client)
@@ -19,28 +19,26 @@ use http::{Request, Response};
 
 use super::middleware::HttpMiddleware;
 use super::{HttpClientExt, LazyBody, MultipartForm, Result, StreamingResponse};
-use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{BoxFuture, MaybeSend, MaybeSync};
 
 /// Object-safe mirror of [`HttpClientExt`] with the generics fixed to
 /// [`Bytes`]. Private: the only way to reach it is through
 /// [`BoxedHttpClient`], which re-exposes the generic surface.
-pub(crate) trait ErasedHttpClient: WasmCompatSend + WasmCompatSync {
+pub(crate) trait ErasedHttpClient: MaybeSend + MaybeSync {
     fn send_bytes(
         &self,
         req: Request<Bytes>,
-    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody<Bytes>>>>;
+    ) -> BoxFuture<'static, Result<Response<LazyBody<Bytes>>>>;
 
     fn send_multipart_bytes(
         &self,
         req: Request<MultipartForm>,
-    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody<Bytes>>>>;
+    ) -> BoxFuture<'static, Result<Response<LazyBody<Bytes>>>>;
 
     /// Borrows `self`: [`HttpClientExt::send_streaming`] does not promise a
     /// `'static` future, so neither can its erasure.
-    fn send_streaming_bytes(
-        &self,
-        req: Request<Bytes>,
-    ) -> WasmBoxedFuture<'_, Result<StreamingResponse>>;
+    fn send_streaming_bytes(&self, req: Request<Bytes>)
+    -> BoxFuture<'_, Result<StreamingResponse>>;
 }
 
 impl<H> ErasedHttpClient for H
@@ -50,21 +48,21 @@ where
     fn send_bytes(
         &self,
         req: Request<Bytes>,
-    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody<Bytes>>>> {
+    ) -> BoxFuture<'static, Result<Response<LazyBody<Bytes>>>> {
         Box::pin(self.send::<Bytes, Bytes>(req))
     }
 
     fn send_multipart_bytes(
         &self,
         req: Request<MultipartForm>,
-    ) -> WasmBoxedFuture<'static, Result<Response<LazyBody<Bytes>>>> {
+    ) -> BoxFuture<'static, Result<Response<LazyBody<Bytes>>>> {
         Box::pin(self.send_multipart::<Bytes>(req))
     }
 
     fn send_streaming_bytes(
         &self,
         req: Request<Bytes>,
-    ) -> WasmBoxedFuture<'_, Result<StreamingResponse>> {
+    ) -> BoxFuture<'_, Result<StreamingResponse>> {
         Box::pin(self.send_streaming::<Bytes>(req))
     }
 }
@@ -78,7 +76,7 @@ where
 ///
 /// ```compile_fail
 /// fn assert_serialize<T: serde::Serialize>() {}
-/// assert_serialize::<rig_core::http_client::BoxedHttpClient>();
+/// assert_serialize::<rig_http::http_client::BoxedHttpClient>();
 /// ```
 #[derive(Clone)]
 pub struct BoxedHttpClient {
@@ -180,12 +178,12 @@ impl HttpClientExt for BoxedHttpClient {
     fn send<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
         T: Into<Bytes>,
-        T: WasmCompatSend,
+        T: MaybeSend,
         U: From<Bytes>,
-        U: WasmCompatSend + 'static,
+        U: MaybeSend + 'static,
     {
         let this = self.clone();
         let (mut parts, body) = req.map(Into::into).into_parts();
@@ -205,10 +203,10 @@ impl HttpClientExt for BoxedHttpClient {
     fn send_multipart<U>(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
         U: From<Bytes>,
-        U: WasmCompatSend + 'static,
+        U: MaybeSend + 'static,
     {
         let this = self.clone();
         let (mut parts, body) = req.into_parts();
@@ -228,9 +226,9 @@ impl HttpClientExt for BoxedHttpClient {
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend,
+        T: Into<Bytes> + MaybeSend,
     {
         let (mut parts, body) = req.map(Into::into).into_parts();
         async move {
@@ -249,7 +247,7 @@ impl HttpClientExt for BoxedHttpClient {
 
 fn convert_body<U>(response: Response<LazyBody<Bytes>>) -> Response<LazyBody<U>>
 where
-    U: From<Bytes> + WasmCompatSend + 'static,
+    U: From<Bytes> + MaybeSend + 'static,
 {
     response.map(|body| -> LazyBody<U> { Box::pin(async move { body.await.map(U::from) }) })
 }

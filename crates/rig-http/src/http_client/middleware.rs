@@ -2,7 +2,7 @@
 //! Attach hooks with [`with_middleware`](super::BoxedHttpClient::with_middleware).
 //!
 //! ```
-//! use rig_core::http_client::middleware::HttpMiddleware;
+//! use rig_http::http_client::middleware::HttpMiddleware;
 //!
 //! struct PassThrough;
 //! impl HttpMiddleware for PassThrough {}
@@ -12,7 +12,7 @@ use bytes::Bytes;
 use http::{HeaderMap, Method, StatusCode, Uri};
 
 use super::Result;
-use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{BoxFuture, MaybeSend, MaybeSync};
 
 /// Transport-boundary hooks applied by
 /// [`BoxedHttpClient`](super::BoxedHttpClient) around every request.
@@ -25,7 +25,7 @@ use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 /// Any hook error fails the request; request-side errors abort before sending.
 /// Response hooks cannot modify responses. Hooks run on the request future and
 /// must not block.
-pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
+pub trait HttpMiddleware: MaybeSend + MaybeSync {
     /// Mutate the outgoing request headers in place.
     ///
     /// Runs before [`before_request_body`](Self::before_request_body). An
@@ -35,7 +35,7 @@ pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
         _method: &'a Method,
         _uri: &'a Uri,
         _headers: &'a mut HeaderMap,
-    ) -> WasmBoxedFuture<'a, Result<()>> {
+    ) -> BoxFuture<'a, Result<()>> {
         Box::pin(async { Ok(()) })
     }
 
@@ -51,7 +51,7 @@ pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
         _uri: &'a Uri,
         _headers: &'a HeaderMap,
         body: Bytes,
-    ) -> WasmBoxedFuture<'a, Result<Bytes>> {
+    ) -> BoxFuture<'a, Result<Bytes>> {
         Box::pin(async move { Ok(body) })
     }
 
@@ -66,7 +66,7 @@ pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
         _uri: &'a Uri,
         _status: StatusCode,
         _headers: &'a HeaderMap,
-    ) -> WasmBoxedFuture<'a, Result<()>> {
+    ) -> BoxFuture<'a, Result<()>> {
         Box::pin(async { Ok(()) })
     }
 }

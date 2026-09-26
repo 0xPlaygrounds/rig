@@ -4,7 +4,7 @@
 //! channels without needing a reactor. Each [`OwnedTask`] aborts on drop so
 //! cancelled connections release their transport resources.
 
-use rig_core::{http_client::Error, wasm_compat::WasmCompatSend};
+use rig_http::{http_client::Error, wasm_compat::MaybeSend};
 use std::future::Future;
 use std::sync::LazyLock;
 use tokio::runtime::{Handle, Runtime};
@@ -63,8 +63,8 @@ impl<T> Drop for OwnedTask<T> {
 /// false. Returns an error if startup or the spawned task fails.
 pub(crate) async fn run_off_runtime<F>(future: F) -> Result<F::Output, Error>
 where
-    F: Future + WasmCompatSend + 'static,
-    F::Output: WasmCompatSend + 'static,
+    F: Future + MaybeSend + 'static,
+    F::Output: MaybeSend + 'static,
 {
     spawn_off_runtime(future)?.join().await
 }
@@ -73,8 +73,8 @@ where
 /// error if the runtime cannot start.
 pub(crate) fn spawn_off_runtime<F>(future: F) -> Result<OwnedTask<F::Output>, Error>
 where
-    F: Future + WasmCompatSend + 'static,
-    F::Output: WasmCompatSend + 'static,
+    F: Future + MaybeSend + 'static,
+    F::Output: MaybeSend + 'static,
 {
     Ok(OwnedTask {
         handle: runtime()?.spawn(future),

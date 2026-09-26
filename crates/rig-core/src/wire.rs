@@ -13,7 +13,7 @@ use std::borrow::Cow;
 
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 
 pub use crate::http_client::framing::Framing;
 pub use crate::observe::{AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict};
@@ -168,16 +168,16 @@ pub enum Mode {
 /// the one event.
 pub trait Operation: Sized + 'static {
     /// The normalized request this operation accepts.
-    type Request: WasmCompatSend + 'static;
+    type Request: MaybeSend + 'static;
     /// One decoded step of a reply.
-    type Event: WasmCompatSend + 'static;
+    type Event: MaybeSend + 'static;
     /// The normalized response the events fold into.
     type Response;
     /// What a runtime accounts for. `()` for operations with nothing to
     /// declare.
     type Capabilities: Default;
     /// Where a decoder writes the events of one `interpret` step.
-    type Output: Sink<Self> + WasmCompatSend;
+    type Output: Sink<Self> + MaybeSend;
     /// The fold from events to the response.
     type Fold: Fold<Self>;
     /// The canonical telemetry operation a wire performs. `()` for
@@ -269,7 +269,7 @@ pub struct Reply {
 pub trait Sink<Op: Operation>: Default {
     /// Debug-mode sequence laws checked against what the decoder actually
     /// emitted. `()` for operations with no sequence to check.
-    type Laws: Default + WasmCompatSend;
+    type Laws: Default + MaybeSend;
 
     /// Push one event or one in-band error.
     fn push(&mut self, item: Result<Op::Event, ProviderError>);
@@ -374,11 +374,11 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
 /// data (`Clone + PartialEq + Debug + Serialize + Deserialize`, with
 /// credentials held in [`Secret`]), so a host can store one in a scene, a
 /// component, or a config file.
-pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
+pub trait Wire: MaybeSend + MaybeSync + 'static {
     /// The operation this wire performs.
     type Op: Operation;
     /// The decoder for one of its replies.
-    type Decoder: Decoder<Self::Op> + WasmCompatSend + 'static;
+    type Decoder: Decoder<Self::Op> + MaybeSend + 'static;
 
     /// The provider descriptor name (`"anthropic"`), as records and
     /// telemetry name it.
@@ -447,7 +447,7 @@ pub type Telemetry<W> = <<W as Wire>::Op as Operation>::Telemetry;
 /// One small trait, implemented by provider config structs, so
 /// `Bound<P, H>` can build the provider's completion wire and rig-agent can
 /// offer `agent(model)` / `extractor(model)` on it without naming a provider.
-pub trait HasCompletion: WasmCompatSend + WasmCompatSync {
+pub trait HasCompletion: MaybeSend + MaybeSync {
     /// The provider's completion wire.
     type Wire: Wire<Op = crate::operation::Completion>;
 

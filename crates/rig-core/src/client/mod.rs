@@ -9,8 +9,12 @@
 //! # Ok::<(), rig_core::client::ProviderClientError>(())
 //! ```
 
+#[cfg(feature = "reqwest")]
+mod default_transport;
 pub mod env;
 pub(crate) mod verify;
+#[cfg(feature = "reqwest")]
+pub use default_transport::DefaultTransport;
 
 use std::env::VarError;
 use thiserror::Error;

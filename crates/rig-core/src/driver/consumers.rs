@@ -34,15 +34,15 @@ use crate::providers::gemini::cached_content::{
 use crate::rerank::{RerankModel, RerankResponse};
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::{TranscriptionModel, TranscriptionRequest, TranscriptionResponse};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::wire::Wire;
 
 /// The transport bound set every `Bound` model needs: `Clone` because a
 /// streamed reply outlives the borrow that opened it, `'static` because the
 /// stream owns its socket.
-pub trait Socket: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static {}
+pub trait Socket: HttpClientExt + Clone + MaybeSend + MaybeSync + 'static {}
 
-impl<H> Socket for H where H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static {}
+impl<H> Socket for H where H: HttpClientExt + Clone + MaybeSend + MaybeSync + 'static {}
 
 impl<W, H> CompletionModel for Bound<W, H>
 where
@@ -104,7 +104,7 @@ where
 
     async fn embed_texts_response(
         &self,
-        texts: impl IntoIterator<Item = String> + WasmCompatSend,
+        texts: impl IntoIterator<Item = String> + MaybeSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
         let texts: Vec<String> = texts.into_iter().collect();
         let response = call(&self.wire, &self.http, texts, None).await?;
@@ -135,7 +135,7 @@ where
 
     async fn embed_images_response(
         &self,
-        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+        images: impl IntoIterator<Item = Vec<u8>> + MaybeSend,
     ) -> Result<ImageEmbeddingResponse, ProviderError> {
         let images: Vec<Vec<u8>> = images.into_iter().collect();
         let response = call(&self.wire, &self.http, images, None).await?;
@@ -262,7 +262,7 @@ where
 }
 
 /// A provider config that has an embedding wire.
-pub trait HasEmbedding: WasmCompatSend + WasmCompatSync {
+pub trait HasEmbedding: MaybeSend + MaybeSync {
     /// The provider's embedding wire.
     type Wire: Wire<Op = Embedding>;
 
@@ -272,7 +272,7 @@ pub trait HasEmbedding: WasmCompatSend + WasmCompatSync {
 }
 
 /// A provider config that has an image-embedding wire.
-pub trait HasImageEmbedding: WasmCompatSend + WasmCompatSync {
+pub trait HasImageEmbedding: MaybeSend + MaybeSync {
     /// The provider's image-embedding wire.
     type Wire: Wire<Op = ImageEmbedding>;
 
@@ -281,7 +281,7 @@ pub trait HasImageEmbedding: WasmCompatSend + WasmCompatSync {
 }
 
 /// A provider config that has a transcription wire.
-pub trait HasTranscription: WasmCompatSend + WasmCompatSync {
+pub trait HasTranscription: MaybeSend + MaybeSync {
     /// The provider's transcription wire.
     type Wire: Wire<Op = Transcription>;
 
@@ -290,7 +290,7 @@ pub trait HasTranscription: WasmCompatSend + WasmCompatSync {
 }
 
 /// A provider config that has a rerank wire.
-pub trait HasRerank: WasmCompatSend + WasmCompatSync {
+pub trait HasRerank: MaybeSend + MaybeSync {
     /// The provider's rerank wire.
     type Wire: Wire<Op = Rerank>;
 
@@ -300,7 +300,7 @@ pub trait HasRerank: WasmCompatSend + WasmCompatSync {
 
 /// A provider config that has an image-generation wire.
 #[cfg(feature = "image")]
-pub trait HasImageGeneration: WasmCompatSend + WasmCompatSync {
+pub trait HasImageGeneration: MaybeSend + MaybeSync {
     /// The provider's image-generation wire.
     type Wire: Wire<Op = crate::operation::ImageGeneration>;
 
@@ -310,7 +310,7 @@ pub trait HasImageGeneration: WasmCompatSend + WasmCompatSync {
 
 /// A provider config that has an audio-generation wire.
 #[cfg(feature = "audio")]
-pub trait HasAudioGeneration: WasmCompatSend + WasmCompatSync {
+pub trait HasAudioGeneration: MaybeSend + MaybeSync {
     /// The provider's audio-generation wire.
     type Wire: Wire<Op = crate::operation::AudioGeneration>;
 
@@ -319,7 +319,7 @@ pub trait HasAudioGeneration: WasmCompatSend + WasmCompatSync {
 }
 
 /// A provider config that has a model-listing wire.
-pub trait HasModelListing: WasmCompatSend + WasmCompatSync {
+pub trait HasModelListing: MaybeSend + MaybeSync {
     /// The provider's model-listing wire.
     type Wire: Wire<Op = ModelListing>;
 
@@ -328,7 +328,7 @@ pub trait HasModelListing: WasmCompatSend + WasmCompatSync {
 }
 
 /// A provider config that has a verification wire.
-pub trait HasVerify: WasmCompatSend + WasmCompatSync {
+pub trait HasVerify: MaybeSend + MaybeSync {
     /// The provider's verification wire.
     type Wire: Wire<Op = Verify>;
 

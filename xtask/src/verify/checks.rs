@@ -199,30 +199,65 @@ pub(super) fn all() -> Vec<Check> {
         ),
         check(
             "core-all",
-            vec![cargo(&[
-                "nextest",
-                "run",
-                "--locked",
-                "-p",
-                "rig-core",
-                "-p",
-                "rig-reqwest",
-                "-p",
-                "rig-tungstenite",
-                "-p",
-                "rig-agent",
-                "-p",
-                "rig-rmcp",
-                // Keep relocated bus regressions in this feature graph,
-                // rather than enabling cassette's HTTP dev-dependencies.
-                "-p",
-                "rig-cassette-minimal",
-                "--all-features",
-                "--profile",
-                "guards",
-                "-E",
-                "not binary(macro_hygiene) and (not package(rig-cassette-minimal) or (binary(effect_log) and test(/^agent_replay::/)))",
-            ])],
+            vec![
+                cargo(&[
+                    "nextest",
+                    "run",
+                    "--locked",
+                    "-p",
+                    "rig-core",
+                    "-p",
+                    "rig-http",
+                    "-p",
+                    "rig-reqwest",
+                    "-p",
+                    "rig-tungstenite",
+                    "-p",
+                    "rig-agent",
+                    "-p",
+                    "rig-rmcp",
+                    // Keep relocated bus regressions in this feature graph,
+                    // rather than enabling cassette's HTTP dev-dependencies.
+                    "-p",
+                    "rig-cassette-minimal",
+                    "--all-features",
+                    "--profile",
+                    "guards",
+                    "-E",
+                    "not binary(macro_hygiene) and (not package(rig-cassette-minimal) or (binary(effect_log) and test(/^agent_replay::/)))",
+                ]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-core",
+                    "--features",
+                    "reqwest",
+                    "--lib",
+                ]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-core",
+                    "--features",
+                    "tungstenite",
+                    "--lib",
+                ]),
+                // All-features selects native TLS too and skips this regression.
+                // Cargo test also succeeds on hosts where the Linux-only test is absent.
+                cargo(&[
+                    "test",
+                    "--locked",
+                    "-p",
+                    "rig-core",
+                    "--no-default-features",
+                    "--features",
+                    "reqwest,rustls",
+                    "--test",
+                    "default_transport_no_ca_store",
+                ]),
+            ],
         ),
         check(
             "bus-verification",
@@ -276,8 +311,6 @@ pub(super) fn all() -> Vec<Check> {
                 "--locked",
                 "-p",
                 "rig-core",
-                "-p",
-                "rig-tungstenite",
                 "-p",
                 "rig-candle",
                 "-p",
@@ -375,6 +408,7 @@ pub(super) fn all() -> Vec<Check> {
     ];
     for package in [
         "rig-core",
+        "rig-http",
         "rig-cassette",
         "rig-ecs",
         "rig-reqwest",
@@ -427,7 +461,7 @@ pub(super) fn all() -> Vec<Check> {
                 ]));
             }
         }
-        if ["rig-core", "rig-ecs"].contains(&package) {
+        if ["rig-core", "rig-http", "rig-ecs"].contains(&package) {
             steps.push(cargo(&[
                 "check",
                 "--locked",

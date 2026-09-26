@@ -14,7 +14,7 @@ use rig_core::{
             VectorSearchRequest,
         },
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
@@ -415,7 +415,7 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
 }
 
 impl<M: EmbeddingModel> InsertDocuments for ScyllaDbVectorStore<M> {
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -455,7 +455,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for ScyllaDbVectorStore<M> {
 
     /// Returns matches as `(cosine similarity, row id, document)`. Scoring reads
     /// every row the filter admits, so cost grows with the scanned table.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

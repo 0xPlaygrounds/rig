@@ -14,7 +14,7 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use surrealdb::{
@@ -107,7 +107,7 @@ impl<C, M: EmbeddingModel> InsertDocuments for SurrealVectorStore<C, M>
 where
     C: Connection,
 {
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -335,7 +335,7 @@ where
 
     /// Returns matches as `(distance, record id, document)` ordered by descending
     /// distance value. Errors when a stored document does not deserialize into `T`.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<SurrealSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

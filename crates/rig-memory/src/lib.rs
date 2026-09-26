@@ -35,14 +35,14 @@ pub use rig_core::memory::{
 use rig_core::completion::Message;
 use rig_core::id::ConversationId;
 use rig_core::message::UserContent;
-use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{BoxFuture, MaybeSend, MaybeSync};
 
 /// A transformation applied to messages loaded from a [`ConversationMemory`].
 ///
 /// Policies typically truncate, summarize, or re-order history. They are
 /// pure, fallible message transformers: implementors that cannot fail should
 /// always return `Ok`.
-pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
+pub trait MemoryPolicy: MaybeSend + MaybeSync {
     /// Transforms loaded messages into retained history or returns a policy error.
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError>;
 
@@ -220,14 +220,14 @@ fn split_window(messages: Vec<Message>, keep_from: usize) -> (Vec<Message>, Vec<
 /// Implementors should pick a counting strategy appropriate for their target
 /// provider (for example, `tiktoken-rs` for OpenAI). Counting must be cheap;
 /// it runs once per message on every memory load.
-pub trait TokenCounter: WasmCompatSend + WasmCompatSync {
+pub trait TokenCounter: MaybeSend + MaybeSync {
     /// Approximate the number of tokens contributed by `message`.
     fn count(&self, message: &Message) -> usize;
 }
 
 impl<F> TokenCounter for F
 where
-    F: Fn(&Message) -> usize + WasmCompatSend + WasmCompatSync,
+    F: Fn(&Message) -> usize + MaybeSend + MaybeSync,
 {
     fn count(&self, message: &Message) -> usize {
         (self)(message)
@@ -471,7 +471,7 @@ where
     fn load<'a>(
         &'a self,
         conversation_id: &'a ConversationId,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async move {
             let messages = self.inner.load(conversation_id).await?;
             self.policy.apply(messages)
@@ -482,14 +482,14 @@ where
         &'a self,
         conversation_id: &'a ConversationId,
         messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         self.inner.append(conversation_id, messages)
     }
 
     fn clear<'a>(
         &'a self,
         conversation_id: &'a ConversationId,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         self.inner.clear(conversation_id)
     }
 }
@@ -600,14 +600,14 @@ macro_rules! stateful_wrapper_append_clear {
             &'a self,
             conversation_id: &'a ConversationId,
             messages: Vec<Message>,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        ) -> BoxFuture<'a, Result<(), MemoryError>> {
             self.inner.append(conversation_id, messages)
         }
 
         fn clear<'a>(
             &'a self,
             conversation_id: &'a ConversationId,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        ) -> BoxFuture<'a, Result<(), MemoryError>> {
             Box::pin(async move {
                 self.inner.clear(conversation_id).await?;
                 self.forget(conversation_id);
@@ -652,7 +652,7 @@ where
     fn load<'a>(
         &'a self,
         conversation_id: &'a ConversationId,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async move {
             let messages = self.inner.load(conversation_id).await?;
             let (kept, mut demoted) = self.policy.apply_with_demoted(messages)?;
@@ -879,7 +879,7 @@ where
     fn load<'a>(
         &'a self,
         conversation_id: &'a ConversationId,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async move {
             let messages = self.inner.load(conversation_id).await?;
             let (kept, demoted) = self.policy.apply_with_demoted(messages)?;
@@ -1102,7 +1102,7 @@ impl Compactor for TemplateCompactor {
         _conversation_id: &'a ConversationId,
         evicted: &'a [Message],
         carry_over: Option<&'a Self::Artifact>,
-    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Self::Artifact, MemoryError>> {
         Box::pin(async move {
             let mut buf = String::new();
             buf.push_str(&self.header);

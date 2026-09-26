@@ -7,13 +7,13 @@
 
 use bytes::Bytes;
 use futures::StreamExt;
-use rig_core::http_client::{HttpClientExt, NoBody, Request};
+use rig_http::http_client::{HttpClientExt, NoBody, Request};
 use rig_reqwest::ReqwestClient;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    futures::executor::block_on(rig_core::wasm_compat::timeout(
+    futures::executor::block_on(rig_http::wasm_compat::timeout(
         std::time::Duration::from_secs(10),
         future,
     ))
@@ -174,7 +174,7 @@ fn bodies_can_move_off_the_request_executor() {
         .body(NoBody)
         .expect("request");
     let response = runtime
-        .block_on(rig_core::wasm_compat::timeout(
+        .block_on(rig_http::wasm_compat::timeout(
             std::time::Duration::from_secs(10),
             client.send::<_, Bytes>(request),
         ))
@@ -188,7 +188,7 @@ fn bodies_can_move_off_the_request_executor() {
         .body(NoBody)
         .expect("request");
     let response = runtime
-        .block_on(rig_core::wasm_compat::timeout(
+        .block_on(rig_http::wasm_compat::timeout(
             std::time::Duration::from_secs(10),
             client.send_streaming(request),
         ))

@@ -14,7 +14,7 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, SqlCondition, VectorSearchRequest},
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -358,7 +358,7 @@ fn render_search_query(
 }
 
 impl<M: EmbeddingModel> InsertDocuments for PostgresVectorStore<M> {
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -393,7 +393,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<M> {
 
     /// Returns up to `samples` documents as `(distance, id, document)` ordered by
     /// ascending distance. Rows whose documents fail to deserialize are skipped.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<PgSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

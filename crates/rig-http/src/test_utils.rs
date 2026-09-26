@@ -1,4 +1,11 @@
-//! HTTP client doubles for provider tests.
+//! HTTP client doubles with captured requests and scripted replies.
+//!
+//! ```
+//! use rig_http::test_utils::RecordingHttpClient;
+//!
+//! let http = RecordingHttpClient::new("example reply");
+//! assert!(http.requests().is_empty());
+//! ```
 
 use std::{
     collections::VecDeque,
@@ -12,7 +19,7 @@ use crate::{
     http_client::{
         self, HttpClientExt, LazyBody, MultipartForm, Request, Response, StreamingResponse,
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 
 /// The reply a double gives on a surface it does not script: the request
@@ -35,12 +42,10 @@ macro_rules! no_unary_surface {
         fn send<T, U>(
             &self,
             _req: Request<T>,
-        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>>
-        + WasmCompatSend
-        + 'static
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
         where
-            T: Into<Bytes> + WasmCompatSend,
-            U: From<Bytes> + WasmCompatSend + 'static,
+            T: Into<Bytes> + MaybeSend,
+            U: From<Bytes> + MaybeSend + 'static,
         {
             future::ready(Err(not_implemented()))
         }
@@ -48,11 +53,9 @@ macro_rules! no_unary_surface {
         fn send_multipart<U>(
             &self,
             _req: Request<MultipartForm>,
-        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>>
-        + WasmCompatSend
-        + 'static
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
         where
-            U: From<Bytes> + WasmCompatSend + 'static,
+            U: From<Bytes> + MaybeSend + 'static,
         {
             future::ready(Err(not_implemented()))
         }
@@ -232,7 +235,7 @@ impl RecordingHttpClient {
         response: MockHttpResponse,
     ) -> http_client::Result<Response<LazyBody<U>>>
     where
-        U: From<Bytes> + WasmCompatSend + 'static,
+        U: From<Bytes> + MaybeSend + 'static,
     {
         let (status, response_body, response_headers) = match response {
             MockHttpResponse::Success(response_body) => (http::StatusCode::OK, response_body, None),
@@ -266,10 +269,10 @@ impl HttpClientExt for RecordingHttpClient {
     fn send<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        T: Into<Bytes> + MaybeSend,
+        U: From<Bytes> + MaybeSend + 'static,
     {
         let response = self.response_guard().clone();
         let (parts, body) = req.into_parts();
@@ -281,9 +284,9 @@ impl HttpClientExt for RecordingHttpClient {
     fn send_multipart<U>(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
-        U: From<Bytes> + WasmCompatSend + 'static,
+        U: From<Bytes> + MaybeSend + 'static,
     {
         let response = self.response_guard().clone();
         let (parts, body) = req.into_parts();
@@ -296,9 +299,9 @@ impl HttpClientExt for RecordingHttpClient {
     fn send_streaming<T>(
         &self,
         _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend,
+        T: Into<Bytes> + MaybeSend,
     {
         future::ready(Err(not_implemented()))
     }
@@ -360,10 +363,10 @@ impl HttpClientExt for SequencedHttpClient {
     fn send<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        T: Into<Bytes> + MaybeSend,
+        U: From<Bytes> + MaybeSend + 'static,
     {
         let response = self.next_response();
         let (parts, body) = req.into_parts();
@@ -380,9 +383,9 @@ impl HttpClientExt for SequencedHttpClient {
     fn send_multipart<U>(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
-        U: From<Bytes> + WasmCompatSend + 'static,
+        U: From<Bytes> + MaybeSend + 'static,
     {
         let response = self.next_response();
         let (parts, _body) = req.into_parts();
@@ -399,9 +402,9 @@ impl HttpClientExt for SequencedHttpClient {
     fn send_streaming<T>(
         &self,
         _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend,
+        T: Into<Bytes> + MaybeSend,
     {
         future::ready(Err(not_implemented()))
     }
@@ -422,9 +425,9 @@ impl HttpClientExt for MockStreamingClient {
     fn send_streaming<T>(
         &self,
         _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend,
+        T: Into<Bytes> + MaybeSend,
     {
         let sse_bytes = self.sse_bytes.clone();
         async move {
@@ -473,9 +476,9 @@ impl HttpClientExt for HttpErrorStreamingClient {
     fn send_streaming<T>(
         &self,
         _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend,
+        T: Into<Bytes> + MaybeSend,
     {
         let status = self.status;
         let body = self.body.clone();
@@ -505,9 +508,9 @@ impl HttpClientExt for NonSuccessStreamingClient {
     fn send_streaming<T>(
         &self,
         _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend,
+        T: Into<Bytes> + MaybeSend,
     {
         let status = self.status;
         let headers = self.headers.clone();
@@ -547,9 +550,9 @@ impl HttpClientExt for SequencedStreamingHttpClient {
     fn send_streaming<T>(
         &self,
         _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend,
+        T: Into<Bytes> + MaybeSend,
     {
         let chunks = match self.chunks.lock() {
             Ok(mut guard) => guard.take(),

@@ -3,7 +3,7 @@
 
 use bytes::Bytes;
 use futures::FutureExt;
-use rig_core::http_client::{HttpClientExt, NoBody, Request};
+use rig_http::http_client::{HttpClientExt, NoBody, Request};
 use rig_reqwest::ReqwestClient;
 use std::{
     io::{Read, Write},
@@ -13,7 +13,7 @@ use std::{
 };
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    futures::executor::block_on(rig_core::wasm_compat::timeout(
+    futures::executor::block_on(rig_http::wasm_compat::timeout(
         Duration::from_secs(10),
         future,
     ))
@@ -126,7 +126,7 @@ fn the_supplied_timeout_releases_a_pending_request() {
         .err()
         .expect("request times out");
     match error {
-        rig_core::http_client::Error::Instance(error) => assert!(
+        rig_http::http_client::Error::Instance(error) => assert!(
             error
                 .downcast_ref::<reqwest::Error>()
                 .is_some_and(reqwest::Error::is_timeout),
@@ -223,7 +223,7 @@ fn a_host_runtime_allows_body_drop_from_a_foreign_executor() {
     );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
     let response = runtime
-        .block_on(rig_core::wasm_compat::timeout(
+        .block_on(rig_http::wasm_compat::timeout(
             Duration::from_secs(10),
             client.send::<_, Bytes>(request),
         ))
@@ -252,7 +252,7 @@ fn host_runtime_shutdown_releases_io_and_late_body_polling_returns_an_error() {
     );
     let request = Request::builder().uri(url).body(NoBody).expect("request");
     let response = runtime
-        .block_on(rig_core::wasm_compat::timeout(
+        .block_on(rig_http::wasm_compat::timeout(
             Duration::from_secs(10),
             client.send::<_, Bytes>(request),
         ))

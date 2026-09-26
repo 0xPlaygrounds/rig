@@ -12,7 +12,7 @@
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -82,11 +82,11 @@ pub trait NormalizeAudioGenerationResponse {
 
 /// Generates speech from text. Only [`Self::audio_generation_request`] requires
 /// cloning; `Arc<M>` forwards generation calls.
-pub trait AudioGenerationModel: WasmCompatSend + WasmCompatSync {
+pub trait AudioGenerationModel: MaybeSend + MaybeSync {
     fn audio_generation(
         &self,
         request: AudioGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + MaybeSend;
 
     /// Creates a request builder to speak `text` in `voice`.
     fn audio_generation_request(
@@ -108,7 +108,7 @@ where
     fn audio_generation(
         &self,
         request: AudioGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, ProviderError>> + MaybeSend
     {
         (**self).audio_generation(request)
     }

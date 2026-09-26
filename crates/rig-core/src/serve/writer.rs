@@ -18,7 +18,7 @@ use crate::{
 };
 
 use super::{Reply, SinkClosed};
-use crate::wasm_compat::WasmCompatSend;
+use crate::wasm_compat::MaybeSend;
 
 /// A streaming answer under construction. Obtained by [`Reply::written`];
 /// [`finish`](Self::finish) emits the terminal, while ordinary drop without
@@ -37,7 +37,7 @@ impl Reply {
     pub fn written<F, Fut>(write: F) -> Self
     where
         F: FnOnce(StreamWriter) -> Fut,
-        Fut: Future<Output = ()> + WasmCompatSend + 'static,
+        Fut: Future<Output = ()> + MaybeSend + 'static,
     {
         let (events, mut receiver) = mpsc::channel(0);
         let writer = StreamWriter {

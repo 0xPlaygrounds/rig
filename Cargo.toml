@@ -91,6 +91,7 @@ members = [
 default-members = [
     ".",
     "crates/rig-core",
+    "crates/rig-http",
     "crates/rig-cassette",
     "crates/rig-agent",
     "crates/rig-ecs",
@@ -176,6 +177,7 @@ rig-agent = { path = "crates/rig-agent", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0" }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0" }
 rig-core = { path = "crates/rig-core", version = "0.42.0" }
+rig-http = { path = "crates/rig-http", version = "0.42.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", default-features = false }
 anyhow = "1"
 arrow-array = "58"
@@ -398,7 +400,7 @@ tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 [features]
 typesafeai = ["dep:rig-typesafeai"]
-default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
+default = ["rig-core/default", "reqwest", "websocket", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent", "rig-cassette/agent"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # Internal: opt in to the slow nested-`cargo check` facade build tests
@@ -429,14 +431,14 @@ sqlite = ["dep:rig-sqlite"]
 surrealdb = ["dep:rig-surrealdb"]
 vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
-audio = ["rig-core/audio", "rig-agent?/audio", "rig-reqwest?/audio"]
-image = ["rig-core/image", "rig-agent?/image", "rig-reqwest?/image"]
+audio = ["rig-core/audio", "rig-agent?/audio"]
+image = ["rig-core/image", "rig-agent?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
 rmcp = ["dep:rig-rmcp"]
 socks = ["reqwest", "rig-reqwest/socks"]
-reqwest = ["dep:rig-reqwest"]
+reqwest = ["dep:rig-reqwest", "rig-core/reqwest"]
 # The bundled websocket backend (`rig-tungstenite`) and the provider websocket
 # sessions it drives. Independent of the HTTP transport axis: a session borrows
 # the provider client for its request mapping, so `reqwest` comes along for the
@@ -455,12 +457,13 @@ reqwest = ["dep:rig-reqwest"]
 # `websocket-native-tls` gets you a working native-tls socket with rustls also
 # compiled in. That trade is deliberate — a build that silently cannot speak
 # `wss://` is worse than one that compiles a TLS stack it does not use.
-websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/websocket"]
+websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/tungstenite"]
 # `dep:rig-tungstenite` above resolves to nothing on wasm, where the dependency
 # is not in the graph: the feature degrades to the protocol alone.
 websocket-rustls = ["websocket", "rustls"]
 websocket-native-tls = ["websocket", "native-tls"]
 rustls = [
+  "rig-core/rustls",
   "rig-reqwest?/rustls",
   "rig-tungstenite?/rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
@@ -470,6 +473,7 @@ rustls = [
   "rig-vectorize?/rustls",
 ]
 native-tls = [
+  "rig-core/native-tls",
   "rig-reqwest?/native-tls",
   "rig-tungstenite?/native-tls",
   "rig-fastembed?/hf-hub-native-tls",

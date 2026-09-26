@@ -3,11 +3,11 @@
 //! ```no_run
 //! use rig_agent::prelude::*;
 //! use rig_core::providers::openai::{self, OpenAI};
-//! use rig_reqwest::prelude::*;
+//! use rig_core::driver::Bind;
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person { name: String, age: u8 }
-//! let provider = OpenAI::from_env()?.bound()?;
+//! let provider = OpenAI::from_env()?.bind(rig_reqwest::client::shared());
 //! let extractor = provider.extractor::<Person>(openai::GPT_4O).retries(2).build();
 //! let person = extractor.extract("John is 30.").await?.output;
 //! # Ok(())
@@ -22,7 +22,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use rig_core::{
     message::{Message, ToolChoice},
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 use crate::{
@@ -37,7 +37,7 @@ const SUBMIT_TOOL_NAME: &str = "submit";
 /// budget.
 pub struct Extractor<T>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + MaybeSend + MaybeSync,
 {
     agent: Agent,
     retries: u64,
@@ -46,7 +46,7 @@ where
 
 impl<T> Extractor<T>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + MaybeSend + MaybeSync,
 {
     /// Set a different default model for this extractor's subsequent runs.
     /// Use the model registered under `label` on the extractor's bus.
@@ -92,7 +92,7 @@ where
 /// Builder for the Extractor
 pub struct ExtractorBuilder<T>
 where
-    T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + DeserializeOwned + Serialize + MaybeSend + MaybeSync + 'static,
 {
     agent_builder: AgentBuilder,
     _t: PhantomData<T>,
@@ -115,7 +115,7 @@ macro_rules! forward_agent_builder {
 
 impl<T> ExtractorBuilder<T>
 where
-    T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + DeserializeOwned + Serialize + MaybeSend + MaybeSync + 'static,
 {
     /// An extractor of `T` over `model`.
     pub fn new<M>(model: M) -> Self
@@ -182,7 +182,7 @@ where
     pub fn dynamic_context<I, F>(mut self, samples: usize, index: I) -> Self
     where
         I: VectorStoreIndex<Filter = F> + 'static,
-        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+        F: DynamicSearchFilter + MaybeSend + MaybeSync + 'static,
     {
         self.agent_builder = self.agent_builder.dynamic_context(samples, index);
         self

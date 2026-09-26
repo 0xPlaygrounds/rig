@@ -12,7 +12,7 @@
 //! ```
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -82,11 +82,11 @@ pub trait NormalizeImageGenerationResponse {
 
 /// Generates images from prompts. Only [`Self::image_generation_request`]
 /// requires cloning; `Arc<M>` forwards generation calls.
-pub trait ImageGenerationModel: WasmCompatSend + WasmCompatSync {
+pub trait ImageGenerationModel: MaybeSend + MaybeSync {
     fn image_generation(
         &self,
         request: ImageGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + MaybeSend;
 
     /// Creates a request builder for `prompt`.
     fn image_generation_request(
@@ -107,7 +107,7 @@ where
     fn image_generation(
         &self,
         request: ImageGenerationRequest,
-    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<ImageGenerationResponse, ProviderError>> + MaybeSend
     {
         (**self).image_generation(request)
     }

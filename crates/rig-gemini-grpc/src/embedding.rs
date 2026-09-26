@@ -40,7 +40,7 @@ impl EmbeddingModel {
     /// Stops at the first client or RPC error without returning partial results.
     pub async fn raw_embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::MaybeSend,
     ) -> Result<Vec<proto::EmbedContentResponse>, ProviderError> {
         let documents_vec: Vec<String> = documents.into_iter().collect();
         let mut responses = Vec::with_capacity(documents_vec.len());
@@ -91,7 +91,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     async fn embed_texts_response(
         &self,
-        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::MaybeSend,
     ) -> Result<embeddings::EmbeddingResponse, ProviderError> {
         rig_core::telemetry::instrument_modality::<rig_core::operation::Embedding, _>(
             super::completion::PROVIDER_NAME,

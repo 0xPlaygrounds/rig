@@ -3,8 +3,8 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
+use rig_core::driver::Bind;
 use rig_core::{providers::openai, vector_store::request::VectorSearchRequest};
-use rig_reqwest::prelude::*;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;
@@ -50,7 +50,7 @@ where
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
-    let openai_client = OpenAI::from_env()?.bound()?;
+    let openai_client = OpenAI::from_env()?.bind(rig_reqwest::client::shared());
 
     // Initialize MongoDB client
     let mongodb_connection_string = env::var("MONGODB_CONNECTION_STRING")?;

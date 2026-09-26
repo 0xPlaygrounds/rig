@@ -21,12 +21,12 @@ use crate::test_utils::{
 };
 use crate::tool::{Tool, ToolContext};
 use futures::{StreamExt, TryStreamExt};
+use rig_core::driver::Bind;
 use rig_core::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent, ToolChoice,
     ToolResultContent, UserContent,
 };
 use rig_core::providers::anthropic;
-use rig_reqwest::client::DefaultTransport;
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -5402,7 +5402,7 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 
     // Make streaming request WITHOUT an outer span so rig creates its own invoke_agent span
     // (rig reuses current span if one exists, so we need to ensure there's no current span)
-    let client = anthropic::wire::Anthropic::from_env()?.bound()?;
+    let client = anthropic::wire::Anthropic::from_env()?.bind(rig_reqwest::client::shared());
     let agent = client
         .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
         .preamble("You are a helpful assistant.")
@@ -5459,7 +5459,7 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     use rig_core::message::Message;
 
-    let client = anthropic::wire::Anthropic::from_env()?.bound()?;
+    let client = anthropic::wire::Anthropic::from_env()?.bind(rig_reqwest::client::shared());
     let agent = client
         .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
         .preamble("You are a helpful assistant. Keep responses brief.")

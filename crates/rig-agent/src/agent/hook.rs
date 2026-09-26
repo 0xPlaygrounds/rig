@@ -30,7 +30,7 @@ use rig_core::tool::context::TypeMap;
 use rig_core::{
     completion::FinishReason,
     message::{AssistantContent, Message},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::{BoxFuture, MaybeSend, MaybeSync},
 };
 
 use rig_core::{
@@ -67,7 +67,7 @@ impl Scratchpad {
     /// Insert a value.
     pub fn insert<T>(&self, value: T) -> Option<T>
     where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + MaybeSend + MaybeSync + 'static,
     {
         self.lock().insert(value)
     }
@@ -75,7 +75,7 @@ impl Scratchpad {
     /// Get a cloned value.
     pub fn get<T>(&self) -> Option<T>
     where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + MaybeSend + MaybeSync + 'static,
     {
         self.lock().get::<T>().cloned()
     }
@@ -83,7 +83,7 @@ impl Scratchpad {
     /// Whether a type is present.
     pub fn contains<T>(&self) -> bool
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: MaybeSend + MaybeSync + 'static,
     {
         self.lock().contains::<T>()
     }
@@ -91,7 +91,7 @@ impl Scratchpad {
     /// Remove a value.
     pub fn remove<T>(&self) -> Option<T>
     where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + MaybeSend + MaybeSync + 'static,
     {
         self.lock().remove::<T>()
     }
@@ -101,7 +101,7 @@ impl Scratchpad {
     /// concurrent updates of the same type are last-writer-wins, not serialized.
     pub fn update<T, R>(&self, update: impl FnOnce(&mut T) -> R) -> R
     where
-        T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + Default + MaybeSend + MaybeSync + 'static,
     {
         let mut value = self.lock().remove::<T>().unwrap_or_default();
         let result = update(&mut value);
@@ -956,7 +956,7 @@ impl ObservationAction {
 }
 
 /// Per-run lifecycle observer and steerer.
-pub trait AgentHook: WasmCompatSend + WasmCompatSync {
+pub trait AgentHook: MaybeSend + MaybeSync {
     /// Replay identity recorded by the hook stack. `None` uses the unqualified
     /// type name; include decision-affecting configuration in an explicit name.
     fn name(&self) -> Option<String> {
@@ -973,7 +973,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: RunStart<'_>,
-    ) -> impl Future<Output = RunStartAction> + WasmCompatSend {
+    ) -> impl Future<Output = RunStartAction> + MaybeSend {
         async { RunStartAction::Continue }
     }
 
@@ -984,7 +984,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: RunSettled<'_>,
-    ) -> impl Future<Output = ()> + WasmCompatSend {
+    ) -> impl Future<Output = ()> + MaybeSend {
         async {}
     }
 
@@ -1015,7 +1015,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: CompletionCallEvent<'_>,
-    ) -> impl Future<Output = CompletionCallAction> + WasmCompatSend {
+    ) -> impl Future<Output = CompletionCallAction> + MaybeSend {
         async { CompletionCallAction::Continue }
     }
 
@@ -1027,7 +1027,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
-    ) -> impl Future<Output = ModelTurnAction> + WasmCompatSend {
+    ) -> impl Future<Output = ModelTurnAction> + MaybeSend {
         async { ModelTurnAction::Continue }
     }
 
@@ -1041,7 +1041,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: &InvalidToolCallContext,
-    ) -> impl Future<Output = Option<InvalidToolCallAction>> + WasmCompatSend {
+    ) -> impl Future<Output = Option<InvalidToolCallAction>> + MaybeSend {
         async { None }
     }
 
@@ -1052,7 +1052,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: TextDelta<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+    ) -> impl Future<Output = ObservationAction> + MaybeSend {
         async { ObservationAction::Continue }
     }
 
@@ -1065,7 +1065,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: ReasoningDelta<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+    ) -> impl Future<Output = ObservationAction> + MaybeSend {
         async { ObservationAction::Continue }
     }
 
@@ -1076,7 +1076,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: ToolCallDelta<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+    ) -> impl Future<Output = ObservationAction> + MaybeSend {
         async { ObservationAction::Continue }
     }
 
@@ -1095,7 +1095,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: DispatchEvent<'_>,
-    ) -> impl Future<Output = DispatchAction> + WasmCompatSend {
+    ) -> impl Future<Output = DispatchAction> + MaybeSend {
         async { DispatchAction::Proceed }
     }
 
@@ -1105,7 +1105,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         &self,
         _ctx: &HookContext,
         _event: OutcomeEvent<'_>,
-    ) -> impl Future<Output = OutcomeAction> + WasmCompatSend {
+    ) -> impl Future<Output = OutcomeAction> + MaybeSend {
         async { OutcomeAction::Proceed }
     }
 
@@ -1166,11 +1166,8 @@ macro_rules! for_each_boxed_hook_event {
 
 macro_rules! erased_hook_decl {
     ($erased:ident, $on:ident, $event:ident, $action:ident) => {
-        fn $erased<'a>(
-            &'a self,
-            ctx: &'a HookContext,
-            event: $event<'a>,
-        ) -> WasmBoxedFuture<'a, $action>;
+        fn $erased<'a>(&'a self, ctx: &'a HookContext, event: $event<'a>)
+        -> BoxFuture<'a, $action>;
     };
 }
 
@@ -1180,39 +1177,35 @@ macro_rules! erased_hook_forward {
             &'a self,
             ctx: &'a HookContext,
             event: $event<'a>,
-        ) -> WasmBoxedFuture<'a, $action> {
+        ) -> BoxFuture<'a, $action> {
             Box::pin(self.$on(ctx, event))
         }
     };
 }
 
-trait DynAgentHook: WasmCompatSend + WasmCompatSync {
+trait DynAgentHook: MaybeSend + MaybeSync {
     fn run_start<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: RunStart<'a>,
-    ) -> WasmBoxedFuture<'a, RunStartAction>;
-    fn run_settled<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunSettled<'a>,
-    ) -> WasmBoxedFuture<'a, ()>;
+    ) -> BoxFuture<'a, RunStartAction>;
+    fn run_settled<'a>(&'a self, ctx: &'a HookContext, event: RunSettled<'a>) -> BoxFuture<'a, ()>;
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
-    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>;
+    ) -> BoxFuture<'a, Option<InvalidToolCallAction>>;
     fn dispatch<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: DispatchEvent<'a>,
-    ) -> WasmBoxedFuture<'a, DispatchAction>;
+    ) -> BoxFuture<'a, DispatchAction>;
     fn outcome<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: OutcomeEvent<'a>,
-    ) -> WasmBoxedFuture<'a, OutcomeAction>;
+    ) -> BoxFuture<'a, OutcomeAction>;
     for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
@@ -1225,15 +1218,11 @@ where
         &'a self,
         ctx: &'a HookContext,
         event: RunStart<'a>,
-    ) -> WasmBoxedFuture<'a, RunStartAction> {
+    ) -> BoxFuture<'a, RunStartAction> {
         Box::pin(self.on_run_start(ctx, event))
     }
 
-    fn run_settled<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunSettled<'a>,
-    ) -> WasmBoxedFuture<'a, ()> {
+    fn run_settled<'a>(&'a self, ctx: &'a HookContext, event: RunSettled<'a>) -> BoxFuture<'a, ()> {
         Box::pin(self.on_run_settled(ctx, event))
     }
 
@@ -1245,21 +1234,21 @@ where
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
-    ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>> {
+    ) -> BoxFuture<'a, Option<InvalidToolCallAction>> {
         Box::pin(self.on_invalid_tool_call(ctx, event))
     }
     fn dispatch<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: DispatchEvent<'a>,
-    ) -> WasmBoxedFuture<'a, DispatchAction> {
+    ) -> BoxFuture<'a, DispatchAction> {
         Box::pin(self.on_dispatch(ctx, event))
     }
     fn outcome<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: OutcomeEvent<'a>,
-    ) -> WasmBoxedFuture<'a, OutcomeAction> {
+    ) -> BoxFuture<'a, OutcomeAction> {
         Box::pin(self.on_outcome(ctx, event))
     }
     for_each_boxed_hook_event!(erased_hook_forward);
@@ -1373,7 +1362,7 @@ impl ShortCircuitAction for ModelTurnAction {
 async fn first_non_continue<'a, A, F>(hooks: &'a [Arc<dyn DynAgentHook>], mut dispatch: F) -> A
 where
     A: ShortCircuitAction,
-    F: FnMut(&'a dyn DynAgentHook) -> WasmBoxedFuture<'a, A>,
+    F: FnMut(&'a dyn DynAgentHook) -> BoxFuture<'a, A>,
 {
     for hook in hooks {
         let action = dispatch(hook.as_ref()).await;

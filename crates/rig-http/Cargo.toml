@@ -1,0 +1,37 @@
+[package]
+name = "rig-http"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Transport contracts, framing, multipart and portability primitives for Rig."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+bytes.workspace = true
+futures.workspace = true
+futures-timer.workspace = true
+http.workspace = true
+mime.workspace = true
+thiserror.workspace = true
+url = { workspace = true, optional = true }
+
+# Browser timers need the JS host's setTimeout rather than a native thread.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+
+[dev-dependencies]
+serde.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[features]
+default = []
+test-utils = []
+websocket = ["dep:url"]

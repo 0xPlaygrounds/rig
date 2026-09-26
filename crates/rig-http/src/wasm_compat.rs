@@ -1,11 +1,10 @@
 //! Target-dependent thread bounds, boxed futures, and executor-independent timers.
 //!
 //! ```
-//! use rig_core::wasm_compat::WasmBoxedFuture;
-//! let future: WasmBoxedFuture<'_, u32> = Box::pin(async { 42 });
+//! use rig_http::wasm_compat::BoxFuture;
+//! let future: BoxFuture<'_, u32> = Box::pin(async { 42 });
 //! ```
 
-use bytes::Bytes;
 use std::pin::Pin;
 
 use futures::Stream;
@@ -18,7 +17,7 @@ use futures::Stream;
     target_feature = "atomics"
 ))]
 compile_error!(
-    "rig-core does not support threaded wasm (`+atomics`): its wasm-compat markers assume a \
+    "rig-http does not support threaded wasm (`+atomics`): its wasm-compat markers assume a \
      single-threaded target"
 );
 
@@ -27,96 +26,66 @@ compile_error!(
 ///
 /// ```compile_fail
 /// use std::rc::Rc;
-/// use rig_core::{serve::{Dispatch, Reply, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+/// use rig_http::wasm_compat::MaybeSend;
 ///
-/// struct Local(Rc<u8>);
-/// impl Serve for Local {
-///     type Family = family::Dynamic;
-///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
-///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
-/// }
+/// fn require_send<T: MaybeSend>(_: T) {}
+/// require_send(Rc::new(1));
 /// ```
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is not `Send`, and every bus handler must be `Send + Sync` natively",
+    message = "`{Self}` is not `Send`, as required on native targets",
     label = "not `Send`",
-    note = "a handler runs inside the driver's task: hold the model, tool or memory behind an `Arc` (never an `Rc`), or register a `!Send` value only on browser wasm, where this marker is a no-op"
+    note = "use thread-safe ownership such as `Arc`, not `Rc`; browser wasm permits thread-local values"
 )]
-pub trait WasmCompatSend: Send {}
+pub trait MaybeSend: Send {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 /// `Send` on native targets, a no-op marker on browser wasm.
-pub trait WasmCompatSend {}
+pub trait MaybeSend {}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-impl<T> WasmCompatSend for T where T: Send {}
+impl<T: ?Sized> MaybeSend for T where T: Send {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-impl<T> WasmCompatSend for T {}
+impl<T: ?Sized> MaybeSend for T {}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Streaming response bound that includes `Send` on native targets.
-pub trait WasmCompatSendStream:
-    Stream<Item = Result<Bytes, crate::http_client::Error>> + Send
-{
-    type InnerItem: Send;
-}
+/// A boxed stream that can move between native executor threads.
+pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + Send + 'a>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Streaming response bound without `Send` on browser wasm.
-pub trait WasmCompatSendStream: Stream<Item = Result<Bytes, crate::http_client::Error>> {
-    type InnerItem;
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-impl<T> WasmCompatSendStream for T
-where
-    T: Stream<Item = Result<Bytes, crate::http_client::Error>> + Send,
-{
-    type InnerItem = Result<Bytes, crate::http_client::Error>;
-}
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-impl<T> WasmCompatSendStream for T
-where
-    T: Stream<Item = Result<Bytes, crate::http_client::Error>>,
-{
-    type InnerItem = Result<Bytes, crate::http_client::Error>;
-}
+/// A boxed browser stream, permitting JavaScript's thread-local handles.
+pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// `Sync` on native targets, a no-op marker on browser wasm.
 ///
 /// ```compile_fail
 /// use std::cell::Cell;
-/// use rig_core::{serve::{Dispatch, Reply, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+/// use rig_http::wasm_compat::MaybeSync;
 ///
-/// struct Local(Cell<u8>);
-/// impl Serve for Local {
-///     type Family = family::Dynamic;
-///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
-///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
-/// }
+/// fn require_sync<T: MaybeSync>(_: T) {}
+/// require_sync(Cell::new(1));
 /// ```
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is not `Sync`, and every bus handler must be `Send + Sync` natively",
+    message = "`{Self}` is not `Sync`, as required on native targets",
     label = "not `Sync`",
-    note = "a handler is shared between the driver and its in-flight tasks: use `Mutex`/atomics instead of `Cell`/`RefCell`, or register a `!Sync` value only on browser wasm, where this marker is a no-op"
+    note = "use `Mutex` or atomics instead of `Cell` or `RefCell`; browser wasm permits thread-local values"
 )]
-pub trait WasmCompatSync: Sync {}
+pub trait MaybeSync: Sync {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 /// `Sync` on native targets, a no-op marker on browser wasm.
-pub trait WasmCompatSync {}
+pub trait MaybeSync {}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-impl<T> WasmCompatSync for T where T: Sync {}
+impl<T: ?Sized> MaybeSync for T where T: Sync {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-impl<T> WasmCompatSync for T {}
+impl<T: ?Sized> MaybeSync for T {}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Boxed future with `Send` on the same targets as [`WasmCompatSend`].
-pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+/// Boxed future with `Send` on the same targets as [`MaybeSend`].
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 /// Boxed future type without `Send`, on browser wasm.
-pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
 /// Error returned by [`timeout`] when the future does not complete in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

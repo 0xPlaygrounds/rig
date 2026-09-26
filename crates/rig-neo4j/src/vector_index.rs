@@ -9,7 +9,7 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned, de::Error};
 
@@ -202,7 +202,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for Neo4jVectorIndex<M> {
 
     /// Returns matches as `(score, node id, node)`. The node is deserialized as
     /// `T` without its embedding property.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -242,7 +242,7 @@ impl<M: EmbeddingModel> InsertDocuments for Neo4jVectorIndex<M> {
     /// onto the node alongside the embedding (`embedding_property`) and its
     /// source text (`embedded_text`). Nodes are written under the index's
     /// `node_label`, defaulting to the `Document` label.
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {

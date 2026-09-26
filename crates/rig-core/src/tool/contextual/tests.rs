@@ -32,7 +32,7 @@ impl crate::tool::ContextValue for CallData {
 fn mutate_context(
     context: &mut ToolContext,
     arguments: serde_json::Value,
-) -> WasmBoxedFuture<'_, Result<ToolOutput, ToolExecutionError>> {
+) -> BoxFuture<'_, Result<ToolOutput, ToolExecutionError>> {
     Box::pin(async move {
         assert_eq!(context.require::<CallData>()?, CallData(1));
         context.insert(CallData(99))?;

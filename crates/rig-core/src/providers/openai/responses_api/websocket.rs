@@ -19,7 +19,7 @@ use crate::providers::openai::responses_api::streaming::{
 };
 use crate::providers::openai::responses_api::wire::Responses;
 use crate::streaming::StreamEvent;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::wire::WireFrame;
 use crate::wire::{Fold, Mode, Operation, Reply, Wire};
 use crate::ws_client::{
@@ -33,6 +33,11 @@ use crate::providers::openai::responses_api::{CompletionResponse, ResponseStatus
 
 /// The websocket endpoint's path, appended to the client's configured base URL.
 const WEBSOCKET_PATH: &str = "responses";
+
+#[cfg(all(feature = "tungstenite", not(target_family = "wasm")))]
+mod default_backend;
+#[cfg(all(feature = "tungstenite", not(target_family = "wasm")))]
+pub use default_backend::{DefaultWebSocketBuilder, DefaultWebSocketClient};
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -870,11 +875,10 @@ pub trait ResponsesWebSocketExt {
     fn responses_websocket_with<W>(
         &self,
         backend: &W,
-    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, ProviderError>>
-    + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, ProviderError>> + MaybeSend
     where
-        W: WebSocketClientExt + WasmCompatSync,
-        Self: WasmCompatSync;
+        W: WebSocketClientExt + MaybeSync,
+        Self: MaybeSync;
 }
 
 impl<H> ResponsesWebSocketExt for Bound<Responses, H> {
@@ -885,11 +889,10 @@ impl<H> ResponsesWebSocketExt for Bound<Responses, H> {
     fn responses_websocket_with<W>(
         &self,
         backend: &W,
-    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, ProviderError>>
-    + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, ProviderError>> + MaybeSend
     where
-        W: WebSocketClientExt + WasmCompatSync,
-        Self: WasmCompatSync,
+        W: WebSocketClientExt + MaybeSync,
+        Self: MaybeSync,
     {
         let builder = self.responses_websocket_builder();
         async move { builder.connect_with(backend).await }

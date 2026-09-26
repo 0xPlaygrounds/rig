@@ -14,7 +14,7 @@ use super::message::{AssistantContent, DocumentMediaType};
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -411,19 +411,18 @@ impl ProviderCapabilities {
 /// Generates buffered or streamed normalized completions. Provider-specific
 /// response data belongs in [`CompletionResponse::raw`]. Only
 /// [`Self::completion_request`] requires cloning; `Arc<M>` can share a model.
-pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
+pub trait CompletionModel: MaybeSend + MaybeSync {
     /// Generates a completion response for the given completion request.
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + MaybeSend;
 
     /// Streams a completion response for the given completion request.
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>> + MaybeSend;
 
     /// Generates a completion with optional execution-local observation.
     /// The default delegates without observations. Forwarding wrappers must
@@ -432,7 +431,7 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
         &self,
         request: CompletionRequest,
         _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + MaybeSend
     {
         self.completion(request)
     }
@@ -443,8 +442,8 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
         &self,
         request: CompletionRequest,
         _context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>> + MaybeSend
+    {
         self.stream(request)
     }
 
@@ -471,7 +470,7 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + MaybeSend
     {
         (**self).completion(request)
     }
@@ -479,8 +478,8 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>> + MaybeSend
+    {
         (**self).stream(request)
     }
 
@@ -488,7 +487,7 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
         &self,
         request: CompletionRequest,
         context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, ProviderError>> + MaybeSend
     {
         (**self).completion_with_context(request, context)
     }
@@ -497,8 +496,8 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
         &self,
         request: CompletionRequest,
         context: Option<crate::observe::AdapterContext>,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>>
-    + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, ProviderError>> + MaybeSend
+    {
         (**self).stream_with_context(request, context)
     }
 

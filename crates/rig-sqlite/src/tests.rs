@@ -2953,7 +2953,7 @@ impl EmbeddingModel for TestEmbeddingModel {
 
     async fn embed_texts_response(
         &self,
-        texts: impl IntoIterator<Item = String> + WasmCompatSend,
+        texts: impl IntoIterator<Item = String> + MaybeSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
         Ok(EmbeddingResponse::new(
             texts

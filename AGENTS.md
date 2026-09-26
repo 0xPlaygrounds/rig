@@ -51,9 +51,9 @@ examples, README, and crate docs as applicable.
 
 ## WASM Compatibility
 
-Rig supports WebAssembly targets. Use Rig's WASM-compatible `WasmSend`/`WasmSync`
-alias bounds instead of raw `Send` and `Sync`, and its WASM-compatible boxed
-future alias for boxed futures. When an error type stores boxed errors, gate
+Rig supports WebAssembly targets. Use `MaybeSend`/`MaybeSync` from `rig-http`
+instead of raw `Send` and `Sync`, and its portable `BoxFuture` and `BoxStream`
+aliases for boxed futures and streams. When an error type stores boxed errors, gate
 the `Send + Sync` bound on `target_family = "wasm"` the way existing error
 types do.
 

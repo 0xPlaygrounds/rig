@@ -30,7 +30,7 @@ use rig_core::error::ProviderError;
 use rig_core::id::ConversationId;
 
 use super::drive::AgentBus;
-use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
+use rig_core::{message::ToolChoice, wasm_compat::MaybeSend};
 use std::{collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
@@ -168,10 +168,10 @@ pub(crate) async fn build_prepared_completion_request(
 /// ```no_run
 /// use rig_agent::prelude::*;
 /// use rig_core::providers::openai::{self, OpenAI};
-/// use rig_reqwest::prelude::*;
+/// use rig_core::driver::Bind;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = OpenAI::from_env()?.bound()?;
+/// let openai = OpenAI::from_env()?.bind(rig_reqwest::client::shared());
 ///
 /// let comedian_agent = openai
 ///     .agent(openai::GPT_5_2)
@@ -654,7 +654,7 @@ impl Agent {
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     pub async fn chat(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
         chat_history: &mut Vec<Message>,
     ) -> Result<PromptResponse, PromptError> {
         let response = AgentRunner::from_agent(self, prompt)
@@ -686,7 +686,7 @@ impl Agent {
     /// ```
     pub fn prompt_typed<T>(&self, prompt: impl Into<Message>) -> TypedRun<T>
     where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend,
+        T: JsonSchema + DeserializeOwned + MaybeSend,
     {
         TypedRun::native(self, prompt)
     }

@@ -1,3 +1,4 @@
+use rig_core::driver::Bind;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -6,7 +7,6 @@ use rig_core::{
     providers::openai::wire::OpenAI,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig_reqwest::prelude::*;
 use rig_sqlite::{
     Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
 };
@@ -60,7 +60,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Bind the OpenAI embeddings endpoint
-    let openai_client = OpenAI::from_env()?.bound()?;
+    let openai_client = OpenAI::from_env()?.bind(rig_reqwest::client::shared());
 
     // Initialize the `sqlite-vec`extension
     // See: https://alexgarcia.xyz/sqlite-vec/rust.html

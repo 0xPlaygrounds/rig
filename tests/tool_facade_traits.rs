@@ -141,7 +141,7 @@ fn completion_client_single_import_surface() {
 #[test]
 fn completion_provider_explicit_facade_import_surface() {
     use rig::client::AgentProviderExt;
-    use rig_reqwest::client::DefaultTransport;
+    use rig_core::client::DefaultTransport;
 
     #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
     struct Extracted {

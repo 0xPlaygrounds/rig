@@ -10542,7 +10542,6 @@ dependencies = [
  "epub",
  "fastrand",
  "futures",
- "futures-timer",
  "glob",
  "http 1.4.2",
  "lopdf",
@@ -10557,6 +10556,9 @@ dependencies = [
  "redis",
  "rig-core",
  "rig-derive",
+ "rig-http",
+ "rig-reqwest",
+ "rig-tungstenite",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10565,6 +10567,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
+ "tokio-tungstenite 0.29.0",
  "tracing",
  "tracing-futures",
  "tracing-opentelemetry",
@@ -10664,6 +10667,21 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "rig-http"
+version = "0.42.0"
+dependencies = [
+ "bytes",
+ "futures",
+ "futures-timer",
+ "http 1.4.2",
+ "mime",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "url",
 ]
 
 [[package]]
@@ -10795,7 +10813,7 @@ dependencies = [
  "http 1.4.2",
  "reqwest 0.13.4",
  "reqwest-middleware",
- "rig-core",
+ "rig-http",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
@@ -10949,7 +10967,7 @@ dependencies = [
  "bytes",
  "futures",
  "http 1.4.2",
- "rig-core",
+ "rig-http",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",

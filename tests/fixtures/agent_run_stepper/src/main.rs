@@ -28,7 +28,7 @@ use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
-use rig_core::wasm_compat::WasmCompatSend;
+use rig_core::wasm_compat::MaybeSend;
 use rig_core::error::ProviderError;
 
 /// Every future here is ready on first poll (a scripted model, in-process
@@ -66,7 +66,7 @@ impl CompletionModel for ScriptedModel {
     fn completion(
         &self,
         request: CompletionRequest,
-        ) -> impl Future<Output = Result<CompletionResponse, ProviderError>> + WasmCompatSend {
+        ) -> impl Future<Output = Result<CompletionResponse, ProviderError>> + MaybeSend {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         let choice = if call == 0 {
             // The request must carry the tool the run will call back into.
@@ -99,7 +99,7 @@ impl CompletionModel for ScriptedModel {
     fn stream(
         &self,
         _request: CompletionRequest,
-        ) -> impl Future<Output = Result<StreamingCompletionResponse, ProviderError>> + WasmCompatSend
+        ) -> impl Future<Output = Result<StreamingCompletionResponse, ProviderError>> + MaybeSend
     {
         std::future::ready(Err(ProviderError::Provider(
             "fixture drives unary completions only".to_string(),

@@ -13,12 +13,12 @@
 use crate::error::ProviderError;
 use crate::{
     completion::{ResponseIdentity, Usage},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::{Deserialize, Serialize};
 
 /// Trait for embedding models that can generate embeddings for documents.
-pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
+pub trait EmbeddingModel: MaybeSend + MaybeSync {
     /// The maximum number of documents accepted in a single request.
     fn max_documents(&self) -> usize;
 
@@ -31,8 +31,8 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// Implementations must preserve input order in the returned embeddings.
     fn embed_texts_response(
         &self,
-        texts: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend;
+        texts: impl IntoIterator<Item = String> + MaybeSend,
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + MaybeSend;
 
     /// Embed multiple text documents in a single request.
     ///
@@ -40,9 +40,8 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// callers who want only the vectors.
     fn embed_texts(
         &self,
-        texts: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + WasmCompatSend
-    {
+        texts: impl IntoIterator<Item = String> + MaybeSend,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + MaybeSend {
         async { Ok(self.embed_texts_response(texts).await?.embeddings) }
     }
 
@@ -50,7 +49,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_text(
         &self,
         text: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding, ProviderError>> + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<Embedding, ProviderError>> + MaybeSend {
         async {
             let mut embeddings = self.embed_texts(vec![text.to_string()]).await?;
             embeddings.pop().ok_or_else(|| {
@@ -66,7 +65,7 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_text_response(
         &self,
         text: &str,
-    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, ProviderError>> + MaybeSend
     {
         async {
             let response = self.embed_texts_response(vec![text.to_string()]).await?;
@@ -203,7 +202,7 @@ impl ImageEmbeddingResponse {
 crate::provider_response::modality_response_metadata_setters!(ImageEmbeddingResponse);
 
 /// Trait for embedding models that can generate embeddings for images.
-pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
+pub trait ImageEmbeddingModel: MaybeSend + MaybeSync {
     /// The maximum number of images the provider accepts in one request.
     fn max_documents(&self) -> usize;
 
@@ -220,15 +219,14 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// retaining the raw image or a reversible encoding of it.
     fn embed_images_response(
         &self,
-        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, ProviderError>> + WasmCompatSend;
+        images: impl IntoIterator<Item = Vec<u8>> + MaybeSend,
+    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, ProviderError>> + MaybeSend;
 
     /// Embed a batch of images from their encoded file bytes.
     fn embed_images(
         &self,
-        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + WasmCompatSend
-    {
+        images: impl IntoIterator<Item = Vec<u8>> + MaybeSend,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, ProviderError>> + MaybeSend {
         async { Ok(self.embed_images_response(images).await?.embeddings) }
     }
 
@@ -237,7 +235,7 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     fn embed_image(
         &self,
         bytes: &[u8],
-    ) -> impl std::future::Future<Output = Result<Embedding, ProviderError>> + WasmCompatSend {
+    ) -> impl std::future::Future<Output = Result<Embedding, ProviderError>> + MaybeSend {
         async move {
             let mut embeddings = self.embed_images(vec![bytes.to_owned()]).await?;
             embeddings.pop().ok_or_else(|| {

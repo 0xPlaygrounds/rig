@@ -8,7 +8,7 @@ use serde_json::json;
 use rig_core::{
     message::{ImageMediaType, ToolResultContent},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 
 use crate::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolOutput, ToolSet};
@@ -444,7 +444,7 @@ impl MockToolIndex {
 impl VectorStoreIndex for MockToolIndex {
     type Filter = Filter<serde_json::Value>;
 
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
         &self,
         _req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -483,7 +483,7 @@ impl BarrierMockToolIndex {
 impl VectorStoreIndex for BarrierMockToolIndex {
     type Filter = Filter<serde_json::Value>;
 
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
         &self,
         _req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

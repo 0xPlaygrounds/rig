@@ -26,12 +26,12 @@ use rig_core::completion::CompletionModel as _;
 use rig_core::driver::Bound;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::responses_api::websocket::DefaultWebSocketClient as _;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance, fixtures::openai_responses,
 };
-use rig_tungstenite::DefaultWebSocketClient as _;
 use tokio::net::TcpListener;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 

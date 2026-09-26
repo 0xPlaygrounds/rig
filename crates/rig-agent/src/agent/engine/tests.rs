@@ -37,7 +37,7 @@ use rig_core::message::{
 use rig_core::vector_store::{
     VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
 };
-use rig_core::wasm_compat::WasmCompatSend;
+use rig_core::wasm_compat::MaybeSend;
 
 /// Records the kind of every hook event (and every tool-result payload) so a
 /// run() and a stream() of the same scenario can be compared.
@@ -6689,7 +6689,7 @@ struct RecordingContextIndex {
 impl VectorStoreIndex for RecordingContextIndex {
     type Filter = Filter<serde_json::Value>;
 
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
         &self,
         req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -6714,7 +6714,7 @@ struct FailingContextIndex;
 impl VectorStoreIndex for FailingContextIndex {
     type Filter = Filter<serde_json::Value>;
 
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
         &self,
         _req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -6740,7 +6740,7 @@ struct QueryRecordingToolIndex {
 impl VectorStoreIndex for QueryRecordingToolIndex {
     type Filter = Filter<serde_json::Value>;
 
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
         &self,
         _req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -7569,7 +7569,7 @@ struct LateFinalResultIndex {
 impl VectorStoreIndex for LateFinalResultIndex {
     type Filter = Filter<serde_json::Value>;
 
-    async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
         &self,
         _req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

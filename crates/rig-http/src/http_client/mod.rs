@@ -1,11 +1,11 @@
 //! Transport-independent HTTP requests, lazy response bodies, and errors.
 //!
 //! ```
-//! use rig_core::http_client::{HeaderMap, bearer_auth_header};
+//! use rig_http::http_client::{HeaderMap, bearer_auth_header};
 //!
 //! let mut headers = HeaderMap::new();
 //! bearer_auth_header(&mut headers, "example-token")?;
-//! # Ok::<(), rig_core::http_client::Error>(())
+//! # Ok::<(), rig_http::http_client::Error>(())
 //! ```
 
 use bytes::Bytes;
@@ -17,7 +17,6 @@ mod erased;
 pub mod framing;
 pub mod middleware;
 pub mod multipart;
-pub(crate) mod tail;
 use crate::wasm_compat::*;
 pub use erased::BoxedHttpClient;
 pub use middleware::HttpMiddleware;
@@ -89,7 +88,7 @@ impl Error {
     /// The following example reads the seconds form of `Retry-After`:
     ///
     /// ```
-    /// # use rig_core::http_client::Error;
+    /// # use rig_http::http_client::Error;
     /// # use std::time::Duration;
     /// fn retry_after(error: &Error) -> Option<Duration> {
     ///     let seconds = error
@@ -132,11 +131,11 @@ impl Error {
     }
 }
 
-pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
-pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
+pub type LazyBytes = BoxFuture<'static, Result<Bytes>>;
+pub type LazyBody<T> = BoxFuture<'static, Result<T>>;
 
 /// The body of a streaming response: the transport's own chunks, boxed.
-pub type BoxedStream = std::pin::Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>>;
+pub type BoxedStream = BoxStream<'static, Result<Bytes>>;
 
 pub type StreamingResponse = Response<BoxedStream>;
 
@@ -170,34 +169,34 @@ pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Resu
 }
 
 /// A helper trait to make generic requests (both regular and SSE) possible.
-pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
+pub trait HttpClientExt: MaybeSend + MaybeSync {
     /// Sends a request and returns headers with a lazy body converted from bytes to `U`.
     fn send<T, U>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
         T: Into<Bytes>,
-        T: WasmCompatSend,
+        T: MaybeSend,
         U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+        U: MaybeSend + 'static;
 
     /// Sends a multipart request and returns headers with a lazy body converted to `U`.
     fn send_multipart<U>(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
         U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+        U: MaybeSend + 'static;
 
     /// Sends a request and returns headers with a stream of transport byte chunks.
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend;
+        T: Into<Bytes> + MaybeSend;
 }
 
 #[cfg(test)]

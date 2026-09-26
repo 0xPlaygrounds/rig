@@ -11,7 +11,7 @@ use rig::http_client::{BoxedHttpClient, HeaderMap, HeaderValue, HttpMiddleware, 
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
-use rig::wasm_compat::WasmBoxedFuture;
+use rig::wasm_compat::BoxFuture;
 
 /// Adds a beta header to every outgoing request and prints the wire traffic
 /// the semantic layer never shows: the serialized body and the response's
@@ -24,7 +24,7 @@ impl HttpMiddleware for WireLogger {
         _method: &'a Method,
         _uri: &'a Uri,
         headers: &'a mut HeaderMap,
-    ) -> WasmBoxedFuture<'a, rig::http_client::Result<()>> {
+    ) -> BoxFuture<'a, rig::http_client::Result<()>> {
         Box::pin(async move {
             headers.insert(
                 "anthropic-beta",
@@ -40,7 +40,7 @@ impl HttpMiddleware for WireLogger {
         uri: &'a Uri,
         _headers: &'a HeaderMap,
         body: bytes::Bytes,
-    ) -> WasmBoxedFuture<'a, rig::http_client::Result<bytes::Bytes>> {
+    ) -> BoxFuture<'a, rig::http_client::Result<bytes::Bytes>> {
         Box::pin(async move {
             println!("→ {method} {uri} ({} byte payload)", body.len());
             Ok(body)
@@ -53,7 +53,7 @@ impl HttpMiddleware for WireLogger {
         _uri: &'a Uri,
         status: http::StatusCode,
         headers: &'a HeaderMap,
-    ) -> WasmBoxedFuture<'a, rig::http_client::Result<()>> {
+    ) -> BoxFuture<'a, rig::http_client::Result<()>> {
         Box::pin(async move {
             // Runs before any of the (possibly streaming) body is consumed.
             let request_id = headers

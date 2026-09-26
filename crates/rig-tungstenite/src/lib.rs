@@ -8,7 +8,7 @@
         clippy::unwrap_used
     )
 )]
-//! The bundled native websocket backend and session constructors for Rig.
+//! The bundled native websocket backend for Rig.
 //!
 //! Sockets use the current Tokio runtime or a lazy fallback runtime. Off-runtime
 //! callers communicate through channels without polling socket I/O themselves.
@@ -22,7 +22,7 @@
 #[cfg(target_family = "wasm")]
 compile_error!(
     "rig-tungstenite is a native websocket backend (tokio-tungstenite). On wasm, implement \
-     `rig_core::ws_client::WebSocketClientExt` over `web_sys::WebSocket` and open sessions with \
+     `rig_http::ws_client::WebSocketClientExt` over `web_sys::WebSocket` and open sessions with \
      `connect_with(..)`."
 );
 
@@ -34,28 +34,15 @@ mod connection;
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
 #[cfg(not(target_family = "wasm"))]
-mod session;
-
-#[cfg(not(target_family = "wasm"))]
-pub use session::{DefaultWebSocketBuilder, DefaultWebSocketClient};
-
-#[cfg(not(target_family = "wasm"))]
 use connection::{DirectConnection, ForwardedConnection};
 #[cfg(not(target_family = "wasm"))]
-use rig_core::http_client::{Error, NoBody, Request, Result};
+use rig_http::http_client::{Error, NoBody, Request, Result};
 #[cfg(not(target_family = "wasm"))]
-use rig_core::ws_client::{BoxedWebSocketConnection, ConnectOptions, WebSocketClientExt};
+use rig_http::ws_client::{BoxedWebSocketConnection, ConnectOptions, WebSocketClientExt};
 #[cfg(not(target_family = "wasm"))]
 use std::time::Duration;
 #[cfg(not(target_family = "wasm"))]
 use tokio_tungstenite::tungstenite::{self, client::IntoClientRequest};
-
-/// Bring the default-backend traits into scope.
-#[cfg(not(target_family = "wasm"))]
-pub mod prelude {
-    pub use crate::session::{DefaultWebSocketBuilder, DefaultWebSocketClient};
-    pub use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketExt;
-}
 
 #[cfg(not(target_family = "wasm"))]
 /// A stateless websocket backend that takes handshake configuration from each
@@ -134,7 +121,7 @@ async fn handshake(
         return connect.await;
     };
 
-    match rig_core::wasm_compat::timeout(timeout, connect).await {
+    match rig_http::wasm_compat::timeout(timeout, connect).await {
         Ok(result) => result,
         Err(_) => Err(Error::instance(ConnectTimeout(timeout))),
     }

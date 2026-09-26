@@ -8,7 +8,7 @@
 //! ```
 
 use crate::http_client::{self, HttpClientExt};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use std::sync::Arc;
 
 /// Device authorization details surfaced to a provider callback.
@@ -35,7 +35,7 @@ impl DeviceCodeHandler {
     /// Wraps a device-code callback.
     pub fn new<F>(handler: F) -> Self
     where
-        F: Fn(DeviceCodePrompt) + WasmCompatSend + WasmCompatSync + 'static,
+        F: Fn(DeviceCodePrompt) + MaybeSend + MaybeSync + 'static,
     {
         Self(Some(Arc::new(handler)))
     }

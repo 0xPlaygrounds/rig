@@ -223,6 +223,60 @@ fn unknown_fixture_provider_falls_back() {
 }
 
 #[test]
+fn transport_changes_execute_provider_owned_regressions() {
+    let mut metadata = metadata();
+    let packages = metadata["packages"].as_array_mut().unwrap();
+    for (name, dependencies) in [
+        ("rig-http", vec![]),
+        ("rig-reqwest", vec!["rig-http"]),
+        ("rig-tungstenite", vec!["rig-http"]),
+        (
+            "rig-core",
+            vec!["rig-http", "rig-reqwest", "rig-tungstenite"],
+        ),
+    ] {
+        packages.push(serde_json::json!({
+            "name": name,
+            "manifest_path": format!("/repo/crates/{name}/Cargo.toml"),
+            "dependencies": dependencies.into_iter().map(|name| serde_json::json!({"name": name})).collect::<Vec<_>>()
+        }));
+    }
+    for transport in ["rig-http", "rig-reqwest", "rig-tungstenite"] {
+        let plan = selection::plan(
+            Path::new("/repo"),
+            &metadata,
+            &opts("--changed"),
+            &BTreeSet::from([format!("crates/{transport}/src/lib.rs")]),
+            &checks::all(),
+        )
+        .unwrap();
+        let ids: BTreeSet<_> = plan.iter().map(|check| check.id.as_str()).collect();
+        for required in [
+            "core-all",
+            "conformance",
+            "wasm-rig-http",
+            "wasm-rig-core",
+            "consumers",
+        ] {
+            assert!(
+                ids.contains(required),
+                "{transport} omits {required}: {ids:?}"
+            );
+        }
+        let platform = if transport == "rig-tungstenite" {
+            "native-only-rig-tungstenite"
+        } else {
+            "wasm-rig-reqwest"
+        };
+        assert!(ids.contains(platform), "{transport}: {ids:?}");
+        assert!(
+            !ids.contains("full-tests"),
+            "no unrelated service sweep: {ids:?}"
+        );
+    }
+}
+
+#[test]
 fn ecs_changes_include_reverse_consumers() {
     let p = ids("--changed", &["crates/rig-ecs/src/lib.rs"]);
     assert!(p.contains("package-rig-ecs"));

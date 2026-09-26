@@ -21,10 +21,11 @@ use crate::{
     effect::{EffectFamily, EffectId, HandlerKey, Outcome},
     error::ErrorReport,
     streaming::StreamEvent,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 mod adapter;
+mod sse_tail;
 pub use adapter::{
     AdapterAnalysis, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
     AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, diagnostic_url_secrets,
@@ -372,14 +373,14 @@ pub trait HostAction: Serialize + serde::de::DeserializeOwned {
 
 /// A host-owned monotonic clock: what a sink stamps [`Observation::at`]
 /// from. rig-core reads no clock itself; a test supplies a counter.
-pub trait Clock: WasmCompatSend + WasmCompatSync {
+pub trait Clock: MaybeSend + MaybeSync {
     /// Elapsed time since the clock's origin.
     fn elapsed(&self) -> Duration;
 }
 
 /// Where observations go: the seam a driver and a host emit through. A
 /// witness is shared, so it takes `&self`; it must never block the caller.
-pub trait Witness: WasmCompatSend + WasmCompatSync + 'static {
+pub trait Witness: MaybeSend + MaybeSync + 'static {
     /// One fact. The sink assigns its sequence.
     fn observe(&self, observation: Observation);
 }

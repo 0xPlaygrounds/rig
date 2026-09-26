@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use crate::{
     tool::ToolOutput,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 /// Normalized classification for a tool execution error.
@@ -228,7 +228,7 @@ impl ToolExecutionError {
     /// retains its classification and presentation.
     pub fn from_error<E>(error: E) -> Self
     where
-        E: Error + WasmCompatSend + WasmCompatSync + 'static,
+        E: Error + MaybeSend + MaybeSync + 'static,
     {
         #[cfg(not(target_family = "wasm"))]
         {
@@ -303,7 +303,7 @@ impl ToolExecutionError {
     #[cfg_attr(target_family = "wasm", allow(unused_mut))]
     pub fn with_source<E>(mut self, source: E) -> Self
     where
-        E: Error + WasmCompatSend + WasmCompatSync + 'static,
+        E: Error + MaybeSend + MaybeSync + 'static,
     {
         #[cfg(not(target_family = "wasm"))]
         {
@@ -362,7 +362,7 @@ impl ToolExecutionError {
     /// Downcast the concrete source to `E`.
     pub fn downcast_ref<E>(&self) -> Option<&E>
     where
-        E: Error + WasmCompatSend + WasmCompatSync + 'static,
+        E: Error + MaybeSend + MaybeSync + 'static,
     {
         #[cfg(not(target_family = "wasm"))]
         {
@@ -377,7 +377,7 @@ impl ToolExecutionError {
     /// Whether the concrete source has type `E`.
     pub fn is<E>(&self) -> bool
     where
-        E: Error + WasmCompatSend + WasmCompatSync + 'static,
+        E: Error + MaybeSend + MaybeSync + 'static,
     {
         self.downcast_ref::<E>().is_some()
     }

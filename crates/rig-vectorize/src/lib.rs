@@ -6,12 +6,12 @@
 //! # Example
 //!
 //! ```no_run
-//! use rig_reqwest::prelude::*;
+//! use rig_core::driver::Bind;
 //! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
 //! # fn example() -> anyhow::Result<()> {
-//! let openai = openai::wire::OpenAI::from_env()?.bound()?;
+//! let openai = openai::wire::OpenAI::from_env()?.bind(rig_reqwest::client::shared());
 //! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //!
 //! let vector_store = VectorizeVectorStore::new(
@@ -37,7 +37,7 @@ use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
 use rig_core::embeddings::EmbeddingModel;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig_core::wasm_compat::WasmCompatSend;
+use rig_core::wasm_compat::MaybeSend;
 use rig_core::{Embed, embeddings::Embedding};
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
@@ -111,7 +111,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for VectorizeVectorStore<M> {
 
     /// Returns matches as `(score, vector id, metadata)`. A match without
     /// metadata deserializes from JSON null, which fails for most `T`.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -143,7 +143,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for VectorizeVectorStore<M> {
 impl<M: EmbeddingModel> InsertDocuments for VectorizeVectorStore<M> {
     /// Upserts one vector per embedding, storing the document as metadata under a
     /// fresh identifier, in batches of a thousand vectors.
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {

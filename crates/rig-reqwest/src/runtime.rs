@@ -5,8 +5,9 @@
 //! detached request or a forwarding task. Bodies capture the same context as
 //! the request, even if the host moves them to a different executor.
 
+use crate::RuntimePolicy;
 use futures::{Stream, stream};
-use rig_core::http_client::Error;
+use rig_http::http_client::Error;
 use std::{
     future::{Future, poll_fn},
     pin::pin,
@@ -30,18 +31,27 @@ struct RuntimeUnavailable(String);
 /// A supplied current runtime must have enabled I/O and timers and remain
 /// driven until its operations finish. A Handle does not keep a Runtime alive
 /// or prove its drivers were enabled; that remains the host's responsibility.
-fn context() -> Result<Handle, Error> {
-    match Handle::try_current() {
-        Ok(handle) => Ok(handle),
-        Err(_) => RUNTIME
-            .as_ref()
-            .map(|runtime| runtime.handle().clone())
-            .map_err(|error| Error::instance(error.clone())),
+fn context(policy: RuntimePolicy) -> Result<Handle, Error> {
+    if matches!(policy, RuntimePolicy::Caller)
+        && let Ok(handle) = Handle::try_current()
+    {
+        return Ok(handle);
     }
+    RUNTIME
+        .as_ref()
+        .map(|runtime| runtime.handle().clone())
+        .map_err(|error| Error::instance(error.clone()))
 }
 
 pub(crate) fn bind<F: Future>(future: F) -> Result<impl Future<Output = F::Output>, Error> {
-    let handle = context()?;
+    bind_on(future, RuntimePolicy::Caller)
+}
+
+pub(crate) fn bind_on<F: Future>(
+    future: F,
+    policy: RuntimePolicy,
+) -> Result<impl Future<Output = F::Output>, Error> {
+    let handle = context(policy)?;
     Ok(async move {
         let mut future = pin!(future);
         poll_fn(|cx| {
@@ -53,7 +63,7 @@ pub(crate) fn bind<F: Future>(future: F) -> Result<impl Future<Output = F::Outpu
 }
 
 pub(crate) fn bind_stream<S: Stream>(stream: S) -> Result<impl Stream<Item = S::Item>, Error> {
-    let handle = context()?;
+    let handle = context(RuntimePolicy::Caller)?;
     let mut stream = Box::pin(stream);
     Ok(stream::poll_fn(move |cx| {
         let _entered = handle.enter();

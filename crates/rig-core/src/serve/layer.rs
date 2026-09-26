@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome, family},
     error::{ErrorKind, ErrorReport},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 use super::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
@@ -62,16 +62,13 @@ pub enum Verdict {
 /// verdict keeps execution in flight; driver cancellation drops its future.
 /// Streamed verdict futures are polled on the stream consumer's thread.
 /// The layer name identifies policy when recording and validating replay.
-pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
+pub trait Intercept: MaybeSend + MaybeSync + 'static {
     /// The layer's name, as the log records it.
     fn name(&self) -> String;
 
     /// Before the handler: the dispatch as it will be served, or not.
-    fn before(
-        &self,
-        id: EffectId,
-        kind: &EffectKind,
-    ) -> impl Future<Output = Decision> + WasmCompatSend;
+    fn before(&self, id: EffectId, kind: &EffectKind)
+    -> impl Future<Output = Decision> + MaybeSend;
 
     /// After the handler: the answer as the consumer will receive it. For a
     /// streaming dispatch `outcome` is the fold of the events (the
@@ -81,7 +78,7 @@ pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
         id: EffectId,
         kind: &EffectKind,
         outcome: &Result<Outcome, ErrorReport>,
-    ) -> impl Future<Output = Verdict> + WasmCompatSend;
+    ) -> impl Future<Output = Verdict> + MaybeSend;
 }
 
 /// A handler wrapped in a policy: a [`Serve`] like any other, registered

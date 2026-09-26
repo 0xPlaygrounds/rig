@@ -455,7 +455,7 @@ async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming
     use crate::{
         serve::adapters::ToolFn,
         tool::{ToolContext, ToolOutput},
-        wasm_compat::WasmBoxedFuture,
+        wasm_compat::BoxFuture,
     };
     for streamed in [false, true] {
         let served = Arc::new(AtomicUsize::new(0));
@@ -466,8 +466,7 @@ async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming
             json!({"type":"object"}),
             move |_context: &mut ToolContext, _args: serde_json::Value| {
                 counter.fetch_add(1, Ordering::SeqCst);
-                Box::pin(async { Ok(ToolOutput::text("executed original")) })
-                    as WasmBoxedFuture<'_, _>
+                Box::pin(async { Ok(ToolOutput::text("executed original")) }) as BoxFuture<'_, _>
             },
         );
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -522,7 +521,7 @@ async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
     use crate::{
         serve::adapters::ToolFn,
         tool::{ToolContext, ToolOutput},
-        wasm_compat::WasmBoxedFuture,
+        wasm_compat::BoxFuture,
     };
     let tool = ToolFn::new(
         "original",
@@ -531,7 +530,7 @@ async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
         |_context: &mut ToolContext, args: serde_json::Value| {
             assert_eq!(args, json!({"patched":true}));
             Box::pin(async { Ok(ToolOutput::text("executed patched arguments")) })
-                as WasmBoxedFuture<'_, _>
+                as BoxFuture<'_, _>
         },
     );
     let seen = Arc::new(Mutex::new(Vec::new()));

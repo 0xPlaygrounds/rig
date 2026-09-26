@@ -8,7 +8,7 @@
 //! ```
 
 use crate::error::ProviderError;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -139,9 +139,9 @@ impl<'a> IntoIterator for &'a ModelList {
 
 /// Retrieves provider model metadata. Wire-backed implementations follow
 /// pagination within the driver's repeated-cursor and page-count limits.
-pub trait ModelLister: WasmCompatSend + WasmCompatSync {
+pub trait ModelLister: MaybeSend + MaybeSync {
     /// Every model the provider offers.
-    fn list_all(&self) -> impl Future<Output = Result<ModelList, ProviderError>> + WasmCompatSend;
+    fn list_all(&self) -> impl Future<Output = Result<ModelList, ProviderError>> + MaybeSend;
 }
 
 const RESPONSE_BODY_PREVIEW_LIMIT: usize = 2048;

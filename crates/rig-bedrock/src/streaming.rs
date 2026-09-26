@@ -18,7 +18,7 @@ use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
 use rig_core::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use rig_core::{
-    message::ReasoningContent, streaming::UnparseableToolInput, wasm_compat::WasmCompatSend,
+    message::ReasoningContent, streaming::UnparseableToolInput, wasm_compat::MaybeSend,
 };
 use serde::{Deserialize, Serialize};
 use tracing_futures::Instrument;
@@ -321,7 +321,7 @@ impl rig_core::wire::Decoder<Completion, aws_bedrock::ConverseStreamOutput> for 
 /// No AWS transport is required; input errors propagate through the stream.
 pub fn stream_from_events(
     events: impl futures::Stream<Item = Result<aws_bedrock::ConverseStreamOutput, ProviderError>>
-    + WasmCompatSend
+    + MaybeSend
     + 'static,
 ) -> StreamingCompletionResponse {
     StreamingCompletionResponse::stream(

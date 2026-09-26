@@ -30,7 +30,7 @@ use rig::driver::{Bind as _, Bound};
 use rig::http_client::BoxedHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
-use rig::rig_reqwest::client::bundled;
+use rig::rig_reqwest::client::shared;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -86,7 +86,7 @@ async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
 }
 
 pub(crate) async fn live_client() -> Bound<OpenAI> {
-    let http = bundled().expect("the bundled transport should build");
+    let http = shared();
     live_provider(&http).await.bind(http)
 }
 

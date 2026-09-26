@@ -20,12 +20,48 @@ type Graph = (&'static str, &'static str, &'static str, &'static str);
 const ECS_LEAF: &str = "rig-agent rig-cassette rig-effect-log rig-rmcp rmcp bevy tokio reqwest";
 
 const GRAPHS: &[Graph] = &[
-    ("rig-core", "", "tokio reqwest rig-cassette", ""),
+    (
+        "rig-core",
+        "",
+        "tokio reqwest tungstenite rig-reqwest rig-tungstenite rig-cassette",
+        "rig-http",
+    ),
+    (
+        "rig-core",
+        "--no-default-features",
+        "tokio reqwest tungstenite rig-reqwest rig-tungstenite rig-cassette",
+        "rig-http",
+    ),
+    (
+        "rig-core",
+        "--features reqwest",
+        "rig-tungstenite tungstenite",
+        "rig-http rig-reqwest reqwest rustls",
+    ),
+    // Bundled transports are explicit opt-ins, not part of the default graph.
     (
         "rig-core",
         "--all-features",
-        "tokio reqwest rig-agent rig-cassette rig-effect-log rig-ecs",
+        "rig-agent rig-cassette rig-effect-log rig-ecs",
+        "rig-http rig-reqwest rig-tungstenite",
+    ),
+    (
+        "rig-http",
+        "--all-features",
+        "rig-core rig-reqwest rig-tungstenite reqwest tokio tungstenite",
         "",
+    ),
+    (
+        "rig-reqwest",
+        "--all-features",
+        "rig-core rig-tungstenite tungstenite",
+        "rig-http reqwest",
+    ),
+    (
+        "rig-tungstenite",
+        "--all-features",
+        "rig-core rig-reqwest reqwest",
+        "rig-http tokio-tungstenite",
     ),
     (
         "rig-agent",
@@ -133,6 +169,31 @@ fn crate_boundaries_hold_in_the_resolved_dependency_graph() {
         "1",
     ]))
     .expect("metadata JSON");
+    // Even disabled optional back-edges would recreate the provider/transport
+    // ownership cycle. Check declarations as well as the resolved graph.
+    for transport in ["rig-http", "rig-reqwest", "rig-tungstenite"] {
+        let package = metadata["packages"]
+            .as_array()
+            .expect("packages")
+            .iter()
+            .find(|package| package["name"] == transport)
+            .expect("transport package");
+        for dependency in package["dependencies"].as_array().expect("dependencies") {
+            assert_ne!(
+                dependency["name"], "rig-core",
+                "{transport} must not declare a provider dependency, including for tests: {dependency}"
+            );
+            if transport == "rig-http" {
+                assert!(
+                    !matches!(
+                        dependency["name"].as_str(),
+                        Some("rig-reqwest" | "rig-tungstenite" | "reqwest" | "tungstenite")
+                    ),
+                    "transport contracts must not declare an implementation: {dependency}"
+                );
+            }
+        }
+    }
     for runtime in ["rig-agent", "rig-ecs"] {
         let package = metadata["packages"]
             .as_array()
@@ -285,6 +346,79 @@ fn cassette_features_are_isolated_for_downstream_consumers() {
                     "{features} must not enable serde_json/{feature}: {json}"
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn core_transport_tls_selectors_are_isolated_for_downstream_consumers() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let core = serde_json::to_string(&root.join("crates/rig-core")).expect("core path");
+    for (features, required, forbidden) in [
+        (
+            "reqwest,native-tls",
+            "rig-reqwest reqwest native-tls",
+            "rustls rig-tungstenite tungstenite",
+        ),
+        (
+            "tungstenite,native-tls",
+            "rig-tungstenite tungstenite native-tls",
+            "rig-reqwest reqwest rustls",
+        ),
+        (
+            "tungstenite,rustls",
+            "rig-tungstenite tungstenite rustls",
+            "rig-reqwest reqwest native-tls",
+        ),
+        (
+            "rustls",
+            "rig-http",
+            "rig-reqwest reqwest rig-tungstenite tungstenite tokio rustls",
+        ),
+    ] {
+        let scratch = assert_fs::TempDir::new().expect("isolated downstream");
+        std::fs::create_dir(scratch.path().join("src")).expect("source directory");
+        std::fs::write(
+            scratch.path().join("src/lib.rs"),
+            "pub use rig_core::providers;\n",
+        )
+        .expect("source");
+        let selected =
+            serde_json::to_string(&features.split(',').collect::<Vec<_>>()).expect("features");
+        std::fs::write(
+            scratch.path().join("Cargo.toml"),
+            format!("[package]\nname = \"core-transport-feature-probe\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nrig-core = {{ path = {core}, default-features = false, features = {selected} }}\n"),
+        ).expect("manifest");
+        std::fs::copy(root.join("Cargo.lock"), scratch.path().join("Cargo.lock"))
+            .expect("seed versions");
+        let output = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+            .current_dir(scratch.path())
+            .args([
+                "tree", "-e", "normal", "--target", "all", "--prefix", "none",
+            ])
+            .output()
+            .expect("isolated graph");
+        assert!(
+            output.status.success(),
+            "{features}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let graph = String::from_utf8(output.stdout).expect("UTF-8 graph");
+        let names: Vec<_> = graph
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .collect();
+        for name in required.split_whitespace() {
+            assert!(
+                names.contains(&name),
+                "{features} must include {name}:\n{graph}"
+            );
+        }
+        for name in forbidden.split_whitespace() {
+            assert!(
+                !names.contains(&name),
+                "{features} must exclude {name}:\n{graph}"
+            );
         }
     }
 }

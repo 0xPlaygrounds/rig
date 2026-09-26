@@ -13,7 +13,7 @@ Direct users import construction and prompting explicitly:
 ```rust,ignore
 use rig_agent::prelude::*;
 use rig_core::providers::openai::{self, OpenAI};
-use rig_reqwest::prelude::*;
+use rig_core::client::DefaultTransport;
 
 let agent = OpenAI::from_env()?
     .bound()?
@@ -245,16 +245,14 @@ than through an agent bus.
 | — | `wasm32-unknown-emscripten` | Not supported |
 
 **Building for `wasm32-unknown-unknown` is the entire opt-in** — there are no
-wasm feature flags anywhere in the workspace. `rig-core` relaxes its
-`WasmCompat*` bounds from the target alone.
+wasm feature flags anywhere in the workspace. `rig-http` relaxes its
+`MaybeSend` and `MaybeSync` bounds from the target alone.
 
-Wasm gates name a `target_os` (`all(target_arch = "wasm32", target_os =
-"unknown")`) rather than a bare `target_arch = "wasm32"`, because the latter
-also matches WASI, which has no JS host. WASI itself does not build: `rig-core`
-depends unconditionally on `reqwest`, which pulls `hyper`/`socket2` and a tokio
-feature set WASI rejects. Supporting it would mean making `reqwest` optional and
-adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
-`cfg` fix.
+Portable bounds select `all(target_arch = "wasm32", target_os = "unknown")`
+rather than a bare `target_arch = "wasm32"`, because the latter also matches
+WASI, which has no JS host. WASI is not a supported target. Core's bundled
+transports are optional; that alone does not provide a WASI HTTP client,
+executor, timers, or target verification.
 
 **MCP (`rig-rmcp`) is native-only.** rmcp's `ClientHandler` is declared
 `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes

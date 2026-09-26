@@ -9,9 +9,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use bytes::Bytes;
-use rig_core::{
+use rig_http::{
     http_client::{HttpClientExt, NoBody, Request},
-    wasm_compat::WasmBoxedFuture,
+    wasm_compat::BoxFuture,
 };
 use rig_reqwest::ReqwestMiddlewareClient;
 use std::{
@@ -26,7 +26,7 @@ fn stamp<'a>(
     mut request: reqwest::Request,
     extensions: &'a mut http::Extensions,
     next: reqwest_middleware::Next<'a>,
-) -> WasmBoxedFuture<'a, reqwest_middleware::Result<reqwest::Response>> {
+) -> BoxFuture<'a, reqwest_middleware::Result<reqwest::Response>> {
     Box::pin(async move {
         CALLS.fetch_add(1, Ordering::SeqCst);
         request
@@ -83,7 +83,7 @@ fn supplied_middleware_is_lazy_and_preserves_status_headers_and_body() {
     let client = ReqwestMiddlewareClient::new(client);
     let operation = client.send::<_, Bytes>(Request::builder().uri(uri).body(NoBody).unwrap());
     assert_eq!(CALLS.load(Ordering::SeqCst), 0);
-    let error = futures::executor::block_on(rig_core::wasm_compat::timeout(
+    let error = futures::executor::block_on(rig_http::wasm_compat::timeout(
         std::time::Duration::from_secs(10),
         operation,
     ))

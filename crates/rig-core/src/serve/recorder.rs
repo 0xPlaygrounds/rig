@@ -11,7 +11,7 @@ use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
     streaming::StreamEvent,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 /// Recorded parent dispatch and stable program scope identifier, without live
@@ -32,7 +32,7 @@ pub struct Origin {
 /// [`resolve`](Self::resolve) when the outcome is known. A recorder is
 /// shared between the driver and its owner, so every method takes `&self`;
 /// it rides in the dispatch observer and uses the platform compatibility bounds.
-pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
+pub trait Recorder: MaybeSend + MaybeSync + 'static {
     /// Optional provider-observation context for a dispatch after [`Self::begin`].
     /// Keep this runtime-only; observations do not belong in the effect log.
     /// Return the same logical context when asked again for the same dispatch.

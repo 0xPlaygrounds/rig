@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
 use rig_core::driver::CompletionProvider;
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{MaybeSend, MaybeSync};
 
 /// Construct classic agents and typed extractors from any completion provider.
 /// The provider must produce a model with a `'static` lifetime.
@@ -29,12 +29,7 @@ pub trait AgentProviderExt: CompletionProvider {
     /// Construct a classic typed extractor builder for `model`.
     fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<T>
     where
-        T: JsonSchema
-            + serde::de::DeserializeOwned
-            + Serialize
-            + WasmCompatSend
-            + WasmCompatSync
-            + 'static,
+        T: JsonSchema + serde::de::DeserializeOwned + Serialize + MaybeSend + MaybeSync + 'static,
         Self::Model: 'static,
     {
         ExtractorBuilder::new(self.completion(model))

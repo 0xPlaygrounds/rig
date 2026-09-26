@@ -33,20 +33,20 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 
 use super::{IntoToolOutput, ToolExecutionError};
 
 /// A context-free typed tool that can be executed by any Rig runtime.
-pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
+pub trait PortableTool: Sized + MaybeSend + MaybeSync {
     /// Unique registration and provider-facing name.
     const NAME: &'static str;
     /// Owned JSON arguments.
-    type Args: for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync;
+    type Args: for<'de> Deserialize<'de> + MaybeSend + MaybeSync;
     /// Canonical model-visible output.
-    type Output: IntoToolOutput + WasmCompatSend;
+    type Output: IntoToolOutput + MaybeSend;
     /// Concrete author-facing failure.
-    type Error: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
+    type Error: std::error::Error + MaybeSend + MaybeSync + 'static;
 
     /// Model-facing description.
     fn description(&self) -> String;
@@ -63,17 +63,17 @@ pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
     fn call(
         &self,
         arguments: Self::Args,
-    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + MaybeSend;
 }
 
 /// A portable tool that can be embedded and reconstructed for discovery.
 pub trait PortableToolEmbedding: PortableTool {
     /// Failure returned while reconstructing the typed implementation.
-    type InitError: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
+    type InitError: std::error::Error + MaybeSend + MaybeSync + 'static;
     /// Serializable reconstruction data.
     type Context: for<'de> Deserialize<'de> + Serialize;
     /// Runtime initialization state supplied by the authoring integration.
-    type State: WasmCompatSend;
+    type State: MaybeSend;
 
     /// Documents used by a discovery implementation.
     fn embedding_docs(&self) -> Vec<String>;

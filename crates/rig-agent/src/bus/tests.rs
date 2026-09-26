@@ -957,7 +957,7 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
                         Ok(ToolOutput::text(
                             args["text"].as_str().unwrap_or_default().to_uppercase(),
                         ))
-                    }) as rig_core::wasm_compat::WasmBoxedFuture<'_, _>
+                    }) as rig_core::wasm_compat::BoxFuture<'_, _>
                 },
             ),
         )

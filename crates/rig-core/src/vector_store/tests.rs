@@ -51,7 +51,7 @@ struct NativeIndex;
 impl VectorStoreIndex for NativeIndex {
     type Filter = NativeFilter;
 
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         _req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -70,7 +70,7 @@ impl VectorStoreIndex for NativeIndex {
 impl VectorStoreIndex for TestIndex {
     type Filter = Filter<serde_json::Value>;
 
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

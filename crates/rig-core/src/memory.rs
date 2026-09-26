@@ -34,7 +34,7 @@ use std::{
 use crate::id::ConversationId;
 use crate::{
     completion::Message,
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::{BoxFuture, MaybeSend, MaybeSync},
 };
 
 /// Boxed error source for memory backend failures.
@@ -83,14 +83,14 @@ impl MemoryError {
 /// prevent model calls; append failures are reported alongside the successful
 /// answer without retry. Writes are not transactional or exactly-once: an
 /// error may occur after the backend has persisted messages.
-pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
+pub trait ConversationMemory: MaybeSend + MaybeSync {
     /// Load the full conversation history for `conversation_id`.
     ///
     /// Returns an empty `Vec` if the conversation has no stored messages.
     fn load<'a>(
         &'a self,
         conversation_id: &'a ConversationId,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>>;
+    ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>>;
 
     /// Append `messages` to the conversation identified by `conversation_id`.
     ///
@@ -100,13 +100,13 @@ pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
         &'a self,
         conversation_id: &'a ConversationId,
         messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
+    ) -> BoxFuture<'a, Result<(), MemoryError>>;
 
     /// Remove all stored messages for `conversation_id`.
     fn clear<'a>(
         &'a self,
         conversation_id: &'a ConversationId,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
+    ) -> BoxFuture<'a, Result<(), MemoryError>>;
 }
 
 macro_rules! forward_memory_trait {
@@ -118,7 +118,7 @@ macro_rules! forward_memory_trait {
             fn load<'a>(
                 &'a self,
                 conversation_id: &'a ConversationId,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+            ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>> {
                 (**self).load(conversation_id)
             }
 
@@ -126,14 +126,14 @@ macro_rules! forward_memory_trait {
                 &'a self,
                 conversation_id: &'a ConversationId,
                 messages: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            ) -> BoxFuture<'a, Result<(), MemoryError>> {
                 (**self).append(conversation_id, messages)
             }
 
             fn clear<'a>(
                 &'a self,
                 conversation_id: &'a ConversationId,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            ) -> BoxFuture<'a, Result<(), MemoryError>> {
                 (**self).clear(conversation_id)
             }
         }
@@ -147,7 +147,7 @@ macro_rules! forward_memory_trait {
                 &'a self,
                 conversation_id: &'a ConversationId,
                 messages: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            ) -> BoxFuture<'a, Result<(), MemoryError>> {
                 (**self).on_demote(conversation_id, messages)
             }
         }
@@ -164,7 +164,7 @@ macro_rules! forward_memory_trait {
                 conversation_id: &'a ConversationId,
                 evicted: &'a [Message],
                 carry_over: Option<&'a Self::Artifact>,
-            ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+            ) -> BoxFuture<'a, Result<Self::Artifact, MemoryError>> {
                 (**self).compact(conversation_id, evicted, carry_over)
             }
         }
@@ -178,15 +178,9 @@ forward_memory_trait!(ConversationMemory: Arc Box);
 /// Implemented automatically for any closure with the right signature; the
 /// trait exists to combine `Fn` with the WASM-compatible `Send`/`Sync` markers
 /// in a single trait object.
-pub trait MessageFilter:
-    Fn(Vec<Message>) -> Vec<Message> + WasmCompatSend + WasmCompatSync
-{
-}
+pub trait MessageFilter: Fn(Vec<Message>) -> Vec<Message> + MaybeSend + MaybeSync {}
 
-impl<F> MessageFilter for F where
-    F: Fn(Vec<Message>) -> Vec<Message> + WasmCompatSend + WasmCompatSync
-{
-}
+impl<F> MessageFilter for F where F: Fn(Vec<Message>) -> Vec<Message> + MaybeSend + MaybeSync {}
 
 /// Receives messages removed from active history during [`ConversationMemory::load`].
 /// Hooks are awaited inline, so their latency delays the next turn.
@@ -195,7 +189,7 @@ impl<F> MessageFilter for F where
 /// Adapter delivery watermarks are not persisted; restarts or newly constructed
 /// adapters may redeliver messages. Durable hooks should deduplicate with a
 /// stable key such as a conversation ID and content hash.
-pub trait DemotionHook: WasmCompatSend + WasmCompatSync {
+pub trait DemotionHook: MaybeSend + MaybeSync {
     /// Receive `messages` that were demoted out of the active window for
     /// `conversation_id`.
     ///
@@ -205,7 +199,7 @@ pub trait DemotionHook: WasmCompatSend + WasmCompatSync {
         &'a self,
         conversation_id: &'a ConversationId,
         messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
+    ) -> BoxFuture<'a, Result<(), MemoryError>>;
 }
 
 /// A [`DemotionHook`] that does nothing. Useful as a default when an adapter
@@ -218,7 +212,7 @@ impl DemotionHook for NoopDemotionHook {
         &'a self,
         _conversation_id: &'a ConversationId,
         _messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         Box::pin(async move { Ok(()) })
     }
 }
@@ -234,10 +228,10 @@ forward_memory_trait!(DemotionHook: Arc);
 ///
 /// Delivery watermarks are not persisted across restarts. Implementations with
 /// side effects should deduplicate by conversation ID and content hash.
-pub trait Compactor: WasmCompatSend + WasmCompatSync {
+pub trait Compactor: MaybeSend + MaybeSync {
     /// Summary convertible to a history message and clonable for the next
     /// compaction's `carry_over`.
-    type Artifact: Into<Message> + Clone + WasmCompatSend + WasmCompatSync + 'static;
+    type Artifact: Into<Message> + Clone + MaybeSend + MaybeSync + 'static;
 
     /// Produce a summary artifact for `evicted`, optionally combining it
     /// with the previous summary in `carry_over`.
@@ -253,7 +247,7 @@ pub trait Compactor: WasmCompatSend + WasmCompatSync {
         conversation_id: &'a ConversationId,
         evicted: &'a [Message],
         carry_over: Option<&'a Self::Artifact>,
-    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>>;
+    ) -> BoxFuture<'a, Result<Self::Artifact, MemoryError>>;
 }
 
 forward_memory_trait!(Compactor: Arc);
@@ -308,7 +302,7 @@ impl ConversationMemory for InMemoryConversationMemory {
     fn load<'a>(
         &'a self,
         conversation_id: &'a ConversationId,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async move {
             let messages = {
                 let guard = self.lock()?;
@@ -325,7 +319,7 @@ impl ConversationMemory for InMemoryConversationMemory {
         &'a self,
         conversation_id: &'a ConversationId,
         messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         Box::pin(async move {
             let mut guard = self.lock()?;
             guard
@@ -339,7 +333,7 @@ impl ConversationMemory for InMemoryConversationMemory {
     fn clear<'a>(
         &'a self,
         conversation_id: &'a ConversationId,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         Box::pin(async move {
             let mut guard = self.lock()?;
             guard.remove(conversation_id);

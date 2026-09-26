@@ -8,7 +8,7 @@
 
 use rig_core::error::ProviderError;
 use rig_core::streaming::BlockId;
-use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
+use rig_core::{message::AssistantContent, wasm_compat::MaybeSend};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
@@ -466,7 +466,7 @@ impl AgentRunner {
     pub fn run_channel(
         self,
     ) -> (
-        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend,
+        impl Future<Output = Result<PromptResponse, PromptError>> + MaybeSend,
         RunEvents,
     ) {
         let (mut sender, receiver) = mpsc::channel(RUN_EVENTS_CAPACITY);

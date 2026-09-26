@@ -18,7 +18,7 @@ use crate::{
     completion::{PromptError, Usage},
     streaming::{Delta, StreamEvent},
 };
-use rig_core::wasm_compat::WasmCompatSend;
+use rig_core::wasm_compat::MaybeSend;
 
 /// One chat turn against caller-owned history, as the CLI chatbot drives it.
 ///
@@ -29,15 +29,15 @@ pub trait Chat {
     /// Execute one turn and append only committed messages to `history`.
     fn chat(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
         history: &mut Vec<Message>,
-    ) -> impl Future<Output = Result<String, PromptError>> + WasmCompatSend;
+    ) -> impl Future<Output = Result<String, PromptError>> + MaybeSend;
 }
 
 impl Chat for Agent {
     async fn chat(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
         history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
         Agent::chat(self, prompt, history)

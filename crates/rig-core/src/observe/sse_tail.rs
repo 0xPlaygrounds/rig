@@ -2,7 +2,7 @@
 
 /// Counts bytes after the most recent SSE event delimiter, across body chunks.
 #[derive(Default)]
-pub(crate) struct SseTail {
+pub(super) struct SseTail {
     pending: usize,
     line_has_bytes: bool,
     after_cr: bool,
@@ -12,7 +12,8 @@ pub(crate) struct SseTail {
 }
 
 impl SseTail {
-    pub(crate) fn feed(&mut self, bytes: &[u8]) {
+    /// Count one transport chunk without retaining its content.
+    pub(super) fn feed(&mut self, bytes: &[u8]) {
         const BOM: [u8; 3] = [0xef, 0xbb, 0xbf];
         for &byte in bytes {
             if !self.prefix_done {
@@ -58,7 +59,7 @@ impl SseTail {
     }
 
     /// Raw byte count since the last blank line (saturated at usize::MAX).
-    pub(crate) fn pending(&self) -> usize {
+    pub(super) fn pending(&self) -> usize {
         self.pending.saturating_add(self.bom_prefix)
     }
 }

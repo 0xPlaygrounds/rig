@@ -27,7 +27,7 @@ use rig_core::{
         VectorStoreError, VectorStoreIndex,
         request::{FilterError, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -364,10 +364,10 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
     /// use rig_core::vector_store::VectorStoreIndex;
     /// use rig_core::vector_store::request::VectorSearchRequest;
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig_reqwest::prelude::*;
+    /// use rig_core::driver::Bind;
     ///
     /// # async fn example(table: lancedb::Table) -> Result<(), anyhow::Error> {
-    /// let openai_client = OpenAI::from_env()?.bound()?;
+    /// let openai_client = OpenAI::from_env()?.bind(rig_reqwest::client::shared());
     /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
     /// let vector_store_index =
     ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
@@ -381,7 +381,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
     /// # Ok(())
     /// # }
     /// ```
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

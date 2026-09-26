@@ -20,7 +20,7 @@ pub use questions::{
     Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
 use rig_core::error::ProviderError;
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{MaybeSend, MaybeSync};
 use rig_core::{
     driver::{Bound, call},
     http_client::HttpClientExt,
@@ -58,10 +58,9 @@ pub trait Evaluate {
         &self,
         state: &S,
         questions: Q,
-    ) -> impl std::future::Future<Output = Result<EvaluationResult<Q::Output>, ProviderError>>
-    + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<EvaluationResult<Q::Output>, ProviderError>> + MaybeSend
     where
-        S: Serialize + WasmCompatSync,
+        S: Serialize + MaybeSync,
         Q: Query;
 }
 impl<H: HttpClientExt> Evaluate for Bound<Jev, H> {
@@ -71,7 +70,7 @@ impl<H: HttpClientExt> Evaluate for Bound<Jev, H> {
         questions: Q,
     ) -> Result<EvaluationResult<Q::Output>, ProviderError>
     where
-        S: Serialize + WasmCompatSync,
+        S: Serialize + MaybeSync,
         Q: Query,
     {
         let encoded = serde_json::value::to_raw_value(&questions)?;

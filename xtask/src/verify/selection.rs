@@ -439,6 +439,39 @@ pub(super) fn plan(
     if paths.iter().any(|p| p != "DEVELOPING.md") {
         add(&mut out, all, "fmt", "changed files must remain formatted")?;
     }
+    // Provider-level transport regressions live in core, not in backend crates.
+    // Reverse dependency compilation alone cannot execute those moved tests.
+    if affected.iter().any(|name| {
+        matches!(
+            name.as_str(),
+            "rig-http" | "rig-reqwest" | "rig-tungstenite"
+        )
+    }) {
+        for id in ["core-all", "conformance", "wasm-rig-http", "wasm-rig-core"] {
+            add(
+                &mut out,
+                all,
+                id,
+                "transport edit: execute provider integrations and portable contracts",
+            )?;
+        }
+        if affected.contains("rig-http") || affected.contains("rig-reqwest") {
+            add(
+                &mut out,
+                all,
+                "wasm-rig-reqwest",
+                "HTTP contract or backend changed",
+            )?;
+        }
+        if affected.contains("rig-tungstenite") {
+            add(
+                &mut out,
+                all,
+                "native-only-rig-tungstenite",
+                "websocket backend changed",
+            )?;
+        }
+    }
     // The runtimes and the effective-policy hash: an edit to rig-ecs (the
     // hash, `Materialise`), rig-agent (the runner) or rig-core (the message
     // and error rules) can stale or diverge the parity goldens, which the

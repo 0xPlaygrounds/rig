@@ -5,9 +5,9 @@
 //! cancelled receives.
 
 use futures::{SinkExt, StreamExt};
-use rig_core::http_client::{Error, Result};
-use rig_core::wasm_compat::WasmBoxedFuture;
-use rig_core::ws_client::{CloseFrame, Frame, WebSocketConnection};
+use rig_http::http_client::{Error, Result};
+use rig_http::wasm_compat::BoxFuture;
+use rig_http::ws_client::{CloseFrame, Frame, WebSocketConnection};
 use std::collections::VecDeque;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame as TungsteniteCloseFrame;
@@ -28,7 +28,7 @@ impl DirectConnection {
 }
 
 impl WebSocketConnection for DirectConnection {
-    fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, Result<()>> {
+    fn send(&mut self, frame: Frame) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             self.0
                 .send(into_message(frame))
@@ -37,7 +37,7 @@ impl WebSocketConnection for DirectConnection {
         })
     }
 
-    fn recv(&mut self) -> WasmBoxedFuture<'_, Result<Option<Frame>>> {
+    fn recv(&mut self) -> BoxFuture<'_, Result<Option<Frame>>> {
         Box::pin(async move {
             loop {
                 match self.0.next().await {
@@ -54,7 +54,7 @@ impl WebSocketConnection for DirectConnection {
         })
     }
 
-    fn close(&mut self, frame: Option<CloseFrame>) -> WasmBoxedFuture<'_, Result<()>> {
+    fn close(&mut self, frame: Option<CloseFrame>) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             self.0
                 .close(frame.map(into_close_frame))
@@ -180,7 +180,7 @@ impl ForwardedConnection {
     /// Move `socket` onto the fallback runtime and return the channel-backed
     /// connection, or an error if the runtime cannot start.
     #[cfg(not(target_family = "wasm"))]
-    pub(crate) fn spawn(socket: Socket) -> Result<rig_core::ws_client::BoxedWebSocketConnection> {
+    pub(crate) fn spawn(socket: Socket) -> Result<rig_http::ws_client::BoxedWebSocketConnection> {
         // The sequential contract needs one pending command; bounding the queue
         // prevents callers from buffering unaccepted frames.
         let (commands, requests) = futures::channel::mpsc::channel::<Command>(1);
@@ -208,15 +208,15 @@ impl ForwardedConnection {
 }
 
 impl WebSocketConnection for ForwardedConnection {
-    fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, Result<()>> {
+    fn send(&mut self, frame: Frame) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move { self.request(|reply| Command::Send(frame, reply)).await })
     }
 
-    fn recv(&mut self) -> WasmBoxedFuture<'_, Result<Option<Frame>>> {
+    fn recv(&mut self) -> BoxFuture<'_, Result<Option<Frame>>> {
         Box::pin(async move { self.request(Command::Recv).await })
     }
 
-    fn close(&mut self, frame: Option<CloseFrame>) -> WasmBoxedFuture<'_, Result<()>> {
+    fn close(&mut self, frame: Option<CloseFrame>) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move { self.request(|reply| Command::Close(frame, reply)).await })
     }
 }

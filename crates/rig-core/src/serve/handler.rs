@@ -19,14 +19,14 @@ use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
     streaming::{BlockAccumulator, StreamEvent, StreamEvents, StreamFinal},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::{BoxFuture, MaybeSend, MaybeSync},
 };
 
 #[cfg(test)]
 mod tests;
 
 /// Boxed handler reply future, `Send` on native targets and locally polled on WASM.
-pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
+pub type HandlerFuture<'a> = BoxFuture<'a, Reply>;
 
 /// A registered effect handler returning an outcome or an owned stream.
 ///
@@ -41,11 +41,11 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 /// this method returns; dropping the reply cancels that work.
 ///
 /// The returned future must be `Send` natively (it runs inside the driver's
-/// task; the bound is the crate's `WasmCompatSend` marker, a no-op on
+/// task; the bound is the crate's `MaybeSend` marker, a no-op on
 /// browser wasm). `Self::Family` is what a typed key can be proven against
 /// (a typed registration on the bus); a handler with no one
 /// family names [`crate::effect::family::Dynamic`].
-pub trait Serve: WasmCompatSend + WasmCompatSync {
+pub trait Serve: MaybeSend + MaybeSync {
     /// The family this handler serves, or `Dynamic`.
     type Family: crate::effect::Served;
 
@@ -58,11 +58,11 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
         &self,
         kind: EffectKind,
         dispatch: Dispatch,
-    ) -> impl Future<Output = Reply> + WasmCompatSend + use<'_, Self>;
+    ) -> impl Future<Output = Reply> + MaybeSend + use<'_, Self>;
 }
 
 /// Object-safe handler interface implemented for every [`Serve`].
-pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
+pub(crate) trait Handler: MaybeSend + MaybeSync {
     fn descriptor(&self) -> HandlerDescriptor;
     fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_>;
 }

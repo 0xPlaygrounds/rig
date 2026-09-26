@@ -23,7 +23,7 @@ use crate::{
     streaming::StreamEvent,
     tool::ToolResult,
     vector_store::request::{Filter, VectorSearchRequest},
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 
 /// The identity of one dispatch, minted by the dispatcher.
@@ -299,9 +299,9 @@ pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     /// The family this marker names.
     const FAMILY: EffectFamily;
     /// What a typed dispatch of this family takes.
-    type Request: WasmCompatSend + 'static;
+    type Request: MaybeSend + 'static;
     /// What it resolves to.
-    type Answer: WasmCompatSend + 'static;
+    type Answer: MaybeSend + 'static;
     /// The wire form of a request, or the report for a request that has
     /// none (a [`CustomEffect`] whose `Serialize` fails). The in-tree
     /// families always have one; a typed dispatch of a request without one
@@ -357,12 +357,12 @@ pub struct ToolCallRequest {
 /// declared kind label and a declared answer type, both serde. The wire
 /// form is [`EffectKind::Custom`] / [`Outcome::Custom`]; the type never
 /// crosses it.
-pub trait CustomEffect: Serialize + serde::de::DeserializeOwned + WasmCompatSend + 'static {
+pub trait CustomEffect: Serialize + serde::de::DeserializeOwned + MaybeSend + 'static {
     /// The kind label this effect dispatches under; a handler's
     /// [`FamilyDescriptor::Custom`] must name the same label.
     const KIND: &'static str;
     /// What the handler answers.
-    type Answer: Serialize + serde::de::DeserializeOwned + WasmCompatSend + 'static;
+    type Answer: Serialize + serde::de::DeserializeOwned + MaybeSend + 'static;
 }
 
 mod key;

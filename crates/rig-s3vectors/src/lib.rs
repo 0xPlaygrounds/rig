@@ -18,7 +18,7 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -229,7 +229,7 @@ impl<M: EmbeddingModel> S3VectorsVectorStore<M> {
 }
 
 impl<M: EmbeddingModel> InsertDocuments for S3VectorsVectorStore<M> {
-    async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), rig_core::vector_store::VectorStoreError> {
@@ -325,7 +325,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for S3VectorsVectorStore<M> {
     /// Returns matches as `(distance, vector key, metadata)`, where the metadata
     /// is the stored [`CreateRecord`] wrapper. Errors when a hit carries no
     /// metadata or it does not deserialize into `T`.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<S3SearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

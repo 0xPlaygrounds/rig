@@ -69,7 +69,7 @@ where
 impl<M, T> EmbeddingsBuilder<M, T>
 where
     M: EmbeddingModel,
-    T: Embed + crate::wasm_compat::WasmCompatSend,
+    T: Embed + crate::wasm_compat::MaybeSend,
 {
     /// Generate embeddings for all documents in the builder.
     ///

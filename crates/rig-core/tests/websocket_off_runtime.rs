@@ -15,8 +15,10 @@ use rig_core::completion::CompletionModel as _;
 use rig_core::driver::Bound;
 use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketExt as _;
+use rig_core::providers::openai::responses_api::websocket::{
+    DefaultWebSocketBuilder as _, DefaultWebSocketClient as _,
+};
 use rig_core::test_utils::RecordingHttpClient;
-use rig_tungstenite::{DefaultWebSocketBuilder as _, DefaultWebSocketClient as _};
 use std::sync::mpsc;
 use std::time::Duration;
 

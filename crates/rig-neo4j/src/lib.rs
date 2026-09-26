@@ -13,7 +13,7 @@
 //! use rig_core::vector_store::VectorStoreIndex;
 //! use rig_core::vector_store::request::VectorSearchRequest;
 //! use rig_neo4j::Neo4jClient;
-//! use rig_reqwest::prelude::*;
+//! use rig_core::driver::Bind;
 //! use serde::Deserialize;
 //!
 //! #[derive(Debug, Deserialize)]
@@ -24,7 +24,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), anyhow::Error> {
-//!     let openai = OpenAI::from_env()?.bound()?;
+//!     let openai = OpenAI::from_env()?.bind(rig_reqwest::client::shared());
 //!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 //!
 //!     let client = Neo4jClient::from_config(

@@ -18,7 +18,7 @@ use crate::{
     completion::ToolDefinition,
     effect::{EffectKind, Outcome},
     serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::{BoxFuture, MaybeSend, MaybeSync},
 };
 
 use super::{
@@ -31,11 +31,11 @@ use super::{
 /// context and host-only result metadata share the [`ToolContext`] path. Rig's
 /// object-safe dispatch boundary is private; use [`DynamicTool`] when the tool
 /// name or callback is only known at runtime.
-pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
+pub trait Tool: Sized + MaybeSend + MaybeSync {
     /// Unique registration and provider-facing name.
     const NAME: &'static str;
     /// Typed JSON arguments.
-    type Args: for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync;
+    type Args: for<'de> Deserialize<'de> + MaybeSend + MaybeSync;
     /// Output convertible into Rig's canonical model presentation.
     ///
     /// Every owned serializable value implements [`IntoToolOutput`]
@@ -50,7 +50,7 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// dispatch boundary. This keeps ordinary `?` propagation and typed unit
     /// tests available to tool authors without creating a second runtime error
     /// representation.
-    type Error: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
+    type Error: std::error::Error + MaybeSend + MaybeSync + 'static;
 
     /// Model-facing description.
     fn description(&self) -> String;
@@ -72,7 +72,7 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         &self,
         context: &mut ToolContext,
         args: Self::Args,
-    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + MaybeSend;
 }
 
 impl<T> Tool for T
@@ -108,11 +108,11 @@ where
 /// A tool that can be stored in a vector store and reconstructed for RAG.
 pub trait ToolEmbedding: Tool {
     /// Error returned while reconstructing the tool.
-    type InitError: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
+    type InitError: std::error::Error + MaybeSend + MaybeSync + 'static;
     /// Serializable static context.
     type Context: for<'de> Deserialize<'de> + Serialize;
     /// Runtime initialization state.
-    type State: WasmCompatSend;
+    type State: MaybeSend;
 
     /// Documents used to retrieve the tool.
     fn embedding_docs(&self) -> Vec<String>;
@@ -171,7 +171,7 @@ where
     F: for<'a> Fn(
         &'a mut ToolContext,
         serde_json::Value,
-    ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>,
+    ) -> BoxFuture<'a, Result<ToolOutput, ToolExecutionError>>,
 {
     let args = match parse_tool_args::<serde_json::Value>(&args) {
         Ok(args) => args,
@@ -193,7 +193,7 @@ where
 /// The object-safe form of [`Tool`]: raw JSON arguments in, a
 /// [`ToolResult`] out. This is the impl-side contract the bus's
 /// `ToolAdapter` calls; nothing stores it behind a vtable.
-pub trait ErasedTool: WasmCompatSend + WasmCompatSync {
+pub trait ErasedTool: MaybeSend + MaybeSync {
     /// The tool's name.
     fn name(&self) -> String;
     /// The tool's description.
@@ -205,7 +205,7 @@ pub trait ErasedTool: WasmCompatSend + WasmCompatSync {
         &'a self,
         args: String,
         context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult>;
+    ) -> BoxFuture<'a, ToolResult>;
 }
 
 impl<T> ErasedTool for T
@@ -228,7 +228,7 @@ where
         &'a self,
         args: String,
         context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult> {
+    ) -> BoxFuture<'a, ToolResult> {
         Box::pin(async move {
             let args = match parse_tool_args::<T::Args>(&args) {
                 Ok(args) => args,
@@ -273,11 +273,9 @@ impl DynamicTool {
         callback: F,
     ) -> Self
     where
-        F: Fn(
-                serde_json::Value,
-            ) -> WasmBoxedFuture<'static, Result<ToolOutput, ToolExecutionError>>
-            + WasmCompatSend
-            + WasmCompatSync
+        F: Fn(serde_json::Value) -> BoxFuture<'static, Result<ToolOutput, ToolExecutionError>>
+            + MaybeSend
+            + MaybeSync
             + 'static,
     {
         Self::new_with_context(
@@ -320,7 +318,7 @@ impl DynamicTool {
     /// Attach a liveness probe.
     pub fn with_liveness<F>(mut self, is_live: F) -> Self
     where
-        F: Fn() -> bool + WasmCompatSend + WasmCompatSync + 'static,
+        F: Fn() -> bool + MaybeSend + MaybeSync + 'static,
     {
         self.liveness = Some(Arc::new(is_live));
         self

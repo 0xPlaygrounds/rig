@@ -382,11 +382,11 @@ impl crate::http_client::HttpClientExt for PendingHttp {
         _request: http::Request<T>,
     ) -> impl Future<
         Output = crate::http_client::Result<http::Response<crate::http_client::LazyBody<U>>>,
-    > + crate::wasm_compat::WasmCompatSend
+    > + crate::wasm_compat::MaybeSend
     + 'static
     where
-        T: Into<bytes::Bytes> + crate::wasm_compat::WasmCompatSend,
-        U: From<bytes::Bytes> + crate::wasm_compat::WasmCompatSend + 'static,
+        T: Into<bytes::Bytes> + crate::wasm_compat::MaybeSend,
+        U: From<bytes::Bytes> + crate::wasm_compat::MaybeSend + 'static,
     {
         let body_pending = self.body_pending;
         async move {
@@ -403,10 +403,10 @@ impl crate::http_client::HttpClientExt for PendingHttp {
         _request: http::Request<crate::http_client::MultipartForm>,
     ) -> impl Future<
         Output = crate::http_client::Result<http::Response<crate::http_client::LazyBody<U>>>,
-    > + crate::wasm_compat::WasmCompatSend
+    > + crate::wasm_compat::MaybeSend
     + 'static
     where
-        U: From<bytes::Bytes> + crate::wasm_compat::WasmCompatSend + 'static,
+        U: From<bytes::Bytes> + crate::wasm_compat::MaybeSend + 'static,
     {
         std::future::pending()
     }
@@ -415,9 +415,9 @@ impl crate::http_client::HttpClientExt for PendingHttp {
         &self,
         _request: http::Request<T>,
     ) -> impl Future<Output = crate::http_client::Result<crate::http_client::StreamingResponse>>
-    + crate::wasm_compat::WasmCompatSend
+    + crate::wasm_compat::MaybeSend
     where
-        T: Into<bytes::Bytes> + crate::wasm_compat::WasmCompatSend,
+        T: Into<bytes::Bytes> + crate::wasm_compat::MaybeSend,
     {
         let body_pending = self.body_pending;
         async move {

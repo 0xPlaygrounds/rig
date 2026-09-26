@@ -17,7 +17,7 @@ use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming;
-use rig_core::wasm_compat::WasmCompatSend;
+use rig_core::wasm_compat::MaybeSend;
 
 use super::Client;
 use super::completion::{encode_optional_base64 as encode_signature, prost_struct_to_json};
@@ -218,7 +218,7 @@ fn terminal_record(
 /// No gRPC transport is required; input errors propagate through the stream.
 pub fn stream_from_events(
     events: impl futures::Stream<Item = Result<proto::GenerateContentResponse, ProviderError>>
-    + WasmCompatSend
+    + MaybeSend
     + 'static,
 ) -> streaming::StreamingCompletionResponse {
     streaming::StreamingCompletionResponse::stream(

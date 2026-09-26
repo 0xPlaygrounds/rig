@@ -20,7 +20,7 @@ use rig_core::{
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
@@ -105,7 +105,7 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
 }
 
 impl<M: EmbeddingModel> InsertDocuments for QdrantVectorStore<M> {
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -161,7 +161,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
 
     /// Returns the nearest points as `(score, id, payload)`. Errors when a point
     /// lacks an id or its payload does not deserialize into `T`.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

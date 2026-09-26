@@ -11,7 +11,7 @@ use reqwest::{Client, StatusCode};
 use rig_core::{
     embeddings::EmbeddingModel,
     vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -72,9 +72,9 @@ pub trait HelixDBClient {
         &self,
         endpoint: &str,
         data: &T,
-    ) -> impl Future<Output = Result<R, Self::Err>> + WasmCompatSend
+    ) -> impl Future<Output = Result<R, Self::Err>> + MaybeSend
     where
-        T: Serialize + WasmCompatSync,
+        T: Serialize + MaybeSync,
         R: for<'de> Deserialize<'de>;
 }
 
@@ -83,7 +83,7 @@ impl HelixDBClient for HelixDB {
 
     async fn query<T, R>(&self, endpoint: &str, data: &T) -> Result<R, HelixError>
     where
-        T: Serialize + WasmCompatSync,
+        T: Serialize + MaybeSync,
         R: for<'de> Deserialize<'de>,
     {
         let port = self.port.map(|port| format!(":{port}")).unwrap_or_default();
@@ -119,12 +119,12 @@ impl HelixDBClient for HelixDB {
 ///
 /// ```no_run
 /// use rig_core::providers::openai::wire::OpenAI;
-/// use rig_reqwest::prelude::*;
+/// use rig_core::driver::Bind;
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
 /// # fn example() -> anyhow::Result<()> {
 /// let openai_model = OpenAI::from_env()?
-///     .bound()?
+///     .bind(rig_reqwest::client::shared())
 ///     .embedding("text-embedding-ada-002", None);
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
@@ -187,8 +187,8 @@ impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M> {
 
 impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M>
 where
-    C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: WasmCompatSend + WasmCompatSync + 'static,
+    C: HelixDBClient + MaybeSend + MaybeSync,
+    C::Err: MaybeSend + MaybeSync + 'static,
 {
     /// Embeds the query and runs `VectorSearch`. An absent request threshold is
     /// sent as zero.
@@ -213,10 +213,10 @@ where
 
 impl<C, M: EmbeddingModel> InsertDocuments for HelixDBVectorStore<C, M>
 where
-    C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: WasmCompatSend + WasmCompatSync + 'static,
+    C: HelixDBClient + MaybeSend + MaybeSync,
+    C::Err: MaybeSend + MaybeSync + 'static,
 {
-    async fn insert_documents<Doc: Serialize + rig_core::Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + rig_core::Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -253,8 +253,8 @@ where
 
 impl<C, M: EmbeddingModel> VectorStoreIndex for HelixDBVectorStore<C, M>
 where
-    C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: WasmCompatSend + WasmCompatSync + 'static,
+    C: HelixDBClient + MaybeSend + MaybeSync,
+    C::Err: MaybeSend + MaybeSync + 'static,
 {
     type Filter = HelixDBFilter;
 
@@ -263,7 +263,7 @@ where
     /// Returns matches as `(cosine similarity, id, document)`, discarding hits
     /// below the threshold or rejected by the request filter, which is evaluated
     /// client-side against each stored JSON payload.
-    async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
+    async fn top_n<T: for<'a> serde::Deserialize<'a> + MaybeSend>(
         &self,
         req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
     ) -> Result<Vec<(f64, String, T)>, rig_core::vector_store::VectorStoreError> {

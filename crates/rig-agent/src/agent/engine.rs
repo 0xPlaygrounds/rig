@@ -20,7 +20,7 @@ use rig_core::{
     message::{AssistantContent, Message, ToolCall, UserContent},
     streaming::BlockId,
     telemetry::SpanCombinator,
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 
 use super::{
@@ -80,7 +80,7 @@ pub(crate) enum DriveItem {
 /// Medium-specific turn execution, telemetry, and final-item construction.
 /// Implementations resolve invalid calls during model ingestion and feed accepted
 /// turns or tool results back into the run.
-pub(crate) trait TurnSource: WasmCompatSend {
+pub(crate) trait TurnSource: MaybeSend {
     /// Build this medium's per-turn `chat` span (name + parenting + any
     /// `follows_from` chaining differ between blocking and streaming).
     fn open_chat_span(
@@ -519,7 +519,7 @@ pub(crate) fn drive_tool_calls<'a, F>(
     forward_items: bool,
 ) -> DriveStream<'a>
 where
-    F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
+    F: Fn(tracing::Span) -> tracing::Span + MaybeSend + 'a,
 {
     // Per-call working state: a stable block_id and the execute span,
     // paired with the model's tool call. `span` is `Span::none()` for a

@@ -25,7 +25,7 @@ use rig_core::{
     effect::Key,
     effect::{HandlerKey, family},
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 use crate::{
@@ -317,7 +317,7 @@ impl ToolServer {
     pub fn retrieved_tools<I, F>(mut self, sample: usize, index: I, toolset: ToolSet) -> Self
     where
         I: VectorStoreIndex<Filter = F> + 'static,
-        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+        F: DynamicSearchFilter + MaybeSend + MaybeSync + 'static,
     {
         let n = self.next_index;
         self.next_index += 1;

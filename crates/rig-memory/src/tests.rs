@@ -473,7 +473,7 @@ impl DemotionHook for CountingHook {
         &'a self,
         conversation_id: &'a ConversationId,
         messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         Box::pin(async move {
             self.seen
                 .lock()
@@ -603,7 +603,7 @@ impl DemotionHook for FailingHook {
         &'a self,
         _conversation_id: &'a ConversationId,
         _messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         Box::pin(async move {
             *self.calls.lock().unwrap() += 1;
             Err(MemoryError::backend(std::io::Error::other("hook failed")))
@@ -693,7 +693,7 @@ impl DemotionHook for GatedHook {
         &'a self,
         _conversation_id: &'a ConversationId,
         _messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+    ) -> BoxFuture<'a, Result<(), MemoryError>> {
         let calls = self.calls.clone();
         let rendezvous = self.rendezvous.clone();
         let release = self.release.clone();
@@ -914,7 +914,7 @@ async fn demoting_stale_successful_load_does_not_clear_new_reservation() {
             &'a self,
             _conversation_id: &'a ConversationId,
             _messages: Vec<Message>,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        ) -> BoxFuture<'a, Result<(), MemoryError>> {
             let release = Arc::new(tokio::sync::Notify::new());
             self.releases.lock().unwrap().push(release.clone());
             Box::pin(async move {
@@ -1171,7 +1171,7 @@ impl Compactor for FlakyCompactor {
         _conversation_id: &'a ConversationId,
         evicted: &'a [Message],
         _carry_over: Option<&'a Self::Artifact>,
-    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Self::Artifact, MemoryError>> {
         Box::pin(async move {
             let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if n == 0 {
@@ -1227,7 +1227,7 @@ impl Compactor for CountingCompactor {
         _conversation_id: &'a ConversationId,
         evicted: &'a [Message],
         carry_over: Option<&'a Self::Artifact>,
-    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+    ) -> BoxFuture<'a, Result<Self::Artifact, MemoryError>> {
         Box::pin(async move {
             self.log
                 .lock()
@@ -1677,7 +1677,7 @@ async fn compacting_concurrent_with_clear_does_not_resurrect_state() {
             _conversation_id: &'a ConversationId,
             _evicted: &'a [Message],
             _carry_over: Option<&'a Self::Artifact>,
-        ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+        ) -> BoxFuture<'a, Result<Self::Artifact, MemoryError>> {
             Box::pin(async move {
                 self.entered.store(true, Ordering::SeqCst);
                 self.release.notified().await;
@@ -1741,7 +1741,7 @@ async fn compacting_dropped_load_releases_in_flight_gate() {
             _conversation_id: &'a ConversationId,
             _evicted: &'a [Message],
             _carry_over: Option<&'a Self::Artifact>,
-        ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+        ) -> BoxFuture<'a, Result<Self::Artifact, MemoryError>> {
             Box::pin(async move {
                 self.entered.fetch_add(1, Ordering::SeqCst);
                 self.release.notified().await;
@@ -1813,7 +1813,7 @@ async fn compacting_stale_cancelled_load_does_not_clear_new_reservation() {
             _conversation_id: &'a ConversationId,
             _evicted: &'a [Message],
             _carry_over: Option<&'a Self::Artifact>,
-        ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+        ) -> BoxFuture<'a, Result<Self::Artifact, MemoryError>> {
             Box::pin(async move {
                 self.entered.fetch_add(1, Ordering::SeqCst);
                 self.rendezvous.notify_one();

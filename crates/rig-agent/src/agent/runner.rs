@@ -504,7 +504,7 @@ impl AgentRunner {
     /// (or `.await`) was called in, wherever the future is polled.
     pub fn run(
         self,
-    ) -> impl Future<Output = Result<PromptResponse, PromptError>> + rig_core::wasm_compat::WasmCompatSend
+    ) -> impl Future<Output = Result<PromptResponse, PromptError>> + rig_core::wasm_compat::MaybeSend
     {
         // Like `stream()`: the run belongs to the span it was started in,
         // not to whichever task first polls the future.
@@ -592,7 +592,7 @@ impl AgentRunner {
 /// `.await`ing a runner is [`run`](AgentRunner::run).
 impl std::future::IntoFuture for AgentRunner {
     type Output = Result<PromptResponse, PromptError>;
-    type IntoFuture = rig_core::wasm_compat::WasmBoxedFuture<'static, Self::Output>;
+    type IntoFuture = rig_core::wasm_compat::BoxFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.run())

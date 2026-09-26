@@ -24,7 +24,7 @@ fn builder_accepts_non_clone_model() {
                 rig_core::completion::CompletionResponse,
                 rig_core::error::ProviderError,
             >,
-        > + rig_core::wasm_compat::WasmCompatSend {
+        > + rig_core::wasm_compat::MaybeSend {
             std::future::ready(Err(rig_core::error::ProviderError::Provider(
                 "compile-time probe".to_string(),
             )))
@@ -38,7 +38,7 @@ fn builder_accepts_non_clone_model() {
                 rig_core::streaming::StreamingCompletionResponse,
                 rig_core::error::ProviderError,
             >,
-        > + rig_core::wasm_compat::WasmCompatSend {
+        > + rig_core::wasm_compat::MaybeSend {
             std::future::ready(Err(rig_core::error::ProviderError::Provider(
                 "compile-time probe".to_string(),
             )))

@@ -13,7 +13,7 @@
 use crate::completion::{ResponseIdentity, Usage};
 use crate::error::ProviderError;
 use crate::json_utils;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
@@ -85,12 +85,12 @@ pub trait NormalizeTranscriptionResponse {
 
 /// Transcribes audio into normalized responses. Only
 /// [`Self::transcription_request`] requires cloning; `Arc<M>` forwards operations.
-pub trait TranscriptionModel: WasmCompatSend + WasmCompatSync {
+pub trait TranscriptionModel: MaybeSend + MaybeSync {
     /// Transcribes the supplied audio request or returns a provider or transport error.
     fn transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + MaybeSend;
 
     /// Creates a request builder over `data`.
     fn transcription_request(&self, data: Vec<u8>) -> TranscriptionRequestBuilder<Self>
@@ -108,7 +108,7 @@ where
     fn transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, ProviderError>> + MaybeSend
     {
         (**self).transcription(request)
     }

@@ -24,7 +24,7 @@ pub use rig_core::*;
 /// model, and that transport defaults to the erased
 /// [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient); with the
 /// default `reqwest` feature, [`prelude`] carries
-/// [`rig_reqwest::client::DefaultTransport`], which fills that default with a
+/// [`rig_core::client::DefaultTransport`], which fills that default with a
 /// [`rig_reqwest::ReqwestClient`] so `Provider::from_env()?.bound()?` works
 /// without naming a transport. Without the feature, bind explicitly with
 /// [`Bind::bind`](rig_core::driver::Bind::bind) and any `HttpClientExt`
@@ -121,7 +121,7 @@ pub mod client {
     // Default-transport construction over the bundled reqwest transport.
     #[cfg(feature = "reqwest")]
     #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-    pub use rig_reqwest::client::DefaultTransport;
+    pub use rig_core::client::DefaultTransport;
 }
 
 /// Low-level completion contracts plus the classic runtime's errors.
@@ -160,12 +160,14 @@ pub mod prelude {
     pub use rig_core::prelude::*;
     // Default-transport construction over the bundled reqwest transport.
     #[cfg(feature = "reqwest")]
-    pub use rig_reqwest::prelude::*;
+    pub use rig_core::client::DefaultTransport;
     // Default-backend websocket traits: `client.responses_websocket(..)` and
     // `builder().connect()` over the bundled tungstenite backend, plus the
     // provider's own session extension trait.
     #[cfg(all(feature = "websocket", not(target_family = "wasm")))]
-    pub use rig_tungstenite::prelude::*;
+    pub use rig_core::providers::openai::responses_api::websocket::{
+        DefaultWebSocketBuilder, DefaultWebSocketClient, ResponsesWebSocketExt,
+    };
 }
 
 /// Low-level streaming values.

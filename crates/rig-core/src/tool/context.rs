@@ -18,7 +18,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::ToolExecutionError;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 
 type AnyMap = HashMap<TypeId, Box<dyn AnyClone>, BuildHasherDefault<IdHasher>>;
 
@@ -41,7 +41,7 @@ impl Hasher for IdHasher {
     }
 }
 
-trait AnyClone: Any + WasmCompatSend + WasmCompatSync {
+trait AnyClone: Any + MaybeSend + MaybeSync {
     fn clone_box(&self) -> Box<dyn AnyClone>;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -50,7 +50,7 @@ trait AnyClone: Any + WasmCompatSend + WasmCompatSync {
 
 impl<T> AnyClone for T
 where
-    T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    T: Clone + MaybeSend + MaybeSync + 'static,
 {
     fn clone_box(&self) -> Box<dyn AnyClone> {
         Box::new(self.clone())
@@ -87,7 +87,7 @@ pub struct TypeMap {
 impl TypeMap {
     pub fn insert<T>(&mut self, value: T) -> Option<T>
     where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
+        T: Clone + MaybeSend + MaybeSync + 'static,
     {
         self.map
             .insert(TypeId::of::<T>(), Box::new(value))

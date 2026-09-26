@@ -16,7 +16,7 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use rig_reqwest::from_reqwest;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -195,7 +195,7 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
 }
 
 impl<M: EmbeddingModel> InsertDocuments for MilvusVectorStore<M> {
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -239,7 +239,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
     type Filter = Filter;
 
     /// Returns matches as `(distance, id, document)` in the order Milvus reports.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

@@ -22,7 +22,7 @@ use crate::{
     rerank::RerankModel,
     tool::{ErasedTool, Tool, ToolEmbedding},
     vector_store::{VectorStoreError, VectorStoreIndex, request::DynamicSearchFilter},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::{BoxFuture, MaybeSend, MaybeSync},
 };
 
 use super::{Dispatch, Reply, Serve};
@@ -223,11 +223,10 @@ pub trait ToolCallback:
     for<'a> Fn(
         &'a mut crate::tool::ToolContext,
         serde_json::Value,
-    ) -> WasmBoxedFuture<
-        'a,
-        Result<crate::tool::ToolOutput, crate::tool::ToolExecutionError>,
-    > + WasmCompatSend
-    + WasmCompatSync
+    )
+        -> BoxFuture<'a, Result<crate::tool::ToolOutput, crate::tool::ToolExecutionError>>
+    + MaybeSend
+    + MaybeSync
 {
 }
 
@@ -235,11 +234,11 @@ impl<F> ToolCallback for F where
     F: for<'a> Fn(
             &'a mut crate::tool::ToolContext,
             serde_json::Value,
-        ) -> WasmBoxedFuture<
+        ) -> BoxFuture<
             'a,
             Result<crate::tool::ToolOutput, crate::tool::ToolExecutionError>,
-        > + WasmCompatSend
-        + WasmCompatSync
+        > + MaybeSend
+        + MaybeSync
 {
 }
 
@@ -564,7 +563,7 @@ impl<I> RetrieveAdapter<I> {
 impl<I, F> Serve for RetrieveAdapter<I>
 where
     I: VectorStoreIndex<Filter = F> + 'static,
-    F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+    F: DynamicSearchFilter + MaybeSend + MaybeSync + 'static,
 {
     type Family = family::Retrieve;
 

@@ -1,7 +1,7 @@
 //! Provider websocket session constructors using the bundled backend.
 //!
 //! ```no_run
-//! use rig_tungstenite::DefaultWebSocketBuilder;
+//! use rig_core::providers::openai::responses_api::websocket::DefaultWebSocketBuilder;
 //! use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSessionBuilder;
 //!
 //! async fn connect(builder: ResponsesWebSocketSessionBuilder)
@@ -12,14 +12,14 @@
 //! }
 //! ```
 
-use crate::TungsteniteClient;
-use rig_core::driver::Bound;
-use rig_core::error::ProviderError;
-use rig_core::providers::openai::responses_api::websocket::{
+use crate::driver::Bound;
+use crate::error::ProviderError;
+use crate::providers::openai::responses_api::websocket::{
     ResponsesWebSocketExt, ResponsesWebSocketSession, ResponsesWebSocketSessionBuilder,
 };
-use rig_core::providers::openai::responses_api::wire::Responses;
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::providers::openai::responses_api::wire::Responses;
+use crate::wasm_compat::{MaybeSend, MaybeSync};
+use rig_tungstenite::TungsteniteClient;
 
 /// Open a provider websocket session over the bundled backend.
 pub trait DefaultWebSocketClient {
@@ -35,7 +35,7 @@ pub trait DefaultWebSocketClient {
 
 impl<H> DefaultWebSocketClient for Bound<Responses, H>
 where
-    H: WasmCompatSend + WasmCompatSync,
+    H: MaybeSend + MaybeSync,
 {
     fn responses_websocket(
         &self,

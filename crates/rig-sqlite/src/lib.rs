@@ -11,7 +11,7 @@ use rig_core::Embed;
 use rig_core::embeddings::{Embedding, EmbeddingModel};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{MaybeSend, MaybeSync};
 use rusqlite::OptionalExtension;
 use rusqlite::types::{Type, Value, ValueRef};
 use serde::{Deserialize, Serialize};
@@ -675,13 +675,9 @@ where
 
 impl<T> InsertDocuments for SqliteVectorStore<T>
 where
-    T: SqliteVectorStoreTable
-        + serde::de::DeserializeOwned
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    T: SqliteVectorStoreTable + serde::de::DeserializeOwned + MaybeSend + MaybeSync + 'static,
 {
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -1453,7 +1449,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
-/// use rig_reqwest::prelude::*;
+/// use rig_core::driver::Bind;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
@@ -1488,7 +1484,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// }
 ///
 /// let conn = Connection::open("vector_store.db").await?;
-/// let openai = OpenAI::new("YOUR_API_KEY").bound()?;
+/// let openai = OpenAI::new("YOUR_API_KEY").bind(rig_reqwest::client::shared());
 /// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None);
 ///
 /// // Initialize vector store

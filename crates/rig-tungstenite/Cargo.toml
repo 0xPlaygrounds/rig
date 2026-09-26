@@ -4,7 +4,7 @@ version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
-description = "The bundled tungstenite websocket backend for Rig, plus the default-backend conveniences for provider websocket sessions."
+description = "The bundled native tungstenite websocket backend for Rig."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [package.metadata.docs.rs]
@@ -15,26 +15,20 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
-  "websocket",
-] }
+rig-http = { workspace = true, features = ["websocket"] }
 futures = { workspace = true }
 thiserror = { workspace = true }
 
 # tungstenite is a native-only backend: it needs a tokio reactor, and browser
-# wasm reaches websockets through `web_sys` instead. `rig_core::ws_client` is
+# wasm reaches websockets through `web_sys` instead. `rig_http::ws_client` is
 # the seam where such a backend would plug in.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 tokio-tungstenite = { workspace = true, features = ["connect", "handshake"] }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
-  "websocket",
-  "test-utils",
-] }
 anyhow = { workspace = true }
-# Test-only: the crate's own surface speaks `rig_core::ws_client` types, so
+# Test-only: the crate's own surface speaks `rig_http::ws_client` types, so
 # neither reaches a downstream build.
 bytes = { workspace = true }
 http = { workspace = true }

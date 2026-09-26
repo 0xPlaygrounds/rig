@@ -24,7 +24,7 @@ use rig_core::{
     error::ErrorReport,
     serve::{Dispatch, Observe, Origin, Recorder},
     streaming::StreamEvent,
-    wasm_compat::WasmBoxedFuture,
+    wasm_compat::BoxFuture,
 };
 
 use rig_core::serve::{ErasedHandler, Serve};
@@ -36,7 +36,7 @@ use super::{
 
 use rig_core::serve::ServingPolicy;
 
-type InFlight = WasmBoxedFuture<'static, (HandlerKey, EffectId)>;
+type InFlight = BoxFuture<'static, (HandlerKey, EffectId)>;
 type InFlightServing = Pin<Box<Serving>>;
 
 /// Shared observer state: the driver and each outstanding dispatch retain the

@@ -19,7 +19,7 @@ use rig_core::{
     effect::{HandlerKey, Key, family},
     memory::ConversationMemory,
     vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use schemars::{JsonSchema, Schema, schema_for};
 
@@ -197,7 +197,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     pub fn dynamic_context<I, F>(mut self, samples: usize, index: I) -> Self
     where
         I: VectorStoreIndex<Filter = F> + 'static,
-        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+        F: DynamicSearchFilter + MaybeSend + MaybeSync + 'static,
     {
         let n = self.retrieval_indexes;
         self.retrieval_indexes += 1;
@@ -638,7 +638,7 @@ impl AgentBuilder<NoToolConfig> {
     ) -> AgentBuilder<WithBuilderTools>
     where
         I: VectorStoreIndex<Filter = F> + 'static,
-        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+        F: DynamicSearchFilter + MaybeSend + MaybeSync + 'static,
     {
         self.into_tool_builder()
             .retrieved_tools(sample, index, toolset)
@@ -717,7 +717,7 @@ impl AgentBuilder<WithBuilderTools> {
     pub fn retrieved_tools<I, F>(self, sample: usize, index: I, toolset: ToolSet) -> Self
     where
         I: VectorStoreIndex<Filter = F> + 'static,
-        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+        F: DynamicSearchFilter + MaybeSend + MaybeSync + 'static,
     {
         self.map_server(|server| server.retrieved_tools(sample, index, toolset))
     }

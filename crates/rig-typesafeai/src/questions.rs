@@ -1,7 +1,7 @@
 //! Typed definitions bind each question to its answer type.
 use crate::types::{Answer, Question};
 use rig_core::error::ProviderError;
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{MaybeSend, MaybeSync};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::{collections::BTreeMap, marker::PhantomData};
@@ -143,7 +143,7 @@ impl<L: Ord> Score<L> {
     }
 }
 
-impl<L: Ord + Clone + WasmCompatSend + WasmCompatSync> Query for Score<L> {
+impl<L: Ord + Clone + MaybeSend + MaybeSync> Query for Score<L> {
     type Response = Answer;
     type Output = ScoreAnswer<L>;
     fn decode(&self, response: Answer) -> Result<Self::Output, ProviderError> {
@@ -357,7 +357,7 @@ impl Noul {
 /// };
 /// # Ok::<(), ProviderError>(())
 /// ```
-pub trait Query: Serialize + WasmCompatSend + WasmCompatSync {
+pub trait Query: Serialize + MaybeSend + MaybeSync {
     /// The intermediate response shape deserialized by Serde.
     type Response: DeserializeOwned;
     /// The validated application answer shape.
@@ -395,7 +395,7 @@ pub trait Query: Serialize + WasmCompatSend + WasmCompatSync {
     fn map<A, F>(self, map: F) -> MappedQuery<Self, F>
     where
         Self: Sized,
-        F: Fn(Self::Output) -> A + WasmCompatSend + WasmCompatSync,
+        F: Fn(Self::Output) -> A + MaybeSend + MaybeSync,
     {
         MappedQuery {
             questions: self,
@@ -486,7 +486,7 @@ pub struct MappedQuery<Q, F> {
 }
 impl<Q: Query, F, A> Query for MappedQuery<Q, F>
 where
-    F: Fn(Q::Output) -> A + WasmCompatSend + WasmCompatSync,
+    F: Fn(Q::Output) -> A + MaybeSend + MaybeSync,
 {
     type Response = Q::Response;
     type Output = A;

@@ -18,9 +18,9 @@
 
 use rig_core::driver::Bound;
 use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::responses_api::websocket::DefaultWebSocketClient as _;
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
-use rig_tungstenite::DefaultWebSocketClient as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 

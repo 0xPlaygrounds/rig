@@ -1897,7 +1897,7 @@ impl rig_core::http_client::HttpMiddleware for WireProbe {
         _method: &'a rig_core::http_client::Method,
         _uri: &'a rig_core::http_client::Uri,
         headers: &'a mut rig_core::http_client::HeaderMap,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<()>> {
+    ) -> rig_core::wasm_compat::BoxFuture<'a, rig_core::http_client::Result<()>> {
         Box::pin(async move {
             self.header_phases
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -1915,8 +1915,7 @@ impl rig_core::http_client::HttpMiddleware for WireProbe {
         _uri: &'a rig_core::http_client::Uri,
         headers: &'a rig_core::http_client::HeaderMap,
         body: bytes::Bytes,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<bytes::Bytes>>
-    {
+    ) -> rig_core::wasm_compat::BoxFuture<'a, rig_core::http_client::Result<bytes::Bytes>> {
         Box::pin(async move {
             self.body_phases
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -1937,7 +1936,7 @@ impl rig_core::http_client::HttpMiddleware for WireProbe {
         _uri: &'a rig_core::http_client::Uri,
         status: rig_core::http_client::StatusCode,
         _headers: &'a rig_core::http_client::HeaderMap,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, rig_core::http_client::Result<()>> {
+    ) -> rig_core::wasm_compat::BoxFuture<'a, rig_core::http_client::Result<()>> {
         Box::pin(async move {
             self.response_phases
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);

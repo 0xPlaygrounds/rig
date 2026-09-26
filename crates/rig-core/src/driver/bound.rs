@@ -12,7 +12,7 @@
 //! ```
 
 use crate::http_client::{BoxedHttpClient, HttpClientExt};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::wire::{Capabilities, Wire};
 
 /// A [`Wire`] paired with a transport, implementing the corresponding consumer
@@ -55,7 +55,7 @@ impl<W: Wire, H> Bound<W, H> {
 
 impl<W, H> Bound<W, H>
 where
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + MaybeSend + MaybeSync + 'static,
 {
     /// Erase the transport, so many providers can share one socket type in
     /// a table.

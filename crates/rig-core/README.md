@@ -26,8 +26,19 @@ More information about this crate can be found in the [crate documentation](http
 
 ## Installation
 ```bash
-cargo add rig-core
+cargo add rig-core --features reqwest
 ```
+
+Core's default graph has no HTTP or websocket implementation. Enable `reqwest`
+for the shared HTTP client and `tungstenite` for the native websocket backend.
+The default `rustls` policy applies only when one of those transports is enabled;
+it does not activate a transport. For native TLS only, disable default features
+and select `reqwest,native-tls` (plus `derive` if needed).
+
+Transport authors depend on `rig-http`, which owns the HTTP and websocket
+contracts, framing, multipart, middleware, and portable async bounds. Supplying
+an explicit transport requires neither bundled backend. The `rig` facade enables
+both bundled backends by default.
 
 ## WASM target support
 
@@ -42,8 +53,8 @@ use rig_core::{
     completion::{AssistantContent, CompletionModel},
     providers::openai::{self, OpenAI},
 };
-// rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
-use rig_reqwest::prelude::*;
+// Requires rig-core's `reqwest` feature; `.bound()` shares its default pool.
+use rig_core::client::DefaultTransport;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

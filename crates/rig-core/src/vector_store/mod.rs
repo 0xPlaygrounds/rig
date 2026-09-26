@@ -20,7 +20,7 @@ use crate::{
     embeddings::Embedding,
     tool::PortableTool,
     vector_store::request::{FilterError, SearchFilter},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 pub mod builder;
@@ -113,34 +113,33 @@ pub fn flatten_embedded<Doc: Serialize, R>(
 }
 
 /// Trait for inserting documents and embeddings into a vector store.
-pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
+pub trait InsertDocuments: MaybeSend + MaybeSync {
     /// Insert precomputed embeddings for each document.
     ///
     /// Callers must supply at least one embedding per document. Empty-list
     /// behavior is backend-dependent and is not uniformly validated.
-    fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
-    ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + MaybeSend;
 }
 
 /// Trait for querying a vector store by similarity.
-pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
+pub trait VectorStoreIndex: MaybeSend + MaybeSync {
     /// The filter type for this backend.
-    type Filter: SearchFilter + WasmCompatSend + WasmCompatSync;
+    type Filter: SearchFilter + MaybeSend + MaybeSync;
 
     /// Returns the top N most similar documents as `(score, id, document)` tuples.
-    fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>>
-    + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>> + MaybeSend;
 
     /// Returns the top N most similar document IDs as `(score, id)` tuples.
     fn top_n_ids(
         &self,
         req: VectorSearchRequest<Self::Filter>,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + MaybeSend;
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -156,8 +155,8 @@ pub struct VectorStoreOutput {
 impl<T, F> PortableTool for T
 where
     F: SearchFilter<Value = serde_json::Value>
-        + WasmCompatSend
-        + WasmCompatSync
+        + MaybeSend
+        + MaybeSync
         + serde::de::DeserializeOwned,
     T: VectorStoreIndex<Filter = F>,
 {

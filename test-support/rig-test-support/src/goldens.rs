@@ -1234,7 +1234,7 @@ impl rig_core::memory::ConversationMemory for FailingMemory {
     fn load<'a>(
         &'a self,
         conversation_id: &'a rig_core::id::ConversationId,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<
+    ) -> rig_core::wasm_compat::BoxFuture<
         'a,
         Result<Vec<rig_core::message::Message>, rig_core::memory::MemoryError>,
     > {
@@ -1249,7 +1249,7 @@ impl rig_core::memory::ConversationMemory for FailingMemory {
         &'a self,
         conversation_id: &'a rig_core::id::ConversationId,
         messages: Vec<rig_core::message::Message>,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, Result<(), rig_core::memory::MemoryError>> {
+    ) -> rig_core::wasm_compat::BoxFuture<'a, Result<(), rig_core::memory::MemoryError>> {
         if self.fail_append {
             Box::pin(async { Err(refused("append")) })
         } else {
@@ -1260,7 +1260,7 @@ impl rig_core::memory::ConversationMemory for FailingMemory {
     fn clear<'a>(
         &'a self,
         conversation_id: &'a rig_core::id::ConversationId,
-    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, Result<(), rig_core::memory::MemoryError>> {
+    ) -> rig_core::wasm_compat::BoxFuture<'a, Result<(), rig_core::memory::MemoryError>> {
         self.inner.clear(conversation_id)
     }
 }

@@ -20,7 +20,7 @@ use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSession;
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
-use rig_core::wasm_compat::WasmBoxedFuture;
+use rig_core::wasm_compat::BoxFuture;
 use rig_core::ws_client::{BoxedWebSocketConnection, CloseFrame, Frame, WebSocketConnection};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -111,7 +111,7 @@ impl Script {
 struct ScriptedConnection(Script);
 
 impl WebSocketConnection for ScriptedConnection {
-    fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, http_client::Result<()>> {
+    fn send(&mut self, frame: Frame) -> BoxFuture<'_, http_client::Result<()>> {
         let mut state = self.0.0.lock().expect("script lock");
         match frame {
             Frame::Text(text) => state.sent.push(text),
@@ -125,7 +125,7 @@ impl WebSocketConnection for ScriptedConnection {
         Box::pin(std::future::ready(Ok(())))
     }
 
-    fn recv(&mut self) -> WasmBoxedFuture<'_, http_client::Result<Option<Frame>>> {
+    fn recv(&mut self) -> BoxFuture<'_, http_client::Result<Option<Frame>>> {
         let next = {
             let mut state = self.0.0.lock().expect("script lock");
             match state.inbound.pop_front() {
@@ -142,10 +142,7 @@ impl WebSocketConnection for ScriptedConnection {
         }
     }
 
-    fn close(
-        &mut self,
-        _frame: Option<CloseFrame>,
-    ) -> WasmBoxedFuture<'_, http_client::Result<()>> {
+    fn close(&mut self, _frame: Option<CloseFrame>) -> BoxFuture<'_, http_client::Result<()>> {
         self.0.0.lock().expect("script lock").closed = true;
         Box::pin(std::future::ready(Ok(())))
     }

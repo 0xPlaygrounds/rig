@@ -1,5 +1,6 @@
-use super::*;
+use crate::http_client::*;
 use crate::test_utils::RecordingHttpClient;
+use bytes::Bytes;
 use futures::executor::block_on;
 
 fn request(body: &'static str) -> Request<&'static str> {
@@ -49,7 +50,7 @@ mod middleware {
     use super::*;
     use crate::http_client::middleware::HttpMiddleware;
     use crate::test_utils::MockStreamingClient;
-    use crate::wasm_compat::WasmBoxedFuture;
+    use crate::wasm_compat::BoxFuture;
     use http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
     use std::sync::{Arc, Mutex};
 
@@ -75,7 +76,7 @@ mod middleware {
             _method: &'a Method,
             _uri: &'a Uri,
             headers: &'a mut HeaderMap,
-        ) -> WasmBoxedFuture<'a, Result<()>> {
+        ) -> BoxFuture<'a, Result<()>> {
             Box::pin(async move {
                 self.log("headers");
                 headers.append("x-tag", HeaderValue::from_static(self.tag));
@@ -89,7 +90,7 @@ mod middleware {
             _uri: &'a Uri,
             headers: &'a HeaderMap,
             body: Bytes,
-        ) -> WasmBoxedFuture<'a, Result<Bytes>> {
+        ) -> BoxFuture<'a, Result<Bytes>> {
             Box::pin(async move {
                 self.log("body");
                 // Every body hook sees the fully mutated headers: its own
@@ -113,7 +114,7 @@ mod middleware {
             _uri: &'a Uri,
             status: StatusCode,
             _headers: &'a HeaderMap,
-        ) -> WasmBoxedFuture<'a, Result<()>> {
+        ) -> BoxFuture<'a, Result<()>> {
             Box::pin(async move {
                 self.log(&format!("response:{}", status.as_u16()));
                 Ok(())
@@ -172,7 +173,7 @@ mod middleware {
             _method: &'a Method,
             _uri: &'a Uri,
             _headers: &'a mut HeaderMap,
-        ) -> WasmBoxedFuture<'a, Result<()>> {
+        ) -> BoxFuture<'a, Result<()>> {
             let fail = self.0 == "headers";
             Box::pin(async move {
                 if fail {
@@ -192,7 +193,7 @@ mod middleware {
             _uri: &'a Uri,
             _status: StatusCode,
             _headers: &'a HeaderMap,
-        ) -> WasmBoxedFuture<'a, Result<()>> {
+        ) -> BoxFuture<'a, Result<()>> {
             let fail = self.0 == "response";
             Box::pin(async move {
                 if fail {
@@ -245,7 +246,7 @@ mod middleware {
                 _uri: &'a Uri,
                 status: StatusCode,
                 headers: &'a HeaderMap,
-            ) -> WasmBoxedFuture<'a, Result<()>> {
+            ) -> BoxFuture<'a, Result<()>> {
                 Box::pin(async move {
                     let content_type = headers
                         .get(http::header::CONTENT_TYPE)

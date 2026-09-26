@@ -15,7 +15,7 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -74,7 +74,7 @@ struct Field {
 /// ```no_run
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 /// use rig_core::{providers::openai::{self, wire::OpenAI}, vector_store::{VectorStoreIndex, VectorSearchRequest}};
-/// use rig_reqwest::prelude::*;
+/// use rig_core::driver::Bind;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -86,7 +86,7 @@ struct Field {
 /// }
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
-/// let openai = OpenAI::from_env()?.bound()?;
+/// let openai = OpenAI::from_env()?.bind(rig_reqwest::client::shared());
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
@@ -400,7 +400,7 @@ where
 
     /// Returns matches as `(score, id, document)`. The embedding field is
     /// projected out, so `T` must not require it.
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest<MongoDbSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -445,7 +445,7 @@ impl<C, M: EmbeddingModel> InsertDocuments for MongoDbVectorIndex<C, M>
 where
     C: Send + Sync,
 {
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {

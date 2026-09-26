@@ -23,6 +23,22 @@
 //!     model.completion(request).await
 //! }
 //! ```
+//!
+//! The default feature graph includes no transport implementation. `reqwest`
+//! enables a shared HTTP client; `tungstenite` enables native websocket execution.
+//! The default `rustls` policy does not activate either backend. An explicit
+//! client works without either feature:
+//!
+//! ```no_run
+//! use rig_core::{driver::Bind, providers::openai::{self, OpenAI}};
+//! use rig_http::http_client::{BoxedHttpClient, HttpClientExt};
+//!
+//! fn supplied_transport(http: impl HttpClientExt + 'static) {
+//!     let provider = OpenAI::new("example-key").bind(BoxedHttpClient::new(http));
+//!     let model = provider.completion(openai::GPT_5_2);
+//!     let _ = model;
+//! }
+//! ```
 
 extern crate self as rig;
 
@@ -35,7 +51,7 @@ pub mod driver;
 pub mod effect;
 pub mod embeddings;
 pub mod error;
-pub mod http_client;
+pub use rig_http::http_client;
 pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
@@ -64,11 +80,11 @@ pub mod tool;
 pub mod transcript;
 pub mod transcription;
 pub mod vector_store;
-pub mod wasm_compat;
+pub use rig_http::wasm_compat;
 pub mod wire;
 #[cfg(feature = "websocket")]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
-pub mod ws_client;
+pub use rig_http::ws_client;
 
 pub use completion::message;
 pub use embeddings::Embed;

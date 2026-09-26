@@ -39,7 +39,7 @@ Not every contribution is within the scope of the repo. Out of scope includes bu
 - Changes that would force model provider integrations to diverge from the original API (eg adding a field to the OpenAI API that does not exist there for the sake of another model provider)
 - Lazy workarounds: `String` error types, scattered `.unwrap()` calls, stubbed error handling, incomplete edge-case handling
 - TODO comments, placeholder implementations, or `unimplemented!()`
-- Raw `Send`/`Sync` where `WasmCompatSend`/`WasmCompatSync` should be used
+- Raw `Send`/`Sync` where `MaybeSend`/`MaybeSync` should be used
 - Unclear code that needs comments to explain what it is doing instead of being refactored for readability
 - Major architectural changes, new abstractions, or public API reshaping without prior discussion
 - Arbitrary markdown files. The only markdown files we allow are ones that are already traditional convention (DEVELOPING.md, CONTRIBUTING.md, ARCHITECTURE.md, ... etc)

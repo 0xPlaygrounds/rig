@@ -143,7 +143,7 @@ struct ExtractorContextIndex {
 impl VectorStoreIndex for ExtractorContextIndex {
     type Filter = Filter<serde_json::Value>;
 
-    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
+    async fn top_n<T: DeserializeOwned + MaybeSend>(
         &self,
         req: VectorSearchRequest,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

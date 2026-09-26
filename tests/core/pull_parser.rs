@@ -11,7 +11,7 @@ use rig_core::{
         openai::wire::{DEEPSEEK, OPENAI, OpenAI},
     },
     streaming::{StreamEvent, StreamEvents},
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 use std::{
     pin::Pin,
@@ -51,10 +51,10 @@ impl HttpClientExt for Replay {
     fn send<T, U>(
         &self,
         _: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
+        T: Into<Bytes> + MaybeSend,
+        U: From<Bytes> + MaybeSend + 'static,
     {
         std::future::ready(Err(http_client::Error::non_success_with_details(
             StatusCode::NOT_IMPLEMENTED,
@@ -65,9 +65,9 @@ impl HttpClientExt for Replay {
     fn send_multipart<U>(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
     where
-        U: From<Bytes> + WasmCompatSend + 'static,
+        U: From<Bytes> + MaybeSend + 'static,
     {
         std::future::ready(Err(http_client::Error::non_success_with_details(
             StatusCode::NOT_IMPLEMENTED,
@@ -78,9 +78,9 @@ impl HttpClientExt for Replay {
     fn send_streaming<T>(
         &self,
         _: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + MaybeSend
     where
-        T: Into<Bytes> + WasmCompatSend,
+        T: Into<Bytes> + MaybeSend,
     {
         let body: BoxedStream = Box::pin(Chunks {
             replay: self.clone(),

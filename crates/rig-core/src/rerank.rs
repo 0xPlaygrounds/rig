@@ -17,12 +17,12 @@
 use crate::error::ProviderError;
 use crate::{
     completion::{ResponseIdentity, Usage},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::{Deserialize, Serialize};
 
 /// Trait for reranking models that score documents by relevance to a query.
-pub trait RerankModel: WasmCompatSend + WasmCompatSync {
+pub trait RerankModel: MaybeSend + MaybeSync {
     /// Maximum documents accepted in one request.
     fn max_documents(&self) -> usize;
 
@@ -31,7 +31,7 @@ pub trait RerankModel: WasmCompatSend + WasmCompatSync {
         &self,
         query: &str,
         documents: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<RerankResponse, ProviderError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<RerankResponse, ProviderError>> + MaybeSend;
 }
 
 /// A single reranked document result.

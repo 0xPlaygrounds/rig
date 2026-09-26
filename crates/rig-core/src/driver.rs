@@ -21,7 +21,7 @@ use crate::http_client::framing::{Framing, NdjsonFramer, SseFramer};
 use crate::http_client::{self, HttpClientExt};
 use crate::observe::{AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterSlot};
 use crate::providers::internal::wire::WireEvent;
-use crate::wasm_compat::WasmCompatSend;
+use crate::wasm_compat::MaybeSend;
 use crate::wire::{
     Body, Decoder, Encoded, Event, Fold, Mode, Operation, Reply, Request, Response, Sink, Wire,
     WireFrame,
@@ -228,9 +228,9 @@ where
 /// decoder's finish policy. HTTP framing and observation are not supplied here.
 pub fn run_wire_stream<D, F, S>(transport: S, decoder: D) -> crate::streaming::StreamingResult
 where
-    D: Decoder<crate::operation::Completion, F> + WasmCompatSend + 'static,
-    F: WasmCompatSend + 'static,
-    S: Stream<Item = Result<F, ProviderError>> + WasmCompatSend + 'static,
+    D: Decoder<crate::operation::Completion, F> + MaybeSend + 'static,
+    F: MaybeSend + 'static,
+    S: Stream<Item = Result<F, ProviderError>> + MaybeSend + 'static,
 {
     let mut driver = WireDriver::<crate::operation::Completion, _, F>::new(decoder);
     Box::pin(async_stream::stream! {
@@ -543,10 +543,7 @@ pub fn stream<W, H>(
     http: &H,
     request: Request<W>,
     context: Option<AdapterContext>,
-) -> Result<
-    impl Stream<Item = Result<Event<W>, ProviderError>> + WasmCompatSend + 'static,
-    ProviderError,
->
+) -> Result<impl Stream<Item = Result<Event<W>, ProviderError>> + MaybeSend + 'static, ProviderError>
 where
     W: Wire,
     H: HttpClientExt + Clone + 'static,

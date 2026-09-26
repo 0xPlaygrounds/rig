@@ -227,7 +227,7 @@ impl EmbeddingModel for SlowFirstBatchModel {
 
     async fn embed_texts_response(
         &self,
-        documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + crate::wasm_compat::MaybeSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
         let nth = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if nth == 0 {
@@ -276,7 +276,7 @@ impl EmbeddingModel for DescendingLatencyModel {
 
     async fn embed_texts_response(
         &self,
-        documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + crate::wasm_compat::MaybeSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
         let nth = self
             .batches
@@ -459,7 +459,7 @@ impl EmbeddingModel for OneAtATimeReversedLatency {
 
     async fn embed_texts_response(
         &self,
-        documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + crate::wasm_compat::MaybeSend,
     ) -> Result<EmbeddingResponse, ProviderError> {
         let documents: Vec<String> = documents.into_iter().collect();
         // Earlier texts wait longer, so completion order is close to the

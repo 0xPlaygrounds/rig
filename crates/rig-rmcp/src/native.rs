@@ -18,7 +18,7 @@ use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
 use rig_core::tool::{
     ContextValue, DynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
 };
-use rig_core::wasm_compat::WasmBoxedFuture;
+use rig_core::wasm_compat::BoxFuture;
 
 /// Re-export of [`rmcp::model::Meta`]: wrap one in [`McpMeta`] and place it
 /// in the per-call [`ToolContext`] to have MCP tools forward it as the
@@ -271,7 +271,7 @@ impl McpTool {
         &self,
         args: String,
         meta: Option<rmcp::model::Meta>,
-    ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
+    ) -> BoxFuture<'_, Result<CallToolResult, ToolExecutionError>> {
         let name = self.definition.name.clone();
 
         Box::pin(async move {

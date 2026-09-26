@@ -1,3 +1,4 @@
+use rig_core::driver::Bind;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -5,7 +6,6 @@ use rig_core::{
     vector_store::{InsertDocuments, VectorSearchRequest, VectorStoreIndex},
 };
 use rig_helixdb::{HelixDB, HelixDBVectorStore};
-use rig_reqwest::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
@@ -28,7 +28,7 @@ impl std::fmt::Display for WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let openai_model = OpenAI::from_env()?
-        .bound()?
+        .bind(rig_reqwest::client::shared())
         .embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let helixdb_client = HelixDB::new(None, Some(6969), None); // Uses default port 6969

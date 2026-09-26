@@ -15,7 +15,7 @@ use schemars::{JsonSchema, schema_for};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
+use rig_core::wasm_compat::{BoxFuture, MaybeSend};
 use tracing_futures::Instrument;
 
 use super::{
@@ -303,7 +303,7 @@ macro_rules! forward_runner_setters {
 
 impl<T> TypedRun<T>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    T: JsonSchema + DeserializeOwned + MaybeSend,
 {
     /// A native-mode typed run: the schema for `T` is the run's structured
     /// output schema and the model's final text is parsed as `T`.
@@ -447,10 +447,10 @@ pub(crate) fn deserialize_structured_output<T: DeserializeOwned>(
 
 impl<T> IntoFuture for TypedRun<T>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
+    T: JsonSchema + DeserializeOwned + MaybeSend + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
+    type IntoFuture = BoxFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         // Captured in the synchronous part of the call, like `run()`: a

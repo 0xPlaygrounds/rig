@@ -6,7 +6,7 @@
 //! 3. Creates a vector index on the embeddings
 //! 4. Queries the vector index
 //! 5. Returns the results
-use rig_reqwest::prelude::*;
+use rig_core::driver::Bind;
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};
@@ -28,7 +28,7 @@ pub struct Word {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
-    let openai_client = OpenAI::from_env()?.bound()?;
+    let openai_client = OpenAI::from_env()?.bind(rig_reqwest::client::shared());
 
     // Initialize Neo4j client
     let neo4j_uri = env::var("NEO4J_URI")?;

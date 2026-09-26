@@ -47,7 +47,7 @@
 //!   the rejection's headers present/absent, and nine status classes including
 //!   2xx and 3xx.
 //!
-//! `crates/rig-tungstenite/tests/handshake_rejection.rs` joins the two against
+//! `crates/rig-core/tests/websocket_handshake_rejection.rs` joins the two against
 //! a real socket.
 //!
 //! **These recorded cells now run in every execution of the target.** The

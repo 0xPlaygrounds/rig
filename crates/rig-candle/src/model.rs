@@ -361,7 +361,7 @@ fn terminal_record(response: &CandleCompletionResponse) -> Result<StreamFinal, s
 /// No model loading is required; input errors propagate through the stream.
 pub fn stream_from_events(
     events: impl futures::Stream<Item = Result<GenerationEvent, ProviderError>>
-    + rig_core::wasm_compat::WasmCompatSend
+    + rig_core::wasm_compat::MaybeSend
     + 'static,
 ) -> StreamingCompletionResponse {
     StreamingCompletionResponse::stream(
