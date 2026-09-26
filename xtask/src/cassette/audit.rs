@@ -561,7 +561,9 @@ pub(crate) fn corpus(root: &Path) -> Result<Vec<(String, Value)>, String> {
         .collect()
 }
 
-/// The block check over every golden in the corpus, with no base.
+/// The block check over every golden in the corpus, with no base. `run`
+/// shares the walk; this is the base-free form the corpus test runs.
+#[cfg(test)]
 pub(crate) fn corpus_audit(root: &Path) -> Result<Audit, String> {
     let mut audit = Audit::default();
     for (path, golden) in corpus(root)? {
