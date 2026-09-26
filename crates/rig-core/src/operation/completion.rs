@@ -646,7 +646,14 @@ impl AdapterOutput {
                 }
             }
             Ok(event) => self.blocks.apply(&event).map(|_| event),
-            Err(error) => Err(error),
+            Err(error) => {
+                // A malformed complete tool input took the place of its
+                // call's end: the call ended, so its key assembles anew.
+                if let Some(input) = malformed_tool_input(&error) {
+                    self.blocks.abandon(input);
+                }
+                Err(error)
+            }
         };
         self.items.push(item);
     }
@@ -1038,6 +1045,19 @@ impl AdapterOutput {
     }
 }
 
+/// The malformed complete tool input an error item reports, directly or as
+/// a relayed report.
+fn malformed_tool_input(error: &ProviderError) -> Option<&crate::error::MalformedToolInput> {
+    match error {
+        ProviderError::MalformedToolInput(input) => Some(input),
+        ProviderError::Relayed(report) => match &report.detail {
+            Some(crate::error::ErrorDetail::MalformedToolInput(input)) => Some(input),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// How [`AdapterOutput::content`] emits an image part.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImagePart {
@@ -1066,3 +1086,7 @@ fn terminal_of(response: &CompletionResponse) -> StreamFinal {
 
 #[cfg(test)]
 mod tests;
+
+/// The sink's canonicalization, as properties.
+#[cfg(test)]
+mod sink_property_tests;

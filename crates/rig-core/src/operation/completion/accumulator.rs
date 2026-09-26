@@ -666,6 +666,20 @@ impl BlockAccumulator {
         Ok(Some((published, tool_call)))
     }
 
+    /// End the open call a malformed-input report names: the one under
+    /// assembly with its name and exactly its raw input. The report took the
+    /// place of the call's end, so the call is finished and a later fragment
+    /// under its key begins a new call.
+    pub(super) fn abandon(&mut self, input: &MalformedToolInput) {
+        let Some(position) = self.open_tool_inputs.iter().position(|open| {
+            open.name == input.name && open.buffer.as_deref().unwrap_or_default() == input.raw
+        }) else {
+            return;
+        };
+        let open = self.open_tool_inputs.remove(position);
+        self.finished_tools.insert(open.id);
+    }
+
     /// Index of the open call for `id`, opening one if none exists.
     fn ensure_open_tool_input(&mut self, id: &BlockId) -> usize {
         match self
