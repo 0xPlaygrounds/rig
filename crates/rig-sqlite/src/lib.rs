@@ -411,6 +411,10 @@ where
 {
     /// Creates a SQLite vector store using cosine similarity over vectors
     /// of `ndims` dimensions.
+    ///
+    /// `ndims` must be the width of the model later handed to
+    /// [`Self::index`], read as `capabilities().ndims`; a store built at one
+    /// width and indexed with another returns meaningless results.
     pub async fn new(conn: Connection, ndims: usize) -> Result<Self, VectorStoreError> {
         Self::with_distance_metric(conn, ndims, SqliteDistanceMetric::default()).await
     }
@@ -419,7 +423,9 @@ where
     ///
     /// The metric is written into the sqlite-vec virtual table definition so
     /// candidate search uses the same metric as thresholding, ordering, and the
-    /// returned score values.
+    /// returned score values. `ndims` must be the width of the model later
+    /// handed to [`Self::index`], read as `capabilities().ndims`; a store built
+    /// at one width and indexed with another returns meaningless results.
     pub async fn with_distance_metric(
         conn: Connection,
         ndims: usize,
