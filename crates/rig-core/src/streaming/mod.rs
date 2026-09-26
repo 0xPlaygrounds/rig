@@ -17,13 +17,14 @@ use crate::driver::{Step, record_request_id};
 use crate::error::ErrorReport;
 use crate::error::ProviderError;
 use crate::message::{AssistantContent, ToolResult};
-use crate::operation::{Completion, CompletionFold};
+use crate::operation::{AdapterOutput, Completion, CompletionFold};
 use crate::wasm_compat::WasmBoxedStream;
 use crate::wire::{Fold, Mode, Operation, Reply};
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
 pub use event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCallEnd};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -409,15 +410,21 @@ impl<Op: Operation> Streamed<Op> {
 
 impl Streamed<Completion> {
     /// A stream relayed over the bus under `label`, whose terminal record
-    /// names the provider behind it. Its events must be canonical already,
-    /// as the origin's sink made them: the relay's fold collects and never
-    /// assembles.
+    /// names the provider behind it. Its events pass one completion sink as
+    /// they arrive, ended with [`Sink::finish`](crate::wire::Sink::finish) at
+    /// the end of the stream, so the relay yields canonical events whatever
+    /// the origin sent. Canonical events pass unchanged, and items past the
+    /// terminal pass through, except a second terminal, which is dropped.
     pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
         let label = label.into();
-        let steps = events.map(|item| {
-            item.map(Step::Event)
-                .map_err(|report| ProviderError::Relayed(Box::new(report)))
-        });
+        let steps = Canonical {
+            events,
+            sink: AdapterOutput::new(),
+            ready: VecDeque::new(),
+            failures: Vec::new(),
+            ended: false,
+        }
+        .map(|item| item.map(Step::Event));
         Self::new(
             Box::pin(steps),
             CompletionFold::relayed(label.clone()),
@@ -425,6 +432,56 @@ impl Streamed<Completion> {
             tracing::Span::none(),
             label,
         )
+    }
+}
+
+/// Relayed items as one completion sink makes them canonical.
+///
+/// A run of error items is held until an event follows it or the stream
+/// ends, so the closes [`Sink::finish`](crate::wire::Sink::finish) adds at
+/// the end precede a trailing failure, as they do on a wire.
+struct Canonical {
+    events: StreamEvents,
+    sink: AdapterOutput,
+    ready: VecDeque<Result<StreamEvent, ProviderError>>,
+    failures: Vec<Result<StreamEvent, ProviderError>>,
+    ended: bool,
+}
+
+impl Stream for Canonical {
+    type Item = Result<StreamEvent, ProviderError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        loop {
+            if let Some(item) = this.ready.pop_front() {
+                return Poll::Ready(Some(item));
+            }
+            if this.ended {
+                return Poll::Ready(None);
+            }
+            match this.events.as_mut().poll_next(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Some(item)) => {
+                    this.sink
+                        .push(item.map_err(|report| ProviderError::Relayed(Box::new(report))));
+                    for item in this.sink.drain() {
+                        if item.is_ok() {
+                            this.ready.extend(this.failures.drain(..));
+                            this.ready.push_back(item);
+                        } else {
+                            this.failures.push(item);
+                        }
+                    }
+                }
+                Poll::Ready(None) => {
+                    this.ended = true;
+                    crate::wire::Sink::<Completion>::finish(&mut this.sink);
+                    this.ready.extend(this.sink.drain());
+                    this.ready.extend(this.failures.drain(..));
+                }
+            }
+        }
     }
 }
 

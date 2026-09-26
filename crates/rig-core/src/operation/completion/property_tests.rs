@@ -358,3 +358,173 @@ fn a_trailing_error_is_idempotent() {
         ],
     );
 }
+
+fn raw_event() -> impl Strategy<Value = Result<StreamEvent, ErrorReport>> {
+    let key = 0u8..3;
+    let delta = |id: BlockId, delta: Delta| Ok(StreamEvent::BlockDelta { id, delta });
+    let end = |id: BlockId, end: BlockClose| {
+        Ok(StreamEvent::BlockEnd {
+            id,
+            end,
+            block: None,
+        })
+    };
+    prop_oneof![
+        (key.clone(), fragment())
+            .prop_map(move |(key, text)| delta(text_key(key), Delta::Text { text })),
+        (key.clone(), fragment())
+            .prop_map(move |(key, text)| delta(reasoning_key(key), Delta::Reasoning { text })),
+        (key.clone(), fragment()).prop_map(move |(key, arguments)| delta(
+            tool_key(key),
+            Delta::ToolArguments { arguments }
+        )),
+        key.clone().prop_map(move |key| delta(
+            tool_key(key),
+            Delta::ToolName {
+                name: "lookup".to_owned()
+            }
+        )),
+        key.clone()
+            .prop_map(move |key| end(text_key(key), BlockClose::Text)),
+        (key.clone(), proptest::option::of("sig[0-9]"), any::<bool>()).prop_map(
+            move |(key, signature, wire_sent)| end(
+                reasoning_key(key),
+                BlockClose::Reasoning {
+                    reasoning: None,
+                    signature,
+                    wire_sent,
+                }
+            )
+        ),
+        (key, policy()).prop_map(move |(key, policy)| end(
+            tool_key(key),
+            BlockClose::ToolCall(ToolCallEnd::new(policy))
+        )),
+        Just(Ok(StreamEvent::Final(StreamFinal::new(
+            "test",
+            Usage::default(),
+            serde_json::json!({})
+        )))),
+        Just(Ok(StreamEvent::Unknown(UnknownPayload::new(
+            serde_json::json!({"x": 1})
+        )))),
+        Just(Err(ErrorReport::new(
+            crate::error::ErrorKind::Provider,
+            "relayed failure"
+        ))),
+    ]
+}
+
+/// What a relay yields for `items`.
+fn relayed(items: Vec<Result<StreamEvent, ErrorReport>>) -> Vec<Result<StreamEvent, ErrorReport>> {
+    use futures::StreamExt;
+
+    futures::executor::block_on(
+        crate::streaming::CompletionStream::relay("relay", Box::pin(futures::stream::iter(items)))
+            .collect(),
+    )
+}
+
+/// `items` pushed through one sink and finished, as a relay canonicalizes
+/// them.
+fn canonical(items: &[Result<StreamEvent, ErrorReport>]) -> Vec<Result<StreamEvent, ErrorReport>> {
+    let mut out = AdapterOutput::new();
+    for item in items {
+        out.push(
+            item.clone()
+                .map_err(|report| ProviderError::Relayed(Box::new(report))),
+        );
+    }
+    Sink::<Completion>::finish(&mut out);
+    comparable(&out.into_items())
+}
+
+proptest! {
+    /// A relay is one sink over its items, finished at the end of the
+    /// stream: whatever the origin sent, it yields what that sink drains.
+    #[test]
+    fn a_relay_canonicalizes_what_it_carries(
+        items in proptest::collection::vec(raw_event(), 0..24),
+    ) {
+        prop_assert_eq!(relayed(items.clone()), canonical(&items));
+    }
+
+    /// A relay of canonical events yields them unchanged.
+    #[test]
+    fn a_relay_passes_canonical_events_unchanged(
+        steps in proptest::collection::vec(step(), 0..24),
+    ) {
+        let items = comparable(&canonicalize(AdapterOutput::new(), steps));
+        prop_assert_eq!(relayed(items.clone()), items);
+    }
+}
+
+#[test]
+fn a_relay_drops_a_second_terminal_and_passes_what_follows_the_first() {
+    let terminal = |tokens: u64| {
+        Ok(StreamEvent::Final(StreamFinal::new(
+            "test",
+            Usage {
+                total_tokens: Some(tokens),
+                ..Usage::default()
+            },
+            serde_json::json!({}),
+        )))
+    };
+    let late = Ok(StreamEvent::Unknown(UnknownPayload::new(
+        serde_json::json!({"late": true}),
+    )));
+    let relayed = relayed(vec![terminal(1), late.clone(), terminal(2)]);
+    assert_eq!(relayed, vec![terminal(1), late]);
+}
+
+#[test]
+fn a_truncated_relay_closes_its_open_blocks_before_its_failure() {
+    let text = Ok(StreamEvent::BlockDelta {
+        id: text_key(0),
+        delta: Delta::Text {
+            text: "partial".to_owned(),
+        },
+    });
+    let reasoning = Ok(StreamEvent::BlockDelta {
+        id: reasoning_key(0),
+        delta: Delta::Reasoning {
+            text: "half".to_owned(),
+        },
+    });
+    let failure = Err(ErrorReport::new(
+        crate::error::ErrorKind::Provider,
+        "cut off",
+    ));
+    let closes =
+        |relayed: &[Result<StreamEvent, ErrorReport>]| -> Vec<(BlockId, AssistantContent)> {
+            relayed
+                .iter()
+                .filter_map(|item| match item {
+                    Ok(StreamEvent::BlockEnd {
+                        id,
+                        block: Some(block),
+                        ..
+                    }) => Some((id.clone(), block.clone())),
+                    _ => None,
+                })
+                .collect()
+        };
+
+    let truncated = relayed(vec![text.clone(), reasoning.clone()]);
+    assert_eq!(
+        closes(&truncated),
+        vec![
+            (text_key(0), AssistantContent::text("partial")),
+            (
+                reasoning_key(0),
+                AssistantContent::Reasoning(Reasoning::new("half"))
+            ),
+        ]
+    );
+
+    let failed = relayed(vec![text, reasoning, failure.clone()]);
+    assert_eq!(failed.len(), 5);
+    assert_eq!(failed.last(), Some(&failure), "the closes precede it");
+    assert_eq!(closes(&failed), closes(&truncated));
+}

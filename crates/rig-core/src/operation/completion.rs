@@ -1087,6 +1087,6 @@ fn terminal_of(response: &CompletionResponse) -> StreamFinal {
 #[cfg(test)]
 mod tests;
 
-/// Canonicalizing is idempotent: the sink passes its own output unchanged.
+/// Canonicalizing is idempotent, and a relay canonicalizes what it carries.
 #[cfg(test)]
 mod property_tests;

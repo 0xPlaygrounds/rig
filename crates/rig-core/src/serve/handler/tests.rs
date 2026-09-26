@@ -708,3 +708,69 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
         .collect();
     assert_eq!(issuers, ["anthropic"]);
 }
+
+/// A handler's raw events fold as a wire's do: the tap canonicalizes them,
+/// so text without a start or an end reaches the outcome, and a malformed
+/// complete tool input is the outcome's error.
+#[test]
+fn a_tap_folds_raw_handler_events_as_a_wire_s() {
+    use crate::message::AssistantContent;
+    use crate::streaming::{BlockClose, BlockId, Delta, ToolCallEnd, UnparseableToolInput};
+
+    let text = Ok(StreamEvent::BlockDelta {
+        id: BlockId::wire("text"),
+        delta: Delta::Text {
+            text: "hello".to_owned(),
+        },
+    });
+    let terminal = Ok(StreamEvent::Final(StreamFinal::new(
+        "test",
+        Default::default(),
+        serde_json::json!({}),
+    )));
+    let outcome = block_on(
+        Reply::Stream(Box::pin(futures::stream::iter(vec![
+            text.clone(),
+            terminal.clone(),
+        ])))
+        .into_outcome(),
+    );
+    let Ok(Outcome::Completion(response)) = outcome else {
+        panic!("a completion outcome: {outcome:?}");
+    };
+    assert_eq!(response.choice, vec![AssistantContent::text("hello")]);
+
+    let call = BlockId::wire("call");
+    let malformed = [
+        Ok(StreamEvent::BlockDelta {
+            id: call.clone(),
+            delta: Delta::ToolName {
+                name: "lookup".to_owned(),
+            },
+        }),
+        Ok(StreamEvent::BlockDelta {
+            id: call.clone(),
+            delta: Delta::ToolArguments {
+                arguments: "{bad".to_owned(),
+            },
+        }),
+        Ok(StreamEvent::BlockEnd {
+            id: call,
+            end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Error)),
+            block: None,
+        }),
+        terminal,
+    ];
+    let mut tap = StreamTap::new();
+    let outcome = malformed.iter().find_map(|item| tap.observe(item));
+    assert!(
+        matches!(
+            outcome,
+            Some(Err(ErrorReport {
+                detail: Some(crate::error::ErrorDetail::MalformedToolInput(_)),
+                ..
+            }))
+        ),
+        "{outcome:?}"
+    );
+}
