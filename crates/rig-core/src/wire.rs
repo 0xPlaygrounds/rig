@@ -212,7 +212,8 @@ pub trait Operation: Sized + 'static {
     fn scope_to_wire<W: Wire<Op = Self>>(_request: &mut Self::Request, _wire: &W) {}
 
     /// Stamp what the driver learned about the whole reply beyond its
-    /// events onto the response.
+    /// events onto the response. The operation's fold calls it from
+    /// [`Fold::finish`], which receives the reply.
     fn stamp_reply(_response: &mut Self::Response, _reply: &Reply) {}
 
     /// Stamp what the driver learned about the reply so far onto one of its

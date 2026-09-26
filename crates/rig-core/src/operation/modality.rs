@@ -158,6 +158,11 @@ macro_rules! modality_operation {
                 );
             }
 
+            /// A streamed reply's one event is its response.
+            fn record_event(span: &tracing::Span, event: &Self::Event) {
+                Self::record(span, event);
+            }
+
             $(
                 fn accept(
                     capabilities: &Self::Capabilities,

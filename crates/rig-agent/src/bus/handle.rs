@@ -372,8 +372,8 @@ impl ModelHandle {
         )
     }
 
-    /// Stream a completion through the canonical accumulator, surfacing bus errors
-    /// as stream errors. Uses the model label initially and the terminal record's
+    /// Stream a completion relayed from the bus, surfacing bus errors as
+    /// stream errors. Uses the model label initially and the terminal record's
     /// provider name when available.
     pub fn stream(&self, request: CompletionRequest) -> CompletionStream {
         self.stream_with(request, DispatchOptions::default())
@@ -690,7 +690,8 @@ impl RerankHandle {
     }
 }
 
-/// Wrap bus events in a canonical completion accumulator, preserving stream errors.
+/// Relay bus events as a completion stream whose fold collects them,
+/// preserving stream errors.
 pub(crate) fn wrap_stream(provider: impl Into<String>, stream: EffectStream) -> CompletionStream {
     CompletionStream::relay(provider, Box::pin(stream))
 }

@@ -1226,6 +1226,41 @@ async fn the_driver_records_the_folded_responses_metadata() {
     );
 }
 
+/// A streamed embedding records its response on the span as it passes,
+/// as a call records it when it finishes.
+#[test]
+fn a_streamed_embedding_records_its_response_on_the_span() {
+    use tracing::subscriber::with_default;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    const REPLY: &str = r#"{"object":"list","model":"text-embedding-3-small","data":[{"object":"embedding","index":0,"embedding":[0.1]}],"usage":{"prompt_tokens":2,"total_tokens":2}}"#;
+    let recorded = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
+    let layer = RecordFields {
+        recorded: recorded.clone(),
+    };
+    let subscriber = tracing_subscriber::registry().with(layer);
+    let wire = crate::providers::openai::wire::OpenAI::new("sk-test")
+        .embedding("text-embedding-3-small", None);
+    let model = Model::new(
+        wire,
+        SequencedHttpClient::new([MockHttpResponse::success(REPLY)]),
+    );
+    with_default(subscriber, || {
+        let stream = model
+            .stream(vec!["a".to_owned()])
+            .expect("the embedding opens");
+        futures::executor::block_on(stream.collect::<Vec<_>>())
+    });
+    let recorded = recorded.lock().expect("no panic held the lock").clone();
+    assert!(
+        recorded
+            .iter()
+            .any(|(field, value)| field == "gen_ai.response.model"
+                && value == "text-embedding-3-small"),
+        "expected the response model on the span: {recorded:?}"
+    );
+}
+
 #[tokio::test]
 async fn the_span_names_the_requests_model_override_not_the_wires() {
     use tracing::subscriber::with_default;

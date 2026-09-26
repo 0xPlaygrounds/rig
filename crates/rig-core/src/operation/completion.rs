@@ -450,8 +450,10 @@ impl Fold<Completion> for CompletionFold {
 /// finalized (text included), a malformed complete tool input is an error
 /// item in its place, the text and reasoning blocks still open are closed
 /// before the terminal record, the terminal's finish reason agrees with the
-/// completed tool calls, and a second terminal record is dropped.
-/// Frame-classification errors are handled by the driver.
+/// completed tool calls, and a second terminal record is dropped. A sink
+/// driven by hand rather than by the driver ends a reply with
+/// [`Sink::finish`], as the driver does. Frame-classification errors are
+/// handled by the driver.
 #[derive(Debug, Default)]
 pub struct AdapterOutput {
     items: Vec<Result<StreamEvent, ProviderError>>,
