@@ -78,17 +78,24 @@ Stop and write a report in STATE › notes, then commit and push, when: the next
 
 ```yaml
 version: 1
-pr: null                   # PR URL once opened
+pr: https://github.com/0xPlaygrounds/rig/pull/2603
 budget_usd_cap: 400
-spent_usd_known: 0.00
+spent_usd_known: 0.01
 spent_usd_reserved_unknown: 0.00
-current_rung: 1
+current_rung: 2
 current_step: prepare      # prepare | run | ledger | analyse | fix | report
 in_progress_job: null      # runs/<job> while a job is live
-last_started: null         # ISO date of the last (re)start
+last_started: 2026-09-26
 ```
 
 ## rungs
+
+### 1 hello-world@1.0 (2026-09-26)
+job: runs/ladder-1-hello-world  passed: 1/1  mean: 1.00  wilson: [0.21, 1.00]  cost: $0.0034  per-resolved: $0.0034
+buckets: infra 0 · harness 0 · rig 0 · model 0 · contaminated 0
+kept: the adapter's egress probe falls back to bash /dev/tcp when the image has no python3 (probe re-run runs/ladder-1-probe: all three URLs DENIED, trial passed, $0.0034)
+observations: 4 turns, 3 tool calls; the model verified its own write twice (read_file, then cat). Gemini reported no cached input tokens on these ~1k-token prompts; check again on longer runs before calling it a Rig bug.
+
 <!-- one entry per finished rung:
 ### <n> <dataset@version> (<date>)
 job: runs/<job>  passed: x/y  mean: 0.xx  wilson: [a, b]  cost: $x  per-resolved: $x
@@ -100,4 +107,9 @@ observations: … -->
 <!-- every failed or errored trial, once: <job>/<trial> L<line> — <bucket> — <mechanism>; and cost outliers -->
 
 ## notes
+
+- Task images may lack python3 (hello-world does); anything the adapter runs in the container must work with bash alone.
+- The first build receipt predates the first commit (source_head 42f4e060, dirty: true). Rebuild before rung 2.
+- transcript.jsonl tool_result `output` holds the serialized Outcome JSON, not just the tool's text; readable, but noisy for long outputs.
+
 <!-- lessons for the next start: adapter quirks, dataset quirks, reverted attempts, what wasted money -->

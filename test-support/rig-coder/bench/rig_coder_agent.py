@@ -112,8 +112,10 @@ class RigCoderAgent(BaseInstalledAgent):
         A TCP connect is not evidence, since an egress proxy accepts and then
         drops it; only an HTTP response counts as reached.
         """
+        # python3 when the image has it, otherwise bash's /dev/tcp with a raw
+        # HTTP request; a status line in the reply is the only proof of reach.
         probe = await environment.exec(
-            command="python3 - <<'EOF'\n"
+            command="if command -v python3 >/dev/null; then python3 - <<'EOF'\n"
             "import urllib.request\n"
             "for url in ('http://93.184.215.14/', 'https://example.com/', 'https://github.com/'):\n"
             "    try:\n"
@@ -121,9 +123,14 @@ class RigCoderAgent(BaseInstalledAgent):
             "            print(url, 'REACHED', r.status)\n"
             "    except Exception as e:\n"
             "        print(url, 'DENIED', type(e).__name__, str(e)[:80])\n"
-            "EOF",
+            "EOF\n"
+            "else for host in 93.184.215.14 example.com github.com; do "
+            "reply=$(timeout 10 bash -c \"exec 3<>/dev/tcp/$host/80 && "
+            "printf 'GET / HTTP/1.0\\r\\nHost: $host\\r\\n\\r\\n' >&3 && head -c 12 <&3\" 2>&1); "
+            "case \"$reply\" in HTTP/*) echo \"http://$host/ REACHED $reply\";; "
+            "*) echo \"http://$host/ DENIED ${reply:-no response}\";; esac; done; fi",
             user="root",
-            timeout_sec=60,
+            timeout_sec=90,
         )
         (self.logs_dir / "network-probe.txt").write_text(
             f"stdout={probe.stdout!r}\nstderr={probe.stderr!r}\nreturn_code={probe.return_code}\n"
