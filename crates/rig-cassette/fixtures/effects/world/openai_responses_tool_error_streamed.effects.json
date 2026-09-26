@@ -2,31 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 25,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 28,
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,23 +10,15 @@
         }
       },
       {
-        "batch": 29,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 30,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -58,7 +26,7 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -66,15 +34,7 @@
         }
       },
       {
-        "batch": 33,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 47,
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -82,21 +42,53 @@
         }
       },
       {
-        "batch": 47,
+        "batch": 22,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 23,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 48,
+        "batch": 42,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 69,
+        "batch": 53,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -104,7 +96,15 @@
         }
       },
       {
-        "batch": 72,
+        "batch": 55,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 56,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -112,7 +112,7 @@
         }
       },
       {
-        "batch": 73,
+        "batch": 57,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -120,7 +120,7 @@
         }
       },
       {
-        "batch": 74,
+        "batch": 75,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -129,30 +129,6 @@
       },
       {
         "batch": 75,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 78,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -831,6 +807,17 @@
           "id": "wire:msg_0a76618d696765a3006ab2b28de0ac87d088ce469131e22705",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_0a76618d696765a3006ab2b28de0ac87d088ce469131e22705",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "the adder is broken"
           }
         },
         {

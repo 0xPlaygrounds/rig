@@ -35,7 +35,7 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
     driver.finish();
     let mut fold = <Completion as Operation>::fold(&hello_request());
     for item in driver.drain() {
-        fold.absorb(item?)?;
+        fold.absorb(&item?)?;
     }
     Fold::<Completion>::finish(
         fold,

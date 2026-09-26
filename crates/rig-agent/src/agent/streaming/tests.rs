@@ -4271,7 +4271,9 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
             .collect::<Vec<_>>(),
         vec!["first ", "beta", "second"]
     );
-    assert_eq!(completed_reasoning, 1);
+    // `rs_b`, which the script never ends, is closed before the terminal
+    // and carries its block like the restated first part.
+    assert_eq!(completed_reasoning, 2);
     assert_eq!(
         hook.observed(),
         vec![

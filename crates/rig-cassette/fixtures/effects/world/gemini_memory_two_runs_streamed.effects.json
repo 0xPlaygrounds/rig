@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,7 +17,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -25,43 +25,51 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 25,
+        "batch": 23,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 2
         }
       },
       {
-        "batch": 25,
+        "batch": 24,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 24,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 26,
+        "batch": 25,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -232,6 +240,10 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "ready."
           }
         },
         {
@@ -258,6 +270,15 @@
           "id": "minted:text:1",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "EuACCt0CAWkUfRO9B6mHNbIxmPOOAzyhsyIRelbHOAAWAiAvUyQYx2h32s3hifGMncAxTKF6M4z9sZ4IcyuajotE4ZvBEDZHe2vS93yegJ2Tyfig1RRf4OptOSPrf3IM+mvaFc5x1OgggZcPJOQg/yWVIJyISrblradABL2LSJN/pmT3AzUj8tXKyrQkZDvBDsSSOZf1GMF0N92KJAyY++wJSn1+xCZ7ipF4Q9HABWkp+PMoNquVzgVsFu2pJ5pTeZbxlzbdWZ/9gpPkl7RutFqYWkrZ0qfG3Qw07FM+uRpu1KS7sP9OMhrlQ2O2qjujSPIThgmcREInN4UE1FZxR0PaA6JNrZ4ZDhO/dQMScC4xoQxZeudFQ1Q2mUETgDkWCwdS4LoBdXAmOBtMsauim8snbywAUcSC3gKyLFecP3xtUMx0ulyPLrnhu6CCZ/LIG8Qrtd0QzzKHzx9tEAzs7Nk+RQ=="
+              }
+            }
           }
         },
         {
@@ -522,6 +543,10 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "again."
           }
         },
         {
@@ -548,6 +573,15 @@
           "id": "minted:text:1",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "Eq4CCqsCAWkUfRPeW5gVMbiDa/kJuadiNqo3muB/GV9+AC7DMrT99B0ydenIc7bhHa7+LM/Us6JqCdRmNsRxlj8xI3WJlVbmjsc6Yr4stth5jQ6i9GptoB+q1kAjkA9bx8zen7qFGRXolU5+bX+w8m6HmRwZOOlYe+IkAaJYe6NVNLbjdBtGU6YX4JICHeb28Q/KosG4XxzN7cA7AG7AWROBF2UgcXgv6sAeaiIzd/BBZfk6cyWcRn431kGzFTh+qVQvOe58kSpoEF0/QS2sSq3JOLdtvycPlnd5+mQzGeOyhedqTWW2MX3dCyascab+0TwmjTOQ0qZ1lZDlvBaqaLNvExUlrh+DdvIDwHX0aI9hj0zhu1XJJiG0x9B4IrcPu8s0c9F/ms4YthkyD7ySInQ="
+              }
+            }
           }
         },
         {

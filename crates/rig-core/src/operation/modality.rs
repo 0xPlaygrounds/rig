@@ -260,7 +260,8 @@ modality_operation!(
 
 /// Accumulates vectors in reply order and pairs them positionally with request
 /// documents. Finishing rejects missing replies or unequal vector/document counts.
-/// Usage is summed; other metadata comes from the first reply.
+/// Usage is summed; other metadata comes from the first reply. It sees each
+/// reply by reference, so it copies the vectors it keeps.
 #[derive(Default)]
 pub struct Embedded {
     documents: Vec<String>,
@@ -288,16 +289,18 @@ impl Embedded {
         }
     }
 
+    /// Keep one reply's vectors and usage, and its metadata when it is the
+    /// first reply.
     fn absorb_parts(
         &mut self,
-        vectors: impl IntoIterator<Item = Vector>,
+        vectors: &[Vector],
         usage: crate::completion::Usage,
-        metadata: Metadata,
+        metadata: impl FnOnce() -> Metadata,
     ) {
         self.vectors
-            .extend(vectors.into_iter().map(|vector| vector.vec));
+            .extend(vectors.iter().map(|vector| vector.vec.clone()));
         self.usage += usage;
-        self.metadata.get_or_insert(metadata);
+        self.metadata.get_or_insert_with(metadata);
     }
 
     /// The vectors, paired with the inputs they belong to.
@@ -325,18 +328,17 @@ impl Embedded {
 }
 
 impl Fold<Embedding> for Embedded {
-    fn absorb(&mut self, reply: crate::embeddings::EmbeddingResponse) -> Result<(), ProviderError> {
-        self.absorb_parts(
-            reply.embeddings,
-            reply.usage,
-            Metadata {
-                provider: reply.provider,
-                model: reply.model,
-                response_id: reply.response_id,
-                provider_request_id: reply.provider_request_id,
-                raw: reply.raw,
-            },
-        );
+    fn absorb(
+        &mut self,
+        reply: &crate::embeddings::EmbeddingResponse,
+    ) -> Result<(), ProviderError> {
+        self.absorb_parts(&reply.embeddings, reply.usage, || Metadata {
+            provider: reply.provider.clone(),
+            model: reply.model.clone(),
+            response_id: reply.response_id.clone(),
+            provider_request_id: reply.provider_request_id.clone(),
+            raw: reply.raw.clone(),
+        });
         Ok(())
     }
 
@@ -359,19 +361,15 @@ impl Fold<Embedding> for Embedded {
 impl Fold<ImageEmbedding> for Embedded {
     fn absorb(
         &mut self,
-        reply: crate::embeddings::ImageEmbeddingResponse,
+        reply: &crate::embeddings::ImageEmbeddingResponse,
     ) -> Result<(), ProviderError> {
-        self.absorb_parts(
-            reply.embeddings,
-            reply.usage,
-            Metadata {
-                provider: reply.provider,
-                model: reply.model,
-                response_id: reply.response_id,
-                provider_request_id: reply.provider_request_id,
-                raw: reply.raw,
-            },
-        );
+        self.absorb_parts(&reply.embeddings, reply.usage, || Metadata {
+            provider: reply.provider.clone(),
+            model: reply.model.clone(),
+            response_id: reply.response_id.clone(),
+            provider_request_id: reply.provider_request_id.clone(),
+            raw: reply.raw.clone(),
+        });
         Ok(())
     }
 

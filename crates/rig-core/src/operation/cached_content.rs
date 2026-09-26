@@ -42,12 +42,13 @@ pub struct CachedContentFold {
 }
 
 impl Fold<ContextCache> for CachedContentFold {
-    fn absorb(&mut self, page: CachedContentReply) -> Result<(), ProviderError> {
+    fn absorb(&mut self, page: &CachedContentReply) -> Result<(), ProviderError> {
         match (&mut self.reply, page) {
             (CachedContentReply::Page(held), CachedContentReply::Page(page)) => {
-                held.cached_contents.extend(page.cached_contents);
+                held.cached_contents
+                    .extend(page.cached_contents.iter().cloned());
             }
-            (CachedContentReply::Acknowledged, page) => self.reply = page,
+            (CachedContentReply::Acknowledged, page) => self.reply = page.clone(),
             // A second answer to a single-document verb, or a page after a
             // resource: the first one stands.
             _ => {}

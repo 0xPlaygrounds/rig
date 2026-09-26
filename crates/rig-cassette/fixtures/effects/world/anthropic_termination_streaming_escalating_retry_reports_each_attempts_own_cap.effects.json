@@ -2,38 +2,22 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 5
         }
       },
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -41,7 +25,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -49,15 +33,15 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 18,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -185,6 +169,17 @@
           "delta": {
             "delta": "text",
             "text": "\nbr"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "alpha\nbr"
           }
         },
         {
@@ -323,6 +318,17 @@
           "delta": {
             "delta": "text",
             "text": "\ndelta"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "alpha\nbravo\ncharlie\ndelta"
           }
         },
         {

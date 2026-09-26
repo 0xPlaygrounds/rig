@@ -8,7 +8,6 @@
 //! assert!(matches!(terminal, StreamEvent::Final(_)));
 //! ```
 
-mod accumulator;
 mod block_id;
 mod event;
 
@@ -17,7 +16,7 @@ use crate::error::ErrorReport;
 use crate::error::ProviderError;
 use crate::message::{AssistantContent, ToolResult};
 use crate::operation::CompletionFold;
-pub use accumulator::BlockAccumulator;
+use crate::wire::Fold;
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
 pub use event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCallEnd};
 use futures::Stream;
@@ -38,19 +37,19 @@ pub fn stamp_reasoning(choice: Vec<AssistantContent>, issuer: &str) -> Vec<Assis
         .collect()
 }
 
-/// The folded completion response: the aggregated choice, its reasoning
+/// The folded completion response: the collected choice, its reasoning
 /// stamped with `issuer`, plus the terminal record's usage and metadata,
 /// carrying `raw` as the provider's document for the turn. Usage reports no
 /// counter when the reply produced no terminal record.
 pub(crate) fn fold_finish(
-    mut accumulator: BlockAccumulator,
+    choice: Vec<AssistantContent>,
     terminal: Option<&StreamFinal>,
     message_id: Option<String>,
     provider: String,
     issuer: &str,
     raw: serde_json::Value,
 ) -> CompletionResponse {
-    let choice = stamp_reasoning(accumulator.finish(), issuer);
+    let choice = stamp_reasoning(choice, issuer);
     CompletionResponse::new(
         choice,
         terminal.map(|response| response.usage).unwrap_or_default(),
@@ -116,8 +115,8 @@ pub struct StreamFinal {
     /// Token usage reported by the provider for this streamed completion.
     /// A counter the provider did not report is `None`.
     pub usage: Usage,
-    /// Provider-reported finish reason. [`CompletionStream`] reconciles
-    /// it with the completed tool calls before yielding the terminal event.
+    /// Provider-reported finish reason. The completion sink reconciles it
+    /// with the completed tool calls before the terminal event leaves it.
     #[serde(default)]
     pub finish_reason: Option<crate::completion::FinishReason>,
     /// Provider-assigned assistant message ID suitable for replay.
@@ -287,18 +286,19 @@ impl From<serde_json::Value> for UnknownPayload {
 #[cfg(test)]
 mod unknown_payload_tests;
 
-/// The one stream item type: what [`CompletionStream`] yields, what the
-/// accumulator applies, what the bus carries.
+/// The one stream item type: what [`CompletionStream`] yields, what a
+/// [`CompletionFold`] collects, what the bus carries.
 pub type StreamEvents =
     crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, ErrorReport>>;
 
-/// A completion reply's events after the fold step, and the fold itself.
+/// A completion reply's canonical events, and the fold that has seen them.
 ///
-/// It yields each event as [`CompletionFold`] rewrote it: a closing
-/// [`StreamEvent::BlockEnd`] carries its finalized block, the terminal's
-/// finish reason is reconciled with the completed tool calls, duplicate
-/// terminals are dropped, and a malformed block surfaces as an in-band
-/// [`ErrorReport`]. Stop polling to pause; drop the stream to cancel.
+/// The events are final as the completion sink made them: every
+/// [`StreamEvent::BlockEnd`] carries the block it finalized, the terminal's
+/// finish reason agrees with the completed tool calls, a stream carries one
+/// terminal, and a malformed block is an in-band [`ErrorReport`]. Each event
+/// is yielded after [`CompletionFold`] has seen it. Stop polling to pause;
+/// drop the stream to cancel.
 pub struct CompletionStream {
     events: StreamEvents,
     fold: CompletionFold,
@@ -341,19 +341,17 @@ impl Stream for CompletionStream {
         if stream.finished {
             return Poll::Ready(None);
         }
-        loop {
-            return match stream.events.as_mut().poll_next(cx) {
-                Poll::Pending => Poll::Pending,
-                Poll::Ready(None) => {
-                    stream.finished = true;
-                    Poll::Ready(None)
-                }
-                Poll::Ready(Some(Err(error))) => Poll::Ready(Some(Err(error))),
-                Poll::Ready(Some(Ok(event))) => match stream.fold.step(event) {
-                    Some(item) => Poll::Ready(Some(item)),
-                    None => continue,
-                },
-            };
+        match stream.events.as_mut().poll_next(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => {
+                stream.finished = true;
+                Poll::Ready(None)
+            }
+            Poll::Ready(Some(Err(error))) => Poll::Ready(Some(Err(error))),
+            Poll::Ready(Some(Ok(event))) => match stream.fold.absorb(&event) {
+                Ok(()) => Poll::Ready(Some(Ok(event))),
+                Err(error) => Poll::Ready(Some(Err(ErrorReport::from(&error)))),
+            },
         }
     }
 }

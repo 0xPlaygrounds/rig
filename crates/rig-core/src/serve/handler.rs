@@ -20,6 +20,7 @@ use crate::{
     operation::CompletionFold,
     streaming::{StreamEvent, StreamEvents},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wire::Fold,
 };
 
 #[cfg(test)]
@@ -227,27 +228,26 @@ impl StreamTap {
         Self::default()
     }
 
-    /// Folds an event, returning an outcome on `Final`, an error item, or an
-    /// accumulation failure. Callers decide whether to stop after an outcome.
+    /// Folds an event, returning an outcome on `Final` or an error item.
+    /// Callers decide whether to stop after an outcome.
     pub fn observe(
         &mut self,
         item: &Result<StreamEvent, ErrorReport>,
     ) -> Option<Result<Outcome, ErrorReport>> {
         let event = match item {
             Err(report) => return Some(Err(report.clone())),
-            Ok(event) => event.clone(),
+            Ok(event) => event,
         };
-        match self.fold.step(event)? {
-            Err(report) => Some(Err(report)),
-            Ok(StreamEvent::Final(_)) => Some(
-                std::mem::take(self)
-                    .fold
-                    .finish_stream()
-                    .map(Outcome::Completion)
-                    .map_err(|error| ErrorReport::from(&error)),
-            ),
-            Ok(_) => None,
+        if let Err(error) = self.fold.absorb(event) {
+            return Some(Err(ErrorReport::from(&error)));
         }
+        matches!(event, StreamEvent::Final(_)).then(|| {
+            std::mem::take(self)
+                .fold
+                .finish_stream()
+                .map(Outcome::Completion)
+                .map_err(|error| ErrorReport::from(&error))
+        })
     }
 }
 

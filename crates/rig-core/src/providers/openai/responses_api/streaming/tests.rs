@@ -310,7 +310,7 @@ fn folded_stream_events(
     };
     let mut fold = <Completion as Operation>::Fold::default();
     for event in events {
-        fold.absorb(event)?;
+        fold.absorb(&event)?;
     }
     fold.finish(reply)
 }
@@ -2584,11 +2584,17 @@ async fn malformed_frame_surfaces_error_and_stream_still_completes() {
                 terminal = Some(final_response);
             }
             // The item's text block opens under its `msg_*` id before the
-            // first fragment.
-            Ok(StreamEvent::BlockStart {
-                kind: BlockKind::Text { .. },
-                ..
-            }) => {}
+            // first fragment, and the sink closes it before the terminal.
+            Ok(
+                StreamEvent::BlockStart {
+                    kind: BlockKind::Text { .. },
+                    ..
+                }
+                | StreamEvent::BlockEnd {
+                    end: BlockClose::Text,
+                    ..
+                },
+            ) => {}
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(err) => {
                 assert!(

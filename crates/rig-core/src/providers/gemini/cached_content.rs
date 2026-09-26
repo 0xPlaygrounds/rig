@@ -244,7 +244,7 @@ pub enum CachedContentRequest {
 }
 
 /// One page of a `cachedContents` listing.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CachedContentPage {
     /// Entries in arrival order, concatenated across pages when folded.
@@ -259,7 +259,7 @@ pub struct CachedContentPage {
 
 /// A resource, listing page, or empty acknowledgement from `cachedContents`.
 /// Malformed bodies fail decoding rather than representing absent resources.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum CachedContentReply {
     /// `create`, `get` and `update_expiry`: the resource.
     Resource(CachedContent),

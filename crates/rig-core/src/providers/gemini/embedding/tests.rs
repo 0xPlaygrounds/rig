@@ -99,7 +99,7 @@ fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
     let mut fold = <crate::operation::Embedding as Operation>::fold(&documents);
     for item in driver.drain() {
         let event = item.expect("the recorded reply decodes without an in-band error");
-        Fold::<crate::operation::Embedding>::absorb(&mut fold, event)
+        Fold::<crate::operation::Embedding>::absorb(&mut fold, &event)
             .expect("the fold accepts the reply");
     }
     let response = Fold::<crate::operation::Embedding>::finish(

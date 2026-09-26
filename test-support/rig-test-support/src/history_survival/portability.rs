@@ -46,7 +46,7 @@ where
     driver.finish();
     let mut fold = CompletionFold::default();
     for item in driver.drain() {
-        fold.absorb(item?)?;
+        fold.absorb(&item?)?;
     }
     let raw = serde_json::from_str::<Value>(body)
         .map_err(|error| ProviderError::Response(error.to_string()))?;

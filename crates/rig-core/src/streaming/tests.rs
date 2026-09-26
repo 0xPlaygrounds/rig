@@ -40,10 +40,12 @@ fn opened(
 }
 
 /// Script a provider's output through the same helpers adapters use, so
-/// the scripted events speak exactly the grammar a wire would.
+/// the scripted events speak exactly the grammar a wire would, ended as
+/// the driver ends a reply.
 fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, ProviderError>> {
     let mut out = AdapterOutput::new();
     build(&mut out);
+    crate::wire::Sink::<crate::operation::Completion>::finish(&mut out);
     out.into_items()
 }
 
@@ -111,27 +113,22 @@ fn create_mock_stream() -> CompletionStream {
     opened(TEST_PROVIDER, stream)
 }
 
-/// #2258 review P3: non-yielding events (duplicate terminal records
-/// here — the first one latched) drive the `poll_next` loop instead of
-/// synchronous self-recursion, so a long run of them cannot grow the
-/// stack. Pre-fix, each of these frames was one recursive `poll_next`
-/// stack frame and a run this long overflowed in debug builds.
+/// A second terminal record is a provider defect: the sink drops every
+/// terminal after the first, so a stream carries one and the fold keeps the
+/// first. Every message id the wire announced still reaches the fold.
 #[tokio::test]
-async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
-    let raw = stream! {
-        for n in 0..50_000u32 {
-            yield Ok(StreamEvent::BlockStart {
-                id: BlockId::wire(format!("msg_{n}")),
-                kind: BlockKind::Message,
-            });
+async fn the_sink_keeps_the_first_of_many_terminals() {
+    let items = script(|out| {
+        for n in 0..1_000u32 {
+            out.message_id(format!("msg_{n}"));
         }
-        yield Ok(StreamEvent::text(BlockId::wire("t"), "done"));
-        yield Ok(StreamEvent::Final(mock_final_with_total_tokens(1)));
-        for _ in 0..50_000u32 {
-            yield Ok(StreamEvent::Final(mock_final_with_total_tokens(99)));
+        out.text("done");
+        out.final_record(mock_final_with_total_tokens(1));
+        for _ in 0..1_000u32 {
+            out.final_record(mock_final_with_total_tokens(99));
         }
-    };
-    let mut stream = opened(TEST_PROVIDER, raw);
+    });
+    let mut stream = opened(TEST_PROVIDER, futures::stream::iter(items));
 
     let mut texts = Vec::new();
     let mut terminals = 0;
@@ -147,13 +144,13 @@ async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
     assert_eq!(texts, vec!["done".to_string()]);
     assert_eq!(
         terminals, 1,
-        "the first terminal latched; duplicates never yield"
+        "the first terminal stands; later ones never leave the sink"
     );
     assert_eq!(stream.folded().usage().total_tokens, Some(1));
     // The last id recorded wins.
     assert_eq!(
         stream.folded().message_id().map(str::to_owned).as_deref(),
-        Some("msg_49999")
+        Some("msg_999")
     );
 }
 
@@ -883,12 +880,12 @@ async fn full_reasoning_block_with_a_different_id_appends() {
     assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("rs_2")]);
 }
 
-/// A bare end the wire actually sent yields the completed block (the
-/// wire announced the boundary and the consumer must see it — e.g.
-/// anthropic's `content_block_stop` on an unsigned thinking block); a
-/// bare end an adapter synthesized stays silent.
+/// Every end of an open reasoning block yields the completed block, whether
+/// the wire sent it (anthropic's `content_block_stop` on an unsigned
+/// thinking block) or an adapter synthesized it at a boundary: the fold
+/// collects blocks from their ends, so a silent end would lose the part.
 #[tokio::test]
-async fn wire_sent_bare_end_yields_the_completed_block_synthesized_stays_silent() {
+async fn a_bare_end_yields_the_completed_block_wire_sent_or_synthesized() {
     let run = |wire_sent: bool| async move {
         let mut stream = scripted(|out| {
             let key = BlockId::minted(MintKind::Block, 0);
@@ -902,21 +899,25 @@ async fn wire_sent_bare_end_yields_the_completed_block_synthesized_stays_silent(
                 completed.push(reasoning);
             }
         }
-        completed
+        (completed, stream.folded().snapshot())
     };
 
-    let wire = run(true).await;
-    assert_eq!(wire.len(), 1, "a wire-sent end announces the boundary");
-    assert!(matches!(
-        wire[0].content.first(),
-        Some(ReasoningContent::Text { text, signature: None }) if text == "unsigned thoughts"
-    ));
-
-    let synthesized = run(false).await;
-    assert!(
-        synthesized.is_empty(),
-        "a synthesized bare end fabricates nothing: {synthesized:?}"
-    );
+    for wire_sent in [true, false] {
+        let (completed, snapshot) = run(wire_sent).await;
+        assert_eq!(
+            completed.len(),
+            1,
+            "wire_sent {wire_sent}: one completed block"
+        );
+        assert!(matches!(
+            completed[0].content.first(),
+            Some(ReasoningContent::Text { text, signature: None }) if text == "unsigned thoughts"
+        ));
+        assert_eq!(
+            snapshot,
+            vec![AssistantContent::Reasoning(completed[0].clone())]
+        );
+    }
 }
 
 /// The completed reasoning event restates the block id its deltas
@@ -1013,19 +1014,36 @@ async fn late_signature_after_synthesized_end_restates_the_delta_block_id() {
         completed.extend(completed_reasoning(&event));
     }
 
-    assert_eq!(completed.len(), 1, "one signed completion, no duplicate");
-    let (block, reasoning) = completed.first().expect("one completed block");
     assert_eq!(
-        Some(block),
-        delta_ids.first(),
-        "the signed completion restates the block id its deltas carried"
+        completed.len(),
+        2,
+        "the synthesized end completes the part; the signature restates it"
     );
+    for (block, _) in &completed {
+        assert_eq!(
+            Some(block),
+            delta_ids.first(),
+            "each completion restates the block id its deltas carried"
+        );
+    }
+    let (_, reasoning) = completed.last().expect("the signed restatement");
     assert!(
         reasoning.content.iter().any(|content| matches!(
             content,
             ReasoningContent::Text { signature: Some(sig), .. } if sig == "sig_late"
         )),
         "the trailing signature landed on the completed part"
+    );
+    let reasoning_parts: Vec<_> = stream
+        .folded()
+        .snapshot()
+        .into_iter()
+        .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
+        .collect();
+    assert_eq!(
+        reasoning_parts,
+        vec![AssistantContent::Reasoning(reasoning.clone())],
+        "the restatement replaces the part; it never duplicates it"
     );
 }
 

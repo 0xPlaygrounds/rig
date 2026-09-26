@@ -6,50 +6,26 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 5
         }
       },
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 17,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -57,15 +33,7 @@
         }
       },
       {
-        "batch": 19,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -192,6 +160,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "agent raw probe"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 14,
@@ -315,6 +294,17 @@
           "delta": {
             "delta": "text",
             "text": " raw probe"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "agent raw probe"
           }
         },
         {

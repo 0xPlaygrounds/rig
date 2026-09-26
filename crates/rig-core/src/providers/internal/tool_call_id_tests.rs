@@ -29,7 +29,7 @@ fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
         record_telemetry_content: false,
     });
     for item in driver.drain() {
-        fold.absorb(item.expect("the reply decodes without an in-band error"))
+        fold.absorb(&item.expect("the reply decodes without an in-band error"))
             .expect("the fold accepts every event");
     }
     Fold::<Completion>::finish(

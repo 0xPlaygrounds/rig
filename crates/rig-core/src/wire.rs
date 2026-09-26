@@ -285,15 +285,21 @@ pub trait Sink<Op: Operation>: Default {
     /// The default skips it; a sink with a passthrough channel forwards it.
     fn unknown(&mut self, _payload: crate::streaming::UnknownPayload) {}
 
+    /// The reply ended, at EOF or before a terminal failure: finalize what
+    /// is still open. Called at most once, after the decoder's own flush.
+    fn finish(&mut self) {}
+
     /// Check the operation's sequence laws over this batch.
     fn check_laws(&self, _laws: &mut Self::Laws) {}
 }
 
-/// The fold from a reply's events to its response.
+/// The fold from a reply's canonical events to its response.
+///
+/// It never rewrites, drops or validates an event: the sink already did.
+/// It sees each event once, by reference, and keeps what it needs.
 pub trait Fold<Op: Operation>: Default {
-    /// Absorb one event. An error fails the whole operation: a buffered
-    /// reply has no stream to carry an in-band defect.
-    fn absorb(&mut self, event: Op::Event) -> Result<(), ProviderError>;
+    /// Absorb one event. An error fails the whole operation.
+    fn absorb(&mut self, event: &Op::Event) -> Result<(), ProviderError>;
 
     /// The folded response.
     fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError>;

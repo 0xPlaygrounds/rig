@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,36 +17,36 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 11,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 19,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 25,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,22 +54,22 @@
         }
       },
       {
-        "batch": 31,
+        "batch": 26,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 31,
+        "batch": 26,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 32,
+        "batch": 27,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -224,6 +224,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "ready"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "ready"
           }
         },
@@ -447,6 +458,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "again"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "again"
           }
         },

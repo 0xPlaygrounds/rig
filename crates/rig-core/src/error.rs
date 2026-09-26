@@ -398,6 +398,11 @@ pub enum ProviderError {
         /// Width the provider actually returned.
         returned: usize,
     },
+    /// A tool block the provider declared complete carried input that is
+    /// not valid JSON. Its report carries the input as
+    /// [`ErrorDetail::MalformedToolInput`].
+    #[error("tool call `{}` arrived with malformed JSON input: {}", .0.name, .0.error)]
+    MalformedToolInput(MalformedToolInput),
 }
 
 impl ProviderError {
@@ -434,7 +439,9 @@ impl ProviderError {
             Self::Json(_) => ErrorKind::Json,
             Self::Url(_) => ErrorKind::Url,
             Self::Request(_) => ErrorKind::Request,
-            Self::Response(_) | Self::MismatchedDimensions { .. } => ErrorKind::Response,
+            Self::Response(_) | Self::MismatchedDimensions { .. } | Self::MalformedToolInput(_) => {
+                ErrorKind::Response
+            }
             Self::Provider(_) => ErrorKind::Provider,
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
@@ -653,7 +660,12 @@ impl From<&ProviderError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: response.and_then(|response| response.provider_request_id.clone()),
             provider_response: response.cloned(),
-            detail: None,
+            detail: match error {
+                ProviderError::MalformedToolInput(input) => {
+                    Some(ErrorDetail::MalformedToolInput(input.clone()))
+                }
+                _ => None,
+            },
         }
     }
 }

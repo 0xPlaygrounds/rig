@@ -724,7 +724,7 @@ fn fold_events(
 ) -> Result<completion::CompletionResponse, ProviderError> {
     let mut fold = <Completion as Operation>::Fold::default();
     for event in events {
-        fold.absorb(event)?;
+        fold.absorb(&event)?;
     }
     fold.finish(Reply {
         provider: provider.to_owned(),

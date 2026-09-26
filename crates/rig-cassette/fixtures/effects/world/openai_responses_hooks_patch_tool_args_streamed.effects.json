@@ -2,35 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 21,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
@@ -38,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -46,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -54,11 +30,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 32,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -66,21 +50,37 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 28,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 40,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 33,
+        "batch": 41,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 44,
+        "batch": 55,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -88,7 +88,7 @@
         }
       },
       {
-        "batch": 46,
+        "batch": 57,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -96,15 +96,15 @@
         }
       },
       {
-        "batch": 50,
+        "batch": 71,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 50,
+        "batch": 71,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -703,6 +703,17 @@
           "id": "wire:msg_0831eba541b42c3d006ab2b2e9564887d09739b69beaeeaf8d",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_0831eba541b42c3d006ab2b2e9564887d09739b69beaeeaf8d",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "42"
           }
         },
         {

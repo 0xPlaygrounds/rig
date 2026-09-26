@@ -333,11 +333,19 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
             }) => {
                 streamed_text.push_str(&text);
             }
+            // A block the provider announced: its own end, a restatement or
+            // a signature. A boundary the adapter synthesized carries the
+            // deltas, which the fallback below replays.
             Ok(StreamEvent::BlockEnd {
-                end: BlockClose::Reasoning { .. },
+                end:
+                    BlockClose::Reasoning {
+                        reasoning: restatement,
+                        signature,
+                        wire_sent,
+                    },
                 block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
-            }) => {
+            }) if wire_sent || restatement.is_some() || signature.is_some() => {
                 saw_reasoning_block = true;
                 assistant_content.push(AssistantContent::Reasoning(reasoning));
             }

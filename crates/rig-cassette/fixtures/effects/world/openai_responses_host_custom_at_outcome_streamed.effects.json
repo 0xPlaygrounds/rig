@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 17,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 10
         }
       },
       {
-        "batch": 18,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,60 +26,28 @@
         }
       },
       {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 21,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 22,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 31,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 31,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 32,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 33,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 48,
+        "batch": 22,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -87,7 +55,7 @@
         }
       },
       {
-        "batch": 49,
+        "batch": 23,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -95,15 +63,15 @@
         }
       },
       {
-        "batch": 52,
+        "batch": 26,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 52,
+        "batch": 26,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -732,6 +700,17 @@
           "id": "wire:msg_033c484c5bd1d6aa006ab2b305a3fc87d09739de32c7947259",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_033c484c5bd1d6aa006ab2b305a3fc87d09739de32c7947259",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "42"
           }
         },
         {

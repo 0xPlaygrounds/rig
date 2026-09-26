@@ -1162,19 +1162,15 @@ async fn a_record_names_the_scope_of_the_program_that_made_it() {
     assert_eq!(restored[1].scope.as_deref(), Some("run-1"));
 }
 
-/// A stream whose *fold* fails — a tool call closed with malformed
-/// arguments under `UnparseableToolInput::Error` — reaches the consumer as
-/// the provider sent it (the malformed close is an `Ok` item; the
-/// consumer's own accumulator reports it) while the record's outcome is
-/// the fold's error. A replay with kept events re-emits the items as they
-/// were and nothing more: the consumer re-derives the same error and a
-/// re-record folds to the same outcome. It never appends the folded error
-/// as an item the live consumer did not receive.
+/// A tool call closed with malformed arguments under
+/// `UnparseableToolInput::Error` reaches the consumer as the handler's sink
+/// made it: the malformed close is an error item in the call's place, and
+/// the record's outcome is that error. A replay with kept events re-emits
+/// the items as they were and nothing more, and a re-record folds to the
+/// same outcome.
 #[tokio::test]
 async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
-    use rig_core::streaming::{
-        BlockClose, BlockId, BlockKind, Delta, StreamFinal, ToolCallEnd, UnparseableToolInput,
-    };
+    use rig_core::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
 
     struct Items(Vec<Result<StreamEvent, ErrorReport>>);
     impl Serve for Items {
@@ -1193,35 +1189,25 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
             Reply::Stream(Box::pin(futures::stream::iter(self.0.clone())))
         }
     }
-    let call = || BlockId::wire("call_1");
-    let items = vec![
-        Ok(StreamEvent::BlockStart {
-            id: call(),
-            kind: BlockKind::ToolCall,
-        }),
-        Ok(StreamEvent::BlockDelta {
-            id: call(),
-            delta: Delta::ToolName {
-                name: "lookup".to_owned(),
-            },
-        }),
-        Ok(StreamEvent::BlockDelta {
-            id: call(),
-            delta: Delta::ToolArguments {
-                arguments: "{not json".to_owned(),
-            },
-        }),
-        Ok(StreamEvent::BlockEnd {
-            id: call(),
-            end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Error)),
-            block: None,
-        }),
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "test",
-            rig_core::completion::Usage::default(),
-            serde_json::json!({}),
-        ))),
-    ];
+    // The handler writes through the completion sink, as every handler does.
+    let call = BlockId::wire("call_1");
+    let mut sink = rig_core::operation::AdapterOutput::self_closing();
+    sink.tool_name(&call, "lookup");
+    sink.tool_arguments(&call, "{not json");
+    sink.tool_end(call, ToolCallEnd::new(UnparseableToolInput::Error));
+    sink.final_record(StreamFinal::new(
+        "test",
+        rig_core::completion::Usage::default(),
+        serde_json::json!({}),
+    ));
+    let items: Vec<Result<StreamEvent, ErrorReport>> = sink
+        .drain()
+        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
+        .collect();
+    assert!(
+        items.iter().any(Result::is_err),
+        "the malformed close is an error item"
+    );
     let key = HandlerKey::from("model");
     let (dispatcher, _, mut driver) = Bus::channel();
     let recorder = EffectLogRecorder::keeping_stream_events();
@@ -1237,7 +1223,7 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
     assert_eq!(
         serde_json::to_value(&live).unwrap(),
         serde_json::to_value(&items).unwrap(),
-        "the consumer receives the items as the provider sent them"
+        "the consumer receives the items as the handler's sink made them"
     );
     drop(dispatcher);
     let log = recorder.take();
@@ -1245,7 +1231,7 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
     let report = log[0]
         .outcome
         .as_ref()
-        .expect_err("the fold's error is the record's outcome");
+        .expect_err("the malformed close is the record's outcome");
     assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
 
     let (dispatcher, _, mut driver) = Bus::channel();

@@ -286,7 +286,7 @@ pub(crate) fn fold_body(
 
     let mut fold = <Completion as Operation>::Fold::default();
     for item in Sink::<Completion>::drain(&mut out) {
-        fold.absorb(item?)?;
+        fold.absorb(&item?)?;
     }
     fold.finish(reply)
 }

@@ -10,15 +10,21 @@
 //! assert_eq!(output.len(), 3);
 //! ```
 
+use std::collections::{HashMap, HashSet};
+
 use crate::completion::{CompletionRequest, CompletionResponse};
-use crate::error::ErrorReport;
 use crate::error::ProviderError;
+use crate::message::AssistantContent;
 use crate::streaming::{
-    BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
-    SyntheticIds, ToolCallEnd, UnknownPayload,
+    BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal, SyntheticIds,
+    ToolCallEnd, UnknownPayload,
 };
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
 use crate::wire::{Fold, Operation, Reply, Sink};
+
+mod accumulator;
+
+use accumulator::BlockAccumulator;
 
 /// Generating an assistant turn, unary or streamed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +119,23 @@ impl Sink<Completion> for AdapterOutput {
         AdapterOutput::unknown(self, payload);
     }
 
+    /// Closes every text and reasoning block still open, so each carries
+    /// its content on an end. The ends precede the terminal failure a
+    /// decoder pushed last.
+    fn finish(&mut self) {
+        if self.terminated {
+            return;
+        }
+        let kept = self
+            .items
+            .iter()
+            .rposition(Result::is_ok)
+            .map_or(0, |last| last + 1);
+        let failures = self.items.split_off(kept);
+        self.close_open_blocks();
+        self.items.extend(failures);
+    }
+
     fn check_laws(&self, laws: &mut Self::Laws) {
         #[cfg(any(test, debug_assertions))]
         laws.check_batch(self);
@@ -121,14 +144,21 @@ impl Sink<Completion> for AdapterOutput {
     }
 }
 
-/// The fold from a completion reply's events to its response, and the one
-/// accumulator a completion stream keeps.
+/// The fold from a completion reply's canonical events to its response.
 ///
-/// [`Self::step`] is the same step for a unary reply and a streamed one, so
-/// the two agree by construction.
+/// It collects what the sink already finalized: every block from its
+/// `BlockEnd`, in the order the blocks began, the message id and the
+/// terminal record. It assembles nothing, so a block still open is not in
+/// [`Self::snapshot`].
 #[derive(Default)]
 pub struct CompletionFold {
-    accumulator: BlockAccumulator,
+    /// Finalized blocks in the order they began; `None` holds the place of
+    /// a block that has not ended.
+    blocks: Vec<Option<AssistantContent>>,
+    /// The latest slot each block key holds in `blocks`.
+    slots: HashMap<BlockId, usize>,
+    /// Reasoning keys whose block began and has not ended.
+    open_reasoning: HashSet<BlockId>,
     terminal: Option<StreamFinal>,
     message_id: Option<String>,
     /// The provider a streamed response names: the opener's, or the
@@ -141,16 +171,6 @@ pub struct CompletionFold {
     /// The issuer of this reply's reasoning when a wire names it before the
     /// terminal record.
     reasoning_issuer: Option<String>,
-}
-
-/// What one fold step decided about an event.
-enum Absorbed {
-    /// Forward this event (possibly rewritten with the block it finalized).
-    Yield(StreamEvent),
-    /// The accumulator rejected it; the stream keeps consuming.
-    Failed(ErrorReport),
-    /// A duplicate terminal: the first one latched.
-    Skip,
 }
 
 impl CompletionFold {
@@ -174,75 +194,29 @@ impl CompletionFold {
         }
     }
 
-    /// Fold one event and return it as a stream forwards it: rewritten
-    /// with the block it finalized, or an in-band report for a block the
-    /// accumulator rejected. `None` drops a duplicate terminal.
-    pub fn step(&mut self, event: StreamEvent) -> Option<Result<StreamEvent, ErrorReport>> {
-        match self.absorb(event) {
-            Absorbed::Yield(event) => Some(Ok(event)),
-            Absorbed::Failed(report) => Some(Err(report)),
-            Absorbed::Skip => None,
-        }
+    /// Hold the place of the block `id` where the sink's assembly puts it:
+    /// text at its first content, reasoning when it begins, calls and
+    /// images at their end.
+    fn reserve(&mut self, id: &BlockId) {
+        self.slots.insert(id.clone(), self.blocks.len());
+        self.blocks.push(None);
     }
 
-    fn absorb(&mut self, event: StreamEvent) -> Absorbed {
-        match event {
-            StreamEvent::BlockStart {
-                id,
-                kind: BlockKind::Message,
-            } => {
-                // The wire announced the assistant message's own id; it
-                // outranks the terminal record's.
-                if let Some(message_id) = id.wire_str() {
-                    self.message_id = Some(message_id.to_owned());
-                }
-                Absorbed::Yield(StreamEvent::BlockStart {
-                    id,
-                    kind: BlockKind::Message,
-                })
+    fn collect(&mut self, id: &BlockId, end: &BlockClose, block: &AssistantContent) {
+        let slot = match end {
+            BlockClose::Text => self.slots.get(id).copied(),
+            BlockClose::Reasoning { .. } => {
+                self.open_reasoning.remove(id);
+                self.slots.get(id).copied()
             }
-            StreamEvent::Final(mut response) => {
-                // A second terminal is a provider defect; the first one latched.
-                if self.terminal.is_some() {
-                    return Absorbed::Skip;
-                }
-                // Reconcile against the accumulator's view of completed
-                // calls, so a `stop` that was really a tool call reads the
-                // same on both surfaces.
-                response.finish_reason = response
-                    .finish_reason
-                    .map(|reason| reason.reconcile_with_output(self.accumulator.saw_tool_call()));
-                // An explicit message-id block keeps precedence; the terminal
-                // record only fills a gap.
-                if self.message_id.is_none() {
-                    self.message_id.clone_from(&response.message_id);
-                }
-                if self.provider_from_terminal && !response.provider.is_empty() {
-                    self.provider.clone_from(&response.provider);
-                }
-                self.terminal = Some(response.clone());
-                Absorbed::Yield(StreamEvent::Final(response))
+            BlockClose::ToolCall(_) | BlockClose::Image(_) => None,
+        };
+        match slot.and_then(|slot| self.blocks.get_mut(slot)) {
+            Some(held) => *held = Some(block.clone()),
+            None => {
+                self.slots.insert(id.clone(), self.blocks.len());
+                self.blocks.push(Some(block.clone()));
             }
-            // Passed straight through; never folded into the aggregated choice.
-            StreamEvent::Unknown(value) => Absorbed::Yield(StreamEvent::Unknown(value)),
-            event => match self.accumulator.apply(&event) {
-                // A block end that finalized a block publishes it under the
-                // key its deltas carried.
-                Ok(Some((id, block))) => {
-                    let StreamEvent::BlockEnd { end, .. } = event else {
-                        // Only ends finalize; the accumulator upholds it.
-                        return Absorbed::Yield(event);
-                    };
-                    Absorbed::Yield(StreamEvent::BlockEnd {
-                        id,
-                        end,
-                        block: Some(block),
-                    })
-                }
-                Ok(None) => Absorbed::Yield(event),
-                // Malformed complete input surfaces in-band.
-                Err(error) => Absorbed::Failed(error),
-            },
         }
     }
 
@@ -263,10 +237,10 @@ impl CompletionFold {
         self.message_id.as_deref()
     }
 
-    /// The accumulated choice so far. See [`BlockAccumulator::snapshot`]
-    /// for unfinished and empty-part handling.
-    pub fn snapshot(&self) -> Vec<crate::message::AssistantContent> {
-        self.accumulator.snapshot()
+    /// The blocks finalized so far, in the order they began. A block that
+    /// has not ended is not among them.
+    pub fn snapshot(&self) -> Vec<AssistantContent> {
+        self.blocks.iter().flatten().cloned().collect()
     }
 
     /// Terminal usage, or [`Usage::default`](crate::completion::Usage)
@@ -305,7 +279,7 @@ impl CompletionFold {
         }
     }
 
-    /// The streamed turn: the aggregated choice with the terminal record's
+    /// The streamed turn: the collected choice with the terminal record's
     /// usage, metadata and document as `raw`. A stream that produced no
     /// terminal record is truncated and is refused.
     pub(crate) fn finish_stream(self) -> Result<CompletionResponse, ProviderError> {
@@ -317,7 +291,7 @@ impl CompletionFold {
         };
         let issuer = terminal.issuer().to_owned();
         Ok(crate::streaming::fold_finish(
-            self.accumulator,
+            self.snapshot(),
             Some(terminal),
             self.message_id.clone(),
             self.provider.clone(),
@@ -328,13 +302,59 @@ impl CompletionFold {
 }
 
 impl Fold<Completion> for CompletionFold {
-    fn absorb(&mut self, event: StreamEvent) -> Result<(), ProviderError> {
-        match CompletionFold::absorb(self, event) {
-            Absorbed::Yield(_) | Absorbed::Skip => Ok(()),
-            // A buffered reply has no stream to carry an in-band defect, so
-            // a block the wire promised and then malformed fails the call.
-            Absorbed::Failed(report) => Err(ProviderError::Response(report.message)),
+    fn absorb(&mut self, event: &StreamEvent) -> Result<(), ProviderError> {
+        match event {
+            // The wire announced the assistant message's own id; it
+            // outranks the terminal record's.
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::Message,
+            } => {
+                if let Some(message_id) = id.wire_str() {
+                    self.message_id = Some(message_id.to_owned());
+                }
+            }
+            StreamEvent::BlockStart {
+                id,
+                kind:
+                    BlockKind::Text {
+                        additional_params: Some(_),
+                    },
+            }
+            | StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Text { .. } | Delta::TextMeta { .. },
+            } if !self.slots.contains_key(id) => self.reserve(id),
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::Reasoning { .. },
+            }
+            | StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Reasoning { .. },
+            } if !self.open_reasoning.contains(id) => {
+                self.open_reasoning.insert(id.clone());
+                self.reserve(id);
+            }
+            StreamEvent::BlockEnd {
+                id,
+                end,
+                block: Some(block),
+            } => self.collect(id, end, block),
+            StreamEvent::Final(terminal) => {
+                // An explicit message-id block keeps precedence; the terminal
+                // record only fills a gap.
+                if self.message_id.is_none() {
+                    self.message_id.clone_from(&terminal.message_id);
+                }
+                if self.provider_from_terminal && !terminal.provider.is_empty() {
+                    self.provider.clone_from(&terminal.provider);
+                }
+                self.terminal = Some(terminal.clone());
+            }
+            _ => {}
         }
+        Ok(())
     }
 
     fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
@@ -347,7 +367,7 @@ impl Fold<Completion> for CompletionFold {
                 terminal.issuer().to_owned()
             });
         let response = crate::streaming::fold_finish(
-            self.accumulator,
+            self.snapshot(),
             self.terminal.as_ref(),
             self.message_id,
             reply.provider,
@@ -363,10 +383,18 @@ impl Fold<Completion> for CompletionFold {
     }
 }
 
-/// Buffers completion events and in-band errors with block bookkeeping.
+/// The completion sink: buffers a decoder's events and in-band errors and
+/// makes them canonical.
+///
 /// Helpers open unseen tool and reasoning keys before deltas. Bare text uses
 /// an active key, minting a new one after non-text block events other than
-/// message starts. Frame-classification errors are handled by the driver.
+/// message starts. Every event is applied to the one block assembly as it is
+/// pushed, so what drains is final: each `BlockEnd` carries the block it
+/// finalized (text included), a malformed complete tool input is an error
+/// item in its place, the text and reasoning blocks still open are closed
+/// before the terminal record, the terminal's finish reason agrees with the
+/// completed tool calls, and a second terminal record is dropped.
+/// Frame-classification errors are handled by the driver.
 #[derive(Debug, Default)]
 pub struct AdapterOutput {
     items: Vec<Result<StreamEvent, ProviderError>>,
@@ -389,7 +417,11 @@ pub struct AdapterOutput {
     self_closing: bool,
     /// Blocks a start was emitted for (or that a delta opened leniently),
     /// so a delta never precedes its block's start on the wire we emit.
-    opened: std::collections::HashSet<BlockId>,
+    opened: HashSet<BlockId>,
+    /// The assembly that finalizes each block on its end.
+    blocks: BlockAccumulator,
+    /// Whether the terminal record was pushed.
+    terminated: bool,
 }
 
 impl AdapterOutput {
@@ -514,7 +546,68 @@ impl AdapterOutput {
                 self.active_reasoning = None;
             }
         }
+        let item = match item {
+            Ok(StreamEvent::Final(mut terminal)) => {
+                // A second terminal is a provider defect; the first stands.
+                if self.terminated {
+                    return;
+                }
+                self.close_open_blocks();
+                self.terminated = true;
+                // A `stop` that was really a tool call reads as one.
+                terminal.finish_reason = terminal
+                    .finish_reason
+                    .map(|reason| reason.reconcile_with_output(self.blocks.saw_tool_call()));
+                Ok(StreamEvent::Final(terminal))
+            }
+            Ok(StreamEvent::BlockEnd { id, end, .. }) => {
+                // A sibling part under a finished key begins where it ends,
+                // so a collector keeps both.
+                if self.blocks.ends_a_sibling(&id, &end) {
+                    self.push_raw(Ok(StreamEvent::BlockStart {
+                        id: id.clone(),
+                        kind: BlockKind::Reasoning { provider_id: None },
+                    }));
+                }
+                let event = StreamEvent::BlockEnd {
+                    id,
+                    end,
+                    block: None,
+                };
+                match (self.blocks.apply(&event), event) {
+                    (Ok(Some((id, block))), StreamEvent::BlockEnd { end, .. }) => {
+                        Ok(StreamEvent::BlockEnd {
+                            id,
+                            end,
+                            block: Some(block),
+                        })
+                    }
+                    (Ok(_), event) => Ok(event),
+                    (Err(error), _) => Err(error),
+                }
+            }
+            Ok(event) => self.blocks.apply(&event).map(|_| event),
+            Err(error) => Err(error),
+        };
         self.items.push(item);
+    }
+
+    /// End every text and reasoning block still open, in the order they
+    /// opened.
+    fn close_open_blocks(&mut self) {
+        for (id, end) in self.blocks.unclosed() {
+            if self.auto_text.as_ref() == Some(&id) {
+                self.auto_text = None;
+            }
+            if self.auto_reasoning.as_ref() == Some(&id) {
+                self.auto_reasoning = None;
+            }
+            self.push_raw(Ok(StreamEvent::BlockEnd {
+                id,
+                end,
+                block: None,
+            }));
+        }
     }
 
     /// Push an in-band error item.

@@ -1673,20 +1673,28 @@ fn reasoning_close(restatement: Option<Reasoning>, signature: Option<&str>) -> S
     }
 }
 
+/// The canonical events the completion sink makes of `events`, ended as
+/// the driver ends a reply.
+fn canonical(events: impl IntoIterator<Item = StreamEvent>) -> Vec<StreamEvent> {
+    let mut sink = rig_core::operation::AdapterOutput::new();
+    for event in events {
+        sink.push(Ok(event));
+    }
+    rig_core::wire::Sink::<rig_core::operation::Completion>::finish(&mut sink);
+    sink.into_items()
+        .into_iter()
+        .map(|item| item.expect("valid provider event"))
+        .collect()
+}
+
 fn assert_reasoning_matches_core(events: Vec<StreamEvent>, expected_parts: usize) {
-    let mut core = rig_core::streaming::BlockAccumulator::new();
+    let mut core = rig_core::operation::CompletionFold::default();
     let mut asm = assembler();
-    for mut event in events {
-        let completed = core.apply(&event).expect("valid provider event");
-        if let StreamEvent::BlockEnd { id, block, .. } = &mut event {
-            *block = completed.map(|(completed_id, content)| {
-                *id = completed_id;
-                content
-            });
-        }
+    for event in canonical(events) {
+        rig_core::wire::Fold::absorb(&mut core, &event).expect("valid provider event");
         asm.ingest(&event).expect("normalized event");
     }
-    let choice = rig_core::streaming::stamp_reasoning(core.finish(), "mock");
+    let choice = rig_core::streaming::stamp_reasoning(core.snapshot(), "mock");
     assert_eq!(choice.len(), expected_parts);
     let partial = asm.partial_turn(None, Some("mock")).reasoning;
     let finished = asm.finish(None, &choice, Some("mock"));
@@ -1748,24 +1756,48 @@ fn a_second_same_key_signature_survives_in_its_own_history_part() {
 
 #[test]
 fn a_completed_key_takes_precedence_over_another_keys_pending_provider_id() {
-    assert_reasoning_matches_core(
-        vec![
-            reasoning_close(Some(Reasoning::new("A").with_id("rs".into())), None),
-            StreamEvent::BlockStart {
-                id: BlockId::wire("other"),
-                kind: BlockKind::Reasoning {
-                    provider_id: Some("rs".into()),
-                },
+    let mut core = rig_core::operation::CompletionFold::default();
+    let mut asm = assembler();
+    for event in canonical(vec![
+        reasoning_close(Some(Reasoning::new("A").with_id("rs".into())), None),
+        StreamEvent::BlockStart {
+            id: BlockId::wire("other"),
+            kind: BlockKind::Reasoning {
+                provider_id: Some("rs".into()),
             },
-            StreamEvent::BlockDelta {
-                id: BlockId::wire("other"),
-                delta: Delta::Reasoning {
-                    text: "pending".into(),
-                },
+        },
+        StreamEvent::BlockDelta {
+            id: BlockId::wire("other"),
+            delta: Delta::Reasoning {
+                text: "pending".into(),
             },
-            reasoning_close(Some(Reasoning::new("B").with_id("rs".into())), None),
-        ],
-        3,
+        },
+        reasoning_close(Some(Reasoning::new("B").with_id("rs".into())), None),
+    ]) {
+        rig_core::wire::Fold::absorb(&mut core, &event).expect("valid provider event");
+        asm.ingest(&event).expect("normalized event");
+    }
+    let choice = rig_core::streaming::stamp_reasoning(core.snapshot(), "mock");
+    assert_eq!(choice.len(), 3, "A, the pending part and B: {choice:?}");
+    // B completed while `other` was pending, so it keeps its own part. The
+    // reply's end closes `other`, and history then groups it with A, the
+    // completed part of another key sharing its provider item.
+    let part = |texts: &[&str]| {
+        AssistantContent::Reasoning(Reasoning {
+            provider: Some("mock".into()),
+            id: Some("rs".into()),
+            content: texts
+                .iter()
+                .map(|text| rig_core::message::ReasoningContent::Text {
+                    text: (*text).to_owned(),
+                    signature: None,
+                })
+                .collect(),
+        })
+    };
+    assert_eq!(
+        asm.finish(None, &choice, Some("mock")).choice,
+        vec![part(&["A", "pending"]), part(&["B"])]
     );
 }
 
@@ -1799,28 +1831,26 @@ fn a_silent_reasoning_close_still_separates_reopened_history() {
 #[test]
 fn trailing_signature_updates_a_grouped_provider_part_without_duplication() {
     let mut asm = assembler();
-    let mut core = rig_core::streaming::BlockAccumulator::new();
-    for (key, text, signature) in [
+    let mut core = rig_core::operation::CompletionFold::default();
+    let events = [
         ("a", Some("A"), None),
         ("b", Some("B"), None),
         ("b", None, Some("sig-B")),
-    ] {
-        let mut event = StreamEvent::BlockEnd {
-            id: BlockId::wire(key),
-            end: BlockClose::Reasoning {
-                reasoning: text.map(|text| Reasoning::new(text).with_id("rs".into())),
-                signature: signature.map(str::to_string),
-                wire_sent: true,
-            },
-            block: None,
-        };
-        let completed = core.apply(&event).unwrap();
-        if let StreamEvent::BlockEnd { block, .. } = &mut event {
-            *block = completed.map(|(_, block)| block);
-        }
+    ]
+    .map(|(key, text, signature)| StreamEvent::BlockEnd {
+        id: BlockId::wire(key),
+        end: BlockClose::Reasoning {
+            reasoning: text.map(|text| Reasoning::new(text).with_id("rs".into())),
+            signature: signature.map(str::to_string),
+            wire_sent: true,
+        },
+        block: None,
+    });
+    for event in canonical(events) {
+        rig_core::wire::Fold::absorb(&mut core, &event).unwrap();
         asm.ingest(&event).unwrap();
     }
-    let choice = rig_core::streaming::stamp_reasoning(core.finish(), "mock");
+    let choice = rig_core::streaming::stamp_reasoning(core.snapshot(), "mock");
     let expected: Vec<_> = choice
         .iter()
         .flat_map(|item| match item {
