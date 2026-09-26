@@ -1258,3 +1258,90 @@ async fn kept_events_replay_a_malformed_call_as_the_items_that_carried_it() {
         "a re-record of the replay folds to the same outcome"
     );
 }
+
+/// A log recorded before streams were canonical carries its text as deltas
+/// alone: no end closes the block and no end carries it. Replay re-emits
+/// those items as recorded, and every consumer folds them through the
+/// completion sink, so the replayed turn still holds its text.
+#[tokio::test]
+async fn a_log_recorded_before_canonical_streams_replays_its_text() {
+    use rig_core::streaming::{BlockId, BlockKind, MintKind, StreamFinal};
+
+    struct Items(Vec<Result<StreamEvent, ErrorReport>>);
+    impl Serve for Items {
+        type Family = rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: "model".into(),
+                family: FamilyDescriptor::Completion {
+                    model: rig_core::completion::ModelRef::new("legacy"),
+                    capabilities: rig_core::completion::ProviderCapabilities::default(),
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _: EffectKind, _dispatch: Dispatch) -> Reply {
+            Reply::Stream(Box::pin(futures::stream::iter(self.0.clone())))
+        }
+    }
+    let text = BlockId::minted(MintKind::Text, 0);
+    let legacy = vec![
+        Ok(StreamEvent::BlockStart {
+            id: text.clone(),
+            kind: BlockKind::Text {
+                additional_params: None,
+            },
+        }),
+        Ok(StreamEvent::text(text.clone(), "Paris")),
+        Ok(StreamEvent::Final(StreamFinal::new(
+            "legacy",
+            rig_core::completion::Usage::default(),
+            serde_json::json!({}),
+        ))),
+    ];
+    let key = HandlerKey::from("model");
+    let (dispatcher, _, mut driver) = Bus::channel();
+    let recorder = EffectLogRecorder::keeping_stream_events();
+    driver.register(key.clone(), Items(legacy.clone())).unwrap();
+    driver.record_to(recorder.clone());
+    let _live = spawn(driver);
+    within(
+        dispatcher
+            .dispatch_stream(&key, completion_kind(true))
+            .collect::<Vec<_>>(),
+    )
+    .await;
+    drop(dispatcher);
+    let log = recorder.take();
+    let Ok(Outcome::Completion(recorded)) = &log[0].outcome else {
+        panic!("the record's outcome is a completion: {:?}", log[0].outcome);
+    };
+    assert_eq!(recorded.choice, vec![AssistantContent::text("Paris")]);
+
+    let (dispatcher, _, mut driver) = Bus::channel();
+    super::register_all(&log, &mut driver).expect("fresh keys");
+    let model: rig_agent::bus::ModelHandle = dispatcher.handle(&key).unwrap();
+    let _replay = spawn(driver);
+    let EffectKind::Completion { request, .. } = completion_kind(true) else {
+        panic!("a completion kind");
+    };
+    let mut stream = model.stream(request);
+    let mut items = Vec::new();
+    while let Some(item) = within(stream.next()).await {
+        items.push(item.expect("no error"));
+    }
+    assert!(
+        items.iter().any(|item| matches!(
+            item,
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Text(_)),
+                ..
+            }
+        )),
+        "the consumer's stream closes the text: {items:?}"
+    );
+    assert_eq!(
+        stream.finish().expect("a terminal record").choice,
+        vec![AssistantContent::text("Paris")]
+    );
+}
