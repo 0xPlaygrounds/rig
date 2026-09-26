@@ -375,7 +375,10 @@ impl Neo4jClient {
     }
 
     /// Creates a vector index over `node_label` if one of that name does not
-    /// already exist, over vectors of `ndims` dimensions.
+    /// already exist, over vectors of `ndims` dimensions. `ndims` must be the
+    /// width of the model later handed to [`Self::get_index`], read as
+    /// `capabilities().ndims`; an index built at one width and queried with
+    /// another returns meaningless results.
     ///
     /// `node_label` and the configured embedding property are spliced into the
     /// Cypher statement verbatim. Waiting for the index to come online is
