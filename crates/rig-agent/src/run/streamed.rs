@@ -76,9 +76,11 @@ pub fn assistant_text_items_from_choice(choice: &[AssistantContent]) -> Vec<Assi
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedInvalidToolCall {
     /// The rejected tool call. For a name delta this is a diagnostic call
-    /// assembled from the streamed name and any buffered argument deltas;
-    /// for malformed arguments its `arguments` is `Null`; no object was
-    /// ever parsed, and fabricating one would misrepresent the wire.
+    /// assembled from the streamed name and any buffered argument deltas.
+    /// Its `arguments` is `Null` when no object was parsed (malformed, or
+    /// empty buffered arguments); fabricating one here would misrepresent
+    /// the wire. Only the rolled-back history copy records `{}`, since
+    /// providers need an object.
     pub tool_call: ToolCall,
     /// Rig-generated identifier correlating this call's stream items.
     pub block_id: BlockId,
@@ -143,9 +145,14 @@ impl PartialStreamedTurn {
     /// call and a synthetic "not executed" result for each validated peer.
     pub fn rollback_messages(
         &self,
-        invalid_tool_call: ToolCall,
+        mut invalid_tool_call: ToolCall,
         feedback: String,
     ) -> Option<(Message, Message)> {
+        // Diagnostic calls carry Null arguments when none were parsed; replay them
+        // as an empty object.
+        if invalid_tool_call.function.arguments.is_null() {
+            invalid_tool_call.function.arguments = serde_json::json!({});
+        }
         // Preserve call IDs so synthetic results correlate with their diagnostic calls.
         let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
 
