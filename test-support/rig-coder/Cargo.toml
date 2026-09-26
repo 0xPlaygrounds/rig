@@ -1,0 +1,22 @@
+[package]
+name = "rig-coder"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "A benchmark coding agent on Rig's default agent runtime, driven through Harbor."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rig-coder"
+path = "src/main.rs"
+
+[dependencies]
+rig.workspace = true
+anyhow.workspace = true
+ignore = "0.4"
+regex = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["full"] }
