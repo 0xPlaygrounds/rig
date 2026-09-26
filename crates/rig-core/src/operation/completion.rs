@@ -157,7 +157,7 @@ impl Sink<Completion> for AdapterOutput {
     /// its content on an end. The ends precede the terminal failure a
     /// decoder pushed last.
     fn finish(&mut self) {
-        if self.terminated {
+        if self.canonical.terminated {
             return;
         }
         let kept = self
@@ -477,10 +477,125 @@ pub struct AdapterOutput {
     /// Blocks a start was emitted for (or that a delta opened leniently),
     /// so a delta never precedes its block's start on the wire we emit.
     opened: HashSet<BlockId>,
+    /// What makes the pushed events canonical.
+    canonical: Canonical,
+}
+
+/// The canonicalization the completion sink applies to every event pushed
+/// through it, without the sink's buffer or decoder helpers: what a relay
+/// or a tap keeps to canonicalize a stream it did not decode.
+#[derive(Debug, Default)]
+pub(crate) struct Canonical {
     /// The assembly that finalizes each block on its end.
     blocks: BlockAccumulator,
-    /// Whether the terminal record was pushed.
+    /// Whether the terminal record passed.
     terminated: bool,
+}
+
+impl Canonical {
+    /// Canonicalize `item`, emitting it and the items it implies (the closes
+    /// before a terminal, a sibling part's start) in order. `emit` learns
+    /// whether each item was synthesized here.
+    pub(crate) fn push(
+        &mut self,
+        item: Result<StreamEvent, ProviderError>,
+        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
+    ) {
+        self.push_as(item, false, emit);
+    }
+
+    fn push_as(
+        &mut self,
+        item: Result<StreamEvent, ProviderError>,
+        synthesized: bool,
+        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
+    ) {
+        let item = match item {
+            Ok(StreamEvent::Final(mut terminal)) => {
+                // A second terminal is a provider defect; the first stands.
+                if self.terminated {
+                    return;
+                }
+                self.close_open_blocks(emit);
+                self.terminated = true;
+                // A `stop` that was really a tool call reads as one.
+                terminal.finish_reason = terminal
+                    .finish_reason
+                    .map(|reason| reason.reconcile_with_output(self.blocks.saw_tool_call()));
+                Ok(StreamEvent::Final(terminal))
+            }
+            Ok(StreamEvent::BlockEnd { id, end, .. }) => {
+                // A sibling part under a finished key begins where it ends,
+                // so a collector keeps both.
+                if self.blocks.ends_a_sibling(&id, &end) {
+                    self.push_as(
+                        Ok(StreamEvent::BlockStart {
+                            id: id.clone(),
+                            kind: BlockKind::Reasoning { provider_id: None },
+                        }),
+                        true,
+                        emit,
+                    );
+                }
+                let event = StreamEvent::BlockEnd {
+                    id,
+                    end,
+                    block: None,
+                };
+                match (self.blocks.apply(&event), event) {
+                    (Ok(Some((id, block))), StreamEvent::BlockEnd { end, .. }) => {
+                        Ok(StreamEvent::BlockEnd {
+                            id,
+                            end,
+                            block: Some(block),
+                        })
+                    }
+                    (Ok(_), event) => Ok(event),
+                    (Err(error), _) => Err(error),
+                }
+            }
+            Ok(event) => self.blocks.apply(&event).map(|_| event),
+            Err(error) => {
+                // A malformed complete tool input took the place of its
+                // call's end: the call ended, so its key assembles anew.
+                if let Some(input) = malformed_tool_input(&error) {
+                    self.blocks.abandon(input);
+                }
+                Err(error)
+            }
+        };
+        emit(item, synthesized);
+    }
+
+    /// End every text and reasoning block still open, in the order they
+    /// opened.
+    pub(crate) fn close_open_blocks(
+        &mut self,
+        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
+    ) {
+        for (id, end) in self.blocks.unclosed() {
+            self.push_as(
+                Ok(StreamEvent::BlockEnd {
+                    id,
+                    end,
+                    block: None,
+                }),
+                true,
+                emit,
+            );
+        }
+    }
+
+    /// The stream ended: close what is still open, unless the terminal
+    /// record already did.
+    pub(crate) fn finish(
+        &mut self,
+        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
+    ) {
+        if !self.terminated {
+            self.close_open_blocks(emit);
+        }
+    }
 }
 
 impl AdapterOutput {
@@ -578,102 +693,71 @@ impl AdapterOutput {
     }
 
     fn push_raw(&mut self, item: Result<StreamEvent, ProviderError>) {
-        if let Ok(event) = &item
-            && let Some(id) = event.block_id()
-        {
-            match event {
-                StreamEvent::BlockStart { .. } => {
-                    self.opened.insert(id.clone());
-                }
-                StreamEvent::BlockEnd { .. } => {
-                    self.opened.remove(id);
-                }
-                // A delta neither opens nor closes; `Final`/`Unknown` carry
-                // no block id and never reach this arm. Exhaustive on
-                // purpose: a future block-carrying variant must land here,
-                // not bypass the `opened` bookkeeping.
-                StreamEvent::BlockDelta { .. }
-                | StreamEvent::Final(_)
-                | StreamEvent::Unknown(_) => {}
-            }
-            // Any non-text block event is a boundary for anonymous text, any
-            // non-reasoning one for anonymous reasoning.
-            if !Self::is_text_event(event) && !Self::is_message_start(event) {
-                self.active_text = None;
-            }
-            if !Self::is_reasoning_event(event) && !Self::is_message_start(event) {
-                self.active_reasoning = None;
-            }
+        if let Ok(event) = &item {
+            self.track(event);
         }
-        let item = match item {
-            Ok(StreamEvent::Final(mut terminal)) => {
-                // A second terminal is a provider defect; the first stands.
-                if self.terminated {
-                    return;
-                }
-                self.close_open_blocks();
-                self.terminated = true;
-                // A `stop` that was really a tool call reads as one.
-                terminal.finish_reason = terminal
-                    .finish_reason
-                    .map(|reason| reason.reconcile_with_output(self.blocks.saw_tool_call()));
-                Ok(StreamEvent::Final(terminal))
-            }
-            Ok(StreamEvent::BlockEnd { id, end, .. }) => {
-                // A sibling part under a finished key begins where it ends,
-                // so a collector keeps both.
-                if self.blocks.ends_a_sibling(&id, &end) {
-                    self.push_raw(Ok(StreamEvent::BlockStart {
-                        id: id.clone(),
-                        kind: BlockKind::Reasoning { provider_id: None },
-                    }));
-                }
-                let event = StreamEvent::BlockEnd {
-                    id,
-                    end,
-                    block: None,
-                };
-                match (self.blocks.apply(&event), event) {
-                    (Ok(Some((id, block))), StreamEvent::BlockEnd { end, .. }) => {
-                        Ok(StreamEvent::BlockEnd {
-                            id,
-                            end,
-                            block: Some(block),
-                        })
+        let mut emitted = Vec::new();
+        self.canonical.push(item, &mut |item, synthesized| {
+            emitted.push((item, synthesized))
+        });
+        self.accept(emitted);
+    }
+
+    /// Keep what the canonicalization emitted, tracking the items it
+    /// synthesized as a pushed event is tracked.
+    fn accept(&mut self, emitted: Vec<(Result<StreamEvent, ProviderError>, bool)>) {
+        for (item, synthesized) in emitted {
+            if synthesized && let Ok(event) = &item {
+                if let StreamEvent::BlockEnd { id, .. } = event {
+                    if self.auto_text.as_ref() == Some(id) {
+                        self.auto_text = None;
                     }
-                    (Ok(_), event) => Ok(event),
-                    (Err(error), _) => Err(error),
+                    if self.auto_reasoning.as_ref() == Some(id) {
+                        self.auto_reasoning = None;
+                    }
                 }
+                self.track(event);
             }
-            Ok(event) => self.blocks.apply(&event).map(|_| event),
-            Err(error) => {
-                // A malformed complete tool input took the place of its
-                // call's end: the call ended, so its key assembles anew.
-                if let Some(input) = malformed_tool_input(&error) {
-                    self.blocks.abandon(input);
-                }
-                Err(error)
-            }
+            self.items.push(item);
+        }
+    }
+
+    /// The block bookkeeping one event moves: which blocks are open, and
+    /// which block bare text and reasoning land in.
+    fn track(&mut self, event: &StreamEvent) {
+        let Some(id) = event.block_id() else {
+            return;
         };
-        self.items.push(item);
+        match event {
+            StreamEvent::BlockStart { .. } => {
+                self.opened.insert(id.clone());
+            }
+            StreamEvent::BlockEnd { .. } => {
+                self.opened.remove(id);
+            }
+            // A delta neither opens nor closes; `Final`/`Unknown` carry no
+            // block id and never reach this arm. Exhaustive on purpose: a
+            // future block-carrying variant must land here, not bypass the
+            // `opened` bookkeeping.
+            StreamEvent::BlockDelta { .. } | StreamEvent::Final(_) | StreamEvent::Unknown(_) => {}
+        }
+        // Any non-text block event is a boundary for anonymous text, any
+        // non-reasoning one for anonymous reasoning.
+        if !Self::is_text_event(event) && !Self::is_message_start(event) {
+            self.active_text = None;
+        }
+        if !Self::is_reasoning_event(event) && !Self::is_message_start(event) {
+            self.active_reasoning = None;
+        }
     }
 
     /// End every text and reasoning block still open, in the order they
     /// opened.
     fn close_open_blocks(&mut self) {
-        for (id, end) in self.blocks.unclosed() {
-            if self.auto_text.as_ref() == Some(&id) {
-                self.auto_text = None;
-            }
-            if self.auto_reasoning.as_ref() == Some(&id) {
-                self.auto_reasoning = None;
-            }
-            self.push_raw(Ok(StreamEvent::BlockEnd {
-                id,
-                end,
-                block: None,
-            }));
-        }
+        let mut emitted = Vec::new();
+        self.canonical
+            .close_open_blocks(&mut |item, synthesized| emitted.push((item, synthesized)));
+        self.accept(emitted);
     }
 
     /// Push an in-band error item.

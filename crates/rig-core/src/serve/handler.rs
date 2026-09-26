@@ -213,14 +213,14 @@ pub trait Observe: Send + Sync {
 /// so a handler's stream folds the same whether its handler wrote it through
 /// the sink or not.
 pub struct StreamTap {
-    sink: crate::operation::AdapterOutput,
+    canonical: crate::operation::Canonical,
     fold: CompletionFold,
 }
 
 impl Default for StreamTap {
     fn default() -> Self {
         Self {
-            sink: crate::operation::AdapterOutput::new(),
+            canonical: crate::operation::Canonical::default(),
             fold: CompletionFold::relayed(""),
         }
     }
@@ -243,8 +243,9 @@ impl StreamTap {
             Err(report) => return Some(Err(report.clone())),
             Ok(event) => event.clone(),
         };
-        self.sink.push(Ok(event));
-        let canonical: Vec<_> = self.sink.drain().collect();
+        let mut canonical = Vec::new();
+        self.canonical
+            .push(Ok(event), &mut |item, _| canonical.push(item));
         for item in canonical {
             let event = match item {
                 Ok(event) => event,

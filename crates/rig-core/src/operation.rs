@@ -20,6 +20,7 @@ mod modality;
 mod verify;
 
 pub use cached_content::{CachedContentFold, ContextCache};
+pub(crate) use completion::Canonical;
 pub use completion::{AdapterOutput, Completion, CompletionFold, ImagePart};
 pub use listing::{ModelListing, ModelListingFold};
 #[cfg(feature = "audio")]

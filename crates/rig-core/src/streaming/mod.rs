@@ -17,9 +17,9 @@ use crate::driver::{Step, record_request_id};
 use crate::error::ErrorReport;
 use crate::error::ProviderError;
 use crate::message::{AssistantContent, ToolResult};
-use crate::operation::{AdapterOutput, Completion, CompletionFold};
+use crate::operation::{Canonical, Completion, CompletionFold};
 use crate::wasm_compat::WasmBoxedStream;
-use crate::wire::{Fold, Mode, Operation, Reply, Sink};
+use crate::wire::{Fold, Mode, Operation, Reply};
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
 pub use event::{BlockClose, BlockKind, Delta, StreamEvent, ToolCallEnd};
 use futures::{Stream, StreamExt};
@@ -416,15 +416,20 @@ impl Streamed<Completion> {
         let label = label.into();
         let steps = async_stream::stream! {
             let mut events = events;
-            let mut sink = AdapterOutput::new();
+            let mut canonical = Canonical::default();
             while let Some(item) = events.next().await {
-                sink.push(item.map_err(|report| ProviderError::Relayed(Box::new(report))));
-                for item in sink.drain() {
+                let mut emitted = Vec::new();
+                canonical.push(
+                    item.map_err(|report| ProviderError::Relayed(Box::new(report))),
+                    &mut |item, _| emitted.push(item),
+                );
+                for item in emitted {
                     yield item.map(Step::Event);
                 }
             }
-            Sink::<Completion>::finish(&mut sink);
-            for item in sink.drain() {
+            let mut emitted = Vec::new();
+            canonical.finish(&mut |item, _| emitted.push(item));
+            for item in emitted {
                 yield item.map(Step::Event);
             }
         };
