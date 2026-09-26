@@ -524,7 +524,7 @@ impl Canonical {
                     .map(|reason| reason.reconcile_with_output(self.blocks.saw_tool_call()));
                 Ok(StreamEvent::Final(terminal))
             }
-            Ok(StreamEvent::BlockEnd { id, end, .. }) => {
+            Ok(StreamEvent::BlockEnd { id, end, block }) => {
                 // A sibling part under a finished key begins where it ends,
                 // so a collector keeps both.
                 if self.blocks.ends_a_sibling(&id, &end) {
@@ -549,6 +549,11 @@ impl Canonical {
                             end,
                             block: Some(block),
                         })
+                    }
+                    // An end that carried its block without the events that
+                    // assemble it (a relayed or hand-built stream) keeps it.
+                    (Ok(None), StreamEvent::BlockEnd { id, end, .. }) => {
+                        Ok(StreamEvent::BlockEnd { id, end, block })
                     }
                     (Ok(_), event) => Ok(event),
                     (Err(error), _) => Err(error),

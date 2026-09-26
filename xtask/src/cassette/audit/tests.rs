@@ -133,3 +133,58 @@ fn any_other_change_is_other() {
     head["records"][0]["events"][0]["delta"]["text"] = json!("ho");
     assert!(!audit(Some(&base), &head).other.is_empty());
 }
+
+#[test]
+fn an_inserted_close_for_a_block_already_closed_is_other() {
+    let base = log(
+        vec![delta("hi"), end(Some("hi")), done()],
+        vec![],
+        vec![(1, 3)],
+    );
+    let head = log(
+        vec![delta("hi"), end(Some("hi")), end(Some("hi")), done()],
+        vec![],
+        vec![(1, 4)],
+    );
+    let found = audit(Some(&base), &head);
+    assert!(
+        found
+            .other
+            .iter()
+            .any(|problem| problem.contains("no open block")),
+        "{:?}",
+        found.other
+    );
+}
+
+#[test]
+fn stream_items_that_grow_past_the_inserted_events_are_other() {
+    let base = log(vec![delta("hi"), done()], vec![], vec![(1, 2)]);
+    let head = log(
+        vec![delta("hi"), end(Some("hi")), done()],
+        vec![],
+        vec![(1, 4)],
+    );
+    let found = audit(Some(&base), &head);
+    assert!(
+        found
+            .other
+            .iter()
+            .any(|problem| problem.contains("grew by 2")),
+        "{:?}",
+        found.other
+    );
+}
+
+#[test]
+fn an_authoritative_block_is_counted_apart() {
+    let restated = json!({
+        "event": "block_end",
+        "id": "r",
+        "end": {"close": "reasoning", "reasoning": {"content": []}, "wire_sent": true},
+        "block": {"type": "reasoning", "content": [{"type": "text", "content": {"text": "x"}}]}
+    });
+    let found = audit(None, &log(vec![restated, done()], vec![], vec![(1, 2)]));
+    assert_eq!((found.blocks, found.authoritative), (0, 1));
+    assert!(found.mismatches.is_empty());
+}

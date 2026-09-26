@@ -409,9 +409,11 @@ impl<Op: Operation> Streamed<Op> {
 
 impl Streamed<Completion> {
     /// A stream relayed over the bus under `label`, whose terminal record
-    /// names the provider behind it. The events pass the completion sink,
-    /// which leaves a stream the origin's sink made canonical as it is and
-    /// makes any other stream canonical.
+    /// names the provider behind it. The events pass the completion sink's
+    /// canonicalization, which leaves a stream the origin's sink made
+    /// canonical as it is. Any other stream gains its closes and blocks, and
+    /// loses a second terminal. Items are yielded as they arrive, so closes
+    /// the stream's end adds follow an error already yielded.
     pub fn relay(label: impl Into<String>, events: StreamEvents) -> Self {
         let label = label.into();
         let steps = async_stream::stream! {

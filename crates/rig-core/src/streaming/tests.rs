@@ -1561,3 +1561,26 @@ async fn a_truncated_relayed_stream_closes_its_open_text() {
     );
     assert!(stream.finish().is_err(), "no terminal record, truncated");
 }
+
+/// A relayed end that carries its block without the events that assemble
+/// it keeps the block: canonicalizing never loses content an end carried.
+#[tokio::test]
+async fn a_relayed_end_that_carries_its_block_keeps_it() {
+    let text = BlockId::minted(MintKind::Text, 0);
+    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
+        Ok(StreamEvent::BlockEnd {
+            id: text,
+            end: BlockClose::Text,
+            block: Some(AssistantContent::text("whole")),
+        }),
+        Ok(StreamEvent::Final(mock_final_with_total_tokens(1))),
+    ];
+    let mut stream = CompletionStream::relay("label", Box::pin(futures::stream::iter(raw)));
+    while let Some(item) = stream.next().await {
+        item.expect("no error");
+    }
+    assert_eq!(
+        stream.finish().expect("a terminal record").choice,
+        vec![AssistantContent::text("whole")]
+    );
+}

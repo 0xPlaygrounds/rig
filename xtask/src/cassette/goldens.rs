@@ -70,10 +70,11 @@ pub(crate) fn revert_delivery_churn(root: &Path, base: &str) -> Result<Rebased, 
     )?;
     let mut outcome = Rebased::default();
     for path in changed.lines().filter(|path| path.ends_with(".json")) {
-        let Ok(before) = git(root, &["show", &format!("{base}:{path}")]) else {
+        if git(root, &["cat-file", "-e", &format!("{base}:{path}")]).is_err() {
             // A golden the base does not have has no batches to keep.
             continue;
-        };
+        }
+        let before = git(root, &["show", &format!("{base}:{path}")])?;
         let after = std::fs::read_to_string(root.join(path)).unwrap_or_default();
         if delivery_only(&before, &after) {
             git(root, &["checkout", base, "--", path])?;
@@ -132,6 +133,20 @@ pub(crate) fn expected_deliveries(base: &Value, head: &Value) -> Result<Option<V
     let (Some(Value::Array(batches)), Some(_)) = (deliveries(base), deliveries(head)) else {
         return Ok(None);
     };
+    let ids = |log: &Value| {
+        log.get("records")
+            .and_then(Value::as_array)
+            .map(|records| {
+                records
+                    .iter()
+                    .filter_map(|record| record.get("id").and_then(Value::as_u64))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    if ids(base) != ids(head) {
+        return Err("the change adds or drops effects".into());
+    }
     let mut counts = Vec::new();
     for delivery in &batches {
         if let Some(items) = delivery.pointer("/kind/items").and_then(Value::as_u64) {
@@ -147,13 +162,13 @@ pub(crate) fn expected_deliveries(base: &Value, head: &Value) -> Result<Option<V
     ids.dedup();
     let mut grown = counts.clone();
     for id in ids {
-        let placed = inserted_per_batch(base, head, id)?;
+        let (placed, total) = inserted_per_batch(base, head, id)?;
         let sizes: Vec<u64> = counts
             .iter()
             .filter(|(of, _)| *of == id)
             .map(|(_, size)| *size)
             .collect();
-        let mut extras = place(&sizes, &placed).into_iter();
+        let mut extras = place(&sizes, &placed, total).into_iter();
         for (of, count) in grown.iter_mut() {
             if *of == id {
                 *count += extras.next().unwrap_or_default();
@@ -180,7 +195,7 @@ pub(crate) fn expected_deliveries(base: &Value, head: &Value) -> Result<Option<V
 /// positions in the base's item sequence: each inserted item is counted at
 /// the base index of the item after it (the base's length when none
 /// follows). Items interleave events and recorded stream errors.
-fn inserted_per_batch(base: &Value, head: &Value, id: u64) -> Result<Vec<usize>, String> {
+fn inserted_per_batch(base: &Value, head: &Value, id: u64) -> Result<(Vec<usize>, usize), String> {
     let record = |log: &Value| {
         log.get("records")
             .and_then(Value::as_array)
@@ -263,7 +278,9 @@ fn inserted_per_batch(base: &Value, head: &Value, id: u64) -> Result<Vec<usize>,
             mapped.push(Some(old_item));
             old_item += 1;
             old_event += 1;
-        } else if event.is_some_and(is_close) {
+        } else if event.is_some_and(is_close)
+            || event.is_some_and(|event| starts_a_sibling(event, new_events.get(new_event)))
+        {
             mapped.push(None);
         } else {
             return Err(format!(
@@ -287,15 +304,23 @@ fn inserted_per_batch(base: &Value, head: &Value, id: u64) -> Result<Vec<usize>,
             placed.push(next);
         }
     }
-    Ok(placed)
+    Ok((placed, old_items.len()))
+}
+
+/// Whether `event` is a reasoning start the sink inserted before the end of
+/// a sibling part under the same key (`next`).
+pub(crate) fn starts_a_sibling(event: &Value, next: Option<&Value>) -> bool {
+    event.get("event").and_then(Value::as_str) == Some("block_start")
+        && event.pointer("/kind/kind").and_then(Value::as_str) == Some("reasoning")
+        && next.is_some_and(|end| is_close(end) && end.get("id") == event.get("id"))
 }
 
 /// How many inserted items each batch of sizes `sizes` takes, given each
-/// inserted item's base position ([`inserted_per_batch`]). A position past
-/// what the batches delivered (a cancelled stream's undelivered tail) is
-/// not delivered; one at the very end goes to the last batch when the
-/// batches delivered everything.
-fn place(sizes: &[u64], placed: &[usize]) -> Vec<u64> {
+/// inserted item's base position ([`inserted_per_batch`]) among the base's
+/// `total` items. A position the batches never delivered (a cancelled
+/// stream's undelivered tail) is not delivered; one past every base item
+/// goes to the last batch when the batches delivered them all.
+fn place(sizes: &[u64], placed: &[usize], total: usize) -> Vec<u64> {
     let mut extra = vec![0; sizes.len()];
     let delivered: u64 = sizes.iter().sum();
     for &position in placed {
@@ -310,7 +335,7 @@ fn place(sizes: &[u64], placed: &[usize]) -> Vec<u64> {
         }
         let slot = match target {
             Some(index) => extra.get_mut(index),
-            None if position as u64 == delivered => extra.last_mut(),
+            None if position == total && delivered >= total as u64 => extra.last_mut(),
             None => None,
         };
         if let Some(slot) = slot {
@@ -446,11 +471,16 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     for (path, reason) in &outcome.kept {
         println!("kept regenerated deliveries in {path}: {reason}");
     }
-    if status.success() {
-        Ok(())
-    } else {
-        Err("the regeneration run failed".into())
+    if !status.success() {
+        return Err("the regeneration run failed".into());
     }
+    if !outcome.kept.is_empty() {
+        return Err(format!(
+            "{} golden(s) changed in a way the base's delivery batches do not fit",
+            outcome.kept.len()
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

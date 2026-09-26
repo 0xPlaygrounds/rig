@@ -156,3 +156,41 @@ fn the_rebased_text_keeps_the_rest_of_the_regenerated_golden() {
         "everything after the deliveries is the regenerated text"
     );
 }
+
+#[test]
+fn a_close_before_an_undelivered_item_is_not_delivered() {
+    // Two of three items delivered, then cancelled: the close sits before
+    // the undelivered terminal.
+    let base = golden(&[DELTA, DELTA, FINAL], &[], &[(1, 2)]);
+    let head = golden(&[DELTA, DELTA, END, FINAL], &[], &[(1, 3)]);
+    let rebased = rebase_deliveries(&base, &head)
+        .expect("fits")
+        .expect("rebased");
+    assert_eq!(batches(&rebased), vec![(1, Some(2)), (99, None)]);
+}
+
+#[test]
+fn a_change_that_adds_an_effect_does_not_fit() {
+    let base = golden(&[DELTA, FINAL], &[], &[(1, 2)]);
+    let mut head: Value =
+        serde_json::from_str(&golden(&[DELTA, END, FINAL], &[], &[(1, 3)])).expect("json");
+    if let Some(records) = head["records"].as_array_mut() {
+        records.push(serde_json::json!({"id": 1, "events": []}));
+    }
+    assert!(rebase_deliveries(&base, &head.to_string()).is_err());
+}
+
+#[test]
+fn an_inserted_sibling_start_counts_like_a_close() {
+    const SIBLING_START: &str =
+        r#"{"event": "block_start", "id": "r", "kind": {"kind": "reasoning"}}"#;
+    const SIBLING_END: &str = r#"{"event": "block_end", "id": "r", "end": {"close": "reasoning", "signature": "s", "wire_sent": true}}"#;
+    let base = golden(&[SIBLING_END, FINAL], &[], &[(1, 2)]);
+    let head = golden(&[SIBLING_START, SIBLING_END, FINAL], &[], &[(1, 3)]);
+    assert_eq!(rebase_deliveries(&base, &head).expect("fits"), None);
+    let churned = golden(&[SIBLING_START, SIBLING_END, FINAL], &[], &[(1, 1), (2, 2)]);
+    let rebased = rebase_deliveries(&base, &churned)
+        .expect("fits")
+        .expect("rebased");
+    assert_eq!(batches(&rebased), vec![(1, Some(3)), (99, None)]);
+}

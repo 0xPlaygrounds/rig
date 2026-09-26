@@ -11,6 +11,7 @@ use crate::streaming::UnparseableToolInput;
 #[derive(Debug, Clone)]
 enum Step {
     Text(String),
+    TextMeta(String),
     TextStart(u8),
     TextEnd(u8),
     EndActiveText,
@@ -27,7 +28,9 @@ enum Step {
     ToolName(u8, String),
     ToolArguments(u8, String),
     ToolEnd(u8, UnparseableToolInput),
+    ToolEndNamed(u8, String),
     ToolWhole(u8, String),
+    Image(String),
     MessageId(String),
     Unknown,
     Final(Option<FinishReason>),
@@ -70,6 +73,7 @@ fn step() -> impl Strategy<Value = Step> {
     ];
     prop_oneof![
         word.prop_map(Step::Text),
+        "[a-z]{1,3}".prop_map(Step::TextMeta),
         key.clone().prop_map(Step::TextStart),
         key.clone().prop_map(Step::TextEnd),
         Just(Step::EndActiveText),
@@ -94,6 +98,8 @@ fn step() -> impl Strategy<Value = Step> {
         (key.clone(), "[a-z]{0,3}").prop_map(|(key, name)| Step::ToolName(key, name)),
         (key.clone(), fragment).prop_map(|(key, fragment)| Step::ToolArguments(key, fragment)),
         (key.clone(), policy).prop_map(|(key, policy)| Step::ToolEnd(key, policy)),
+        (key.clone(), "[a-z]{1,3}").prop_map(|(key, name)| Step::ToolEndNamed(key, name)),
+        "[a-z]{1,3}".prop_map(Step::Image),
         (key, "[a-z]{1,3}").prop_map(|(key, name)| Step::ToolWhole(key, name)),
         "[a-z]{1,3}".prop_map(Step::MessageId),
         Just(Step::Unknown),
@@ -110,6 +116,13 @@ fn step() -> impl Strategy<Value = Step> {
 fn apply(out: &mut AdapterOutput, step: Step) {
     match step {
         Step::Text(text) => out.text(text),
+        Step::TextMeta(value) => {
+            if let Some(params) =
+                crate::message::AdditionalParams::from_entries([("meta", serde_json::json!(value))])
+            {
+                out.text_meta(params);
+            }
+        }
         Step::TextStart(key) => out.text_start(text_key(key), None),
         Step::TextEnd(key) => out.text_end(text_key(key)),
         Step::EndActiveText => out.end_active_text(),
@@ -133,6 +146,20 @@ fn apply(out: &mut AdapterOutput, step: Step) {
         Step::ToolName(key, name) => out.tool_name(&tool_key(key), name),
         Step::ToolArguments(key, fragment) => out.tool_arguments(&tool_key(key), fragment),
         Step::ToolEnd(key, policy) => out.tool_end(tool_key(key), ToolCallEnd::new(policy)),
+        Step::ToolEndNamed(key, name) => {
+            let mut end = ToolCallEnd::new(UnparseableToolInput::Error);
+            end.name = Some(name);
+            out.tool_end(tool_key(key), end);
+        }
+        Step::Image(url) => out.content(
+            &[AssistantContent::Image(crate::message::Image {
+                data: crate::message::DocumentSourceKind::Url(url),
+                media_type: None,
+                detail: None,
+                additional_params: None,
+            })],
+            ImagePart::Block,
+        ),
         Step::ToolWhole(key, name) => out.tool_end(
             tool_key(key),
             ToolCallEnd::whole(name, serde_json::json!({"q": 1})),
@@ -170,18 +197,42 @@ fn comparable(items: &[Result<StreamEvent, ProviderError>]) -> serde_json::Value
     .unwrap_or_default()
 }
 
-/// A relayed copy of a sink's items: events as they are, errors as the
-/// reports they are.
-fn relayed(
+/// A copy of a sink's items: events as they are, and errors either as the
+/// reports a relay carries or, when not `relayed`, as they were.
+fn copied(
     items: &[Result<StreamEvent, ProviderError>],
+    relayed: bool,
 ) -> Vec<Result<StreamEvent, ProviderError>> {
     items
         .iter()
         .map(|item| match item {
             Ok(event) => Ok(event.clone()),
+            Err(ProviderError::MalformedToolInput(input)) if !relayed => {
+                Err(ProviderError::MalformedToolInput(input.clone()))
+            }
             Err(error) => Err(ProviderError::Relayed(Box::new(ErrorReport::from(error)))),
         })
         .collect()
+}
+
+/// `steps` through a sink, ended as the driver ends a reply.
+fn once(steps: Vec<Step>) -> Vec<Result<StreamEvent, ProviderError>> {
+    let mut out = AdapterOutput::new();
+    for step in steps {
+        apply(&mut out, step);
+    }
+    Sink::<Completion>::finish(&mut out);
+    out.into_items()
+}
+
+/// Canonicalizing `steps`' items again changes nothing, relayed or not.
+fn assert_idempotent(steps: Vec<Step>) -> Vec<Result<StreamEvent, ProviderError>> {
+    let items = once(steps);
+    for relayed in [true, false] {
+        let twice = canonical(copied(&items, relayed));
+        assert_eq!(comparable(&items), comparable(&twice), "relayed: {relayed}");
+    }
+    items
 }
 
 proptest! {
@@ -192,15 +243,13 @@ proptest! {
     /// A relay or a script that passes events through the sink again
     /// changes nothing.
     #[test]
-    fn canonicalizing_twice_is_canonicalizing_once(steps in proptest::collection::vec(step(), 0..24)) {
-        let mut out = AdapterOutput::new();
-        for step in steps {
-            apply(&mut out, step);
-        }
-        Sink::<Completion>::finish(&mut out);
-        let once = out.into_items();
-        let twice = canonical(relayed(&once));
-        prop_assert_eq!(comparable(&once), comparable(&twice));
+    fn canonicalizing_twice_is_canonicalizing_once(
+        steps in proptest::collection::vec(step(), 0..24),
+        relayed in any::<bool>(),
+    ) {
+        let items = once(steps);
+        let twice = canonical(copied(&items, relayed));
+        prop_assert_eq!(comparable(&items), comparable(&twice));
     }
 }
 
@@ -209,23 +258,16 @@ proptest! {
 /// later call under the same key does not inherit its fragments.
 #[test]
 fn a_malformed_call_still_ends_when_its_error_passes_the_sink_again() {
-    let steps = vec![
+    let items = assert_idempotent(vec![
         Step::ToolName(0, "a".into()),
         Step::ToolArguments(0, "not json".into()),
         Step::ToolEnd(0, UnparseableToolInput::Error),
         Step::ToolName(0, "b".into()),
         Step::ToolArguments(0, "{\"q\": \"a\"}".into()),
         Step::ToolEnd(0, UnparseableToolInput::Error),
-    ];
-    let mut out = AdapterOutput::new();
-    for step in steps {
-        apply(&mut out, step);
-    }
-    Sink::<Completion>::finish(&mut out);
-    let once = out.into_items();
-    let twice = canonical(relayed(&once));
+    ]);
     assert!(
-        once.iter().any(|item| matches!(
+        items.iter().any(|item| matches!(
             item,
             Ok(StreamEvent::BlockEnd {
                 block: Some(AssistantContent::ToolCall(_)),
@@ -234,5 +276,99 @@ fn a_malformed_call_still_ends_when_its_error_passes_the_sink_again() {
         )),
         "the second call finalizes"
     );
-    assert_eq!(comparable(&once), comparable(&twice));
+}
+
+/// The same, when the call's name arrived only on its end.
+#[test]
+fn a_malformed_call_named_on_its_end_still_ends() {
+    assert_idempotent(vec![
+        Step::ToolArguments(1, "not json".into()),
+        Step::ToolEndNamed(1, "a".into()),
+        Step::ToolArguments(1, "{\"q\": 1}".into()),
+        Step::ToolEndNamed(1, "b".into()),
+    ]);
+}
+
+#[test]
+fn a_late_signature_after_a_synthesized_end_is_idempotent() {
+    assert_idempotent(vec![
+        Step::ReasoningDelta(1, "hidden".into()),
+        Step::ReasoningEnd {
+            key: 1,
+            restatement: None,
+            signature: None,
+            wire_sent: false,
+        },
+        Step::Text("visible".into()),
+        Step::ReasoningEnd {
+            key: 1,
+            restatement: None,
+            signature: Some("sig_a".into()),
+            wire_sent: true,
+        },
+        Step::Final(None),
+    ]);
+}
+
+#[test]
+fn sibling_reasoning_under_a_finished_key_is_idempotent() {
+    for signature in [None, Some("sig_b".to_owned())] {
+        assert_idempotent(vec![
+            Step::ReasoningEnd {
+                key: 0,
+                restatement: Some("a".into()),
+                signature: Some("sig_a".into()),
+                wire_sent: true,
+            },
+            Step::ReasoningEnd {
+                key: 0,
+                restatement: signature.is_none().then(|| "b".to_owned()),
+                signature,
+                wire_sent: true,
+            },
+            Step::Final(None),
+        ]);
+    }
+}
+
+#[test]
+fn text_open_at_the_terminal_is_idempotent() {
+    let items = assert_idempotent(vec![
+        Step::TextStart(0),
+        Step::Text("hi".into()),
+        Step::Final(Some(FinishReason::Stop)),
+    ]);
+    assert!(items.iter().any(|item| matches!(
+        item,
+        Ok(StreamEvent::BlockEnd {
+            block: Some(AssistantContent::Text(_)),
+            ..
+        })
+    )));
+}
+
+#[test]
+fn duplicate_terminals_and_a_trailing_error_are_idempotent() {
+    assert_idempotent(vec![
+        Step::Text("hi".into()),
+        Step::Final(None),
+        Step::Final(Some(FinishReason::Stop)),
+        Step::Unknown,
+    ]);
+    assert_idempotent(vec![
+        Step::Reasoning("thinking".into()),
+        Step::Text("partial".into()),
+        Step::Error("reset".into()),
+    ]);
+}
+
+#[test]
+fn images_and_text_metadata_are_idempotent() {
+    assert_idempotent(vec![
+        Step::TextMeta("m".into()),
+        Step::Text("a".into()),
+        Step::Image("u".into()),
+        Step::Image("u".into()),
+        Step::Final(None),
+    ]);
 }

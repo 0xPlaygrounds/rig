@@ -671,13 +671,31 @@ impl BlockAccumulator {
     /// place of the call's end, so the call is finished and a later fragment
     /// under its key begins a new call.
     pub(super) fn abandon(&mut self, input: &MalformedToolInput) {
-        let Some(position) = self.open_tool_inputs.iter().position(|open| {
-            open.name == input.name && open.buffer.as_deref().unwrap_or_default() == input.raw
-        }) else {
-            return;
-        };
-        let open = self.open_tool_inputs.remove(position);
-        self.finished_tools.insert(open.id);
+        let raw = |open: &OpenToolInput| open.buffer.as_deref().unwrap_or_default() == input.raw;
+        // The call the report names by its block, else the one with its raw
+        // input and its name (a name that arrived only on the end left the
+        // open call unnamed).
+        let position = self
+            .open_tool_inputs
+            .iter()
+            .position(|open| {
+                let named = crate::message::ToolCallId::from_block(&open.id) == input.id
+                    || open.id.wire_str().is_some_and(|wire| {
+                        input.provider.as_ref().is_some_and(|provider| {
+                            provider.call_id == wire || provider.item_id.as_deref() == Some(wire)
+                        })
+                    });
+                raw(open) && named
+            })
+            .or_else(|| {
+                self.open_tool_inputs
+                    .iter()
+                    .position(|open| raw(open) && (open.name == input.name || open.name.is_empty()))
+            });
+        if let Some(position) = position {
+            let open = self.open_tool_inputs.remove(position);
+            self.finished_tools.insert(open.id);
+        }
     }
 
     /// Index of the open call for `id`, opening one if none exists.

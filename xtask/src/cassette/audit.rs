@@ -14,7 +14,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::goldens::{expected_deliveries, git, is_close, same_event};
+use super::goldens::{expected_deliveries, git, is_close, same_event, starts_a_sibling};
 
 const EFFECTS: &str = "crates/rig-cassette/fixtures/effects";
 
@@ -49,7 +49,11 @@ impl fmt::Display for Change {
 pub(crate) struct Audit {
     pub(crate) files: usize,
     pub(crate) changed: usize,
+    /// Blocks compared with their deltas.
     pub(crate) blocks: usize,
+    /// Blocks an end restated or finalized from an authoritative payload,
+    /// which supersedes the deltas.
+    pub(crate) authoritative: usize,
     pub(crate) changes: BTreeMap<Change, usize>,
     /// A block that disagrees with its deltas.
     pub(crate) mismatches: Vec<String>,
@@ -122,19 +126,25 @@ impl Audit {
                         _ => String::new(),
                     };
                     let Some(block) = block else { continue };
+                    let authoritative = match close {
+                        Some("reasoning") => event.pointer("/end/reasoning").is_some(),
+                        Some("tool_call") => event.pointer("/end/arguments").is_some(),
+                        Some("text") => false,
+                        _ => true,
+                    };
+                    if authoritative {
+                        self.authoritative += 1;
+                        continue;
+                    }
                     self.blocks += 1;
                     let agrees = match close {
                         Some("text") => {
                             block.get("text").and_then(Value::as_str)
                                 == Some(text.get(id).map_or("", String::as_str))
                         }
-                        // A restatement supersedes the deltas.
-                        Some("reasoning") if event.pointer("/end/reasoning").is_some() => true,
                         Some("reasoning") => reasoning_text(block) == deltas,
-                        // Authoritative arguments supersede the fragments,
-                        // and fragments that are not strict JSON went through
-                        // the wire's repair policy.
-                        Some("tool_call") if event.pointer("/end/arguments").is_some() => true,
+                        // Fragments that are not strict JSON went through the
+                        // wire's repair policy.
                         Some("tool_call") => match deltas.trim() {
                             "" => {
                                 block.pointer("/function/arguments")
@@ -321,14 +331,27 @@ impl<'a> File<'a> {
                     self.audit
                         .other(self.path, format!("{at}[{j}]: a close inserted mid-stream"));
                 }
+                // Each inserted close ends a block still open where it stands.
+                for (offset, close) in new.iter().skip(j).take(run).enumerate() {
+                    let open = new
+                        .iter()
+                        .take(j + offset)
+                        .rev()
+                        .find(|earlier| earlier.get("id") == close.get("id"))
+                        .is_some_and(|earlier| {
+                            earlier.get("event").and_then(Value::as_str) != Some("block_end")
+                        });
+                    if !open {
+                        self.audit.other(
+                            self.path,
+                            format!("{at}[{}]: a close inserted for no open block", j + offset),
+                        );
+                    }
+                }
                 self.audit.count(Change::CloseInserted, run);
                 inserted.extend(j..j + run);
                 j += run;
-            } else if is_reasoning_start(event)
-                && new.get(j + 1).is_some_and(|end| {
-                    is_close(end) && end.get("id").is_some() && end.get("id") == event.get("id")
-                })
-            {
+            } else if event.get("id").is_some() && starts_a_sibling(event, new.get(j + 1)) {
                 self.audit.count(Change::StartInserted, 1);
                 inserted.push(j);
                 j += 1;
@@ -374,6 +397,7 @@ impl<'a> File<'a> {
         if old == new {
             return;
         }
+        self.deliveries_grow_by_the_inserted(old.as_ref(), new.as_ref());
         match expected_deliveries(base, head) {
             Ok(Some(expected)) if Some(&expected) == new.as_ref() => {
                 let shifted = old
@@ -388,6 +412,55 @@ impl<'a> File<'a> {
                 .audit
                 .other(self.path, "delivery batches differ from the base's"),
             Err(reason) => self.audit.other(self.path, format!("deliveries: {reason}")),
+        }
+    }
+
+    /// Independent of the rebasing rule: the batches, their effects and
+    /// kinds are the base's, and each effect's stream items grow by at most
+    /// the events inserted into its stream.
+    fn deliveries_grow_by_the_inserted(&mut self, old: Option<&Value>, new: Option<&Value>) {
+        let (Some(old), Some(new)) = (old.and_then(Value::as_array), new.and_then(Value::as_array))
+        else {
+            self.audit
+                .other(self.path, "deliveries appeared or disappeared");
+            return;
+        };
+        let shape = |delivery: &Value| {
+            (
+                delivery.get("batch").cloned(),
+                delivery.get("id").cloned(),
+                delivery.pointer("/kind/delivery").cloned(),
+            )
+        };
+        if old.len() != new.len()
+            || old
+                .iter()
+                .zip(new)
+                .any(|(old, new)| shape(old) != shape(new))
+        {
+            self.audit
+                .other(self.path, "delivery batches differ from the base's");
+            return;
+        }
+        let mut grown = BTreeMap::<u64, i64>::new();
+        for (old, new) in old.iter().zip(new) {
+            let items = |delivery: &Value| delivery.pointer("/kind/items").and_then(Value::as_i64);
+            if let (Some(id), Some(before), Some(after)) = (
+                new.get("id").and_then(Value::as_u64),
+                items(old),
+                items(new),
+            ) {
+                *grown.entry(id).or_default() += after - before;
+            }
+        }
+        for (id, grown) in grown {
+            let inserted = self.inserted.get(&id).map_or(0, Vec::len) as i64;
+            if !(0..=inserted).contains(&grown) {
+                self.audit.other(
+                    self.path,
+                    format!("effect {id}'s stream items grew by {grown}, {inserted} inserted"),
+                );
+            }
         }
     }
 
@@ -433,11 +506,6 @@ impl<'a> File<'a> {
     }
 }
 
-fn is_reasoning_start(event: &Value) -> bool {
-    event.get("event").and_then(Value::as_str) == Some("block_start")
-        && event.pointer("/kind/kind").and_then(Value::as_str) == Some("reasoning")
-}
-
 /// The world program run a path is inside (`/golden/<scope>[<run>]`).
 fn run_of(at: &str) -> Option<&str> {
     let rest = at.strip_prefix("/golden/")?;
@@ -454,8 +522,17 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             other => return Err(format!("unknown argument {other}")),
         }
     }
-    let changed = git(root, &["diff", "--name-only", &base, "--", EFFECTS])?;
-    let changed: Vec<&str> = changed.lines().collect();
+    let status = git(root, &["diff", "--name-status", &base, "--", EFFECTS])?;
+    let mut changed = Vec::new();
+    let mut audit = Audit::default();
+    for line in status.lines() {
+        let mut fields = line.split('\t');
+        match (fields.next(), fields.next()) {
+            (Some("M"), Some(path)) => changed.push(path),
+            (Some(kind), Some(path)) => audit.other(path, format!("golden status {kind}")),
+            _ => audit.other(line, "unreadable golden status"),
+        }
+    }
     let cassettes = git(
         root,
         &[
@@ -466,23 +543,28 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             "crates/rig-cassette/fixtures/cassettes",
         ],
     )?;
-    let mut audit = Audit::default();
     let listed = git(root, &["ls-files", "--", EFFECTS])?;
     for path in listed.lines().filter(|path| path.ends_with(".json")) {
         let text = std::fs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))?;
         let head: Value = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
         let base = if changed.contains(&path) {
-            git(root, &["show", &format!("{base}:{path}")])
-                .ok()
-                .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            let text = git(root, &["show", &format!("{base}:{path}")])?;
+            match serde_json::from_str::<Value>(&text) {
+                Ok(base) => Some(base),
+                Err(error) => {
+                    audit.other(path, format!("the base golden does not parse: {error}"));
+                    continue;
+                }
+            }
         } else {
             None
         };
         audit.file(path, base.as_ref(), &head);
     }
     println!(
-        "{} goldens, {} changed from {base}, {} blocks checked",
-        audit.files, audit.changed, audit.blocks
+        "{} goldens, {} changed from {base}; {} blocks checked against their deltas, {} carried \
+         authoritative payloads",
+        audit.files, audit.changed, audit.blocks, audit.authoritative
     );
     for (change, count) in &audit.changes {
         println!("{change}: {count}");
