@@ -13,8 +13,9 @@ use serde_json::{Map, Value};
 use rig_core::driver::warn_unmodeled;
 use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::providers::internal::wire;
 use rig_core::streaming;
+use rig_core::wire::{TypedEvent, WireEvent};
 
 use super::completion::{
     GrpcFrame, encode_optional_base64 as encode_signature, prost_struct_to_json,

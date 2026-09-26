@@ -24,9 +24,9 @@ use futures::StreamExt;
 
 use crate::error::ProviderError;
 use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
-use crate::providers::internal::wire::WireEvent;
 use crate::streaming::Streamed;
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
+use crate::wire::WireEvent;
 use crate::wire::{
     Decoder, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire, WireFrame,
 };

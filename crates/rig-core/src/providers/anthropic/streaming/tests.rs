@@ -1483,20 +1483,20 @@ fn classify_dispatches_on_the_known_event_list() {
     let frame = WireFrame::Text(r#"{"type":"something_new_from_anthropic","field":"x"}"#.into());
     assert!(matches!(
         adapter.classify(frame),
-        crate::providers::internal::wire::WireEvent::Unknown { event_type, .. }
+        crate::wire::WireEvent::Unknown { event_type, .. }
             if event_type == "something_new_from_anthropic"
     ));
 
     let frame = WireFrame::Text(r#"{"type":"ping"}"#.into());
     assert!(matches!(
         adapter.classify(frame),
-        crate::providers::internal::wire::WireEvent::Known(StreamingEvent::Ping)
+        crate::wire::WireEvent::Known(StreamingEvent::Ping)
     ));
 
     let frame = WireFrame::Text("{not json".into());
     assert!(matches!(
         adapter.classify(frame),
-        crate::providers::internal::wire::WireEvent::Corrupt(_)
+        crate::wire::WireEvent::Corrupt(_)
     ));
 }
 
@@ -1510,8 +1510,7 @@ fn novel_nested_delta_type_is_a_known_noop() {
     let frame = WireFrame::Text(
         r#"{"type":"content_block_delta","index":0,"delta":{"type":"banana_delta","x":1}}"#.into(),
     );
-    let crate::providers::internal::wire::WireEvent::Known(event) = classifier.classify(frame)
-    else {
+    let crate::wire::WireEvent::Known(event) = classifier.classify(frame) else {
         panic!("a novel nested delta type must stay a Known event");
     };
 
@@ -1536,7 +1535,7 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
         r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":9366,"ephemeral_5m_input_tokens":336}}}}"#
             .into(),
     );
-    let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(start) else {
+    let crate::wire::WireEvent::Known(event) = adapter.classify(start) else {
         panic!("message_start must classify Known");
     };
     adapter.interpret(event, &mut out);
@@ -1545,7 +1544,7 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
         r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7,"input_tokens":3,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0}}"#
             .into(),
     );
-    let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(delta) else {
+    let crate::wire::WireEvent::Known(event) = adapter.classify(delta) else {
         panic!("message_delta must classify Known");
     };
     adapter.interpret(event, &mut out);
@@ -1583,7 +1582,7 @@ fn delta_missing_its_type_is_corrupt_not_skipped() {
     );
     assert!(matches!(
         adapter.classify(frame),
-        crate::providers::internal::wire::WireEvent::Corrupt(_)
+        crate::wire::WireEvent::Corrupt(_)
     ));
 }
 
@@ -1599,7 +1598,7 @@ fn known_nested_delta_tag_with_defective_payload_is_corrupt() {
     );
     assert!(matches!(
         adapter.classify(frame),
-        crate::providers::internal::wire::WireEvent::Corrupt(_)
+        crate::wire::WireEvent::Corrupt(_)
     ));
 }
 
@@ -1617,7 +1616,7 @@ fn known_nested_delta_tag_with_defective_payload_is_corrupt() {
 fn top_level_error_event_surfaces_as_a_provider_error() {
     const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
     let classifier = adapter();
-    let crate::providers::internal::wire::WireEvent::Known(event) =
+    let crate::wire::WireEvent::Known(event) =
         classifier.classify(WireFrame::Text(ENVELOPE.into()))
     else {
         panic!("the error envelope must classify as a Known event");
@@ -1640,8 +1639,7 @@ fn top_level_error_event_surfaces_as_a_provider_error() {
 fn message_start_with_null_message_is_a_known_noop() {
     let classifier = adapter();
     let frame = WireFrame::Text(r#"{"type":"message_start","message":null}"#.into());
-    let crate::providers::internal::wire::WireEvent::Known(event) = classifier.classify(frame)
-    else {
+    let crate::wire::WireEvent::Known(event) = classifier.classify(frame) else {
         panic!("null-message message_start must stay a known event");
     };
 

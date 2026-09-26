@@ -13,7 +13,6 @@ use crate::operation::Completion;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
 };
-use crate::providers::internal::wire::WireEvent;
 use crate::providers::openai::OpenAI;
 use crate::providers::openai::responses_api::{
     AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
@@ -21,6 +20,7 @@ use crate::providers::openai::responses_api::{
 };
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
+use crate::wire::WireEvent;
 use crate::wire::WireFrame;
 use crate::wire::{Fold, Reply};
 use futures::StreamExt;

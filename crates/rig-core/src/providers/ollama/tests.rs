@@ -16,15 +16,15 @@ fn classify_ndjson_line_is_known_or_corrupt() {
     .to_string();
     assert!(matches!(
         internal::wire::classify_untyped_line::<CompletionResponse>(line.as_bytes()),
-        internal::wire::WireEvent::Known(_)
+        crate::wire::WireEvent::Known(_)
     ));
     assert!(matches!(
         internal::wire::classify_untyped_line::<CompletionResponse>(b"{not json"),
-        internal::wire::WireEvent::Corrupt(_)
+        crate::wire::WireEvent::Corrupt(_)
     ));
     assert!(matches!(
         internal::wire::classify_untyped_line::<CompletionResponse>(br#"{"done": 42}"#),
-        internal::wire::WireEvent::Corrupt(_)
+        crate::wire::WireEvent::Corrupt(_)
     ));
 }
 

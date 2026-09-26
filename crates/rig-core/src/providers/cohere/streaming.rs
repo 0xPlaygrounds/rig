@@ -378,7 +378,7 @@ impl ChatDecoder {
 impl crate::wire::Decoder<Completion> for ChatDecoder {
     type Event = ChatEvent;
 
-    fn classify(&self, frame: WireFrame) -> wire::WireEvent<ChatEvent> {
+    fn classify(&self, frame: WireFrame) -> crate::wire::WireEvent<ChatEvent> {
         // One classifier for both shapes: a modeled `type` decodes as a
         // streamed frame, an unmodeled one stays skippable, and a body with
         // no `type` at all can only be the unary reply.

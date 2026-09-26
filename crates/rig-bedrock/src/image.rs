@@ -17,8 +17,9 @@ use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
 use rig_core::operation::{Events, ImageGeneration};
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::providers::internal::wire;
 use rig_core::wire::{Decoder, Mode, Sink, Wire};
+use rig_core::wire::{TypedEvent, WireEvent};
 
 pub use crate::completion::{
     AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,

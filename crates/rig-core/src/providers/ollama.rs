@@ -453,9 +453,7 @@ impl OllamaDecoder {
 
     /// Classify one NDJSON line. The wire has no discriminator at all: a
     /// line either decodes as the record shape or is corrupt.
-    fn classify_line(
-        frame: crate::wire::WireFrame,
-    ) -> internal::wire::WireEvent<CompletionResponse> {
+    fn classify_line(frame: crate::wire::WireFrame) -> crate::wire::WireEvent<CompletionResponse> {
         match frame {
             crate::wire::WireFrame::Bytes(line) => internal::wire::classify_untyped_line(&line),
             crate::wire::WireFrame::Text(line) => {
@@ -471,7 +469,7 @@ impl crate::wire::Decoder<Completion> for OllamaDecoder {
     fn classify(
         &self,
         frame: crate::wire::WireFrame,
-    ) -> internal::wire::WireEvent<CompletionResponse> {
+    ) -> crate::wire::WireEvent<CompletionResponse> {
         Self::classify_line(frame)
     }
 

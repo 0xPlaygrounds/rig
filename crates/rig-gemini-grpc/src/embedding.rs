@@ -18,8 +18,9 @@ use rig_core::driver::{Observation, Opened, Transport};
 use rig_core::embeddings;
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::{Embedding, EmbeddingCapabilities, Events};
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::providers::internal::wire;
 use rig_core::wire::{Decoder, Mode, Output, Sink, Wire};
+use rig_core::wire::{TypedEvent, WireEvent};
 
 use super::GeminiGrpc;
 use super::proto::{self, EmbedContentRequest};

@@ -9,8 +9,9 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::error::ProviderError;
 use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::providers::internal::wire;
 use rig_core::streaming::StreamFinal;
+use rig_core::wire::{TypedEvent, WireEvent};
 use rig_core::{message::ReasoningContent, streaming::UnparseableToolInput};
 use serde::{Deserialize, Serialize};
 
