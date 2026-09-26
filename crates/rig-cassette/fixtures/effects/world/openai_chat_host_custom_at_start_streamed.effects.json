@@ -9,14 +9,6 @@
         }
       },
       {
-        "batch": 6,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 7,
         "id": 1,
         "kind": {
@@ -25,7 +17,15 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 9,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"

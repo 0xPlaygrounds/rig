@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 2,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 21
+        }
+      },
+      {
         "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 23
+          "items": 2
         }
       },
       {
