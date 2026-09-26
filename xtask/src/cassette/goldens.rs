@@ -432,12 +432,12 @@ fn array_span(text: &str, key: &str) -> Option<std::ops::Range<usize>> {
 
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let mut targets = Vec::new();
-    let mut base = "HEAD".to_owned();
+    let mut base = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--test" => targets.push(args.next().cloned().ok_or("--test needs a target")?),
-            "--base" => base = args.next().cloned().ok_or("--base needs a ref")?,
+            "--base" => base = Some(args.next().cloned().ok_or("--base needs a ref")?),
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -463,6 +463,8 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         .env("RIG_REGENERATE_GOLDEN", "1")
         .status()
         .map_err(|error| format!("cargo nextest: {error}"))?;
+    let explicit = base.is_some();
+    let base = base.unwrap_or_else(|| "HEAD".to_owned());
     let outcome = revert_delivery_churn(root, &base)?;
     println!(
         "against {base}: reverted {} delivery-only golden(s), kept the delivery batches of {}",
@@ -471,13 +473,27 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     for (path, reason) in &outcome.kept {
         println!("kept regenerated deliveries in {path}: {reason}");
     }
-    if !status.success() {
+    verdict(status.success(), explicit, outcome.kept.len(), &base)
+}
+
+/// Whether a regeneration succeeded: the replay passed and, when the base was
+/// named with `--base`, every changed golden fit the base's delivery batches.
+/// A rebase onto a named base is a migration, so a golden that does not fit
+/// fails it. Under the default base a golden that does not fit keeps its
+/// regenerated batches and is only reported, so content changes of other
+/// kinds still regenerate.
+pub(crate) fn verdict(
+    replayed: bool,
+    explicit_base: bool,
+    misfits: usize,
+    base: &str,
+) -> Result<(), String> {
+    if !replayed {
         return Err("the regeneration run failed".into());
     }
-    if !outcome.kept.is_empty() {
+    if explicit_base && misfits > 0 {
         return Err(format!(
-            "{} golden(s) changed in a way the base's delivery batches do not fit",
-            outcome.kept.len()
+            "{misfits} golden(s) changed in a way the delivery batches of {base} do not fit"
         ));
     }
     Ok(())

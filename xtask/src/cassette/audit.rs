@@ -8,7 +8,7 @@
 //! a change outside the known kinds, or a block that disagrees with its
 //! deltas, fails the audit.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::Path;
 
@@ -88,6 +88,8 @@ impl Audit {
         let mut text: BTreeMap<&str, String> = BTreeMap::new();
         let mut reasoning: BTreeMap<&str, String> = BTreeMap::new();
         let mut arguments: BTreeMap<&str, String> = BTreeMap::new();
+        // Reasoning keys a start or a delta opened since their last end.
+        let mut open_reasoning: BTreeSet<&str> = BTreeSet::new();
         for event in events {
             let id = event.get("id").and_then(Value::as_str).unwrap_or_default();
             match event.get("event").and_then(Value::as_str) {
@@ -95,6 +97,11 @@ impl Audit {
                     if event.pointer("/kind/kind").and_then(Value::as_str) == Some("tool_call") =>
                 {
                     arguments.insert(id, String::new());
+                }
+                Some("block_start")
+                    if event.pointer("/kind/kind").and_then(Value::as_str) == Some("reasoning") =>
+                {
+                    open_reasoning.insert(id);
                 }
                 Some("block_delta") => {
                     let fragment = |key| {
@@ -106,6 +113,7 @@ impl Audit {
                     match event.pointer("/delta/delta").and_then(Value::as_str) {
                         Some("text") => text.entry(id).or_default().push_str(fragment("text")),
                         Some("reasoning") => {
+                            open_reasoning.insert(id);
                             reasoning.entry(id).or_default().push_str(fragment("text"));
                         }
                         Some("tool_arguments") => {
@@ -120,12 +128,28 @@ impl Audit {
                 Some("block_end") => {
                     let close = event.pointer("/end/close").and_then(Value::as_str);
                     let block = event.get("block");
+                    let closes_open_reasoning =
+                        close == Some("reasoning") && open_reasoning.remove(id);
                     let deltas = match close {
                         Some("reasoning") => reasoning.remove(id).unwrap_or_default(),
                         Some("tool_call") => arguments.remove(id).unwrap_or_default(),
                         _ => String::new(),
                     };
-                    let Some(block) = block else { continue };
+                    let Some(block) = block.filter(|block| !block.is_null()) else {
+                        // An end that assembled content must carry it: text
+                        // its deltas carried, or a reasoning part it closes.
+                        let assembled = match close {
+                            Some("text") => text.get(id).is_some_and(|text| !text.is_empty()),
+                            Some("reasoning") => closes_open_reasoning,
+                            _ => false,
+                        };
+                        if assembled {
+                            self.mismatches.push(format!(
+                                "{path}: the end of {id} carries no block for what it assembled"
+                            ));
+                        }
+                        continue;
+                    };
                     let authoritative = match close {
                         Some("reasoning") => event.pointer("/end/reasoning").is_some(),
                         Some("tool_call") => event.pointer("/end/arguments").is_some(),
@@ -513,6 +537,45 @@ fn run_of(at: &str) -> Option<&str> {
     Some(&at[..("/golden/".len() + close + 1)])
 }
 
+/// Every effect golden in the working tree, by its path from `root`, parsed
+/// and in path order. It reads the files, not git, so a golden not yet
+/// committed is checked too.
+pub(crate) fn goldens(root: &Path) -> Result<Vec<(String, Value)>, String> {
+    let mut paths = Vec::new();
+    let mut directories = vec![root.join(EFFECTS)];
+    while let Some(directory) = directories.pop() {
+        let entries =
+            std::fs::read_dir(&directory).map_err(|e| format!("{}: {e}", directory.display()))?;
+        for entry in entries {
+            let path = entry
+                .map_err(|e| format!("{}: {e}", directory.display()))?
+                .path();
+            if path.is_dir() {
+                directories.push(path);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            {
+                paths.push(path);
+            }
+        }
+    }
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|path| {
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|e| format!("{}: {e}", path.display()))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let text = std::fs::read_to_string(&path).map_err(|e| format!("{relative}: {e}"))?;
+            let golden = serde_json::from_str(&text).map_err(|e| format!("{relative}: {e}"))?;
+            Ok((relative, golden))
+        })
+        .collect()
+}
+
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let mut base = "HEAD".to_owned();
     let mut args = args.iter();
@@ -543,10 +606,8 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             "crates/rig-cassette/fixtures/cassettes",
         ],
     )?;
-    let listed = git(root, &["ls-files", "--", EFFECTS])?;
-    for path in listed.lines().filter(|path| path.ends_with(".json")) {
-        let text = std::fs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))?;
-        let head: Value = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
+    for (path, head) in goldens(root)? {
+        let path = path.as_str();
         let base = if changed.contains(&path) {
             let text = git(root, &["show", &format!("{base}:{path}")])?;
             match serde_json::from_str::<Value>(&text) {

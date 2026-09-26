@@ -194,3 +194,20 @@ fn an_inserted_sibling_start_counts_like_a_close() {
         .expect("rebased");
     assert_eq!(batches(&rebased), vec![(1, Some(3)), (99, None)]);
 }
+
+#[test]
+fn a_golden_that_does_not_fit_fails_only_a_named_base() {
+    assert!(verdict(true, false, 0, "HEAD").is_ok());
+    assert!(verdict(true, true, 0, "22368226f").is_ok());
+    assert!(
+        verdict(true, false, 2, "HEAD").is_ok(),
+        "the default base reports a misfit and regenerates"
+    );
+    assert!(verdict(true, true, 2, "22368226f").is_err());
+}
+
+#[test]
+fn a_failed_replay_fails_the_regeneration() {
+    assert!(verdict(false, false, 0, "HEAD").is_err());
+    assert!(verdict(false, true, 0, "22368226f").is_err());
+}

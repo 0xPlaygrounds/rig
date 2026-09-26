@@ -188,3 +188,81 @@ fn an_authoritative_block_is_counted_apart() {
     assert_eq!((found.blocks, found.authoritative), (0, 1));
     assert!(found.mismatches.is_empty());
 }
+
+fn reasoning_delta(text: &str) -> Value {
+    json!({"event": "block_delta", "id": "r", "delta": {"delta": "reasoning", "text": text}})
+}
+
+fn reasoning_end(block: Option<&str>) -> Value {
+    let mut end = json!({
+        "event": "block_end",
+        "id": "r",
+        "end": {"close": "reasoning", "wire_sent": false}
+    });
+    if let Some(text) = block {
+        end["block"] = json!({
+            "type": "reasoning",
+            "content": [{"type": "text", "content": {"text": text}}]
+        });
+    }
+    end
+}
+
+#[test]
+fn a_text_end_without_the_text_its_deltas_assembled_is_a_mismatch() {
+    let head = log(vec![delta("hi"), end(None), done()], vec![], vec![(1, 3)]);
+    assert_eq!(audit(None, &head).mismatches.len(), 1);
+    let nothing_assembled = log(vec![delta(""), end(None), done()], vec![], vec![(1, 3)]);
+    assert!(audit(None, &nothing_assembled).mismatches.is_empty());
+}
+
+#[test]
+fn a_reasoning_end_that_closes_an_open_part_without_its_block_is_a_mismatch() {
+    let head = log(
+        vec![reasoning_delta("think"), reasoning_end(None), done()],
+        vec![],
+        vec![(1, 3)],
+    );
+    assert_eq!(audit(None, &head).mismatches.len(), 1);
+    let carried = log(
+        vec![
+            reasoning_delta("think"),
+            reasoning_end(Some("think")),
+            done(),
+        ],
+        vec![],
+        vec![(1, 3)],
+    );
+    assert!(audit(None, &carried).mismatches.is_empty());
+    // A late signature on a finished part closes nothing.
+    let late = log(
+        vec![
+            reasoning_delta("think"),
+            reasoning_end(Some("think")),
+            reasoning_end(None),
+            done(),
+        ],
+        vec![],
+        vec![(1, 4)],
+    );
+    assert!(audit(None, &late).mismatches.is_empty());
+}
+
+/// The checked-in corpus: every golden's ends carry what their deltas
+/// assemble.
+#[test]
+fn every_golden_end_carries_what_its_deltas_assemble() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the workspace root");
+    let mut found = Audit::default();
+    for (path, golden) in goldens(root).expect("the corpus reads") {
+        found.file(&path, None, &golden);
+    }
+    assert!(found.files > 1000, "only {} goldens found", found.files);
+    assert!(
+        found.mismatches.is_empty(),
+        "{}",
+        found.mismatches.join("\n")
+    );
+}
