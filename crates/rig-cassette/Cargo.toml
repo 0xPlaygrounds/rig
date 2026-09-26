@@ -56,10 +56,10 @@ http = [
 bedrock = ["http", "dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
-rig-agent = { path = "../rig-agent", version = "0.42.0", default-features = false, optional = true }
-rig-ecs = { path = "../rig-ecs", version = "0.42.0", optional = true }
-rig-reqwest = { path = "../rig-reqwest", version = "0.42.0", default-features = false, features = ["rustls"], optional = true }
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
+rig-agent = { path = "../rig-agent", version = "0.43.0", default-features = false, optional = true }
+rig-ecs = { path = "../rig-ecs", version = "0.43.0", optional = true }
+rig-reqwest = { path = "../rig-reqwest", version = "0.43.0", default-features = false, features = ["rustls"], optional = true }
 bevy_app = { workspace = true, optional = true }
 bevy_ecs = { workspace = true, optional = true }
 aws-smithy-eventstream = { workspace = true, optional = true }
