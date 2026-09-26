@@ -94,6 +94,7 @@ default-members = [
     "crates/rig-cassette",
     "crates/rig-agent",
     "crates/rig-ecs",
+    "crates/rig-http",
     "crates/rig-reqwest",
     "crates/rig-tungstenite",
     "crates/rig-typesafeai",
@@ -429,22 +430,23 @@ sqlite = ["dep:rig-sqlite"]
 surrealdb = ["dep:rig-surrealdb"]
 vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
-audio = ["rig-core/audio", "rig-agent?/audio", "rig-reqwest?/audio"]
-image = ["rig-core/image", "rig-agent?/image", "rig-reqwest?/image"]
+audio = ["rig-core/audio", "rig-agent?/audio"]
+image = ["rig-core/image", "rig-agent?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
 rmcp = ["dep:rig-rmcp"]
 socks = ["reqwest", "rig-reqwest/socks"]
-reqwest = ["dep:rig-reqwest"]
+# Provider clients built with no transport named (`OpenAI::from_env()`) send
+# through the bundled reqwest client: rig-core's `reqwest` feature.
+reqwest = ["dep:rig-reqwest", "rig-core/reqwest"]
 # The bundled websocket backend (`rig-tungstenite`) and the provider websocket
-# sessions it drives. Independent of the HTTP transport axis: a session borrows
-# the provider client for its request mapping, so `reqwest` comes along for the
-# client, not for the socket.
+# sessions it drives, through rig-core's `tungstenite` feature. Independent of
+# the HTTP transport axis: a session borrows the provider client for its
+# request mapping, so `reqwest` comes along for the client, not for the socket.
 #
-# `websocket` is the API gate — it is what `pub use rig_tungstenite` and the
-# prelude re-export are cfg'd on — and each of the three spellings is usable on
-# its own. `rig-tungstenite`'s own `default = ["rustls"]` applies (see its
+# `websocket` is the API gate — it is what `pub use rig_tungstenite` is cfg'd
+# on — and each of the three spellings is usable on its own. `rig-tungstenite`'s own `default = ["rustls"]` applies (see its
 # dependency line), so `websocket` always has a working TLS stack; the
 # `websocket-*-tls` spellings add the workspace-wide TLS feature on top, which
 # is also what wires the backend up for `native-tls`.
@@ -455,12 +457,13 @@ reqwest = ["dep:rig-reqwest"]
 # `websocket-native-tls` gets you a working native-tls socket with rustls also
 # compiled in. That trade is deliberate — a build that silently cannot speak
 # `wss://` is worse than one that compiles a TLS stack it does not use.
-websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/websocket"]
+websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/tungstenite"]
 # `dep:rig-tungstenite` above resolves to nothing on wasm, where the dependency
 # is not in the graph: the feature degrades to the protocol alone.
 websocket-rustls = ["websocket", "rustls"]
 websocket-native-tls = ["websocket", "native-tls"]
 rustls = [
+  "rig-core/rustls",
   "rig-reqwest?/rustls",
   "rig-tungstenite?/rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
@@ -470,6 +473,7 @@ rustls = [
   "rig-vectorize?/rustls",
 ]
 native-tls = [
+  "rig-core/native-tls",
   "rig-reqwest?/native-tls",
   "rig-tungstenite?/native-tls",
   "rig-fastembed?/hf-hub-native-tls",

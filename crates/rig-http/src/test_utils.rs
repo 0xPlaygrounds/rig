@@ -1,4 +1,5 @@
-//! HTTP client doubles for provider tests.
+//! HTTP client doubles for tests of code that sends through an
+//! [`HttpClientExt`].
 
 use std::{
     collections::VecDeque,

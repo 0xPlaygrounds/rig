@@ -4,7 +4,6 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::Message;
 use rig::completion::message::Image;
 use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::wire::{OpenAI, Route};
 use schemars::JsonSchema;
@@ -425,7 +424,7 @@ async fn chat_completions_image_input_smoke() {
 async fn responses_websocket_smoke() -> anyhow::Result<()> {
     let client = OpenAI::from_env().expect("config should build from env");
     let model = rig::model(client.responses(openai::GPT_5_5));
-    let mut session = model.responses_websocket().await?;
+    let mut session = model.responses_websocket().connect().await?;
 
     let request =
         CompletionRequestBuilder::new("Explain one benefit of websocket mode in one sentence.")

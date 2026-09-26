@@ -38,7 +38,7 @@ pub mod driver;
 pub mod effect;
 pub mod embeddings;
 pub mod error;
-pub mod http_client;
+pub use rig_http::http_client;
 pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
@@ -67,11 +67,11 @@ pub mod tool;
 pub mod transcript;
 pub mod transcription;
 pub mod vector_store;
-pub mod wasm_compat;
+pub use rig_http::wasm_compat;
 pub mod wire;
 #[cfg(feature = "websocket")]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
-pub mod ws_client;
+pub use rig_http::ws_client;
 
 pub use completion::message;
 pub use driver::{DynModel, Model};

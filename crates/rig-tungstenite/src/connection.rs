@@ -5,9 +5,9 @@
 //! cancelled receives.
 
 use futures::{SinkExt, StreamExt};
-use rig_core::http_client::{Error, Result};
-use rig_core::wasm_compat::WasmBoxedFuture;
-use rig_core::ws_client::{CloseFrame, Frame, WebSocketConnection};
+use rig_http::http_client::{Error, Result};
+use rig_http::wasm_compat::WasmBoxedFuture;
+use rig_http::ws_client::{CloseFrame, Frame, WebSocketConnection};
 use std::collections::VecDeque;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame as TungsteniteCloseFrame;
@@ -180,7 +180,7 @@ impl ForwardedConnection {
     /// Move `socket` onto the fallback runtime and return the channel-backed
     /// connection, or an error if the runtime cannot start.
     #[cfg(not(target_family = "wasm"))]
-    pub(crate) fn spawn(socket: Socket) -> Result<rig_core::ws_client::BoxedWebSocketConnection> {
+    pub(crate) fn spawn(socket: Socket) -> Result<rig_http::ws_client::BoxedWebSocketConnection> {
         // The sequential contract needs one pending command; bounding the queue
         // prevents callers from buffering unaccepted frames.
         let (commands, requests) = futures::channel::mpsc::channel::<Command>(1);

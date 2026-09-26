@@ -14,9 +14,9 @@
 use rig_core::completion::CompletionRequestBuilder;
 use rig_core::driver::Model;
 use rig_core::providers::openai::OpenAI;
-use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketExt as _;
+
 use rig_core::test_utils::RecordingHttpClient;
-use rig_tungstenite::{DefaultWebSocketBuilder as _, DefaultWebSocketClient as _};
+
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -61,7 +61,7 @@ fn serve_one_turn_after(
                     .expect("address should send");
 
                 let (stream, _) = listener.accept().await.expect("accept");
-                let mut socket = tokio_tungstenite::accept_async(stream)
+                let mut socket = rig_tungstenite::tokio_tungstenite::accept_async(stream)
                     .await
                     .expect("upgrade");
 
@@ -84,7 +84,7 @@ fn serve_one_turn_after(
 
                 for event in events {
                     socket
-                        .send(tokio_tungstenite::tungstenite::Message::text(event))
+                        .send(rig_tungstenite::tokio_tungstenite::tungstenite::Message::text(event))
                         .await
                         .expect("event should send");
                 }
@@ -154,7 +154,7 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
             .responses("gpt-5.4");
         let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
-        let mut session = match bound.responses_websocket().await {
+        let mut session = match bound.responses_websocket().connect().await {
             Ok(session) => session,
             Err(error) => panic!("session should connect off-runtime: {error}"),
         };
@@ -205,7 +205,7 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
         let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
         let mut session = match bound
-            .responses_websocket_builder()
+            .responses_websocket()
             .event_timeout(Duration::from_millis(50))
             .connect()
             .await
@@ -268,7 +268,7 @@ fn a_cancelled_read_does_not_lose_the_frame_off_runtime() {
             .responses("gpt-5.4");
         let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
-        let mut session = match bound.responses_websocket().await {
+        let mut session = match bound.responses_websocket().connect().await {
             Ok(session) => session,
             Err(error) => panic!("session should connect off-runtime: {error}"),
         };

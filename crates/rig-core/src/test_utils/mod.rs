@@ -2,7 +2,6 @@
 
 mod completion;
 mod embeddings;
-mod http;
 mod memory;
 pub mod observations;
 mod relay;
@@ -15,13 +14,13 @@ mod tracing_isolation;
 
 pub use completion::{MockCompletionModel, MockError, MockScript, MockTurn};
 pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
-pub use http::{
+pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
+pub use relay::MockRelay;
+pub use rig_http::test_utils::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
     NonSuccessStreamingClient, RecordingHttpClient, SequencedHttpClient,
     SequencedStreamingHttpClient,
 };
-pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
-pub use relay::MockRelay;
 #[cfg(test)]
 pub(crate) use streaming::scripted_stream;
 pub use streaming::{MOCK_PROVIDER, MockStreamEvent, mock_final, mock_final_with_total_tokens};

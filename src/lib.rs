@@ -71,7 +71,7 @@ pub mod http_client {
     pub use rig_core::http_client::*;
     #[cfg(feature = "reqwest")]
     #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-    pub use rig_reqwest::{ReqwestClient, from_reqwest};
+    pub use rig_reqwest::ReqwestClient;
 }
 
 #[cfg(feature = "agent")]
@@ -158,11 +158,6 @@ pub mod prelude {
         StructuredOutputError, ToolSet,
     };
     pub use rig_core::prelude::*;
-    // Default-backend websocket traits: `client.responses_websocket(..)` and
-    // `builder().connect()` over the bundled tungstenite backend, plus the
-    // provider's own session extension trait.
-    #[cfg(all(feature = "websocket", not(target_family = "wasm")))]
-    pub use rig_tungstenite::prelude::*;
 }
 
 /// Low-level streaming values.

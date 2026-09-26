@@ -11,8 +11,8 @@
 #![allow(clippy::expect_used, clippy::panic)]
 
 use bytes::Bytes;
-use rig_core::http_client::{NoBody, Request};
-use rig_core::ws_client::{
+use rig_http::http_client::{NoBody, Request};
+use rig_http::ws_client::{
     ConnectOptions, Frame, WebSocketClientExt as _, WebSocketConnection as _,
 };
 use rig_tungstenite::TungsteniteClient;
@@ -170,7 +170,7 @@ fn an_abandoned_connect_releases_the_socket_it_opened() {
     assert_no_tokio_runtime();
 
     futures::executor::block_on(async {
-        rig_core::wasm_compat::timeout(CLOSE_DEADLINE, async {
+        rig_http::wasm_compat::timeout(CLOSE_DEADLINE, async {
             let client = TungsteniteClient::new();
             let connecting = client.connect(handshake_request(&url), ConnectOptions::new());
             futures::pin_mut!(connecting);
@@ -201,7 +201,7 @@ fn a_dropped_idle_connection_releases_the_socket() {
     assert_no_tokio_runtime();
 
     futures::executor::block_on(async {
-        rig_core::wasm_compat::timeout(CLOSE_DEADLINE, async {
+        rig_http::wasm_compat::timeout(CLOSE_DEADLINE, async {
             let connection = TungsteniteClient::new()
                 .connect(handshake_request(&url), ConnectOptions::new())
                 .await
@@ -231,7 +231,7 @@ fn a_dropped_stalled_connection_releases_the_socket() {
     assert_no_tokio_runtime();
 
     futures::executor::block_on(async {
-        rig_core::wasm_compat::timeout(CLOSE_DEADLINE, async {
+        rig_http::wasm_compat::timeout(CLOSE_DEADLINE, async {
         let mut connection = TungsteniteClient::new()
             .connect(handshake_request(&url), ConnectOptions::new())
             .await
@@ -243,7 +243,7 @@ fn a_dropped_stalled_connection_releases_the_socket() {
             futures::future::Either::Right((arrival, _)) => arrival.expect("write reached peer"),
             futures::future::Either::Left(_) => panic!("write completed before stall observation"),
         }
-        let stalled = rig_core::wasm_compat::timeout(
+        let stalled = rig_http::wasm_compat::timeout(
             Duration::from_millis(200),
             sending.as_mut(),
         )

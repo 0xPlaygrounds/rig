@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
@@ -27,7 +26,7 @@ fn extract_text(choice: &[AssistantContent]) -> String {
 async fn websocket_session_roundtrip() -> Result<()> {
     let client = OpenAI::from_env().expect("config should build from env");
     let model = rig::model(client.responses(openai::GPT_4O_MINI));
-    let mut session = model.responses_websocket().await?;
+    let mut session = model.responses_websocket().connect().await?;
 
     let warmup_request =
         CompletionRequestBuilder::new("You will answer a follow-up question about websocket mode.")

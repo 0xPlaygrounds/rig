@@ -206,6 +206,8 @@ pub(super) fn all() -> Vec<Check> {
                 "-p",
                 "rig-core",
                 "-p",
+                "rig-http",
+                "-p",
                 "rig-reqwest",
                 "-p",
                 "rig-tungstenite",
@@ -276,8 +278,6 @@ pub(super) fn all() -> Vec<Check> {
                 "--locked",
                 "-p",
                 "rig-core",
-                "-p",
-                "rig-tungstenite",
                 "-p",
                 "rig-candle",
                 "-p",
@@ -375,6 +375,7 @@ pub(super) fn all() -> Vec<Check> {
     ];
     for package in [
         "rig-core",
+        "rig-http",
         "rig-cassette",
         "rig-ecs",
         "rig-reqwest",
@@ -427,7 +428,7 @@ pub(super) fn all() -> Vec<Check> {
                 ]));
             }
         }
-        if ["rig-core", "rig-ecs"].contains(&package) {
+        if ["rig-core", "rig-http", "rig-ecs"].contains(&package) {
             steps.push(cargo(&[
                 "check",
                 "--locked",

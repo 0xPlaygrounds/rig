@@ -2,7 +2,7 @@
 //! Attach hooks with [`with_middleware`](super::DynHttpClient::with_middleware).
 //!
 //! ```
-//! use rig_core::http_client::middleware::HttpMiddleware;
+//! use rig_http::http_client::middleware::HttpMiddleware;
 //!
 //! struct PassThrough;
 //! impl HttpMiddleware for PassThrough {}

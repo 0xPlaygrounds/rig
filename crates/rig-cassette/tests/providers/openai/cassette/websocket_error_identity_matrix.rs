@@ -77,7 +77,6 @@
 //! regression at all.
 
 use rig::error::ProviderError;
-use rig::prelude::DefaultWebSocketClient as _;
 
 use super::super::support::with_openai_websocket_cassette;
 use rig::completion::CompletionRequestBuilder;
@@ -103,6 +102,7 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
         |client| async move {
             let error = rig::model(client.openai.responses("gpt-4o-mini"))
                 .responses_websocket()
+                .connect()
                 .await
                 .err()
                 .expect("an invalid key must fail the upgrade");
@@ -144,6 +144,7 @@ async fn handshake_rejection_matches_the_http_twin() {
             let model = rig::model(client.openai.responses("gpt-4o-mini"));
             let websocket_error = model
                 .responses_websocket()
+                .connect()
                 .await
                 .err()
                 .expect("an invalid key must fail the upgrade");

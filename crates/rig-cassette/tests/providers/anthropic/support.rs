@@ -49,7 +49,7 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
     .await;
     let provider =
         Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY")).with_base_url(cassette.base_url());
-    let http = ReqwestClient::default().erase().with_middleware(middleware);
+    let http = DynHttpClient::new(ReqwestClient::default()).with_middleware(middleware);
     let result = AssertUnwindSafe(test_body(provider, http))
         .catch_unwind()
         .await;

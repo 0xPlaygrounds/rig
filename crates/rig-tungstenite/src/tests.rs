@@ -1,5 +1,5 @@
 use super::*;
-use rig_core::http_client::StatusCode;
+use rig_http::http_client::StatusCode;
 
 /// The live shape of a rejected upgrade, recorded against the real
 /// endpoint: status, request id, and the provider's error envelope.
