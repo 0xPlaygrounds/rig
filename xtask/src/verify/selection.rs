@@ -676,7 +676,7 @@ pub(super) fn quick(
             .collect();
         if !other.is_empty() {
             deferred.push(format!(
-                "{name}: features not enabled here: {}",
+                "{name}: features this run does not request: {}",
                 other.join(", ")
             ));
         }
@@ -686,7 +686,8 @@ pub(super) fn quick(
             .collect();
         if !dependents.is_empty() {
             deferred.push(format!(
-                "reverse dependencies of {name}: {}",
+                "reverse dependencies of {name} ({}): {}",
+                dependents.len(),
                 dependents.join(", ")
             ));
         }

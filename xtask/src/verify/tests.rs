@@ -956,9 +956,12 @@ fn quick_checks_a_core_edit_and_lists_its_consumers_for_ci() {
     );
     assert!(listed(
         &q,
-        "reverse dependencies of rig-core: example, rig-ecs"
+        "reverse dependencies of rig-core (2): example, rig-ecs"
     ));
-    assert!(listed(&q, "rig-core: features not enabled here: pdf"));
+    assert!(listed(
+        &q,
+        "rig-core: features this run does not request: pdf"
+    ));
 }
 
 #[test]
@@ -1039,7 +1042,7 @@ fn quick_checks_two_unrelated_packages_separately() {
         .unwrap();
     assert!(!sqlite.steps[0].args.contains(&"--features".into()));
     // The example consumes rig-ecs; it is listed, not built.
-    assert!(listed(&q, "reverse dependencies of rig-ecs: example"));
+    assert!(listed(&q, "reverse dependencies of rig-ecs (1): example"));
     assert!(
         q.plan
             .iter()
