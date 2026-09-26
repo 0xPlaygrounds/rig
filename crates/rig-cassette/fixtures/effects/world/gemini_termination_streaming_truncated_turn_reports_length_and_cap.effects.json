@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -166,6 +166,17 @@
           "delta": {
             "delta": "text",
             "text": " room, blurring the horizon."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
           }
         },
         {

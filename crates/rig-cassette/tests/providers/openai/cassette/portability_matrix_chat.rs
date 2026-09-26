@@ -2,8 +2,6 @@
 //! signed, OpenAI-encrypted and Gemini-signed reasoning beside a tool
 //! exchange.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::history_survival::portability::{Cell, Source};
 
@@ -11,8 +9,8 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: OpenAiCassette, cell: Cell) -> impl CompletionModel + 'static {
-    client.openai.chat(cell.model)
+fn model(client: OpenAiCassette, cell: Cell) -> rig::Model<rig::providers::openai::wire::Chat> {
+    rig::model(client.openai.chat(cell.model))
 }
 
 const fn cell(source: Source) -> Cell {

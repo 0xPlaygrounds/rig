@@ -7,6 +7,7 @@
 //! (`recordings.tsv`), failed recordings, fixtures kept from failed runs and the
 //! created-resource ledger (`ledger.jsonl`).
 
+mod audit;
 mod goldens;
 mod owner;
 mod record;
@@ -26,9 +27,13 @@ pub(crate) const USAGE: &str = "\
                               price every attempt in the ledger
   cassette scan [--base REF] [<fixture>...]
                               scan changed fixtures for credentials and account data
-  cassette goldens [--test TARGET]...
-                              regenerate effect goldens from replay and revert
-                              delivery-only churn
+  cassette audit [--base REF]
+                              check every effect golden's blocks against their
+                              deltas and classify its changes from REF (HEAD)
+  cassette goldens [--base REF] [--test TARGET]...
+                              regenerate effect goldens from replay, revert
+                              delivery-only churn and keep the base's delivery
+                              batches (REF defaults to HEAD)
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";
 
@@ -54,6 +59,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<(), String> {
         "spend" => spend::run(root, rest),
         "scan" => scan::run(root, rest),
         "goldens" => goldens::run(root, rest),
+        "audit" => audit::run(root, rest),
         "cleanup" => cleanup(root, rest),
         other => Err(format!("unknown cassette command {other:?}\n{USAGE}")),
     }

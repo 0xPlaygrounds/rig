@@ -76,11 +76,11 @@
 //! bytes instead, as an earlier version did, could not have detected an HTTP
 //! regression at all.
 
-use rig::completion::CompletionModel;
 use rig::error::ProviderError;
 use rig::prelude::DefaultWebSocketClient as _;
 
 use super::super::support::with_openai_websocket_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 /// What a caller can actually learn from a failed connection — the three
 /// accessors the rig#2314/#2315 contract is written in terms of.
@@ -101,9 +101,7 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
     with_openai_websocket_cassette(
         "websocket_error_identity_matrix/handshake_rejection_carries_status_body_and_request_id",
         |client| async move {
-            let error = client
-                .openai
-                .responses("gpt-4o-mini")
+            let error = rig::model(client.openai.responses("gpt-4o-mini"))
                 .responses_websocket()
                 .await
                 .err()
@@ -143,7 +141,7 @@ async fn handshake_rejection_matches_the_http_twin() {
     with_openai_websocket_cassette(
         "websocket_error_identity_matrix/handshake_rejection_matches_the_http_twin",
         |client| async move {
-            let model = client.openai.responses("gpt-4o-mini");
+            let model = rig::model(client.openai.responses("gpt-4o-mini"));
             let websocket_error = model
                 .responses_websocket()
                 .await
@@ -151,7 +149,7 @@ async fn handshake_rejection_matches_the_http_twin() {
                 .expect("an invalid key must fail the upgrade");
 
             let http_error = model
-                .completion(model.completion_request("Never authenticated").build())
+                .call(CompletionRequestBuilder::new("Never authenticated").build())
                 .await
                 .expect_err("the same key must fail the unary request");
 

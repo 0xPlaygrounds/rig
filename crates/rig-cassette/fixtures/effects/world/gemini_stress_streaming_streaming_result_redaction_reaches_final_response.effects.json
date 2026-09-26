@@ -44,7 +44,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -477,6 +477,17 @@
           "delta": {
             "delta": "text",
             "text": "DACTED-Q3\"}}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The exact tool result is: {\"add_response\": {\"result\": \"STREAM-REDACTED-Q3\"}}"
           }
         },
         {

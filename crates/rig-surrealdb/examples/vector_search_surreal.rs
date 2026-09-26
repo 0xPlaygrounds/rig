@@ -1,3 +1,4 @@
+use rig_core::Model;
 use rig_core::providers::openai::{self, wire::OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -5,7 +6,6 @@ use rig_core::{
     embeddings::EmbeddingsBuilder,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig_reqwest::prelude::*;
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
 use surrealdb::Surreal;
@@ -30,8 +30,12 @@ impl std::fmt::Display for WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let openai_client = OpenAI::from_env()?;
+    let model = Model::new(
+        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
+        rig_reqwest::shared(),
+    )
+    .erase();
 
     let surreal = Surreal::new::<Mem>(()).await?;
 

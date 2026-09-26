@@ -493,8 +493,8 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 
 ### 12.1 Host assembly, runtime execution
 
-The host constructs an HTTP or SDK `CompletionModel`, wraps it in a
-`CompletionAdapter`, and installs the erased handler under a dispatch key.
+The host constructs an HTTP or SDK `Model`, wraps it in a `ModelAdapter`,
+and installs the erased handler under a dispatch key.
 ECS stores the live handler and its `Bound` descriptor, not provider launch
 configuration. It performs no provider discovery, credential resolution,
 transport selection or SDK preparation.

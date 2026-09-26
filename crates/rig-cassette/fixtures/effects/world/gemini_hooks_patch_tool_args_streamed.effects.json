@@ -482,6 +482,10 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "42"
           }
         },
         {
@@ -508,6 +512,15 @@
           "id": "minted:text:1",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "Eq0BCqoBAWkUfROxJwBtOR/ZQw8iBLmJ6GqjCfJvOZkV77kHVgnlLrdMd0rxETFK62VsRIlferqh3J4PbYzo55rEUCAMQm3LsWtU77pGfpkyDf/uMvqQh1ldbdDlLWksD1rQJ7tJjqWRuQSwl5IPDAkBRXaR3+D6mOrN+T0rD18nMPbbC/e2+EE+8qE1w89a3WuyH2rNWBfbun8Tt4BaBbMd4ITDAf9wcJWQBuxn62Y="
+              }
+            }
           }
         },
         {

@@ -256,21 +256,21 @@ fn reasoning_input_items(items: &[InputItem]) -> Vec<serde_json::Value> {
 /// A wire-plausible id keeps round-tripping.
 #[tokio::test]
 async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
-    use crate::completion::CompletionModel as _;
     use crate::test_utils::MockStreamEvent;
     use futures::StreamExt as _;
 
     // The constant-id shape gemini/ollama/chat-compat streams leave in
     // history, via the mock model's streaming pipeline.
     let model = MockCompletionModel::from_stream_turns([vec![
-        MockStreamEvent::reasoning_delta("thinking hard"),
+        // A minted-key part, closed before the text as every adapter closes it.
+        MockStreamEvent::reasoning("thinking hard"),
         MockStreamEvent::text("answer"),
         MockStreamEvent::final_response_with_default_usage(),
     ]]);
-    let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
-    let mut stream = model.stream(request).await.expect("mock stream");
+    let request = CompletionRequestBuilder::new("hi").build();
+    let mut stream = model.stream(request).expect("mock stream");
     while stream.next().await.is_some() {}
-    let choice = stream.snapshot();
+    let choice = stream.folded().snapshot();
     // The provenance funnel: a minted stream identity never becomes the
     // durable `Reasoning::id`, so the replayed history carries no id at
     // all — there is nothing for a serializer gate to filter, and no
@@ -803,7 +803,7 @@ fn responses_request_drops_whitespace_only_preamble() {
 
 #[test]
 fn responses_request_lifts_system_messages_to_top_level_instructions_by_default() {
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello")
+    let request = CompletionRequestBuilder::new("Hello")
         .preamble("System one".to_string())
         .message(completion::Message::system("System two"))
         .build();
@@ -866,7 +866,7 @@ fn responses_wire_can_lift_all_system_messages_via_placement() {
     let wire = openai_wire("gpt-4o-mini")
         .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "again")
+    let request = CompletionRequestBuilder::new("again")
         .preamble("System one".to_string())
         .message(completion::Message::user("hi"))
         .message(completion::Message::system("Mid-conversation instruction"))
@@ -1166,7 +1166,7 @@ fn completion_response_round_trips_echoed_metadata() {
 
 #[test]
 fn responses_request_keeps_documents_after_lifted_system_messages() {
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
+    let request = CompletionRequestBuilder::new("Prompt")
         .message(completion::Message::system("System prompt"))
         .message(completion::Message::user("Earlier user turn"))
         .message(completion::Message::assistant("Earlier assistant turn"))
@@ -2266,17 +2266,15 @@ fn file_id_document_serializes_as_input_item_content() {
 
 #[tokio::test]
 async fn responses_completion_http_non_success_preserves_status_and_body() {
-    use crate::completion::CompletionModel;
-    use crate::driver::Bound;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
     let http_client = RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-    let model = Bound::new(openai_wire("gpt-4o-mini"), http_client);
-    let request = model.completion_request("hello").build();
+    let model = crate::driver::Model::new(openai_wire("gpt-4o-mini"), http_client);
+    let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model
-        .completion(request)
+        .call(request)
         .await
         .expect_err("completion should fail with non-success status");
 
@@ -2575,7 +2573,7 @@ fn output_without_usable_type_tag_decodes_to_unknown() {
 // exclusive on OpenAI's Responses API (400 `mutually_exclusive_parameters`),
 // so URL-backed PDFs must not carry the hardcoded `filename`. These tests
 // cover the `TryFrom<crate::completion::Message> for Vec<InputItem>` path
-// that `CompletionModel::completion()` requests actually go through.
+// that `Model::call` requests actually go through.
 //
 // See <https://platform.openai.com/docs/guides/pdf-files> for the
 // `input_file` content part and its `file_url` / `file_data` / `file_id`
@@ -2709,8 +2707,7 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
 /// double that carries response headers.
 mod raw_capture {
     use super::*;
-    use crate::completion::CompletionModel as _;
-    use crate::driver::Bound;
+
     use crate::test_utils::RecordingHttpClient;
 
     const REQUEST_ID: &str = "req_unit_responses_0001";
@@ -2759,13 +2756,13 @@ mod raw_capture {
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
         let mut headers = http::HeaderMap::new();
         headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
-        let model = Bound::new(
+        let model = crate::driver::Model::new(
             openai_wire("gpt-4o-mini"),
             RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers),
         );
 
         let response = model
-            .completion(model.completion_request("hello").build())
+            .call(CompletionRequestBuilder::new("hello").build())
             .await
             .expect("completion");
 

@@ -38,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 5
         }
       },
       {
@@ -115,7 +115,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -453,6 +453,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'll call both tools now."
           }
         },
         {
@@ -907,6 +918,17 @@
           "delta": {
             "delta": "text",
             "text": "\"."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\"."
           }
         },
         {

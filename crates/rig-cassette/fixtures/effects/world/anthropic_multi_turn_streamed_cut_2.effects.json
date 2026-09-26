@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -76,7 +76,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -98,7 +98,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 14
+          "items": 15
         }
       },
       {
@@ -136,7 +136,7 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 6
         }
       },
       {
@@ -182,7 +182,7 @@
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -460,6 +460,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'll start by calling checkpoint_step with token=start."
           }
         },
         {
@@ -797,6 +808,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
           }
         },
         {
@@ -1196,6 +1218,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\"."
           }
         },
         {
@@ -1633,6 +1666,17 @@
             },
             "signature": null,
             "additional_params": null
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\"."
           }
         },
         {
@@ -2097,6 +2141,17 @@
           "delta": {
             "delta": "text",
             "text": "-complete"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete"
           }
         },
         {

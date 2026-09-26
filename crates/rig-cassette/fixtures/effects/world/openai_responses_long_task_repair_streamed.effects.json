@@ -2130,7 +2130,7 @@
         "id": 44,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -24971,6 +24971,17 @@
           "id": "wire:msg_0910a62b66594231006ab2ba95f2c887d0b92385eaf2ccc366",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_0910a62b66594231006ab2ba95f2c887d0b92385eaf2ccc366",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "done"
           }
         },
         {

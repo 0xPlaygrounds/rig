@@ -16,10 +16,9 @@ use rig_cassette::{
     effect_log::EffectLog,
 };
 use rig_core::{
-    driver::Bind,
     error::{ErrorKind, ErrorReport},
     providers::gemini::Gemini,
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::{ErasedHandler, adapters::ModelAdapter},
 };
 use rig_ecs::{
     bus::{EffectOutcome, Handlers, PendingEffect},
@@ -67,14 +66,13 @@ fn gateway(
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|_| refused())?;
-    let model = Gemini::new(token)
-        .with_base_url(endpoint)
-        .bind(ReqwestClient::new(http))
-        .completion("gemini-test");
-    Ok(ErasedHandler::new(CompletionAdapter::new(
-        "gemini-test",
-        model,
-    )))
+    let model = rig_core::Model::new(
+        Gemini::new(token)
+            .with_base_url(endpoint)
+            .completion("gemini-test"),
+        ReqwestClient::new(http),
+    );
+    Ok(ErasedHandler::new(ModelAdapter::new("gemini-test", model)))
 }
 
 /// The closure contains *all* live inputs: credentials, discovery, diagnostic

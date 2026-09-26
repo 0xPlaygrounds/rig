@@ -1,17 +1,20 @@
 //! Gemini continues histories other wires produced: Anthropic-signed,
 //! OpenAI-encrypted and DeepSeek plain reasoning beside a tool exchange.
 
-use rig::completion::CompletionModel;
-
-use super::super::support::{BoundGemini, with_gemini_cassette};
+use super::super::support::with_gemini_cassette;
 use crate::history_survival::portability::{Cell, Source};
+use rig::providers::gemini::Gemini;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundGemini, cell: Cell) -> impl CompletionModel + 'static {
-    client.completion(cell.model)
+fn model(
+    client: Gemini,
+    cell: Cell,
+) -> rig::Model<rig::providers::gemini::completion::GenerateContent, rig::http_client::DynHttpClient>
+{
+    rig::model(client.completion(cell.model))
 }
 
 const fn cell(source: Source) -> Cell {

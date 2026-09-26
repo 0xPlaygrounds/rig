@@ -166,8 +166,16 @@ The other commands:
   credentials, account ids, emails and home paths. It matches case-sensitively
   on whole tokens, and searches for every exported `*_API_KEY`, `*_TOKEN` and
   `*_SECRET` value literally.
-- `cassette goldens [--test TARGET]...` regenerates effect goldens from
-  replay and reverts churn that only touches `header.deliveries`.
+- `cassette goldens [--base REF] [--test TARGET]...` regenerates effect
+  goldens from replay. A golden whose only change from `REF` (default `HEAD`)
+  is `header.deliveries` is reverted. A golden whose content changed keeps
+  `REF`'s delivery batches, each stream count grown by the events the change
+  inserted into it, so the diff shows the change and not the racy batching.
+- `cassette audit [--base REF]` checks every effect golden: a block on a
+  stream's end must be what the block's deltas carried. It then classifies
+  each change from `REF` (default `HEAD`) as an inserted close or reasoning
+  start, a block added to an end, or a count shift that follows the inserted
+  events, and fails on any other change or any mismatch.
 - `cassette cleanup [ledger.jsonl]` runs the cleanup pass on its own.
 
 The recorder refuses to write a fixture, and panics, in two cases:

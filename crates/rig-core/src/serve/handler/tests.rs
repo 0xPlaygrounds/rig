@@ -3,6 +3,18 @@ use std::{sync::Mutex, task::Context};
 use futures::{StreamExt, executor::block_on, task::noop_waker_ref};
 
 use super::*;
+use crate::completion::CompletionRequestBuilder;
+use crate::completion::CompletionResponse;
+use crate::streaming::StreamFinal;
+
+/// The events a completion outcome re-emits when a stream consumer asks for it.
+fn re_emitted_events(response: &CompletionResponse) -> Vec<Result<StreamEvent, ErrorReport>> {
+    block_on(
+        Reply::Outcome(Ok(Outcome::Completion(response.clone())))
+            .into_stream()
+            .collect(),
+    )
+}
 
 #[derive(Default)]
 struct Seen {
@@ -80,7 +92,7 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             expected
         );
         assert_eq!(
-            serde_json::to_value(events_from_response(recorded)).expect("replay events"),
+            serde_json::to_value(re_emitted_events(recorded)).expect("replay events"),
             serde_json::to_value(&delivered).expect("delivered events"),
             "outcome-only replay must reconstruct the same image-bearing stream"
         );
@@ -223,15 +235,20 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
         "local",
         serde_json::json!({}),
     );
-    let mut accumulator = crate::streaming::BlockAccumulator::new();
+    let mut fold = crate::operation::CompletionFold::default();
     let mut published = Vec::new();
     let events: Vec<Result<StreamEvent, ErrorReport>> = serde_json::from_value(
-        serde_json::to_value(events_from_response(&response)).expect("serialize events"),
+        serde_json::to_value(re_emitted_events(&response)).expect("serialize events"),
     )
     .expect("deserialize events");
     for event in events {
         let event = event.expect("response reemits");
-        if let Some((_, content)) = accumulator.apply(&event).expect("event folds") {
+        crate::wire::Fold::absorb(&mut fold, &event).expect("event folds");
+        if let StreamEvent::BlockEnd {
+            block: Some(content),
+            ..
+        } = event
+        {
             published.push(content);
         }
     }
@@ -240,7 +257,7 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
         "completed events preserve local identities"
     );
     assert_eq!(
-        accumulator.finish(),
+        fold.snapshot(),
         calls,
         "final response preserves local identities"
     );
@@ -462,23 +479,22 @@ impl Observe for ProviderObserver {
 #[tokio::test]
 async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins() {
     use crate::{
-        completion::CompletionModel as _,
-        driver::Bind as _,
         observe::{Action, AdapterContext, AdapterEnding, AdapterEvent, ObservationLog, Subject},
         test_utils::RecordingHttpClient,
     };
     let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
-    let model = crate::providers::gemini::Gemini::new("key")
-        .bind(RecordingHttpClient::new(body))
-        .completion("gemini-test");
-    let handler = crate::serve::adapters::CompletionAdapter::new("gemini-test", model.clone());
+    let model = crate::driver::Model::new(
+        crate::providers::gemini::Gemini::new("key").completion("gemini-test"),
+        RecordingHttpClient::new(body),
+    );
+    let handler = crate::serve::adapters::ModelAdapter::new("gemini-test", model.clone());
     let bus_log = Arc::new(ObservationLog::default());
     let direct_log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(bus_log.clone(), Subject::default(), "bus-operation");
     for explicit in [false, true] {
         let mut dispatch = Dispatch::new(EffectId::from_raw(1), false)
             .with_observer(Box::new(ProviderObserver(context.clone())));
-        let request = model.completion_request("hello").build();
+        let request = CompletionRequestBuilder::new("hello").build();
         if explicit {
             dispatch = dispatch.with_adapter_context(AdapterContext::new(
                 direct_log.clone(),
@@ -658,10 +674,10 @@ fn an_observer_never_changes_what_the_consumer_receives() {
 #[test]
 fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
     use crate::message::{AssistantContent, Reasoning};
-    use crate::streaming::{BlockAccumulator, StreamEvent};
+    use crate::streaming::StreamEvent;
 
-    let mut accumulator = BlockAccumulator::new();
-    for event in events_from_response(&CompletionResponse::new(
+    let mut tap = StreamTap::new();
+    for event in re_emitted_events(&CompletionResponse::new(
         vec![AssistantContent::Reasoning(Reasoning::new_with_signature(
             "thinking",
             Some("sig".to_owned()),
@@ -670,15 +686,16 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
         "aws_bedrock",
         serde_json::Value::Null,
     )) {
-        if let Ok(event) = event
+        if let Ok(event) = &event
             && !matches!(event, StreamEvent::Final(_))
         {
-            accumulator.apply(&event).expect("a valid event");
+            assert!(tap.observe(&Ok(event.clone())).is_none(), "a valid event");
         }
     }
     let terminal = StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null)
         .with_reasoning_issuer("anthropic");
-    let Ok(Outcome::Completion(response)) = finish_unary(&mut accumulator, None, terminal) else {
+    let Some(Ok(Outcome::Completion(response))) = tap.observe(&Ok(StreamEvent::Final(terminal)))
+    else {
         panic!("a completion outcome");
     };
     let issuers: Vec<_> = response
@@ -690,4 +707,31 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
         })
         .collect();
     assert_eq!(issuers, ["anthropic"]);
+}
+
+/// A handler that writes raw events, text left open at the terminal, folds to
+/// the same outcome as one that writes through the completion sink.
+#[test]
+fn the_tap_folds_a_raw_handler_stream_like_a_canonical_one() {
+    let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
+    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
+        Ok(StreamEvent::text(text, "hello")),
+        Ok(StreamEvent::Final(StreamFinal::new(
+            "local",
+            Default::default(),
+            serde_json::Value::Null,
+        ))),
+    ];
+    let mut tap = StreamTap::new();
+    let outcome = raw
+        .iter()
+        .find_map(|item| tap.observe(item))
+        .expect("the terminal yields an outcome");
+    let Ok(Outcome::Completion(response)) = outcome else {
+        panic!("expected a completion, got {outcome:?}");
+    };
+    assert_eq!(
+        response.choice,
+        vec![crate::message::AssistantContent::text("hello")]
+    );
 }

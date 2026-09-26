@@ -51,7 +51,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 25
+          "items": 26
         }
       },
       {
@@ -782,6 +782,17 @@
           "delta": {
             "delta": "text",
             "text": "`."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The harbor label returned `crimson-harbor` and the orchard label returned `silver-orchard`."
           }
         },
         {

@@ -8,8 +8,6 @@ use std::time::Instant;
 use bevy_app::App;
 use bevy_ecs::prelude::*;
 
-use rig_agent::completion::CompletionModel;
-
 use rig_core::error::ErrorKind;
 
 use rig_core::message::AssistantContent;
@@ -71,11 +69,14 @@ pub(crate) struct ErrorProbe {
 /// fails as the provider's response, the record's report carries the
 /// status table's verdict and the body's code, and the witness's ending
 /// names the same.
-pub(crate) async fn error_facts<M: CompletionModel + 'static>(
-    model: M,
+pub(crate) async fn error_facts<W, T>(
+    model: rig::driver::Model<W, T>,
     probe: ErrorProbe,
     golden: impl FnOnce(&EffectLog),
-) {
+) where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let mut ecs = EcsAgent::new(model, "", 2);
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         Preamble(None),
@@ -169,11 +170,14 @@ pub(crate) enum Approval {
 /// results in call order, and a scene saved afterwards loads in a fresh
 /// world (`approving_a_batch_held_call_by_any_route_keeps_the_batch_and_the_scene_consistent`,
 /// on real provider bytes).
-pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) async fn batch_hold<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     approval: Approval,
     golden: impl FnOnce(&EffectLog),
-) {
+) where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_ONE;
     let mut program = wire.program(cell);
     program.fixture = cell.name;
@@ -274,10 +278,14 @@ pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
 /// results, in call order). Returns the ids, for a re-run to compare.
 /// Gemini's cell alone.
 #[allow(dead_code)]
-pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) async fn minted_ids<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     golden: impl FnOnce(&EffectLog),
-) -> Vec<String> {
+) -> Vec<String>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_TWO;
     let program = wire.program(cell);
     let (mut app, agent, recorder, _gates) = open(wire, cell, &program);
@@ -445,11 +453,14 @@ fn cancel_at_cut(
 /// Row 15: a run cancelled while its completion still streams refuses
 /// `despawn_run` with `RunBusy::InFlight` until the stream has drained,
 /// then despawns.
-pub(crate) async fn despawn_waits_for_the_stream<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) async fn despawn_waits_for_the_stream<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),
-) {
+) where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     cancel_at(wire, cell, Cut::FirstTextDelta, golden).await;
 }
 
@@ -459,12 +470,15 @@ pub(crate) async fn despawn_waits_for_the_stream<M: CompletionModel + Clone + 's
 /// the handler's; where the terminal had landed, the record is a whole
 /// completion and the run despawns at once. Nothing is committed either
 /// way, and no tool the turn called is dispatched.
-pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) async fn cancel_at<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     cut: Cut,
     golden: impl FnOnce(&EffectLog),
-) {
+) where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     // The delta hook's cell without the hook: no delta gate on the model,
     // no despawn of the stream — a bare `Cancelled`.
     let mut cell = *cell;

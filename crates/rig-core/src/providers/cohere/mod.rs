@@ -6,13 +6,13 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = cohere::Cohere::from_env()?;
 //!
-//! let command_a = provider.chat(cohere::COMMAND_A_03_2025);
-//! let embeddings = provider.embeddings(cohere::EMBED_V4, None);
+//! let command_a = provider.completion(cohere::COMMAND_A_03_2025);
+//! let embeddings = provider.embedding(cohere::EMBED_V4, None);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! Bind a wire to a transport to obtain a [`crate::driver::Bound`] model.
+//! Pair a wire with a transport in a [`crate::Model`] to send it.
 
 pub mod completion;
 pub mod embeddings;

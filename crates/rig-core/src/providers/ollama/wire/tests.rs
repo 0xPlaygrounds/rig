@@ -1,9 +1,5 @@
 use super::*;
-use crate::completion::CompletionModel as _;
-use crate::driver::Bound;
-use crate::embeddings::EmbeddingModel as _;
 use crate::message::AssistantContent;
-use crate::model::ModelLister as _;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
@@ -80,23 +76,22 @@ fn text_of(choice: &[AssistantContent]) -> String {
 
 #[tokio::test]
 async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
-    let buffered = Bound::new(
-        Ollama::new().chat("qwen3:4b"),
+    let buffered = crate::driver::Model::new(
+        Ollama::new().completion("qwen3:4b"),
         RecordingHttpClient::new(UNARY_BODY),
     )
-    .completion(recorded_request())
+    .call(recorded_request())
     .await
     .expect("the recorded reply decodes");
 
-    let streaming = Bound::new(
-        Ollama::new().chat("qwen3:4b"),
+    let streaming = crate::driver::Model::new(
+        Ollama::new().completion("qwen3:4b"),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(STREAM_BODY.as_bytes()),
         },
     );
     let mut response = streaming
         .stream(recorded_request())
-        .await
         .expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
@@ -127,7 +122,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
 /// `streaming/streaming_smoke.yaml` true).
 #[test]
 fn the_mode_is_the_only_difference_between_the_two_requests() {
-    let wire = Ollama::new().chat("qwen3:4b");
+    let wire = Ollama::new().completion("qwen3:4b");
     let unary = wire
         .encode(recorded_request(), Mode::Unary)
         .expect("the request encodes");
@@ -155,11 +150,11 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
 #[tokio::test]
 async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
     let body = r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"<think>weighing it up</think>the answer"},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#;
-    let response = Bound::new(
-        Ollama::new().chat("deepseek-r1"),
+    let response = crate::driver::Model::new(
+        Ollama::new().completion("deepseek-r1"),
         RecordingHttpClient::new(body),
     )
-    .completion(recorded_request())
+    .call(recorded_request())
     .await
     .expect("the reply decodes");
 
@@ -187,16 +182,13 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
         r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#,
         "\n",
     );
-    let bound = Bound::new(
-        Ollama::new().chat("deepseek-r1"),
+    let bound = crate::driver::Model::new(
+        Ollama::new().completion("deepseek-r1"),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from(stream),
         },
     );
-    let mut response = bound
-        .stream(recorded_request())
-        .await
-        .expect("the stream opens");
+    let mut response = bound.stream(recorded_request()).expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
         .finish()
@@ -216,7 +208,7 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
 fn a_serialized_config_round_trips_everything_but_the_credential() {
     let wire = Ollama::new()
         .with_base_url("http://ollama.internal:11434")
-        .chat("qwen3:4b");
+        .completion("qwen3:4b");
     let serialized = serde_json::to_string(&wire).expect("the wire serializes");
     let restored: Chat = serde_json::from_str(&serialized).expect("the wire deserializes");
 
@@ -234,7 +226,7 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
 #[test]
 fn a_local_daemon_sends_no_authorization_header() {
     let encoded = Ollama::new()
-        .chat("qwen3:4b")
+        .completion("qwen3:4b")
         .encode(recorded_request(), Mode::Unary)
         .expect("the request encodes");
     let [request] = encoded.requests.as_slice() else {
@@ -245,7 +237,7 @@ fn a_local_daemon_sends_no_authorization_header() {
 
     let encoded = Ollama::new()
         .with_api_key("ollama-proxy-key")
-        .chat("qwen3:4b")
+        .completion("qwen3:4b")
         .encode(recorded_request(), Mode::Unary)
         .expect("the request encodes");
     let [request] = encoded.requests.as_slice() else {
@@ -266,11 +258,11 @@ const MODELS_BODY: &str = r#"{"models":[{"name":"all-minilm:latest","model":"all
 
 #[tokio::test]
 async fn the_model_listing_reads_every_installed_model() {
-    let models = Bound::new(
+    let models = crate::driver::Model::new(
         Ollama::new().models(),
         RecordingHttpClient::new(MODELS_BODY),
     )
-    .list_all()
+    .call(())
     .await
     .expect("the recorded reply decodes");
 
@@ -290,11 +282,11 @@ const EMBED_BODY: &str = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.1
 
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
-    let response = Bound::new(
-        Ollama::new().embeddings("all-minilm", None),
+    let response = crate::driver::Model::new(
+        Ollama::new().embedding("all-minilm", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
-    .embed_texts_response(vec!["first".to_owned(), "second".to_owned()])
+    .call(vec!["first".to_owned(), "second".to_owned()])
     .await
     .expect("the reply decodes");
 
@@ -319,12 +311,12 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 #[test]
 fn an_embedding_wire_reports_the_models_published_width() {
     assert_eq!(
-        Ollama::new().embeddings("all-minilm", None).capabilities(),
+        Ollama::new().embedding("all-minilm", None).capabilities(),
         EmbeddingCapabilities::new(1024, 384)
     );
     assert_eq!(
         Ollama::new()
-            .embeddings("qwen3-embedding", Some(2048))
+            .embedding("qwen3-embedding", Some(2048))
             .capabilities(),
         EmbeddingCapabilities::new(1024, 2048),
         "a family whose width varies by size takes the caller's"

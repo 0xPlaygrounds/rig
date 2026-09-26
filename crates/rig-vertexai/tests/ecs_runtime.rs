@@ -10,15 +10,14 @@ mod support;
 use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::{
     completion::CompletionRequestBuilder,
-    driver::CompletionProvider,
     effect::{EffectKind, HandlerDescriptor},
-    serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::CompletionAdapter},
+    serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::ModelAdapter},
 };
 use rig_ecs::{
     bus::{EffectOutcome, Handlers, PendingEffect},
     checkpoint::{RestoreMode, load_world, save_world},
 };
-use rig_vertexai::Client;
+use rig_vertexai::{VertexAi, completion::GenerateContent};
 use support::{LocalEndpoint, Reply as HttpReply, SentinelCredentials, text_response};
 
 /// This host chooses context-bound polling for the unary-only Vertex model.
@@ -51,16 +50,16 @@ async fn assemble(endpoint: &LocalEndpoint, credentials: &SentinelCredentials) -
         .build()
         .await
         .unwrap();
-    let client = Client::builder()
+    let client = VertexAi::builder()
         .with_project("host-project")
         .with_location("global")
         .with_prediction_service(service)
         .build()
         .unwrap();
     ErasedHandler::new(HostedVertex {
-        handler: ErasedHandler::new(CompletionAdapter::new(
+        handler: ErasedHandler::new(ModelAdapter::new(
             "vertex",
-            client.completion("gemini-test"),
+            rig_core::Model::new(GenerateContent::new("gemini-test"), client),
         )),
         runtime: tokio::runtime::Handle::current(),
     })
@@ -94,7 +93,7 @@ async fn real_vertex_requests_run_on_ecs_workers_and_strictly_resume_with_new_cr
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::unbound("hello").build(),
+                request: CompletionRequestBuilder::new("hello").build(),
                 stream: false,
             },
         ))
@@ -126,7 +125,7 @@ async fn real_vertex_requests_run_on_ecs_workers_and_strictly_resume_with_new_cr
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::unbound("again").build(),
+                request: CompletionRequestBuilder::new("again").build(),
                 stream: false,
             },
         ))
@@ -180,7 +179,7 @@ async fn dropping_the_world_cancels_the_real_sdk_rpc() {
     live.world_mut().spawn(PendingEffect::new(
         "model",
         EffectKind::Completion {
-            request: CompletionRequestBuilder::unbound("held").build(),
+            request: CompletionRequestBuilder::new("held").build(),
             stream: false,
         },
     ));

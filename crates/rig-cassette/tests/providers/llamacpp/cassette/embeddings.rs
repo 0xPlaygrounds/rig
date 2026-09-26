@@ -8,8 +8,6 @@
 //! `embedding_matrix.rs`, and the difference is why this suite states its
 //! model.
 
-use rig::embeddings::EmbeddingModel;
-
 use super::super::cassette_support::*;
 
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
@@ -24,11 +22,17 @@ struct Greetings {
 #[tokio::test]
 async fn embeddings_smoke() {
     with_llamacpp_embeddings_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client.embedding(CASSETTE_EMBEDDING_MODEL, None);
+        let model = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, None));
 
         let embeddings = model
-            .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
+            .call(
+                EMBEDDING_INPUTS
+                    .iter()
+                    .map(|input| (*input).to_string())
+                    .collect(),
+            )
             .await
+            .map(|response| response.embeddings)
             .expect("embedding request should succeed");
 
         assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());
@@ -41,19 +45,20 @@ async fn derive_document_embeddings() {
     with_llamacpp_embeddings_cassette(
         "embeddings/derive_document_embeddings",
         |client| async move {
-            let embeddings = client
-                .embeddings(CASSETTE_EMBEDDING_MODEL)
-                .document(Greetings {
-                    message: "Hello, world!".to_string(),
-                })
-                .expect("first document should build")
-                .document(Greetings {
-                    message: "Goodbye, world!".to_string(),
-                })
-                .expect("second document should build")
-                .build()
-                .await
-                .expect("embedding request should succeed");
+            let embeddings = rig::embeddings::EmbeddingsBuilder::new(rig::model(
+                client.embedding(CASSETTE_EMBEDDING_MODEL, None),
+            ))
+            .document(Greetings {
+                message: "Hello, world!".to_string(),
+            })
+            .expect("first document should build")
+            .document(Greetings {
+                message: "Goodbye, world!".to_string(),
+            })
+            .expect("second document should build")
+            .build()
+            .await
+            .expect("embedding request should succeed");
 
             assert_eq!(embeddings.len(), 2);
             for (_document, embeddings_for_document) in embeddings {

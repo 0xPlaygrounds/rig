@@ -1,4 +1,15 @@
-use rig_core::driver::CompletionProvider;
+//! The Gemini gRPC transport: a tonic channel with the API-key interceptor.
+//!
+//! ```no_run
+//! use rig_gemini_grpc::GeminiGrpc;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//! let transport = GeminiGrpc::new("API_KEY").await?;
+//! # let _ = transport;
+//! # Ok(())
+//! # }
+//! ```
+
 use std::fmt::Debug;
 use tonic::metadata::MetadataValue;
 use tonic::service::Interceptor;
@@ -6,23 +17,23 @@ use tonic::transport::{Channel, Endpoint};
 use tonic::{Request, Status};
 
 use super::GenerativeServiceClient;
-use crate::completion::CompletionModel;
-use crate::embedding::EmbeddingModel;
 
 const GEMINI_GRPC_ENDPOINT: &str = "https://generativelanguage.googleapis.com";
 
 /// User agent identifier for API tracking
 const RIG_GRPC_CLIENT_IDENTIFIER: &str = "rig-grpc/0.1.0";
 
+/// The transport every Gemini gRPC wire is sent through. Clones share one
+/// channel.
 #[derive(Clone)]
-pub struct Client {
+pub struct GeminiGrpc {
     api_key: String,
     channel: Channel,
 }
 
-impl Debug for Client {
+impl Debug for GeminiGrpc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
+        f.debug_struct("GeminiGrpc")
             .field("api_key", &"******")
             .field("channel", &"Channel")
             .finish()
@@ -48,7 +59,7 @@ impl Interceptor for ApiKeyInterceptor {
     }
 }
 
-impl Client {
+impl GeminiGrpc {
     /// Create a gRPC client with the given API key
     pub async fn new(
         api_key: impl Into<String>,
@@ -85,7 +96,7 @@ impl Client {
     }
 }
 
-impl Client {
+impl GeminiGrpc {
     /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.
     ///
     /// Returns environment, TLS, or connection errors.
@@ -107,39 +118,5 @@ impl Client {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(Self::new(api_key))
         })
-    }
-}
-
-impl CompletionProvider for Client {
-    type Model = CompletionModel;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Model {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl Client {
-    /// This provider's embedding model for `model`, at `ndims` dimensions
-    /// when the caller named one rather than taking the model's default.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, ndims)
-    }
-
-    /// An embedding builder over this provider's `model`.
-    pub fn embeddings<D: rig_core::Embed>(
-        &self,
-        model: impl Into<String>,
-    ) -> rig_core::embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
-        rig_core::embeddings::EmbeddingsBuilder::new(self.embedding(model, None))
-    }
-
-    /// An embedding builder over this provider's `model` at `ndims`
-    /// dimensions.
-    pub fn embeddings_with_ndims<D: rig_core::Embed>(
-        &self,
-        model: impl Into<String>,
-        ndims: usize,
-    ) -> rig_core::embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
-        rig_core::embeddings::EmbeddingsBuilder::new(self.embedding(model, Some(ndims)))
     }
 }

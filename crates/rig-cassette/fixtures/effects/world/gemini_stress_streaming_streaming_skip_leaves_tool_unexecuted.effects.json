@@ -36,7 +36,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -67,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -616,6 +616,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The sum of 14 and 6 is 20.\n"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 276,
@@ -877,6 +888,17 @@
           "delta": {
             "delta": "text",
             "text": " subtract tool is currently offline, so I cannot subtract 9 from 40."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I was able to add 14 and 6 to get 20. However, the subtract tool is currently offline, so I cannot subtract 9 from 40."
           }
         },
         {

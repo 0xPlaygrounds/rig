@@ -19,7 +19,7 @@ pub mod middleware;
 pub mod multipart;
 pub(crate) mod tail;
 use crate::wasm_compat::*;
-pub use erased::BoxedHttpClient;
+pub use erased::DynHttpClient;
 pub use middleware::HttpMiddleware;
 pub use multipart::MultipartForm;
 

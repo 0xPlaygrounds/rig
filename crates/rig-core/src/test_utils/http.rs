@@ -304,8 +304,9 @@ impl HttpClientExt for RecordingHttpClient {
     }
 }
 
-/// An [`HttpClientExt`] implementation that records unary requests and returns
-/// one scripted response per request.
+/// An [`HttpClientExt`] implementation that records requests and returns one
+/// scripted response per request. A streamed request's reply body arrives as
+/// one chunk.
 ///
 /// This is useful for testing retry and recovery paths through real provider
 /// request/response conversion without live credentials.
@@ -398,13 +399,53 @@ impl HttpClientExt for SequencedHttpClient {
 
     fn send_streaming<T>(
         &self,
-        _req: Request<T>,
+        req: Request<T>,
     ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes> + WasmCompatSend,
     {
-        future::ready(Err(not_implemented()))
+        let response = self.next_response();
+        let (parts, body) = req.into_parts();
+        self.record_request(parts.uri.to_string(), parts.headers, body.into());
+
+        future::ready(match response {
+            Some(response) => streaming_response(response),
+            None => Err(not_implemented()),
+        })
     }
+}
+
+/// `response` as a streamed reply whose body is one chunk.
+fn streaming_response(response: MockHttpResponse) -> http_client::Result<StreamingResponse> {
+    let (status, body, headers) = match response {
+        MockHttpResponse::Success(body) => (http::StatusCode::OK, body, None),
+        MockHttpResponse::SuccessWithHeaders(body, headers) => {
+            (http::StatusCode::OK, body, Some(headers))
+        }
+        MockHttpResponse::ErrorWithHeaders(status, body, headers) => {
+            return Err(http_client::Error::InvalidStatusCodeWithDetails {
+                status,
+                body,
+                headers,
+            });
+        }
+        MockHttpResponse::ErrorResponse(status, body) => (status, body, None),
+        MockHttpResponse::ErrorResponseWithHeaders(status, body, headers) => {
+            (status, body, Some(headers))
+        }
+    };
+    let chunks: http_client::BoxedStream = Box::pin(futures::stream::iter([Ok::<
+        Bytes,
+        http_client::Error,
+    >(body)]));
+    let mut response = Response::builder()
+        .status(status)
+        .body(chunks)
+        .map_err(http_client::Error::Protocol)?;
+    if let Some(headers) = headers {
+        *response.headers_mut() = headers;
+    }
+    Ok(response)
 }
 
 /// A mock HTTP client that returns pre-built SSE bytes from `send_streaming`.

@@ -2,7 +2,6 @@
 
 use rig::Embed;
 use rig::embeddings::EmbeddingsBuilder;
-use rig::prelude::*;
 use rig::providers::mistral;
 use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig::vector_store::VectorStoreIndex;
@@ -19,11 +18,8 @@ struct Greetings {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY and --features derive"]
 async fn derive_embeddings_and_vector_search() {
-    let client = OpenAI::from_env_with(&MISTRAL)
-        .expect("MISTRAL_API_KEY should be set")
-        .bound()
-        .expect("client should build");
-    let embedding_model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
+    let client = OpenAI::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let embedding_model = rig::model(client.embedding(mistral::embedding::MISTRAL_EMBED, None));
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .document(Greetings {
             message: "Hello, world!".to_string(),

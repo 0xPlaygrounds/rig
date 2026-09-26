@@ -17,7 +17,9 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
-    embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
+    driver::DynModel,
+    embeddings::{Embedding, distance::VectorDistance},
+    operation::Embedding as EmbeddingOp,
     vector_store::request::Filter,
 };
 
@@ -361,7 +363,7 @@ impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
 type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
 
 impl<D: Serialize> InMemoryVectorStore<D> {
-    pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<D, M> {
+    pub fn index(self, model: impl Into<DynModel<EmbeddingOp>>) -> InMemoryVectorIndex<D> {
         InMemoryVectorIndex::new(model, self)
     }
 
@@ -381,19 +383,17 @@ impl<D: Serialize> InMemoryVectorStore<D> {
 /// A vector store paired with a query embedding model. Stored vectors must use
 /// the same embedding space and dimensions as query vectors. Results are ordered
 /// by descending best finite cosine similarity, then ascending document ID.
-pub struct InMemoryVectorIndex<D: Serialize, M> {
-    model: M,
+pub struct InMemoryVectorIndex<D: Serialize> {
+    model: DynModel<EmbeddingOp>,
     pub store: InMemoryVectorStore<D>,
 }
 
-impl<D: Serialize, M> InMemoryVectorIndex<D, M> {
-    pub fn new(model: M, store: InMemoryVectorStore<D>) -> Self {
-        Self { model, store }
-    }
-
-    /// The embedding model used for queries.
-    pub fn model(&self) -> &M {
-        &self.model
+impl<D: Serialize> InMemoryVectorIndex<D> {
+    pub fn new(model: impl Into<DynModel<EmbeddingOp>>, store: InMemoryVectorStore<D>) -> Self {
+        Self {
+            model: model.into(),
+            store,
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
@@ -409,8 +409,9 @@ impl<D: Serialize, M> InMemoryVectorIndex<D, M> {
     }
 }
 
-impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq, M: EmbeddingModel> VectorStoreIndex
-    for InMemoryVectorIndex<D, M>
+impl<D> VectorStoreIndex for InMemoryVectorIndex<D>
+where
+    D: Serialize + WasmCompatSend + WasmCompatSync + Eq,
 {
     type Filter = Filter<serde_json::Value>;
 

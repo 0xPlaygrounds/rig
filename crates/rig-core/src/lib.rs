@@ -10,17 +10,20 @@
     )
 )]
 //! Provider-agnostic model, message, tool, memory, and vector-store contracts.
-//! Provider configurations and endpoint wires bind to transports through
-//! [`driver::Bound`]. Companion crates supply transports, agent runtimes,
-//! and external storage integrations.
+//! Provider configurations build endpoint wires, and a [`Model`] binds a
+//! wire to a [`driver::Transport`]; a [`DynModel`] is a model erased to
+//! its operation, for consumers that store one. Companion crates supply
+//! transports, agent runtimes, and external storage integrations.
 //!
 //! ```no_run
-//! use rig_core::completion::{CompletionModel, CompletionResponse};
+//! use rig_core::DynModel;
+//! use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
 //! use rig_core::error::ProviderError;
+//! use rig_core::operation::Completion;
 //!
-//! async fn ask<M: CompletionModel + Clone>(model: &M) -> Result<CompletionResponse, ProviderError> {
-//!     let request = model.completion_request("Who are you?").build();
-//!     model.completion(request).await
+//! async fn ask(model: &DynModel<Completion>) -> Result<CompletionResponse, ProviderError> {
+//!     let request = CompletionRequestBuilder::new("Who are you?").build();
+//!     model.call(request).await
 //! }
 //! ```
 
@@ -71,6 +74,7 @@ pub mod wire;
 pub mod ws_client;
 
 pub use completion::message;
+pub use driver::{DynModel, Model};
 pub use embeddings::Embed;
 pub use error::{ErrorKind, ErrorReport, ProviderError};
 pub use provider_response::ProviderResponseError;
@@ -105,8 +109,8 @@ const _: fn() = || {
     assert_send_sync_static::<completion::ModelRef>();
     assert_send_sync_static::<tool::DynamicTool>();
     // One erased transport, shared by every provider a host binds.
-    assert_send_sync_static::<http_client::BoxedHttpClient>();
+    assert_send_sync_static::<http_client::DynHttpClient>();
     // A live stream is owned by one poller: `Send` so it can move to a worker,
     // not `Sync`.
-    assert_send_static::<streaming::StreamingCompletionResponse>();
+    assert_send_static::<streaming::CompletionStream>();
 };

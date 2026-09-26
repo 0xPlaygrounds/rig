@@ -676,7 +676,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1252,6 +1252,18 @@
           "end": {
             "close": "reasoning",
             "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
+                }
+              }
+            ]
           }
         },
         {
@@ -1910,6 +1922,18 @@
           "end": {
             "close": "reasoning",
             "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n"
+                }
+              }
+            ]
           }
         },
         {
@@ -1933,6 +1957,17 @@
           "delta": {
             "delta": "text",
             "text": "2"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "42"
           }
         },
         {

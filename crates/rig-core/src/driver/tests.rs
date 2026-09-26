@@ -11,24 +11,72 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Bound, call, stream};
-use crate::completion::{CompletionModel, CompletionRequest};
+use super::{Local, Model, Step, Transport};
+use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
-use crate::model::{Model, ModelList, ModelLister};
+use crate::model::{ModelInfo, ModelList};
 use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
-use crate::operation::{Completion, ModelListing};
+use crate::operation::{Completion, Events, ModelListing};
 use crate::streaming::{StreamEvent, StreamFinal};
 use crate::test_utils::{
     HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient,
     RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
 };
 use crate::wire::{
-    Body, Decoder, Encoded, Mode, ObservationSink, Operation, Output, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Fold, Mode, ObservationSink, Operation, Output, Reply, Sink, Wire,
+    WireEvent, WireFrame,
 };
+
+/// Fold one reply of `wire` over `http`.
+pub(crate) async fn call<W, H>(
+    wire: &W,
+    http: &H,
+    request: crate::wire::Request<W>,
+    context: Option<AdapterContext>,
+) -> Result<crate::wire::Response<W>, ProviderError>
+where
+    W: Wire,
+    H: Transport<W>,
+{
+    let model = Model::new(wire.clone(), http.clone());
+    match context {
+        Some(context) => model.call_observed(request, context).await,
+        None => model.call(request).await,
+    }
+}
+
+/// The driver's own events for one streamed reply of `wire` over `http`,
+/// before any fold step.
+pub(crate) fn stream<W, H>(
+    wire: &W,
+    http: &H,
+    request: crate::wire::Request<W>,
+    context: Option<AdapterContext>,
+) -> Result<
+    impl futures::Stream<Item = Result<crate::wire::Event<W>, ProviderError>> + use<W, H>,
+    ProviderError,
+>
+where
+    W: Wire,
+    H: Transport<W>,
+{
+    let steps = Model::new(wire.clone(), http.clone()).run(
+        request,
+        Mode::Streaming,
+        context,
+        tracing::Span::none(),
+    )?;
+    Ok(steps.filter_map(|step| {
+        futures::future::ready(match step {
+            Ok(Step::Event(event)) => Some(Ok(event)),
+            Ok(Step::Opened(_) | Step::Closed(_)) => None,
+            Err(error) => Some(Err(error)),
+        })
+    }))
+}
 
 // ── the fake completion wire ────────────────────────────────────────────
 
@@ -80,6 +128,13 @@ enum Frame {
     Delta { text: String },
     /// The provider's own end of turn.
     Stop { usage: Usage },
+    /// A whole tool call whose block the provider declared complete, ending
+    /// the turn when it carries usage.
+    Tool {
+        name: String,
+        arguments: String,
+        usage: Option<Usage>,
+    },
 }
 
 #[derive(Clone, Copy, serde::Deserialize)]
@@ -95,7 +150,7 @@ impl Decoder<Completion> for EchoDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         crate::providers::internal::wire::classify_tagged_frame(&frame.as_str(), "type", |kind| {
-            matches!(kind, "message" | "delta" | "stop")
+            matches!(kind, "message" | "delta" | "stop" | "tool")
         })
     }
 
@@ -109,6 +164,24 @@ impl Decoder<Completion> for EchoDecoder {
             }
             Frame::Delta { text } => out.text(text),
             Frame::Stop { usage } => terminal(out, usage),
+            Frame::Tool {
+                name,
+                arguments,
+                usage,
+            } => {
+                let id = crate::streaming::BlockId::wire("call_1");
+                out.tool_name(&id, name);
+                out.tool_arguments(&id, arguments);
+                out.tool_end(
+                    id,
+                    crate::streaming::ToolCallEnd::new(
+                        crate::streaming::UnparseableToolInput::Error,
+                    ),
+                );
+                if let Some(usage) = usage {
+                    terminal(out, usage);
+                }
+            }
         }
     }
 
@@ -154,13 +227,15 @@ fn terminal(out: &mut Output<Completion>, usage: Usage) {
 
 impl Wire for Echo {
     type Op = Completion;
+    type Payload = Encoded;
+    type Frame = WireFrame;
     type Decoder = EchoDecoder;
 
     fn name(&self) -> &str {
         "echo"
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some("echo-1")
     }
 
@@ -210,16 +285,16 @@ const STREAM_BODY: &str = concat!(
 
 #[tokio::test]
 async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
-    let unary = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
-    let buffered = unary.completion(prompt()).await.expect("the reply decodes");
+    let unary = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let buffered = unary.call(prompt()).await.expect("the reply decodes");
 
-    let streaming = Bound::new(
+    let streaming = Model::new(
         Echo::streaming(),
         MockStreamingClient {
             sse_bytes: Bytes::from_static(STREAM_BODY.as_bytes()),
         },
     );
-    let mut response = streaming.stream(prompt()).await.expect("the stream opens");
+    let mut response = streaming.stream(prompt()).expect("the stream opens");
     while response.next().await.is_some() {}
     let streamed = response
         .finish()
@@ -240,8 +315,8 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
 
 #[tokio::test]
 async fn a_unary_reply_carries_its_body_as_raw() {
-    let bound = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
-    let response = bound.completion(prompt()).await.expect("the reply decodes");
+    let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let response = bound.call(prompt()).await.expect("the reply decodes");
     assert_eq!(
         response.raw.pointer("/text").and_then(|text| text.as_str()),
         Some("hi there")
@@ -602,6 +677,71 @@ async fn a_unary_call_closes_its_attempt_as_decoded() {
     );
 }
 
+/// How an attempt ended, when it did.
+fn ending(log: &ObservationLog) -> Option<AdapterEvent> {
+    log.trace()
+        .observations
+        .iter()
+        .find_map(|observation| match &observation.action {
+            crate::observe::Action::Adapter { observation }
+                if matches!(observation.event, AdapterEvent::Finished { .. }) =>
+            {
+                Some(observation.event.clone())
+            }
+            _ => None,
+        })
+}
+
+/// A malformed complete tool input is a decode defect the sink reports
+/// in-band, where the decoder's observation sees it, so the attempt ends as
+/// a decode error in both modes although the stream still reaches its
+/// terminal.
+#[tokio::test]
+async fn a_malformed_tool_input_ends_the_attempt_as_a_decode_error() {
+    let decode_error = AdapterEvent::Finished {
+        ending: crate::observe::AdapterEnding::Error {
+            boundary: crate::observe::AdapterErrorBoundary::Decode,
+            kind: "response".into(),
+            status: None,
+            retryable: false,
+        },
+    };
+
+    let (log, context) = observed();
+    let http = RecordingHttpClient::new(
+        r#"{"type":"tool","name":"add","arguments":"{not json","usage":{"output_tokens":1}}"#,
+    );
+    let error = call(&Echo::unary(), &http, prompt(), Some(context))
+        .await
+        .expect_err("the defect fails a whole reply");
+    assert!(
+        matches!(error, ProviderError::MalformedToolInput(_)),
+        "{error:?}"
+    );
+    assert_eq!(ending(&log), Some(decode_error.clone()));
+
+    let (log, context) = observed();
+    let http = MockStreamingClient {
+        sse_bytes: Bytes::from_static(
+            b"data: {\"type\":\"tool\",\"name\":\"add\",\"arguments\":\"{not json\"}\n\n\
+              data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
+        ),
+    };
+    let items: Vec<_> = Model::new(Echo::streaming(), http)
+        .stream_observed(prompt(), context)
+        .expect("the stream opens")
+        .collect()
+        .await;
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, Err(report) if report.detail.is_some())),
+        "the defect is in-band: {items:?}"
+    );
+    assert!(matches!(items.last(), Some(Ok(StreamEvent::Final(_)))));
+    assert_eq!(ending(&log), Some(decode_error));
+}
+
 #[tokio::test]
 async fn a_failed_unary_call_projects_the_reply_it_failed_on() {
     let (log, context) = observed();
@@ -651,20 +791,19 @@ impl Decoder<ModelListing> for CatalogueDecoder {
     fn interpret(&mut self, page: Self::Event, out: &mut Output<ModelListing>) {
         self.next = page.next;
         out.push(Ok(ModelList::new(
-            page.data.into_iter().map(Model::from_id).collect(),
+            page.data.into_iter().map(ModelInfo::from_id).collect(),
         )));
     }
 
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        let cursor = self.next.as_ref()?;
-        http::Request::get(format!("https://echo.invalid/v1/models?after={cursor}"))
-            .body(Body::empty())
-            .ok()
+    fn cursor(&self) -> Option<String> {
+        self.next.clone()
     }
 }
 
 impl Wire for Catalogue {
     type Op = ModelListing;
+    type Payload = Encoded;
+    type Frame = WireFrame;
     type Decoder = CatalogueDecoder;
 
     fn name(&self) -> &str {
@@ -673,6 +812,12 @@ impl Wire for Catalogue {
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
         let request = http::Request::get("https://echo.invalid/v1/models").body(Body::empty())?;
+        Ok(Encoded::new(request, Framing::Whole))
+    }
+
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        let request = http::Request::get(format!("https://echo.invalid/v1/models?after={cursor}"))
+            .body(Body::empty())?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
@@ -687,8 +832,8 @@ async fn a_paged_listing_follows_every_continuation() {
         MockHttpResponse::success(r#"{"data":["a","b"],"next":"b"}"#),
         MockHttpResponse::success(r#"{"data":["c"]}"#),
     ]);
-    let bound = Bound::new(Catalogue, http.clone());
-    let models = bound.list_all().await.expect("both pages decode");
+    let bound = Model::new(Catalogue, http.clone());
+    let models = bound.call(()).await.expect("both pages decode");
     assert_eq!(
         models
             .iter()
@@ -719,8 +864,8 @@ async fn a_listing_that_repeats_its_cursor_stops_after_the_repeated_page() {
         MockHttpResponse::success(r#"{"data":["b"],"next":"b"}"#),
         MockHttpResponse::success(r#"{"data":["never"]}"#),
     ]);
-    let bound = Bound::new(Catalogue, http.clone());
-    let models = bound.list_all().await.expect("the fetched pages decode");
+    let bound = Model::new(Catalogue, http.clone());
+    let models = bound.call(()).await.expect("the fetched pages decode");
     assert_eq!(
         models
             .iter()
@@ -741,10 +886,299 @@ async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
         MockHttpResponse::success(format!(r#"{{"data":["m{page}"],"next":"c{}"}}"#, page + 1))
     });
     let http = SequencedHttpClient::new(pages);
-    let bound = Bound::new(Catalogue, http.clone());
-    let models = bound.list_all().await.expect("the fetched pages decode");
+    let bound = Model::new(Catalogue, http.clone());
+    let models = bound.call(()).await.expect("the fetched pages decode");
     assert_eq!(models.len(), super::MAX_CONTINUATION_PAGES);
     assert_eq!(http.requests().len(), super::MAX_CONTINUATION_PAGES);
+}
+
+/// Every warning a body emits, by message.
+fn warnings_of(body: impl std::future::Future<Output = ()>) -> Vec<String> {
+    #[derive(Clone, Default)]
+    struct Warnings(Arc<std::sync::Mutex<Vec<String>>>);
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Warnings {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            if *event.metadata().level() == tracing::Level::WARN {
+                let mut fields = Vec::new();
+                event.record(&mut Visit(&mut fields));
+                if let Ok(mut warnings) = self.0.lock() {
+                    warnings.extend(
+                        fields
+                            .into_iter()
+                            .filter(|(name, _)| name == "message")
+                            .map(|(_, message)| message),
+                    );
+                }
+            }
+        }
+    }
+    use tracing_subscriber::layer::SubscriberExt;
+    let warnings = Warnings::default();
+    let subscriber = tracing_subscriber::registry().with(warnings.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+    futures::executor::block_on(body);
+    warnings
+        .0
+        .lock()
+        .map(|warnings| warnings.clone())
+        .unwrap_or_default()
+}
+
+/// A streamed listing yields each page's models as it arrives, follows the
+/// same cursors, and finishes to what a call folds.
+#[tokio::test]
+async fn a_streamed_listing_yields_every_page_and_finishes_to_the_call() {
+    let pages = || {
+        SequencedHttpClient::new([
+            MockHttpResponse::success(r#"{"data":["a","b"],"next":"b"}"#),
+            MockHttpResponse::success(r#"{"data":["c"]}"#),
+        ])
+    };
+    let called = Model::new(Catalogue, pages())
+        .call(())
+        .await
+        .expect("both pages decode");
+
+    let http = pages();
+    let mut stream = Model::new(Catalogue, http.clone())
+        .stream(())
+        .expect("the listing opens");
+    let mut events = Vec::new();
+    while let Some(page) = stream.next().await {
+        let page = page.expect("each page decodes");
+        events.push(
+            page.iter()
+                .map(|model| model.id.clone())
+                .collect::<Vec<_>>(),
+        );
+    }
+    assert_eq!(events, vec![vec!["a", "b"], vec!["c"]]);
+    let streamed = stream.finish().expect("the pages fold");
+    assert_eq!(
+        serde_json::to_value(&streamed).expect("json"),
+        serde_json::to_value(&called).expect("json")
+    );
+    assert_eq!(http.requests().len(), 2);
+}
+
+/// The page guards hold in both modes: a repeated cursor stops after the
+/// repeated page and a cursor that keeps changing stops at the ceiling,
+/// each with its warning.
+#[test]
+fn a_streamed_listing_keeps_the_cursor_guards() {
+    let repeated = || {
+        SequencedHttpClient::new([
+            MockHttpResponse::success(r#"{"data":["a"],"next":"b"}"#),
+            MockHttpResponse::success(r#"{"data":["b"],"next":"b"}"#),
+            MockHttpResponse::success(r#"{"data":["never"]}"#),
+        ])
+    };
+    let http = repeated();
+    let warnings = warnings_of(async {
+        let stream = Model::new(Catalogue, http.clone())
+            .stream(())
+            .expect("the listing opens");
+        let events = stream.collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 2, "the repeated page is the last");
+    });
+    assert_eq!(
+        http.requests().len(),
+        2,
+        "the repeated cursor is not re-sent"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("repeated its pagination cursor")),
+        "{warnings:?}"
+    );
+
+    let pages = (0..super::MAX_CONTINUATION_PAGES + 5).map(|page| {
+        MockHttpResponse::success(format!(r#"{{"data":["m{page}"],"next":"c{}"}}"#, page + 1))
+    });
+    let http = SequencedHttpClient::new(pages);
+    let warnings = warnings_of(async {
+        let mut stream = Model::new(Catalogue, http.clone())
+            .stream(())
+            .expect("the listing opens");
+        while let Some(page) = stream.next().await {
+            page.expect("each page decodes");
+        }
+        let models = stream.finish().expect("the pages fold");
+        assert_eq!(models.len(), super::MAX_CONTINUATION_PAGES);
+    });
+    assert_eq!(http.requests().len(), super::MAX_CONTINUATION_PAGES);
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("hit its page ceiling")),
+        "{warnings:?}"
+    );
+}
+
+/// An embedding reply over HTTP streams as the one event its decoder
+/// yields, and finishes to what a call folds.
+#[tokio::test]
+async fn a_streamed_embedding_yields_one_event_and_finishes_to_the_call() {
+    const REPLY: &str = r#"{"object":"list","model":"text-embedding-3-small","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]},{"object":"embedding","index":1,"embedding":[0.3,0.4]}],"usage":{"prompt_tokens":4,"total_tokens":4}}"#;
+    let wire = crate::providers::openai::wire::OpenAI::new("sk-test")
+        .embedding("text-embedding-3-small", None);
+    let texts = || vec!["a".to_owned(), "b".to_owned()];
+    let reply = || SequencedHttpClient::new([MockHttpResponse::success(REPLY)]);
+
+    let called = Model::new(wire.clone(), reply())
+        .call(texts())
+        .await
+        .expect("the reply decodes");
+    let mut stream = Model::new(wire, reply())
+        .stream(texts())
+        .expect("the embedding opens");
+    let mut events = Vec::new();
+    while let Some(event) = stream.next().await {
+        events.push(event.expect("the reply decodes"));
+    }
+    assert_eq!(events.len(), 1, "one reply, one event");
+    let streamed = stream.finish().expect("the reply folds");
+    assert_eq!(
+        serde_json::to_value(&streamed).expect("json"),
+        serde_json::to_value(&called).expect("json")
+    );
+    assert_eq!(
+        streamed
+            .embeddings
+            .iter()
+            .map(|embedding| embedding.document.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "b"]
+    );
+}
+
+// ── an operation the crate never heard of ──────────────────────────────
+
+#[derive(Clone, Debug, PartialEq)]
+struct VideoRequest {
+    frames: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SkeletonFrame {
+    index: usize,
+    last: bool,
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct PoseTrack {
+    frames: Vec<SkeletonFrame>,
+}
+
+struct PoseEstimation;
+
+impl Operation for PoseEstimation {
+    type Request = VideoRequest;
+    type Event = SkeletonFrame;
+    type Response = PoseTrack;
+    type Capabilities = ();
+    type Output = Events<Self>;
+    type Fold = PoseTrack;
+    type Telemetry = ();
+    const NAME: &'static str = "pose_estimation";
+    fn is_terminal(frame: &SkeletonFrame) -> bool {
+        frame.last
+    }
+    fn fold<W: Wire<Op = Self>>(_: &VideoRequest, _: &W, _: Mode) -> PoseTrack {
+        PoseTrack::default()
+    }
+    fn telemetry(_: Mode) {}
+}
+
+impl Fold<PoseEstimation> for PoseTrack {
+    fn absorb(&mut self, frame: &SkeletonFrame) -> Result<(), ProviderError> {
+        self.frames.push(frame.clone());
+        Ok(())
+    }
+    fn finish(self, _: Reply) -> Result<PoseTrack, ProviderError> {
+        Ok(self)
+    }
+}
+
+/// The runtime: one skeleton per video frame, the last one marked.
+#[derive(Clone)]
+struct Runtime;
+
+impl Transport<Local<PoseEstimation>> for Runtime {
+    fn send(
+        &self,
+        request: VideoRequest,
+        _mode: Mode,
+        _observation: Option<super::Observation>,
+    ) -> Result<
+        impl std::future::Future<
+            Output = super::Opened<VideoRequest, Result<SkeletonFrame, ProviderError>>,
+        >
+        + crate::wasm_compat::WasmCompatSend
+        + 'static
+        + use<>,
+        ProviderError,
+    > {
+        let frames = (0..request.frames).map(move |index| {
+            Ok(Ok(SkeletonFrame {
+                index,
+                last: index + 1 == request.frames,
+            }))
+        });
+        Ok(std::future::ready(super::Opened::new(
+            futures::stream::iter(frames.collect::<Vec<_>>()),
+        )))
+    }
+}
+
+fn track(frames: usize) -> PoseTrack {
+    PoseTrack {
+        frames: (0..frames)
+            .map(|index| SkeletonFrame {
+                index,
+                last: index + 1 == frames,
+            })
+            .collect(),
+    }
+}
+
+/// An operation the crate never heard of calls and streams through the one
+/// driver, typed and erased.
+#[tokio::test]
+async fn an_unknown_operation_calls_and_streams_typed_and_erased() {
+    let model = Model::new(Local::<PoseEstimation>::new("pose"), Runtime);
+    assert_eq!(
+        model.call(VideoRequest { frames: 3 }).await.ok(),
+        Some(track(3))
+    );
+
+    let mut stream = model
+        .stream(VideoRequest { frames: 3 })
+        .expect("the stream opens");
+    let mut frames = Vec::new();
+    while let Some(frame) = stream.next().await {
+        frames.push(frame.expect("a skeleton"));
+    }
+    assert_eq!(frames, track(3).frames);
+    assert_eq!(stream.finish().ok(), Some(track(3)));
+
+    let erased: super::DynModel<PoseEstimation> = model.erase();
+    let spawned = tokio::spawn(erased.call(VideoRequest { frames: 2 }));
+    assert_eq!(spawned.await.expect("the call runs").ok(), Some(track(2)));
+    let streamed = erased
+        .stream(VideoRequest { frames: 2 })
+        .expect("the erased stream opens")
+        .collect::<Vec<_>>()
+        .await;
+    assert_eq!(
+        streamed.into_iter().map(Result::ok).collect::<Vec<_>>(),
+        track(2).frames.into_iter().map(Some).collect::<Vec<_>>()
+    );
 }
 
 // ── telemetry ──────────────────────────────────────────────────────────
@@ -752,11 +1186,11 @@ async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
 #[test]
 fn the_completion_operation_names_its_span_by_mode() {
     assert_eq!(
-        Completion::telemetry(false),
+        Completion::telemetry(crate::wire::Mode::Unary),
         crate::telemetry::GenAiOperation::Chat
     );
     assert_eq!(
-        Completion::telemetry(true),
+        Completion::telemetry(crate::wire::Mode::Streaming),
         crate::telemetry::GenAiOperation::ChatStreaming
     );
 }
@@ -771,9 +1205,9 @@ async fn the_driver_records_the_folded_responses_metadata() {
         recorded: recorded.clone(),
     };
     let subscriber = tracing_subscriber::registry().with(layer);
-    let bound = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
     let response = with_default(subscriber, || {
-        futures::executor::block_on(bound.completion(prompt()))
+        futures::executor::block_on(bound.call(prompt()))
     })
     .expect("the reply decodes");
     assert_eq!(response.model.as_deref(), Some("echo-1"));
@@ -792,6 +1226,41 @@ async fn the_driver_records_the_folded_responses_metadata() {
     );
 }
 
+/// A streamed embedding records its response on the span as it passes,
+/// as a call records it when it finishes.
+#[test]
+fn a_streamed_embedding_records_its_response_on_the_span() {
+    use tracing::subscriber::with_default;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    const REPLY: &str = r#"{"object":"list","model":"text-embedding-3-small","data":[{"object":"embedding","index":0,"embedding":[0.1]}],"usage":{"prompt_tokens":2,"total_tokens":2}}"#;
+    let recorded = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
+    let layer = RecordFields {
+        recorded: recorded.clone(),
+    };
+    let subscriber = tracing_subscriber::registry().with(layer);
+    let wire = crate::providers::openai::wire::OpenAI::new("sk-test")
+        .embedding("text-embedding-3-small", None);
+    let model = Model::new(
+        wire,
+        SequencedHttpClient::new([MockHttpResponse::success(REPLY)]),
+    );
+    with_default(subscriber, || {
+        let stream = model
+            .stream(vec!["a".to_owned()])
+            .expect("the embedding opens");
+        futures::executor::block_on(stream.collect::<Vec<_>>())
+    });
+    let recorded = recorded.lock().expect("no panic held the lock").clone();
+    assert!(
+        recorded
+            .iter()
+            .any(|(field, value)| field == "gen_ai.response.model"
+                && value == "text-embedding-3-small"),
+        "expected the response model on the span: {recorded:?}"
+    );
+}
+
 #[tokio::test]
 async fn the_span_names_the_requests_model_override_not_the_wires() {
     use tracing::subscriber::with_default;
@@ -802,13 +1271,13 @@ async fn the_span_names_the_requests_model_override_not_the_wires() {
         recorded: recorded.clone(),
     };
     let subscriber = tracing_subscriber::registry().with(layer);
-    let bound = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let bound = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
     let request = CompletionRequest {
         model: Some("echo-override".to_owned()),
         ..prompt()
     };
     with_default(subscriber, || {
-        futures::executor::block_on(bound.completion(request))
+        futures::executor::block_on(bound.call(request))
     })
     .expect("the reply decodes");
     let recorded = recorded.lock().expect("no panic held the lock").clone();
@@ -916,6 +1385,8 @@ impl Decoder<Completion> for GuardedDecoder {
 
 impl Wire for Guarded {
     type Op = Completion;
+    type Payload = Encoded;
+    type Frame = WireFrame;
     type Decoder = GuardedDecoder;
 
     fn name(&self) -> &str {
@@ -937,9 +1408,9 @@ impl Wire for Guarded {
 
 #[tokio::test]
 async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
-    let unary = Bound::new(Guarded(Framing::Whole), RecordingHttpClient::new("{}"));
+    let unary = Model::new(Guarded(Framing::Whole), RecordingHttpClient::new("{}"));
     let error = unary
-        .completion(prompt())
+        .call(prompt())
         .await
         .expect_err("a whole reply that delivered nothing is not an answer");
     assert!(
@@ -948,13 +1419,13 @@ async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
         "expected the empty-reply error, got {error:?}"
     );
 
-    let streaming = Bound::new(
+    let streaming = Model::new(
         Guarded(Framing::Sse),
         MockStreamingClient {
             sse_bytes: Bytes::from_static(b"data: {}\n\n"),
         },
     );
-    let mut response = streaming.stream(prompt()).await.expect("the stream opens");
+    let mut response = streaming.stream(prompt()).expect("the stream opens");
     let mut errors = Vec::new();
     while let Some(item) = response.next().await {
         if let Err(error) = item {
@@ -973,9 +1444,12 @@ async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
 /// that could not be built.
 #[test]
 fn a_stream_the_driver_cannot_send_is_a_request_failure() {
+    #[derive(Clone)]
     struct Batch;
     impl Wire for Batch {
         type Op = Completion;
+        type Payload = Encoded;
+        type Frame = WireFrame;
         type Decoder = EchoDecoder;
         fn name(&self) -> &str {
             "echo"
@@ -991,9 +1465,12 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
             EchoDecoder
         }
     }
+    #[derive(Clone)]
     struct Multipart;
     impl Wire for Multipart {
         type Op = Completion;
+        type Payload = Encoded;
+        type Frame = WireFrame;
         type Decoder = EchoDecoder;
         fn name(&self) -> &str {
             "echo"

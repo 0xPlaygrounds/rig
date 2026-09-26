@@ -2,9 +2,10 @@ use std::io::Write;
 
 use anyhow::Context;
 use futures::StreamExt;
+use rig::Model;
 use rig::candle::CandleCompletionResponse;
-use rig::candle::{CandleModel, ModelData};
-use rig::completion::CompletionModel;
+use rig::candle::{CandleModel, Generation, ModelData};
+use rig::completion::CompletionRequestBuilder;
 use rig::streaming::{Delta, StreamEvent};
 
 #[tokio::main]
@@ -21,13 +22,13 @@ async fn main() -> anyhow::Result<()> {
         prompt
     };
 
-    let model = CandleModel::from_gguf(ModelData {
+    let candle = CandleModel::from_gguf(ModelData {
         config: std::fs::read(model_dir.join("config.json"))?,
         tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
         weights: std::fs::read(model_dir.join("model.gguf"))?,
     })?;
-    let request = model
-        .completion_request(prompt)
+    let model = Model::new(Generation, candle);
+    let request = CompletionRequestBuilder::new(prompt)
         .preamble("You are a concise and helpful assistant.".to_string())
         .temperature(0.0)
         .max_tokens(64)
@@ -38,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     // carries usage and a finish reason, not these. The provider's terminal
     // record rides along serialized on `StreamFinal::raw`, so they stay
     // reachable by deserializing it back into Candle's own type.
-    let mut stream = model.stream(request).await?;
+    let mut stream = model.stream(request)?;
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         match item? {

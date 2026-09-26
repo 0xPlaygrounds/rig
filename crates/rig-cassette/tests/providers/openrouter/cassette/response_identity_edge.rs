@@ -8,9 +8,8 @@
 //! `None` — together they are the evidence for the compat-default question
 //! raised in PR #2313.
 
-use rig::completion::CompletionModel;
-
 use super::super::support::with_openrouter_cassette;
+use rig::completion::CompletionRequestBuilder;
 
 const MODEL: &str = "openai/gpt-5.2";
 
@@ -19,10 +18,9 @@ async fn blocking_contract_and_gateway_both_report_none() {
     with_openrouter_cassette(
         "response_identity_edge/blocking_contract_and_gateway_both_report_none",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = rig::model(client.completion(MODEL));
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect("completion should succeed");
             assert_eq!(
@@ -43,11 +41,12 @@ async fn streaming_contract_and_gateway_both_report_none() {
     with_openrouter_cassette(
         "response_identity_edge/streaming_contract_and_gateway_both_report_none",
         |client| async move {
-            let model = client.completion(MODEL);
+            let model = rig::model(client.completion(MODEL));
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
-                .await
+                .stream(
+                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+                        .build(),
+                )
                 .expect("stream should open");
             let mut terminal = None;
             while let Some(item) = stream.next().await {
@@ -71,10 +70,9 @@ async fn routed_failure_error_shape() {
     with_openrouter_cassette(
         "response_identity_edge/routed_failure_error_shape",
         |client| async move {
-            let model = client.completion("openai/gpt-nonexistent-routed-model");
+            let model = rig::model(client.completion("openai/gpt-nonexistent-routed-model"));
             let error = model
-                .completion_request("Never routed")
-                .send()
+                .call(CompletionRequestBuilder::new("Never routed").build())
                 .await
                 .expect_err("an unroutable model must fail");
             // Derived from the recording: OpenRouter answers a body-ful 4xx,

@@ -6,9 +6,8 @@
 use bevy_app::App;
 use rig_core::{
     completion::CompletionRequestBuilder,
-    driver::CompletionProvider,
     effect::{EffectKind, HandlerDescriptor, family},
-    serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::CompletionAdapter},
+    serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::ModelAdapter},
 };
 use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect};
 
@@ -40,14 +39,19 @@ fn main() -> anyhow::Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
     let client = {
         let _entered = runtime.enter();
-        rig_vertexai::Client::from_env()?
+        rig_vertexai::VertexAi::from_env()?
     };
     // Complete SDK preparation before borrowing the execution world. A host
     // with an already-prepared PredictionService can inject that instead.
     runtime.block_on(client.inner())?;
-    let model = client.completion(rig_vertexai::completion::GEMINI_2_5_FLASH_LITE);
+    let model = rig_core::Model::new(
+        rig_vertexai::completion::GenerateContent::new(
+            rig_vertexai::completion::GEMINI_2_5_FLASH_LITE,
+        ),
+        client.clone(),
+    );
     let handler = Hosted {
-        handler: ErasedHandler::new(CompletionAdapter::new("vertex", model)),
+        handler: ErasedHandler::new(ModelAdapter::new("vertex", model)),
         runtime: runtime.handle().clone(),
     };
     let mut app = App::new();
@@ -60,7 +64,7 @@ fn main() -> anyhow::Result<()> {
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::unbound("Say hello briefly.").build(),
+                request: CompletionRequestBuilder::new("Say hello briefly.").build(),
                 stream: false, // Vertex streaming is explicitly unsupported.
             },
         ))

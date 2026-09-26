@@ -8,9 +8,9 @@
 
 use bevy_ecs::prelude::*;
 use bytes::Bytes;
+use rig::Model;
 use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
-use rig::prelude::*;
 use rig::providers::openai::{self, GPT_4O};
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
@@ -30,7 +30,7 @@ use crate::{
     ecs_agent::EcsAgent,
     stream_faults::{
         CountedSubtract, Invocations, NativeRun, adapter_events, assert_setup_failure, bus_actions,
-        comparable_failure, endings, log_json_without_deliveries, native_run,
+        comparable_failure, endings, log_json_without_deliveries, native_run, native_run_serving,
         sole_failed_completion, sse_bytes, trace_json, truncations,
     },
     support::{
@@ -42,8 +42,9 @@ use crate::{
 /// A scripted-transport model: one streaming exchange, then EOF.
 fn scripted_model(
     chunks: Vec<Bytes>,
-) -> Bound<openai::wire::OpenAiWire, SequencedStreamingHttpClient> {
-    scripted_client(chunks).completion(GPT_4O)
+) -> Model<openai::wire::OpenAiWire, SequencedStreamingHttpClient> {
+    let (client, http) = scripted_client(chunks);
+    Model::new(client.completion(GPT_4O), http)
 }
 
 /// The scripted cells' witness check, over this module's credential.
@@ -95,7 +96,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
                 "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
                 |client| async move {
                     let run = native_run(
-                        client.openai.completion(MISSING_MODEL),
+                        rig::model(client.openai.completion(MISSING_MODEL)),
                         "",
                         SETUP_PROMPT,
                         witness,
@@ -382,9 +383,10 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
         for witness in [true, false] {
             let runs = &mut runs;
             with_openai_cassette("streaming/streaming_smoke", |client| async move {
-                let run = native_run(
-                    crate::ecs_matrix::world::FirstDelta {
-                        inner: client.openai.completion(GPT_4O),
+                let model = rig::model(client.openai.completion(GPT_4O));
+                let run = native_run_serving(
+                    |label| crate::ecs_matrix::world::FirstDelta {
+                        inner: rig::serve::adapters::ModelAdapter::new(label, model),
                         tool: false,
                         release: std::sync::Arc::new(tokio::sync::Semaphore::new(0)),
                     },

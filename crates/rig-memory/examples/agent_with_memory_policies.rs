@@ -18,7 +18,6 @@ use rig_core::completion::Message;
 use rig_core::providers::openai;
 use rig_core::providers::openai::OpenAI;
 use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory, TokenWindowMemory};
-use rig_reqwest::prelude::*;
 
 fn approx_token_count(message: &Message) -> usize {
     let text = match message {
@@ -45,13 +44,14 @@ fn approx_token_count(message: &Message) -> usize {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = OpenAI::from_env()?.bound()?;
+    let client = OpenAI::from_env()?;
+    // One model serves both agents: erase it once, clone the handle.
+    let model = Model::new(client.completion(openai::GPT_4O), rig_reqwest::shared()).erase();
 
     let sliding_memory = InMemoryConversationMemory::new()
         .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
 
-    let sliding_agent = client
-        .agent(openai::GPT_4O)
+    let sliding_agent = AgentBuilder::new(model.clone())
         .preamble("You are a helpful assistant. Keep responses short.")
         .memory(sliding_memory)
         .build();
@@ -66,8 +66,7 @@ async fn main() -> Result<()> {
     let token_memory = InMemoryConversationMemory::new()
         .with_filter(TokenWindowMemory::new(256, approx_token_count).into_filter());
 
-    let token_agent = client
-        .agent(openai::GPT_4O)
+    let token_agent = AgentBuilder::new(model)
         .preamble("You are a helpful assistant. Keep responses short.")
         .memory(token_memory)
         .build();

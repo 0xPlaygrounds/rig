@@ -286,7 +286,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -936,6 +936,17 @@
           "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities."
           }
         },
         {

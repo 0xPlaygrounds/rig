@@ -436,6 +436,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 96,

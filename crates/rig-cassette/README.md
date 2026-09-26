@@ -120,7 +120,7 @@ native-only and intentionally opts into both JSON features listed above.
 
 
 Pass a fixture root containing provider directories to `ProviderCassette::start`,
-`start_via(Transport::Direct, ..)`, `cassette_path` and every `recorded_*` reader:
+`start_via(RecordVia::Direct, ..)`, `cassette_path` and every `recorded_*` reader:
 
 ```text
 <fixture-root>/anthropic/completion.yaml
@@ -140,7 +140,7 @@ behavior.
 `RIG_PROVIDER_TEST_MODE` defaults to `replay`. `record` contacts the configured
 upstream and overwrites the selected fixture after scrubbing; `start` and
 `start_via` read the mode from the environment, and a recording reaches the
-provider through the proxy (`start`) or directly (`start_via(Transport::Direct, ..)`).
+provider through the proxy (`start`) or directly (`start_via(RecordVia::Direct, ..)`).
 Consumers that stage candidates use `ProviderCassette::start_at` with an explicit
 mode and exact path: a live capture records into a candidate path, and a
 verification pass replays with `CassetteMode::Replay` even when the environment

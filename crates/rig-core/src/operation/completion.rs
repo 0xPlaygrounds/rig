@@ -10,14 +10,21 @@
 //! assert_eq!(output.len(), 3);
 //! ```
 
+use std::collections::{HashMap, HashSet};
+
 use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::error::ProviderError;
+use crate::message::AssistantContent;
 use crate::streaming::{
-    Absorbed, BlockAccumulator, BlockClose, BlockId, BlockKind, Delta, FoldStep, MintKind,
-    StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd, UnknownPayload,
+    BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal, SyntheticIds,
+    ToolCallEnd, UnknownPayload,
 };
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Fold, Operation, Reply, Sink};
+use crate::wire::{Fold, Mode, Operation, Reply, Sink};
+
+mod accumulator;
+
+use accumulator::BlockAccumulator;
 
 /// Generating an assistant turn, unary or streamed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,36 +48,58 @@ impl Operation for Completion {
         matches!(event, StreamEvent::Final(_))
     }
 
-    fn telemetry(streaming: bool) -> Self::Telemetry {
-        if streaming {
-            GenAiOperation::ChatStreaming
-        } else {
-            GenAiOperation::Chat
-        }
+    fn fold<W: crate::wire::Wire<Op = Self>>(
+        request: &Self::Request,
+        wire: &W,
+        mode: Mode,
+    ) -> Self::Fold {
+        let issuer = wire.reasoning_issuer(request.model.as_deref().or(wire.id()));
+        CompletionFold::opened(wire.name(), issuer.map(str::to_owned), mode)
     }
 
-    /// Forwards unmodeled payloads without adding them to aggregated content.
-    fn unknown(payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
-        Some(StreamEvent::Unknown(payload))
-    }
-
-    /// Reasoning another wire issued is omitted; see
-    /// [`crate::message::retain_replayable_reasoning`].
-    fn scope_to_wire(request: &mut Self::Request, issuers: &[&str]) {
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, issuers);
-    }
-
-    fn request_model(request: &Self::Request) -> Option<&str> {
-        request.model.as_deref()
-    }
-
-    fn stamp_request_id(event: &mut Self::Event, request_id: &Option<String>) {
-        // The terminal's own id wins: it saw the reply that carried it.
+    /// The transport request id reaches the terminal record, unless the
+    /// wire already put one there.
+    fn stamp_event(event: &mut Self::Event, reply: &Reply) {
         if let StreamEvent::Final(terminal) = event
             && terminal.provider_request_id.is_none()
         {
-            terminal.provider_request_id = request_id.clone();
+            terminal
+                .provider_request_id
+                .clone_from(&reply.provider_request_id);
         }
+    }
+
+    /// A streamed call records the terminal record as it passes.
+    fn record_event(span: &tracing::Span, event: &Self::Event) {
+        if let StreamEvent::Final(terminal) = event {
+            span.record_response(
+                terminal
+                    .response_id
+                    .as_deref()
+                    .or(terminal.message_id.as_deref()),
+                terminal.model.as_deref(),
+                &terminal.usage,
+            );
+        }
+    }
+
+    fn telemetry(mode: Mode) -> Self::Telemetry {
+        match mode {
+            Mode::Unary => GenAiOperation::Chat,
+            Mode::Streaming => GenAiOperation::ChatStreaming,
+        }
+    }
+
+    /// Reasoning another wire issued is omitted; see
+    /// [`crate::message::retain_replayable_reasoning`]. The request's model
+    /// override, when it names one, is the model the wire replays for.
+    fn scope_to_wire<W: crate::wire::Wire<Op = Self>>(request: &mut Self::Request, wire: &W) {
+        let model = request.model.as_deref().or(wire.id());
+        let Some(issuers) = wire.replay_issuers(model) else {
+            return;
+        };
+        let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
     }
 
     fn span(
@@ -102,19 +131,6 @@ impl Operation for Completion {
             &response.usage,
         );
     }
-
-    fn record_event(span: &tracing::Span, event: &Self::Event) {
-        if let StreamEvent::Final(terminal) = event {
-            span.record_response(
-                terminal
-                    .response_id
-                    .as_deref()
-                    .or(terminal.message_id.as_deref()),
-                terminal.model.as_deref(),
-                &terminal.usage,
-            );
-        }
-    }
 }
 
 impl Sink<Completion> for AdapterOutput {
@@ -132,6 +148,28 @@ impl Sink<Completion> for AdapterOutput {
         AdapterOutput::items(self)
     }
 
+    /// Forwarded on the passthrough channel, never folded into the choice.
+    fn unknown(&mut self, payload: UnknownPayload) {
+        AdapterOutput::unknown(self, payload);
+    }
+
+    /// Closes every text and reasoning block still open, so each carries
+    /// its content on an end. The ends precede the terminal failure a
+    /// decoder pushed last.
+    fn finish(&mut self) {
+        if self.canonical.terminated {
+            return;
+        }
+        let kept = self
+            .items
+            .iter()
+            .rposition(Result::is_ok)
+            .map_or(0, |last| last + 1);
+        let failures = self.items.split_off(kept);
+        self.close_open_blocks();
+        self.items.extend(failures);
+    }
+
     fn check_laws(&self, laws: &mut Self::Laws) {
         #[cfg(any(test, debug_assertions))]
         laws.check_batch(self);
@@ -140,54 +178,259 @@ impl Sink<Completion> for AdapterOutput {
     }
 }
 
-/// The fold from a completion reply's events to its response.
+/// The fold from a completion reply's canonical events to its response.
 ///
-/// The same step [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse)
-/// runs while it yields events, so a unary reply and a streamed one agree by
-/// construction.
-#[derive(Default)]
+/// It collects what the sink already finalized: every block from its
+/// `BlockEnd`, in the order the blocks began, the message id and the
+/// terminal record. It assembles nothing, so a block still open is not in
+/// [`Self::snapshot`]. The default is the fold of a stream relayed under no
+/// label.
 pub struct CompletionFold {
-    accumulator: BlockAccumulator,
+    /// Finalized blocks in the order they began; `None` holds the place of
+    /// a block that has not ended.
+    blocks: Vec<Option<AssistantContent>>,
+    /// The latest slot each block key holds in `blocks`.
+    slots: HashMap<BlockId, usize>,
+    /// Reasoning keys whose block began and has not ended.
+    open_reasoning: HashSet<BlockId>,
     terminal: Option<StreamFinal>,
     message_id: Option<String>,
-    /// Only written by the fold step; the response's provider is the wire's.
+    /// The provider a streamed response names: the opener's, or the
+    /// terminal record's for a relayed stream. A unary response names the
+    /// reply's.
     provider: String,
+    /// Whether the terminal record names the provider: a stream relayed
+    /// over the bus is opened under the handler's label.
+    provider_from_terminal: bool,
+    /// The issuer of this reply's reasoning when a wire names it before the
+    /// terminal record.
+    reasoning_issuer: Option<String>,
+    /// What the reply's end means: a streamed reply without a terminal
+    /// record was truncated, while a whole one is the provider's answer.
+    mode: Mode,
 }
 
-impl Fold<Completion> for CompletionFold {
-    fn absorb(&mut self, event: StreamEvent) -> Result<(), ProviderError> {
-        let step = FoldStep {
-            accumulator: &mut self.accumulator,
-            response: &mut self.terminal,
-            message_id: &mut self.message_id,
-            provider: &mut self.provider,
+impl Default for CompletionFold {
+    fn default() -> Self {
+        Self::relayed("")
+    }
+}
+
+impl CompletionFold {
+    /// The fold of a reply a wire opened in `mode`, under its provider name
+    /// and the reasoning issuer it names up front.
+    pub(crate) fn opened(
+        provider: impl Into<String>,
+        reasoning_issuer: Option<String>,
+        mode: Mode,
+    ) -> Self {
+        Self {
+            blocks: Vec::new(),
+            slots: HashMap::new(),
+            open_reasoning: HashSet::new(),
+            terminal: None,
+            message_id: None,
+            provider: provider.into(),
             provider_from_terminal: false,
-        };
-        match crate::streaming::absorb(step, event) {
-            Absorbed::Yield(_) | Absorbed::Skip => Ok(()),
-            // A buffered reply has no stream to carry an in-band defect, so
-            // a block the wire promised and then malformed fails the call.
-            Absorbed::Failed(report) => Err(ProviderError::Response(report.message)),
+            reasoning_issuer,
+            mode,
         }
     }
 
-    fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
-        // The buffered reply's document is the response's `raw`, not the
-        // terminal record's: the wire decoded the whole body at once.
-        let issuer = self
-            .terminal
+    /// The fold of a stream relayed under `label`, whose terminal record
+    /// names the provider behind it.
+    pub(crate) fn relayed(label: impl Into<String>) -> Self {
+        Self {
+            provider_from_terminal: true,
+            ..Self::opened(label, None, Mode::Streaming)
+        }
+    }
+
+    /// Hold the place of the block `id` where the sink's assembly puts it:
+    /// text at its first content, reasoning when it begins, calls and
+    /// images at their end.
+    fn reserve(&mut self, id: &BlockId) {
+        self.slots.insert(id.clone(), self.blocks.len());
+        self.blocks.push(None);
+    }
+
+    fn collect(&mut self, id: &BlockId, end: &BlockClose, block: &AssistantContent) {
+        let slot = match end {
+            BlockClose::Text => self.slots.get(id).copied(),
+            BlockClose::Reasoning { .. } => {
+                self.open_reasoning.remove(id);
+                self.slots.get(id).copied()
+            }
+            BlockClose::ToolCall(_) | BlockClose::Image(_) => None,
+        };
+        match slot.and_then(|slot| self.blocks.get_mut(slot)) {
+            Some(held) => *held = Some(block.clone()),
+            None => {
+                self.slots.insert(id.clone(), self.blocks.len());
+                self.blocks.push(Some(block.clone()));
+            }
+        }
+    }
+
+    /// The provider this fold's response names.
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    /// The provider's normalized terminal record, `None` until it arrives
+    /// (and forever on truncation or a terminal error).
+    pub fn terminal(&self) -> Option<&StreamFinal> {
+        self.terminal.as_ref()
+    }
+
+    /// The provider-assigned message id, from a message block or the
+    /// terminal record.
+    pub fn message_id(&self) -> Option<&str> {
+        self.message_id.as_deref()
+    }
+
+    /// The blocks finalized so far, in the order they began. A block that
+    /// has not ended is not among them.
+    pub fn snapshot(&self) -> Vec<AssistantContent> {
+        self.blocks.iter().flatten().cloned().collect()
+    }
+
+    /// Terminal usage, or [`Usage::default`](crate::completion::Usage)
+    /// before a terminal record.
+    pub fn usage(&self) -> crate::completion::Usage {
+        self.terminal
             .as_ref()
-            .map_or(reply.provider.clone(), |terminal| {
-                terminal.issuer().to_owned()
-            });
-        let response = crate::streaming::fold_finish(
-            self.accumulator,
-            self.terminal.as_ref(),
-            self.message_id,
-            reply.provider,
-            &issuer,
-            reply.raw,
-        );
+            .map(|terminal| terminal.usage)
+            .unwrap_or_default()
+    }
+
+    /// Response identity. A message-start id takes precedence over the
+    /// terminal's; response and transport ids require a terminal record.
+    pub fn identity(&self) -> crate::completion::ResponseIdentity {
+        crate::completion::ResponseIdentity {
+            message_id: self.message_id.clone(),
+            ..self
+                .terminal
+                .as_ref()
+                .map(StreamFinal::identity)
+                .unwrap_or_default()
+        }
+    }
+
+    /// The issuer this reply's reasoning records: the terminal record's
+    /// once it has arrived; before it, the issuer named up front, else the
+    /// provider that opened the stream. `None` before the terminal of a
+    /// relayed stream, whose label names a handler, not an issuer.
+    pub fn reasoning_issuer(&self) -> Option<&str> {
+        match &self.terminal {
+            Some(terminal) => Some(terminal.issuer()),
+            None => self
+                .reasoning_issuer
+                .as_deref()
+                .or((!self.provider_from_terminal).then_some(self.provider.as_str())),
+        }
+    }
+}
+
+impl Fold<Completion> for CompletionFold {
+    fn absorb(&mut self, event: &StreamEvent) -> Result<(), ProviderError> {
+        match event {
+            // The wire announced the assistant message's own id; it
+            // outranks the terminal record's.
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::Message,
+            } => {
+                if let Some(message_id) = id.wire_str() {
+                    self.message_id = Some(message_id.to_owned());
+                }
+            }
+            StreamEvent::BlockStart {
+                id,
+                kind:
+                    BlockKind::Text {
+                        additional_params: Some(_),
+                    },
+            }
+            | StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Text { .. } | Delta::TextMeta { .. },
+            } if !self.slots.contains_key(id) => self.reserve(id),
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::Reasoning { .. },
+            }
+            | StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Reasoning { .. },
+            } if !self.open_reasoning.contains(id) => {
+                self.open_reasoning.insert(id.clone());
+                self.reserve(id);
+            }
+            StreamEvent::BlockEnd {
+                id,
+                end,
+                block: Some(block),
+            } => self.collect(id, end, block),
+            // The stream's terminal record is its first: a relay may carry
+            // items past it.
+            StreamEvent::Final(terminal) if self.terminal.is_none() => {
+                // An explicit message-id block keeps precedence; the terminal
+                // record only fills a gap.
+                if self.message_id.is_none() {
+                    self.message_id.clone_from(&terminal.message_id);
+                }
+                if self.provider_from_terminal && !terminal.provider.is_empty() {
+                    self.provider.clone_from(&terminal.provider);
+                }
+                self.terminal = Some(terminal.clone());
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// A whole reply carries its document as `raw` and names the reply's
+    /// provider. A streamed one carries the terminal record's document and
+    /// names the provider that opened it (the terminal's, for a relayed
+    /// stream); without a terminal record it was truncated and is refused.
+    fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
+        let choice = self.snapshot();
+        let response = match self.mode {
+            Mode::Unary => {
+                let issuer = self
+                    .terminal
+                    .as_ref()
+                    .map_or(reply.provider.clone(), |terminal| {
+                        terminal.issuer().to_owned()
+                    });
+                crate::streaming::fold_finish(
+                    choice,
+                    self.terminal.as_ref(),
+                    self.message_id,
+                    reply.provider,
+                    &issuer,
+                    reply.raw,
+                )
+            }
+            Mode::Streaming => {
+                let Some(terminal) = self.terminal.as_ref() else {
+                    return Err(ProviderError::Response(
+                        "provider stream ended without a terminal record; treating the turn \
+                         as truncated"
+                            .to_owned(),
+                    ));
+                };
+                crate::streaming::fold_finish(
+                    choice,
+                    Some(terminal),
+                    self.message_id,
+                    self.provider,
+                    terminal.issuer(),
+                    terminal.raw.clone(),
+                )
+            }
+        };
         // The terminal's own id wins; the reply headers only fill a gap.
         if response.provider_request_id.is_none() {
             Ok(response.with_optional_provider_request_id(reply.provider_request_id))
@@ -197,10 +440,20 @@ impl Fold<Completion> for CompletionFold {
     }
 }
 
-/// Buffers completion events and in-band errors with block bookkeeping.
+/// The completion sink: buffers a decoder's events and in-band errors and
+/// makes them canonical.
+///
 /// Helpers open unseen tool and reasoning keys before deltas. Bare text uses
 /// an active key, minting a new one after non-text block events other than
-/// message starts. Frame-classification errors are handled by the driver.
+/// message starts. Every event is applied to the one block assembly as it is
+/// pushed, so what drains is final: each `BlockEnd` carries the block it
+/// finalized (text included), a malformed complete tool input is an error
+/// item in its place, the text and reasoning blocks still open are closed
+/// before the terminal record, the terminal's finish reason agrees with the
+/// completed tool calls, and a second terminal record is dropped. A sink
+/// driven by hand rather than by the driver ends a reply with
+/// [`Sink::finish`], as the driver does. Frame-classification errors are
+/// handled by the driver.
 #[derive(Debug, Default)]
 pub struct AdapterOutput {
     items: Vec<Result<StreamEvent, ProviderError>>,
@@ -223,7 +476,131 @@ pub struct AdapterOutput {
     self_closing: bool,
     /// Blocks a start was emitted for (or that a delta opened leniently),
     /// so a delta never precedes its block's start on the wire we emit.
-    opened: std::collections::HashSet<BlockId>,
+    opened: HashSet<BlockId>,
+    /// What makes the pushed events canonical.
+    canonical: Canonical,
+}
+
+/// The canonicalization the completion sink applies to every event pushed
+/// through it, without the sink's buffer or decoder helpers: what a relay
+/// or a tap keeps to canonicalize a stream it did not decode.
+#[derive(Debug, Default)]
+pub(crate) struct Canonical {
+    /// The assembly that finalizes each block on its end.
+    blocks: BlockAccumulator,
+    /// Whether the terminal record passed.
+    terminated: bool,
+}
+
+impl Canonical {
+    /// Canonicalize `item`, emitting it and the items it implies (the closes
+    /// before a terminal, a sibling part's start) in order. `emit` learns
+    /// whether each item was synthesized here.
+    pub(crate) fn push(
+        &mut self,
+        item: Result<StreamEvent, ProviderError>,
+        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
+    ) {
+        self.push_as(item, false, emit);
+    }
+
+    fn push_as(
+        &mut self,
+        item: Result<StreamEvent, ProviderError>,
+        synthesized: bool,
+        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
+    ) {
+        let item = match item {
+            Ok(StreamEvent::Final(mut terminal)) => {
+                // A second terminal is a provider defect; the first stands.
+                if self.terminated {
+                    return;
+                }
+                self.close_open_blocks(emit);
+                self.terminated = true;
+                // A `stop` that was really a tool call reads as one.
+                terminal.finish_reason = terminal
+                    .finish_reason
+                    .map(|reason| reason.reconcile_with_output(self.blocks.saw_tool_call()));
+                Ok(StreamEvent::Final(terminal))
+            }
+            Ok(StreamEvent::BlockEnd { id, end, block }) => {
+                // A sibling part under a finished key begins where it ends,
+                // so a collector keeps both.
+                if self.blocks.ends_a_sibling(&id, &end) {
+                    self.push_as(
+                        Ok(StreamEvent::BlockStart {
+                            id: id.clone(),
+                            kind: BlockKind::Reasoning { provider_id: None },
+                        }),
+                        true,
+                        emit,
+                    );
+                }
+                let event = StreamEvent::BlockEnd {
+                    id,
+                    end,
+                    block: None,
+                };
+                match (self.blocks.apply(&event), event) {
+                    (Ok(Some((id, block))), StreamEvent::BlockEnd { end, .. }) => {
+                        Ok(StreamEvent::BlockEnd {
+                            id,
+                            end,
+                            block: Some(block),
+                        })
+                    }
+                    // An end that carried its block without the events that
+                    // assemble it (a relayed or hand-built stream) keeps it.
+                    (Ok(None), StreamEvent::BlockEnd { id, end, .. }) => {
+                        Ok(StreamEvent::BlockEnd { id, end, block })
+                    }
+                    (Ok(_), event) => Ok(event),
+                    (Err(error), _) => Err(error),
+                }
+            }
+            Ok(event) => self.blocks.apply(&event).map(|_| event),
+            Err(error) => {
+                // A malformed complete tool input took the place of its
+                // call's end: the call ended, so its key assembles anew.
+                if let Some(input) = malformed_tool_input(&error) {
+                    self.blocks.abandon(input);
+                }
+                Err(error)
+            }
+        };
+        emit(item, synthesized);
+    }
+
+    /// End every text and reasoning block still open, in the order they
+    /// opened.
+    pub(crate) fn close_open_blocks(
+        &mut self,
+        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
+    ) {
+        for (id, end) in self.blocks.unclosed() {
+            self.push_as(
+                Ok(StreamEvent::BlockEnd {
+                    id,
+                    end,
+                    block: None,
+                }),
+                true,
+                emit,
+            );
+        }
+    }
+
+    /// The stream ended: close what is still open, unless the terminal
+    /// record already did.
+    pub(crate) fn finish(
+        &mut self,
+        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
+    ) {
+        if !self.terminated {
+            self.close_open_blocks(emit);
+        }
+    }
 }
 
 impl AdapterOutput {
@@ -321,34 +698,71 @@ impl AdapterOutput {
     }
 
     fn push_raw(&mut self, item: Result<StreamEvent, ProviderError>) {
-        if let Ok(event) = &item
-            && let Some(id) = event.block_id()
-        {
-            match event {
-                StreamEvent::BlockStart { .. } => {
-                    self.opened.insert(id.clone());
-                }
-                StreamEvent::BlockEnd { .. } => {
-                    self.opened.remove(id);
-                }
-                // A delta neither opens nor closes; `Final`/`Unknown` carry
-                // no block id and never reach this arm. Exhaustive on
-                // purpose: a future block-carrying variant must land here,
-                // not bypass the `opened` bookkeeping.
-                StreamEvent::BlockDelta { .. }
-                | StreamEvent::Final(_)
-                | StreamEvent::Unknown(_) => {}
-            }
-            // Any non-text block event is a boundary for anonymous text, any
-            // non-reasoning one for anonymous reasoning.
-            if !Self::is_text_event(event) && !Self::is_message_start(event) {
-                self.active_text = None;
-            }
-            if !Self::is_reasoning_event(event) && !Self::is_message_start(event) {
-                self.active_reasoning = None;
-            }
+        if let Ok(event) = &item {
+            self.track(event);
         }
-        self.items.push(item);
+        let mut emitted = Vec::new();
+        self.canonical.push(item, &mut |item, synthesized| {
+            emitted.push((item, synthesized))
+        });
+        self.accept(emitted);
+    }
+
+    /// Keep what the canonicalization emitted, tracking the items it
+    /// synthesized as a pushed event is tracked.
+    fn accept(&mut self, emitted: Vec<(Result<StreamEvent, ProviderError>, bool)>) {
+        for (item, synthesized) in emitted {
+            if synthesized && let Ok(event) = &item {
+                if let StreamEvent::BlockEnd { id, .. } = event {
+                    if self.auto_text.as_ref() == Some(id) {
+                        self.auto_text = None;
+                    }
+                    if self.auto_reasoning.as_ref() == Some(id) {
+                        self.auto_reasoning = None;
+                    }
+                }
+                self.track(event);
+            }
+            self.items.push(item);
+        }
+    }
+
+    /// The block bookkeeping one event moves: which blocks are open, and
+    /// which block bare text and reasoning land in.
+    fn track(&mut self, event: &StreamEvent) {
+        let Some(id) = event.block_id() else {
+            return;
+        };
+        match event {
+            StreamEvent::BlockStart { .. } => {
+                self.opened.insert(id.clone());
+            }
+            StreamEvent::BlockEnd { .. } => {
+                self.opened.remove(id);
+            }
+            // A delta neither opens nor closes; `Final`/`Unknown` carry no
+            // block id and never reach this arm. Exhaustive on purpose: a
+            // future block-carrying variant must land here, not bypass the
+            // `opened` bookkeeping.
+            StreamEvent::BlockDelta { .. } | StreamEvent::Final(_) | StreamEvent::Unknown(_) => {}
+        }
+        // Any non-text block event is a boundary for anonymous text, any
+        // non-reasoning one for anonymous reasoning.
+        if !Self::is_text_event(event) && !Self::is_message_start(event) {
+            self.active_text = None;
+        }
+        if !Self::is_reasoning_event(event) && !Self::is_message_start(event) {
+            self.active_reasoning = None;
+        }
+    }
+
+    /// End every text and reasoning block still open, in the order they
+    /// opened.
+    fn close_open_blocks(&mut self) {
+        let mut emitted = Vec::new();
+        self.canonical
+            .close_open_blocks(&mut |item, synthesized| emitted.push((item, synthesized)));
+        self.accept(emitted);
     }
 
     /// Push an in-band error item.
@@ -520,11 +934,6 @@ impl AdapterOutput {
         id
     }
 
-    /// Open the tool-call block `id` (a no-op when already open).
-    pub fn tool_start(&mut self, id: &BlockId) {
-        self.open_if_unseen(id, BlockKind::ToolCall);
-    }
-
     /// A streamed tool-name fragment for the call `id`.
     pub fn tool_name(&mut self, id: &BlockId, name: impl Into<String>) {
         self.open_if_unseen(id, BlockKind::ToolCall);
@@ -554,12 +963,6 @@ impl AdapterOutput {
             end: BlockClose::ToolCall(end),
             block: None,
         }));
-    }
-
-    /// A tool call the wire delivered whole: its start and its authoritative
-    /// end in one step.
-    pub fn tool_call(&mut self, id: BlockId, end: ToolCallEnd) {
-        self.tool_end(id, end);
     }
 
     /// Open the reasoning block `id` (a no-op when already open).
@@ -641,6 +1044,77 @@ impl AdapterOutput {
         }));
     }
 
+    /// Emit a whole reply's parts as the events a stream sends for them: one
+    /// complete block per part, in order. `images` says how an image part
+    /// travels.
+    pub fn content(&mut self, choice: &[crate::message::AssistantContent], images: ImagePart) {
+        use crate::message::AssistantContent;
+
+        for (index, content) in choice.iter().enumerate() {
+            let index = index as u64;
+            match content {
+                AssistantContent::Text(text) => {
+                    let id = BlockId::minted(MintKind::Text, index);
+                    self.text_start(id.clone(), text.additional_params.clone());
+                    self.text(text.text.clone());
+                    self.text_end(id);
+                }
+                AssistantContent::Reasoning(reasoning) => {
+                    let id = reasoning
+                        .id
+                        .as_deref()
+                        .map(BlockId::wire)
+                        .unwrap_or_else(|| BlockId::minted(MintKind::Reasoning, index));
+                    self.reasoning_end(id, Some(reasoning.clone()), None, true);
+                }
+                AssistantContent::Image(image) => match images {
+                    ImagePart::Block => self.push(Ok(StreamEvent::BlockEnd {
+                        id: BlockId::minted(MintKind::Block, index),
+                        end: BlockClose::Image(image.clone()),
+                        block: None,
+                    })),
+                    ImagePart::Unknown => match serde_json::to_value(image) {
+                        Ok(value) => self.unknown(UnknownPayload::new(value)),
+                        Err(error) => self.error(ProviderError::Json(error)),
+                    },
+                },
+                AssistantContent::ToolCall(call) => {
+                    // The durable handle is separate from the assembly key and
+                    // provider metadata. Local names are never inferred to be
+                    // wire IDs merely because they do not look minted.
+                    let mut end = ToolCallEnd::whole(
+                        call.function.name.clone(),
+                        call.function.arguments.clone(),
+                    )
+                    .with_durable_id(call.id.clone())
+                    .with_signature(call.signature.clone())
+                    .with_additional_params(call.additional_params.clone());
+                    if let Some(provider) = &call.provider {
+                        end = match &provider.item_id {
+                            Some(item_id) => end
+                                .with_call_id(provider.call_id.clone())
+                                .with_tool_id(item_id.clone()),
+                            None => end.with_tool_id(provider.call_id.clone()),
+                        };
+                    }
+                    // Re-emission creates a fresh assembly occurrence; durable
+                    // identity and provider handles are preserved on `end`.
+                    self.tool_end(BlockId::minted(MintKind::Tool, index), end);
+                }
+            }
+        }
+    }
+
+    /// Emit a whole `response` as the events a stream sends for it: its
+    /// message id, its parts and its terminal record.
+    pub fn response(&mut self, response: &CompletionResponse, images: ImagePart) {
+        if let Some(message_id) = &response.message_id {
+            self.message_id(message_id.clone());
+        }
+        self.content(&response.choice, images);
+        self.final_record(terminal_of(response));
+    }
+
     /// The provider-assigned message id (a `Message` block start).
     pub fn message_id(&mut self, id: impl Into<String>) {
         self.push(Ok(StreamEvent::BlockStart {
@@ -660,5 +1134,48 @@ impl AdapterOutput {
     }
 }
 
+/// The malformed complete tool input an error item reports, directly or as
+/// a relayed report.
+fn malformed_tool_input(error: &ProviderError) -> Option<&crate::error::MalformedToolInput> {
+    match error {
+        ProviderError::MalformedToolInput(input) => Some(input),
+        ProviderError::Relayed(report) => match &report.detail {
+            Some(crate::error::ErrorDetail::MalformedToolInput(input)) => Some(input),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// How [`AdapterOutput::content`] emits an image part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImagePart {
+    /// Closed as a whole image block ([`BlockClose::Image`]): what a decoder
+    /// emits for a reply it reads itself.
+    Block,
+    /// Forwarded as an unknown payload: what a bus relay emits for a
+    /// completed turn, as relayed streams have always carried it.
+    Unknown,
+}
+
+/// The terminal record restating `response`'s metadata.
+fn terminal_of(response: &CompletionResponse) -> StreamFinal {
+    let mut terminal = StreamFinal::new(
+        response.provider.clone(),
+        response.usage,
+        response.raw.clone(),
+    )
+    .with_optional_finish_reason(response.finish_reason());
+    terminal.message_id = response.message_id.clone();
+    terminal.response_id = response.response_id.clone();
+    terminal.provider_request_id = response.provider_request_id.clone();
+    terminal.model = response.model.clone();
+    terminal
+}
+
 #[cfg(test)]
 mod tests;
+
+/// The sink's canonicalization, as properties.
+#[cfg(test)]
+mod sink_property_tests;

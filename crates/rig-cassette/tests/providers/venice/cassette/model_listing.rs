@@ -1,15 +1,12 @@
 //! Venice model listing smoke test.
 
-use rig::model::ModelLister;
-
 use super::super::support::with_venice_cassette;
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_venice_cassette("model_listing/list_models_smoke", |client| async move {
-        let models = client
-            .models()
-            .list_all()
+        let models = rig::model(client.models())
+            .call(())
             .await
             .expect("listing Venice models should succeed");
 

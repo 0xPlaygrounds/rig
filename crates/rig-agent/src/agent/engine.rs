@@ -308,7 +308,7 @@ where
                         };
 
                     // Preparation and execution must use the same selected model's capabilities.
-                    let default_label = runner.config.model_ref();
+                    let default_label = runner.config.model_label();
                     let selected_label = match runner.config.hooks.on_model_select(
                         &hook_ctx,
                         ModelSelection {
@@ -880,7 +880,7 @@ impl TurnSource for StreamingTurnSource {
                     // "the provider reported no reason" rather than "the turn
                     // stopped normally".
                     let reason = stream
-                        .response
+                        .folded().terminal().cloned()
                         .as_ref()
                         .and_then(|response| response.finish_reason.clone());
                     emit_completion_call!($usage, reason)
@@ -896,11 +896,11 @@ impl TurnSource for StreamingTurnSource {
                         // attempt's response, never a previous attempt's. A
                         // stream that delivered no terminal is truncated per
                         // the emission contract and has no call to record.
-                        match stream.response.as_ref().map(|response| response.raw.clone()) {
+                        match stream.folded().terminal().map(|response| response.raw.clone()) {
                             None => Err(truncated_stream_error().into()),
                             Some(raw) => match run.record_streamed_completion_call(
                                 usage,
-                                stream.identity(),
+                                stream.folded().identity(),
                                 $finish_reason,
                                 raw,
                             ) {
@@ -1098,8 +1098,8 @@ impl TurnSource for StreamingTurnSource {
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
                             let partial = assembler.partial_turn(
-                                stream.message_id.clone(),
-                                stream.reasoning_issuer(),
+                                stream.folded().message_id().map(str::to_owned),
+                                stream.folded().reasoning_issuer(),
                             );
                             // Gated on `has_hooks`: building the diagnostic context
                             // clones the chat history, so an empty stack skips it and
@@ -1205,7 +1205,7 @@ impl TurnSource for StreamingTurnSource {
             // The terminal record is this attempt's: its identity, finish
             // reason and payload are read from it below, never from a
             // previous attempt's stream.
-            let Some(terminal) = stream.response.clone() else {
+            let Some(terminal) = stream.folded().terminal().cloned() else {
                 yield Err(truncated_stream_error().into());
                 return;
             };
@@ -1222,7 +1222,7 @@ impl TurnSource for StreamingTurnSource {
             if !completion_call_emitted {
                 match run.record_streamed_completion_call(
                     crate::completion::Usage::default(),
-                    stream.identity(),
+                    stream.folded().identity(),
                     terminal.finish_reason.clone(),
                     terminal.raw.clone(),
                 ) {
@@ -1234,11 +1234,11 @@ impl TurnSource for StreamingTurnSource {
                 }
             }
 
-            let mut final_turn_content = stream.snapshot();
+            let mut final_turn_content = stream.folded().snapshot();
             let streamed_turn = assembler.finish(
-                stream.message_id.clone(),
+                stream.folded().message_id().map(str::to_owned),
                 &final_turn_content,
-                stream.reasoning_issuer(),
+                stream.folded().reasoning_issuer(),
             );
             // This attempt's identity comes from this stream's terminal record,
             // and every attempt opens its own stream, so earlier ids cannot leak
@@ -1246,7 +1246,7 @@ impl TurnSource for StreamingTurnSource {
             // explicit `MessageId` event.
             let identity = rig_core::completion::ResponseIdentity {
                 message_id: streamed_turn.message_id.clone(),
-                ..stream.identity()
+                ..stream.folded().identity()
             };
             // The raw payload comes from the same terminal record as the identity
             // above, so a retry never observes an earlier attempt's response.
@@ -1273,7 +1273,7 @@ impl TurnSource for StreamingTurnSource {
                     AssembledTurn {
                         dispatch_id,
                         dispatch_kind: &dispatched_kind,
-                        provider: stream.provider(),
+                        provider: stream.folded().provider(),
                         content: &canonical_choice,
                         usage: last_usage,
                         identity: &identity,
@@ -2053,7 +2053,7 @@ pub(crate) enum CompletionDispatch {
     Stream {
         id: EffectId,
         kind: EffectKind,
-        stream: rig_core::streaming::StreamingCompletionResponse,
+        stream: rig_core::streaming::CompletionStream,
     },
 }
 
@@ -2124,7 +2124,7 @@ pub(crate) async fn dispatch_completion(
         }
     };
     if stream {
-        let provider = model.model_ref().to_string();
+        let provider = model.label().to_string();
         let events = dispatcher.dispatch_stream_with(
             model.key(),
             kind.clone(),

@@ -1,8 +1,6 @@
 use super::*;
-use crate::driver::Bound;
-use crate::embeddings::EmbeddingModel as _;
-use crate::rerank::RerankModel as _;
 use crate::test_utils::RecordingHttpClient;
+use crate::wire::Wire;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
 fn voyage() -> VoyageAi {
@@ -28,11 +26,11 @@ const EMBED_BODY: &str = r#"{"object":"list","data":[{"object":"embedding","embe
 
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
-    let response = Bound::new(
-        voyage().embeddings("voyage-3.5", None),
+    let response = crate::driver::Model::new(
+        voyage().embedding("voyage-3.5", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
-    .embed_texts_response(vec!["first".to_owned(), "second".to_owned()])
+    .call(vec!["first".to_owned(), "second".to_owned()])
     .await
     .expect("the reply decodes");
 
@@ -59,7 +57,7 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 #[test]
 fn an_unset_option_is_absent_from_the_request() {
     let encoded = voyage()
-        .embeddings("voyage-3.5", None)
+        .embedding("voyage-3.5", None)
         .encode(vec!["first".to_owned()], Mode::Unary)
         .expect("the request encodes");
 
@@ -69,7 +67,7 @@ fn an_unset_option_is_absent_from_the_request() {
     );
 
     let encoded = voyage()
-        .embeddings("voyage-3.5", None)
+        .embedding("voyage-3.5", None)
         .with_input_type("query")
         .with_truncation(false)
         .with_output_dimension(256)
@@ -91,12 +89,12 @@ fn an_unset_option_is_absent_from_the_request() {
 #[test]
 fn an_embedding_wire_reports_the_width_it_asked_for() {
     assert_eq!(
-        voyage().embeddings("voyage-3.5", None).capabilities(),
+        voyage().embedding("voyage-3.5", None).capabilities(),
         EmbeddingCapabilities::new(1024, 1024)
     );
     assert_eq!(
         voyage()
-            .embeddings("voyage-3.5", None)
+            .embedding("voyage-3.5", None)
             .with_output_dimension(256)
             .capabilities(),
         EmbeddingCapabilities::new(1024, 256),
@@ -111,14 +109,14 @@ const RERANK_BODY: &str = r#"{"object":"list","data":[{"relevance_score":0.9,"in
 
 #[tokio::test]
 async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         voyage().rerank("rerank-2.5"),
         RecordingHttpClient::new(RERANK_BODY),
     )
-    .rerank(
-        "which is best?",
-        vec!["worse".to_owned(), "better".to_owned()],
-    )
+    .call(RerankRequest {
+        query: "which is best?".to_owned(),
+        documents: vec!["worse".to_owned(), "better".to_owned()],
+    })
     .await
     .expect("the reply decodes");
 
@@ -166,12 +164,12 @@ fn a_rerank_request_carries_the_query_the_documents_and_the_options() {
 /// `RerankModel::max_documents` reports.
 #[test]
 fn a_rerank_wire_declares_the_batch_limit() {
-    let bound = Bound::new(
+    let bound = crate::driver::Model::new(
         voyage().rerank("rerank-2.5"),
         RecordingHttpClient::new(RERANK_BODY),
     );
     assert_eq!(voyage().rerank("rerank-2.5").capabilities(), 1000);
-    assert_eq!(bound.max_documents(), 1000);
+    assert_eq!(bound.wire.capabilities(), 1000);
 }
 
 #[test]
@@ -183,7 +181,7 @@ fn a_serialized_config_carries_no_key_material() {
     );
 
     for wire in [
-        serde_json::to_string(&voyage().embeddings("voyage-3.5", None)),
+        serde_json::to_string(&voyage().embedding("voyage-3.5", None)),
         serde_json::to_string(&voyage().rerank("rerank-2.5")),
     ] {
         let serialized = wire.expect("the wire serializes");

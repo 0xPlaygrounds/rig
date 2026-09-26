@@ -3,10 +3,10 @@
 //! bytes; lazy response bodies convert through `U::from`.
 //!
 //! ```
-//! use rig_core::http_client::{BoxedHttpClient, HttpClientExt};
+//! use rig_core::http_client::{DynHttpClient, HttpClientExt};
 //!
-//! fn erase(client: impl HttpClientExt + 'static) -> BoxedHttpClient {
-//!     BoxedHttpClient::new(client)
+//! fn erase(client: impl HttpClientExt + 'static) -> DynHttpClient {
+//!     DynHttpClient::new(client)
 //! }
 //! ```
 
@@ -23,7 +23,7 @@ use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
 /// Object-safe mirror of [`HttpClientExt`] with the generics fixed to
 /// [`Bytes`]. Private: the only way to reach it is through
-/// [`BoxedHttpClient`], which re-exposes the generic surface.
+/// [`DynHttpClient`], which re-exposes the generic surface.
 pub(crate) trait ErasedHttpClient: WasmCompatSend + WasmCompatSync {
     fn send_bytes(
         &self,
@@ -72,30 +72,30 @@ where
 /// A type-erased, cheaply cloneable HTTP transport.
 ///
 /// Clones share the transport and middleware instances but copy the middleware
-/// list. Boxing an already boxed transport clones it without another layer.
+/// list. Erasing an already erased transport clones it without another layer.
 /// `Debug` prints only the type name to avoid exposing transport credentials.
 /// The transport is not serializable.
 ///
 /// ```compile_fail
 /// fn assert_serialize<T: serde::Serialize>() {}
-/// assert_serialize::<rig_core::http_client::BoxedHttpClient>();
+/// assert_serialize::<rig_core::http_client::DynHttpClient>();
 /// ```
 #[derive(Clone)]
-pub struct BoxedHttpClient {
+pub struct DynHttpClient {
     inner: Arc<dyn ErasedHttpClient>,
     /// Transport-boundary middleware, applied in attachment order around
     /// every request this handle sends. Cloned handles share the same stack.
     middleware: Vec<Arc<dyn HttpMiddleware>>,
 }
 
-impl BoxedHttpClient {
-    /// Erase `http`. If `http` is already a `BoxedHttpClient`, this is a clone
+impl DynHttpClient {
+    /// Erase `http`. If `http` is already a `DynHttpClient`, this is a clone
     /// (its attached middleware included).
     pub fn new<H>(http: H) -> Self
     where
         H: HttpClientExt + 'static,
     {
-        if let Some(already) = (&http as &dyn Any).downcast_ref::<BoxedHttpClient>() {
+        if let Some(already) = (&http as &dyn Any).downcast_ref::<DynHttpClient>() {
             return already.clone();
         }
         Self {
@@ -170,13 +170,13 @@ impl BoxedHttpClient {
     }
 }
 
-impl fmt::Debug for BoxedHttpClient {
+impl fmt::Debug for DynHttpClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("BoxedHttpClient")
+        f.write_str("DynHttpClient")
     }
 }
 
-impl HttpClientExt for BoxedHttpClient {
+impl HttpClientExt for DynHttpClient {
     fn send<T, U>(
         &self,
         req: Request<T>,

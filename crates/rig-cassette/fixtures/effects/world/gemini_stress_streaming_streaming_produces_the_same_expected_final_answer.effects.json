@@ -870,6 +870,15 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "12",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "CloBaRR9EzhYnFCODChk2yolRBtKiLCXhmazaELeM+YQhhB8dLjtYqbD/aye6BiKxZnKmvSYhwXrNJm8+PKrL5YF1Mep8e4s1U0YbOCOGGj3H1iTlEXjD2pZgvA="
+              }
+            }
           }
         },
         {

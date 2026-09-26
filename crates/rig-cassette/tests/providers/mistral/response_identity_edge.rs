@@ -13,14 +13,13 @@
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::CompletionModel;
 use rig::error::ErrorReport;
-use rig::prelude::*;
 use rig::providers::mistral;
 
 use crate::support::collect_stream_final_response_and_provider_final;
 
 use super::support::with_mistral_cassette_result;
+use rig::completion::CompletionRequestBuilder;
 
 /// The id is a UUID minted per call, so the assertion is on its presence and
 /// shape rather than a literal the scrubber placeholders anyway.
@@ -57,10 +56,9 @@ async fn blocking_response_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
         "response_identity_edge/blocking_response_carries_the_correlation_id",
         |client| async move {
-            let model = client.completion(mistral::MISTRAL_SMALL);
+            let model = rig::model(client.completion(mistral::MISTRAL_SMALL));
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await?;
             assert_is_request_id(response.provider_request_id.as_deref());
             Ok::<_, anyhow::Error>(())
@@ -74,7 +72,9 @@ async fn streaming_terminal_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
         "response_identity_edge/streaming_terminal_carries_the_correlation_id",
         |client| async move {
-            let agent = client.agent(mistral::MISTRAL_SMALL).build();
+            let agent =
+                rig::AgentBuilder::new(rig::model(client.completion(mistral::MISTRAL_SMALL)))
+                    .build();
             let mut stream = agent.prompt("Reply with exactly: identity probe").stream();
             let (_text, provider_final) =
                 collect_stream_final_response_and_provider_final(&mut stream).await?;
@@ -95,7 +95,7 @@ async fn verify_succeeds_against_the_versioned_models_route() -> Result<()> {
     with_mistral_cassette_result(
         "response_identity_edge/verify_succeeds_against_the_versioned_models_route",
         |client| async move {
-            client
+            rig::model(client.verify())
                 .verify()
                 .await
                 .map_err(|error| anyhow::anyhow!("verification should succeed: {error:?}"))?;
@@ -113,10 +113,8 @@ async fn blocking_error_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
         "response_identity_edge/blocking_error_carries_the_correlation_id",
         |client| async move {
-            let error = client
-                .completion("definitely-not-a-model")
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+            let error = rig::model(client.completion("definitely-not-a-model"))
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect_err("an unroutable model must fail");
             assert_error_keeps_id_and_body(&error);
@@ -138,11 +136,8 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
         "response_identity_edge/streaming_error_carries_the_correlation_id",
         |client| async move {
-            let error = match client
-                .completion("definitely-not-a-model")
-                .completion_request("Reply with exactly: identity probe")
-                .stream()
-                .await
+            let error = match rig::model(client.completion("definitely-not-a-model"))
+                .stream(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
             {
                 Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {
@@ -170,10 +165,8 @@ async fn blocking_unauthorized_carries_the_correlation_id() -> Result<()> {
     super::support::with_mistral_cassette_bogus_key_result(
         "response_identity_edge/blocking_unauthorized_carries_the_correlation_id",
         |client| async move {
-            let error = client
-                .completion(mistral::MISTRAL_SMALL)
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+            let error = rig::model(client.completion(mistral::MISTRAL_SMALL))
+                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
                 .expect_err("a bogus key must fail");
             assert_is_request_id(error.provider_request_id());

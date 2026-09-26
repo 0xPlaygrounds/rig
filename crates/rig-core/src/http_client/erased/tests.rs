@@ -14,9 +14,9 @@ fn request(body: &'static str) -> Request<&'static str> {
 #[test]
 fn unary_request_passes_through_unchanged_and_body_converts() {
     let inner = RecordingHttpClient::new(r#"{"ok":true}"#);
-    let boxed = BoxedHttpClient::new(inner.clone());
+    let erased = DynHttpClient::new(inner.clone());
 
-    let response = block_on(boxed.send::<_, Vec<u8>>(request("hello"))).expect("send");
+    let response = block_on(erased.send::<_, Vec<u8>>(request("hello"))).expect("send");
     let body = block_on(response.into_body()).expect("body");
     assert_eq!(body, br#"{"ok":true}"#);
 
@@ -32,17 +32,17 @@ fn unary_request_passes_through_unchanged_and_body_converts() {
 }
 
 #[test]
-fn boxing_a_boxed_client_is_a_clone_not_a_second_layer() {
-    let boxed = BoxedHttpClient::new(RecordingHttpClient::new(""));
-    let again = BoxedHttpClient::new(boxed.clone());
-    assert!(boxed.ptr_eq(&again));
-    assert!(boxed.ptr_eq(&boxed.clone()));
+fn erasing_an_erased_client_is_a_clone_not_a_second_layer() {
+    let erased = DynHttpClient::new(RecordingHttpClient::new(""));
+    let again = DynHttpClient::new(erased.clone());
+    assert!(erased.ptr_eq(&again));
+    assert!(erased.ptr_eq(&erased.clone()));
 }
 
 #[test]
 fn debug_never_prints_the_inner_transport() {
-    let boxed = BoxedHttpClient::new(RecordingHttpClient::new("secret-bearing config"));
-    assert_eq!(format!("{boxed:?}"), "BoxedHttpClient");
+    let erased = DynHttpClient::new(RecordingHttpClient::new("secret-bearing config"));
+    assert_eq!(format!("{erased:?}"), "DynHttpClient");
 }
 
 mod middleware {
@@ -125,7 +125,7 @@ mod middleware {
     fn phases_run_in_attachment_order_and_mutations_chain() {
         let inner = RecordingHttpClient::new("ok");
         let log = Arc::new(Mutex::new(Vec::new()));
-        let boxed = BoxedHttpClient::new(inner.clone())
+        let erased = DynHttpClient::new(inner.clone())
             .with_middleware(Tagger {
                 tag: "a",
                 log: log.clone(),
@@ -135,7 +135,7 @@ mod middleware {
                 log: log.clone(),
             });
 
-        block_on(boxed.send::<_, Bytes>(request("body-"))).expect("send");
+        block_on(erased.send::<_, Bytes>(request("body-"))).expect("send");
 
         let captured = inner.requests();
         assert_eq!(captured.len(), 1);
@@ -210,8 +210,8 @@ mod middleware {
     #[test]
     fn request_side_failure_aborts_before_sending() {
         let inner = RecordingHttpClient::new("ok");
-        let boxed = BoxedHttpClient::new(inner.clone()).with_middleware(FailAt("headers"));
-        let Err(err) = block_on(boxed.send::<_, Bytes>(request("hello"))) else {
+        let erased = DynHttpClient::new(inner.clone()).with_middleware(FailAt("headers"));
+        let Err(err) = block_on(erased.send::<_, Bytes>(request("hello"))) else {
             panic!("must abort")
         };
         assert_eq!(err.non_success_status(), Some(StatusCode::BAD_REQUEST));
@@ -221,8 +221,8 @@ mod middleware {
     #[test]
     fn response_hook_failure_surfaces_as_the_request_error() {
         let inner = RecordingHttpClient::new("ok");
-        let boxed = BoxedHttpClient::new(inner.clone()).with_middleware(FailAt("response"));
-        let Err(err) = block_on(boxed.send::<_, Bytes>(request("hello"))) else {
+        let erased = DynHttpClient::new(inner.clone()).with_middleware(FailAt("response"));
+        let Err(err) = block_on(erased.send::<_, Bytes>(request("hello"))) else {
             panic!("must fail")
         };
         assert_eq!(
@@ -264,10 +264,10 @@ mod middleware {
         let inner = MockStreamingClient {
             sse_bytes: Bytes::from_static(b"data: hi\n\n"),
         };
-        let boxed = BoxedHttpClient::new(inner).with_middleware(CaptureContentType(seen.clone()));
+        let erased = DynHttpClient::new(inner).with_middleware(CaptureContentType(seen.clone()));
         // The hook has run by the time `send_streaming` resolves — before
         // any of the body stream is polled.
-        let response = block_on(boxed.send_streaming(request(""))).expect("stream");
+        let response = block_on(erased.send_streaming(request(""))).expect("stream");
         assert_eq!(
             seen.lock().expect("seen").as_deref(),
             Some("200:text/event-stream")
@@ -276,18 +276,18 @@ mod middleware {
     }
 
     #[test]
-    fn boxing_preserves_middleware_and_ptr_eq_ignores_it() {
+    fn erasing_preserves_middleware_and_ptr_eq_ignores_it() {
         let log = Arc::new(Mutex::new(Vec::new()));
-        let plain = BoxedHttpClient::new(RecordingHttpClient::new("ok"));
+        let plain = DynHttpClient::new(RecordingHttpClient::new("ok"));
         let layered = plain.clone().with_middleware(Tagger {
             tag: "a",
             log: log.clone(),
         });
         // Same transport, so ptr_eq holds despite differing middleware.
         assert!(plain.ptr_eq(&layered));
-        // Re-boxing clones the handle, middleware included.
-        let reboxed = BoxedHttpClient::new(layered);
-        block_on(reboxed.send::<_, Bytes>(request("x"))).expect("send");
+        // Re-erasing clones the handle, middleware included.
+        let reerased = DynHttpClient::new(layered);
+        block_on(reerased.send::<_, Bytes>(request("x"))).expect("send");
         assert!(!log.lock().expect("log").is_empty());
     }
 }
@@ -295,8 +295,8 @@ mod middleware {
 #[test]
 fn transport_errors_surface_unchanged() {
     let inner = RecordingHttpClient::with_error(http::StatusCode::TOO_MANY_REQUESTS, "slow");
-    let boxed = BoxedHttpClient::new(inner);
-    let Err(err) = block_on(boxed.send::<_, Bytes>(request(""))) else {
+    let erased = DynHttpClient::new(inner);
+    let Err(err) = block_on(erased.send::<_, Bytes>(request(""))) else {
         panic!("expected a transport error")
     };
     assert_eq!(

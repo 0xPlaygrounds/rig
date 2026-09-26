@@ -2,7 +2,7 @@
 //!
 //! ```no_run
 //! use rig_core::providers::{mistral, openai::wire::{MISTRAL, OpenAI}};
-//! let wire = OpenAI::from_env_with(&MISTRAL)?.embeddings(mistral::MISTRAL_EMBED, None);
+//! let wire = OpenAI::from_env_with(&MISTRAL)?.embedding(mistral::MISTRAL_EMBED, None);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

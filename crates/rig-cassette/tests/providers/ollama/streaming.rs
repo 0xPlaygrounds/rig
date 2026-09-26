@@ -1,6 +1,5 @@
 //! Migrated from `examples/ollama_streaming.rs`.
 
-use rig::prelude::*;
 use rig::providers::ollama::wire::Ollama;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
@@ -8,14 +7,14 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response};
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn example_streaming_prompt() {
-    let agent = Ollama::from_env()
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build")
-        .agent("llama3.2")
-        .preamble("Be precise and concise.")
-        .temperature(0.5)
-        .build();
+    let agent = rig::AgentBuilder::new(rig::model(
+        Ollama::from_env()
+            .expect("config should build from env")
+            .completion("llama3.2"),
+    ))
+    .preamble("Be precise and concise.")
+    .temperature(0.5)
+    .build();
 
     let mut stream = agent
         .prompt("When and where and what type is the next solar eclipse?")

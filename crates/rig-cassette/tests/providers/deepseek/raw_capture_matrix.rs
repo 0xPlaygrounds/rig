@@ -37,7 +37,7 @@
 //! block, a finish reason, or a reasoning block fails loudly instead of
 //! covering nothing.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
+use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::providers::deepseek;
 use serde::Deserialize;
@@ -47,6 +47,7 @@ use super::support::with_deepseek_cassette_result;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
 use crate::support::{Observed, assert_matches_recorded_token, assistant_text, json_contains_key};
+use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -58,18 +59,16 @@ const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the
 /// it answers, so the reasoning cell needs real headroom.
 const REASONING_BUDGET: u64 = 640;
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> CompletionRequest {
+    CompletionRequestBuilder::new(PROMPT)
         .additional_params(json!({ "thinking": { "type": "disabled" } }))
         .max_tokens(16)
         .build()
 }
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
-fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(REASONING_PROMPT)
+fn reasoning_request() -> CompletionRequest {
+    CompletionRequestBuilder::new(REASONING_PROMPT)
         .additional_params(json!({ "thinking": { "type": "enabled" } }))
         .max_tokens(REASONING_BUDGET)
         .build()
@@ -143,7 +142,13 @@ async fn raw_round_trips_deepseek_type() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_round_trips_deepseek_type",
-        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_round_trips_deepseek_type should replay from its cassette");
@@ -177,7 +182,13 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens",
-        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("raw_exposes_prompt_cache_miss_tokens should replay from its cassette");
@@ -222,7 +233,13 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
@@ -261,7 +278,13 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content",
-        |client| capture_completion(client.completion(MODEL), reasoning_request, sink.clone()),
+        |client| {
+            capture_completion(
+                rig::model(client.completion(MODEL)),
+                reasoning_request(),
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect(

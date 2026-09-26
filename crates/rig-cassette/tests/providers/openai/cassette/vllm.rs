@@ -1,7 +1,5 @@
 //! vLLM OpenAI-compatible Responses API regression tests.
 
-use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::CompletionResponse as ProviderResponse;
 use serde::Deserialize;
@@ -10,10 +8,11 @@ use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::ProviderCassette;
 use futures::FutureExt;
+use rig::completion::CompletionRequestBuilder;
 
 async fn with_openai_vllm_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAI) -> Fut,
     Fut: Future<Output = ()>,
 {
     let base_url =
@@ -25,10 +24,7 @@ where
         &base_url,
     )
     .await;
-    let client = OpenAI::new("dummy-vllm-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("vLLM OpenAI-compatible client should build");
+    let client = OpenAI::new("dummy-vllm-key").with_base_url(cassette.base_url());
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -39,18 +35,16 @@ async fn responses_api_accepts_null_metadata() {
     with_openai_vllm_cassette(
         "vllm/responses_api_accepts_null_metadata",
         |client| async move {
-            let model = client.completion("Qwen/Qwen3-0.6B");
-            let request = model
-                .completion_request("Reply with a short acknowledgement.")
-                .max_tokens(8)
-                .build();
+            let model = rig::model(client.completion("Qwen/Qwen3-0.6B"));
+            let request = CompletionRequestBuilder::new("Reply with a short acknowledgement.")
+                .max_tokens(8).build();
 
             // `metadata` is a provider-native wire field, so it is read off the
             // Responses API's own response type, deserialized from
             // `CompletionResponse::raw`. One request therefore yields both
             // views, which is what the single recorded interaction allows.
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("vLLM Responses API completion with null metadata should deserialize");
             let reply = ProviderResponse::deserialize(&response.raw)

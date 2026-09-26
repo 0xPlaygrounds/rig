@@ -150,9 +150,7 @@ impl AgentHook for TurnCounterHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = OpenAI::from_env()?
-        .bound()?
-        .agent(openai::GPT_4O)
+    let agent = AgentBuilder::new(rig::model(OpenAI::from_env()?.completion(openai::GPT_4O)))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

@@ -100,7 +100,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -719,6 +719,17 @@
           "id": "wire:msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_0b4ccd6880bda668006ab2b4cf44d087d0a7c75de0c89c1e33",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "42"
           }
         },
         {
