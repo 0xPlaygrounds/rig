@@ -27,11 +27,12 @@ use rig_agent::{
     completion::{CompletionRequest, FinishReason, Usage},
     streaming::StreamFinal,
 };
-use rig_core::driver::{Model, Observation, Opened, Transport};
-use rig_core::error::{EncodeError, ProviderError};
+use rig_core::driver::{Local, Model, Observation, Opened, Transport};
+use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
 use rig_core::operation::{AdapterOutput, Completion};
-use rig_core::wire::{Decoder, Mode, Wire, WireEvent};
+use rig_core::streaming::StreamEvent;
+use rig_core::wire::Mode;
 
 /// The full answer costs this many output tokens; anything less is truncated.
 const ANSWER_COST: u64 = 40;
@@ -39,9 +40,9 @@ const ANSWER_COST: u64 = 40;
 const ANSWER: &str = "Rig normalizes every provider's stop reason into one vocabulary.";
 
 /// A local model that behaves like a real one under an output-token cap: it
-/// emits what fits and reports `Length` when the cap cut it short. It is its
-/// own wire (what a request sends: the cap), transport (the answer under
-/// that cap) and decoder (the answer as stream events).
+/// emits what fits and reports `Length` when the cap cut it short. It is
+/// the transport behind a [`Local`] wire and answers with the turn's events,
+/// so the hook sees the same reason and the same cap on either surface.
 #[derive(Clone)]
 struct Budgeted;
 
@@ -58,56 +59,26 @@ fn answer_under(cap: Option<u64>) -> (String, FinishReason) {
     }
 }
 
-impl Wire for Budgeted {
-    type Op = Completion;
-    type Payload = Option<u64>;
-    type Frame = (String, FinishReason);
-    type Decoder = Self;
-
-    fn name(&self) -> &str {
-        "budgeted"
-    }
-
-    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<Option<u64>, EncodeError> {
-        Ok(request.max_tokens)
-    }
-
-    fn decoder(&self, _mode: Mode) -> Self {
-        Self
-    }
-}
-
-impl Transport<Budgeted> for Budgeted {
+impl Transport<Local<Completion>> for Budgeted {
     fn send(
         &self,
-        cap: Option<u64>,
+        request: CompletionRequest,
         _mode: Mode,
         _observation: Option<Observation>,
     ) -> Result<
-        impl Future<Output = Opened<Option<u64>, (String, FinishReason)>> + Send + 'static + use<>,
+        impl Future<Output = Opened<CompletionRequest, StreamEvent>> + Send + 'static + use<>,
         ProviderError,
     > {
-        Ok(std::future::ready(Opened::new(stream::iter([Ok(
-            answer_under(cap),
-        )]))))
-    }
-}
-
-impl Decoder<Completion, (String, FinishReason)> for Budgeted {
-    type Event = (String, FinishReason);
-
-    fn classify(&self, answer: (String, FinishReason)) -> WireEvent<(String, FinishReason)> {
-        WireEvent::Known(answer)
-    }
-
-    /// Identical semantics on both surfaces: the hook sees the same reason
-    /// and the same cap either way.
-    fn interpret(&mut self, (text, reason): (String, FinishReason), out: &mut AdapterOutput) {
+        let (text, reason) = answer_under(request.max_tokens);
+        let mut out = AdapterOutput::scripted();
         out.text(text);
         out.final_record(
             StreamFinal::new("budgeted", Usage::default(), serde_json::Value::Null)
                 .with_finish_reason(reason),
         );
+        Ok(std::future::ready(Opened::new(stream::iter(
+            out.into_items(),
+        ))))
     }
 }
 
@@ -181,7 +152,7 @@ impl AgentHook for GrowCapOnTruncation {
 #[tokio::main]
 async fn main() -> Result<()> {
     // One model serves both agents: erase it once, clone the handle.
-    let budgeted = Model::new(Budgeted, Budgeted).erase();
+    let budgeted = Model::new(Local::new("budgeted"), Budgeted).erase();
     // Starts far below what the answer costs, so the first attempts truncate.
     let agent = AgentBuilder::new(budgeted.clone())
         .add_hook(GrowCapOnTruncation::new(8, 256))

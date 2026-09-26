@@ -1,9 +1,9 @@
 //! Embedding helpers for deterministic tests.
 
-use crate::driver::{Model, Observation, Opened, Transport};
-use crate::error::{EncodeError, ProviderError};
-use crate::operation::EmbeddingCapabilities;
-use crate::wire::{Decoder, Mode, Output, Sink, Wire, WireEvent};
+use crate::driver::{Local, Model, Observation, Opened, Transport};
+use crate::error::ProviderError;
+use crate::operation::{Embedding as EmbeddingOp, EmbeddingCapabilities};
+use crate::wire::Mode;
 use crate::{
     Embed,
     embeddings::{
@@ -13,60 +13,28 @@ use crate::{
     wasm_compat::WasmCompatSend,
 };
 
-/// The mock embedding endpoint, and its transport: every text embeds to
-/// one fixed vector, five texts to a request at ten dimensions.
+/// The mock embedding transport: every text embeds to one fixed vector,
+/// five texts to a request at ten dimensions.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MockEmbeddings;
 
 /// A deterministic embedding model that returns a fixed vector for each input document.
-pub type MockEmbeddingModel = Model<MockEmbeddings, MockEmbeddings>;
+pub type MockEmbeddingModel = Model<Local<EmbeddingOp>, MockEmbeddings>;
 
-impl Wire for MockEmbeddings {
-    type Op = crate::operation::Embedding;
-    type Payload = Vec<String>;
-    type Frame = Vec<String>;
-    type Decoder = MockEmbeddings;
-
-    fn name(&self) -> &str {
-        super::MOCK_PROVIDER
+impl MockEmbeddings {
+    /// The mock's wire: the mock provider at the mock's batch size and width.
+    pub fn wire() -> Local<EmbeddingOp> {
+        Local::new(super::MOCK_PROVIDER).with_capabilities(EmbeddingCapabilities::new(5, 10))
     }
 
-    fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Vec<String>, EncodeError> {
-        Ok(texts)
+    /// The mock model: the mock's wire over this transport.
+    pub fn model() -> MockEmbeddingModel {
+        Model::new(Self::wire(), Self)
     }
 
-    fn decoder(&self, _mode: Mode) -> Self {
-        Self
-    }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(5, 10)
-    }
-}
-
-impl Transport<MockEmbeddings> for MockEmbeddings {
-    fn send(
-        &self,
-        texts: Vec<String>,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Vec<String>>> + WasmCompatSend + 'static + use<>,
-        ProviderError,
-    > {
-        Ok(async move { Opened::new(futures::stream::iter([Ok(texts)])) })
-    }
-}
-
-impl Decoder<crate::operation::Embedding, Vec<String>> for MockEmbeddings {
-    type Event = Vec<String>;
-
-    fn classify(&self, texts: Vec<String>) -> WireEvent<Vec<String>> {
-        WireEvent::Known(texts)
-    }
-
-    fn interpret(&mut self, texts: Vec<String>, out: &mut Output<crate::operation::Embedding>) {
-        out.push(Ok(EmbeddingResponse::new(
+    /// The reply the mock gives `texts`: one fixed vector each.
+    pub fn embed(texts: Vec<String>) -> EmbeddingResponse {
+        EmbeddingResponse::new(
             texts
                 .into_iter()
                 .map(|document| Embedding {
@@ -75,7 +43,21 @@ impl Decoder<crate::operation::Embedding, Vec<String>> for MockEmbeddings {
                 })
                 .collect(),
             super::MOCK_PROVIDER,
-        )));
+        )
+    }
+}
+
+impl Transport<Local<EmbeddingOp>> for MockEmbeddings {
+    fn send(
+        &self,
+        texts: Vec<String>,
+        _mode: Mode,
+        _observation: Option<Observation>,
+    ) -> Result<
+        impl Future<Output = Opened<Vec<String>, EmbeddingResponse>> + WasmCompatSend + 'static + use<>,
+        ProviderError,
+    > {
+        Ok(async move { Opened::new(futures::stream::iter([Ok(Self::embed(texts))])) })
     }
 }
 

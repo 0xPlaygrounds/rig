@@ -331,7 +331,7 @@ async fn required_embed_effect_log_is_the_golden_fixture() {
                 HandlerKey::from("host/embed"),
                 ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "host",
-                    rig::test_utils::MockEmbeddingModel::default(),
+                    rig::test_utils::MockEmbeddings::model(),
                 )),
             )
             .expect("a fresh key");

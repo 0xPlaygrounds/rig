@@ -17,11 +17,12 @@ use rig_agent::{
     streaming::StreamFinal,
     tool::{Tool, ToolContext},
 };
-use rig_core::driver::{Model, Observation, Opened, Transport};
-use rig_core::error::{EncodeError, ProviderError};
+use rig_core::driver::{Local, Model, Observation, Opened, Transport};
+use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 use rig_core::operation::{AdapterOutput, Completion, ImagePart};
-use rig_core::wire::{Decoder, Mode, Wire, WireEvent};
+use rig_core::streaming::StreamEvent;
+use rig_core::wire::Mode;
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
@@ -31,69 +32,37 @@ fn usage(total_tokens: u64) -> Usage {
     }
 }
 
-/// A local model: `answer` decides its reply from the request. It is its
-/// own wire (a request becomes its answer), transport (it returns the
-/// answer) and decoder (the answer as stream events), so the blocking and
-/// streaming surfaces reply alike.
+/// A scripted model: `answer` decides its reply from the request. It is the
+/// transport behind a [`Local`] wire and answers with the turn's events, so
+/// the blocking and streaming surfaces reply alike.
 #[derive(Clone)]
-struct Local {
+struct Scripted {
     provider: &'static str,
     total_tokens: u64,
     answer: fn(&CompletionRequest) -> AssistantContent,
 }
 
-impl Wire for Local {
-    type Op = Completion;
-    type Payload = AssistantContent;
-    type Frame = AssistantContent;
-    type Decoder = Self;
-
-    fn name(&self) -> &str {
-        self.provider
-    }
-
-    fn encode(
+impl Transport<Local<Completion>> for Scripted {
+    fn send(
         &self,
         request: CompletionRequest,
         _mode: Mode,
-    ) -> Result<AssistantContent, EncodeError> {
-        Ok((self.answer)(&request))
-    }
-
-    fn decoder(&self, _mode: Mode) -> Self {
-        self.clone()
-    }
-}
-
-impl Transport<Local> for Local {
-    fn send(
-        &self,
-        answer: AssistantContent,
-        _mode: Mode,
         _observation: Option<Observation>,
     ) -> Result<
-        impl Future<Output = Opened<AssistantContent, AssistantContent>> + Send + 'static + use<>,
+        impl Future<Output = Opened<CompletionRequest, StreamEvent>> + Send + 'static + use<>,
         ProviderError,
     > {
-        Ok(std::future::ready(Opened::new(stream::iter([Ok(answer)]))))
-    }
-}
-
-impl Decoder<Completion, AssistantContent> for Local {
-    type Event = AssistantContent;
-
-    fn classify(&self, answer: AssistantContent) -> WireEvent<AssistantContent> {
-        WireEvent::Known(answer)
-    }
-
-    fn interpret(&mut self, answer: AssistantContent, out: &mut AdapterOutput) {
+        let mut out = AdapterOutput::scripted();
         out.message_id(format!("{}-message", self.provider));
-        out.content(&[answer], ImagePart::Block);
+        out.content(&[(self.answer)(&request)], ImagePart::Block);
         out.final_record(StreamFinal::new(
             self.provider,
             usage(self.total_tokens),
             serde_json::Value::Null,
         ));
+        Ok(std::future::ready(Opened::new(stream::iter(
+            out.into_items(),
+        ))))
     }
 }
 
@@ -101,13 +70,15 @@ fn local(
     provider: &'static str,
     total_tokens: u64,
     answer: fn(&CompletionRequest) -> AssistantContent,
-) -> Model<Local, Local> {
-    let model = Local {
-        provider,
-        total_tokens,
-        answer,
-    };
-    Model::new(model.clone(), model)
+) -> Model<Local<Completion>, Scripted> {
+    Model::new(
+        Local::new(provider),
+        Scripted {
+            provider,
+            total_tokens,
+            answer,
+        },
+    )
 }
 
 /// Calls the search tool.

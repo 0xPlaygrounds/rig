@@ -1,43 +1,18 @@
 use crate::embeddings::embed::{EmbedError, TextEmbedder};
 use crate::embeddings::{Embed, Embedding};
 use crate::error::ProviderError;
-use crate::test_utils::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
+use crate::test_utils::{MockMultiTextDocument, MockTextDocument};
 
 use super::EmbeddingsBuilder;
-use crate::driver::{Model, Observation, Opened, Transport};
+use crate::driver::{Local, Model, Observation, Opened, Transport};
+use crate::embeddings::EmbeddingResponse;
 use crate::operation::EmbeddingCapabilities;
 use crate::test_utils::MockEmbeddings;
-use crate::wire::{Mode, Wire};
+use crate::wire::Mode;
 
 /// The mock embedding endpoint at a chosen batch size.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Batches(usize);
-
-impl Wire for Batches {
-    type Op = crate::operation::Embedding;
-    type Payload = Vec<String>;
-    type Frame = Vec<String>;
-    type Decoder = MockEmbeddings;
-
-    fn name(&self) -> &str {
-        "mock"
-    }
-
-    fn encode(
-        &self,
-        texts: Vec<String>,
-        _mode: Mode,
-    ) -> Result<Vec<String>, crate::error::EncodeError> {
-        Ok(texts)
-    }
-
-    fn decoder(&self, _mode: Mode) -> MockEmbeddings {
-        MockEmbeddings
-    }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(self.0, 10)
-    }
+fn batches(size: usize) -> Local<crate::operation::Embedding> {
+    Local::new("mock").with_capabilities(EmbeddingCapabilities::new(size, 10))
 }
 
 fn definitions_multiple_text() -> Vec<MockMultiTextDocument> {
@@ -80,7 +55,7 @@ fn definitions_single_text() -> Vec<MockTextDocument> {
 async fn test_build_multiple_text() {
     let fake_definitions = definitions_multiple_text();
 
-    let fake_model = MockEmbeddingModel::default();
+    let fake_model = MockEmbeddings::model();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(fake_definitions)
         .unwrap()
@@ -113,7 +88,7 @@ async fn test_build_multiple_text() {
 async fn test_build_single_text() {
     let fake_definitions = definitions_single_text();
 
-    let fake_model = MockEmbeddingModel::default();
+    let fake_model = MockEmbeddings::model();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(fake_definitions)
         .unwrap()
@@ -147,7 +122,7 @@ async fn test_build_multiple_and_single_text() {
     let fake_definitions = definitions_multiple_text();
     let fake_definitions_single = definitions_multiple_text_2();
 
-    let fake_model = MockEmbeddingModel::default();
+    let fake_model = MockEmbeddings::model();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(fake_definitions)
         .unwrap()
@@ -183,7 +158,7 @@ async fn test_build_string() {
     let bindings = definitions_multiple_text();
     let fake_definitions = bindings.iter().map(|def| def.texts.clone());
 
-    let fake_model = MockEmbeddingModel::default();
+    let fake_model = MockEmbeddings::model();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(fake_definitions)
         .unwrap()
@@ -217,7 +192,7 @@ async fn test_build_preserves_input_order_across_batches() {
     // sequence matches the input order exactly.
     let texts: Vec<String> = (0..12).map(|i| format!("text-{i:02}")).collect();
 
-    let fake_model = MockEmbeddingModel::default();
+    let fake_model = MockEmbeddings::model();
     let result = EmbeddingsBuilder::new(fake_model)
         .documents(texts.clone())
         .unwrap()
@@ -251,14 +226,14 @@ impl SlowFirstBatchModel {
     }
 }
 
-impl Transport<Batches> for SlowFirstBatchModel {
+impl Transport<Local<crate::operation::Embedding>> for SlowFirstBatchModel {
     fn send(
         &self,
         documents: Vec<String>,
         _mode: Mode,
         _observation: Option<Observation>,
     ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Vec<String>>> + Send + 'static + use<>,
+        impl Future<Output = Opened<Vec<String>, EmbeddingResponse>> + Send + 'static + use<>,
         ProviderError,
     > {
         let model = self.clone();
@@ -268,7 +243,9 @@ impl Transport<Batches> for SlowFirstBatchModel {
             if nth == 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
             }
-            Opened::new(futures::stream::iter([Ok(documents)]))
+            Opened::new(futures::stream::iter([Ok(MockEmbeddings::embed(
+                documents,
+            ))]))
         })
     }
 }
@@ -292,14 +269,14 @@ impl DescendingLatencyModel {
     }
 }
 
-impl Transport<Batches> for DescendingLatencyModel {
+impl Transport<Local<crate::operation::Embedding>> for DescendingLatencyModel {
     fn send(
         &self,
         documents: Vec<String>,
         _mode: Mode,
         _observation: Option<Observation>,
     ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Vec<String>>> + Send + 'static + use<>,
+        impl Future<Output = Opened<Vec<String>, EmbeddingResponse>> + Send + 'static + use<>,
         ProviderError,
     > {
         let model = self.clone();
@@ -312,7 +289,9 @@ impl Transport<Batches> for DescendingLatencyModel {
                 120u64.saturating_sub(nth * 40),
             ))
             .await;
-            Opened::new(futures::stream::iter([Ok(documents)]))
+            Opened::new(futures::stream::iter([Ok(MockEmbeddings::embed(
+                documents,
+            ))]))
         })
     }
 }
@@ -370,7 +349,7 @@ async fn test_build_preserves_text_order_within_a_straddling_document() {
     let doc = NTexts::new(0, 6);
     let expected = doc.expected();
 
-    let result = EmbeddingsBuilder::new(Model::new(Batches(5), SlowFirstBatchModel::new()))
+    let result = EmbeddingsBuilder::new(Model::new(batches(5), SlowFirstBatchModel::new()))
         .document(doc)
         .unwrap()
         .build()
@@ -396,7 +375,7 @@ async fn test_build_preserves_text_order_across_many_straddling_documents() {
     let docs: Vec<NTexts> = (0..4).map(|doc| NTexts::new(doc, 3)).collect();
     let expected: Vec<Vec<String>> = docs.iter().map(NTexts::expected).collect();
 
-    let result = EmbeddingsBuilder::new(Model::new(Batches(5), DescendingLatencyModel::new()))
+    let result = EmbeddingsBuilder::new(Model::new(batches(5), DescendingLatencyModel::new()))
         .documents(docs)
         .unwrap()
         .build()
@@ -424,7 +403,7 @@ async fn test_build_preserves_text_order_across_many_straddling_documents() {
 /// behavior.
 #[tokio::test]
 async fn test_build_rejects_a_document_that_embeds_no_text() {
-    let error = EmbeddingsBuilder::new(MockEmbeddingModel::default())
+    let error = EmbeddingsBuilder::new(MockEmbeddings::model())
         .document(NTexts::new(0, 0))
         .unwrap()
         .build()
@@ -445,7 +424,7 @@ async fn test_build_rejects_a_document_that_embeds_no_text() {
 /// message has to be the document's own, not a constant.
 #[tokio::test]
 async fn test_build_names_the_document_that_embeds_no_text() {
-    let error = EmbeddingsBuilder::new(MockEmbeddingModel::default())
+    let error = EmbeddingsBuilder::new(MockEmbeddings::model())
         .documents(vec![
             NTexts::new(0, 2),
             NTexts::new(1, 2),
@@ -467,14 +446,14 @@ async fn test_build_names_the_document_that_embeds_no_text() {
 #[derive(Clone, Default)]
 struct OneAtATimeReversedLatency;
 
-impl Transport<Batches> for OneAtATimeReversedLatency {
+impl Transport<Local<crate::operation::Embedding>> for OneAtATimeReversedLatency {
     fn send(
         &self,
         documents: Vec<String>,
         _mode: Mode,
         _observation: Option<Observation>,
     ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Vec<String>>> + Send + 'static + use<>,
+        impl Future<Output = Opened<Vec<String>, EmbeddingResponse>> + Send + 'static + use<>,
         ProviderError,
     > {
         // Earlier texts wait longer, so completion order is close to the
@@ -496,7 +475,9 @@ impl Transport<Batches> for OneAtATimeReversedLatency {
         let delay = 60u64.saturating_sub(position * 10);
         Ok(async move {
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-            Opened::new(futures::stream::iter([Ok(documents)]))
+            Opened::new(futures::stream::iter([Ok(MockEmbeddings::embed(
+                documents,
+            ))]))
         })
     }
 }
@@ -509,7 +490,7 @@ async fn test_build_order_survives_one_text_per_batch_finishing_backwards() {
     let doc = NTexts::new(0, 6);
     let expected = doc.expected();
 
-    let result = EmbeddingsBuilder::new(Model::new(Batches(1), OneAtATimeReversedLatency))
+    let result = EmbeddingsBuilder::new(Model::new(batches(1), OneAtATimeReversedLatency))
         .document(doc)
         .unwrap()
         .build()
@@ -530,7 +511,7 @@ async fn test_build_order_when_documents_tile_the_batch_size_exactly() {
     let docs: Vec<NTexts> = (0..3).map(|doc| NTexts::new(doc, 5)).collect();
     let expected: Vec<Vec<String>> = docs.iter().map(NTexts::expected).collect();
 
-    let result = EmbeddingsBuilder::new(Model::new(Batches(5), SlowFirstBatchModel::new()))
+    let result = EmbeddingsBuilder::new(Model::new(batches(5), SlowFirstBatchModel::new()))
         .documents(docs)
         .unwrap()
         .build()

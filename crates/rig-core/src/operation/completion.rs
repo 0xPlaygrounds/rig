@@ -411,6 +411,10 @@ pub struct AdapterOutput {
     /// Whether nonmatching block events close automatically opened blocks.
     /// Disabled by default so provider adapters control explicit boundaries.
     self_closing: bool,
+    /// Whether events are kept as the helpers wrote them, uncanonicalized:
+    /// what a transport scripts a reply with, leaving canonicalization to
+    /// the driver's sink.
+    scripted: bool,
     /// Blocks a start was emitted for (or that a delta opened leniently),
     /// in order, so a delta never precedes its block's start on the wire we
     /// emit and the reply's end can close what is still open.
@@ -457,6 +461,18 @@ impl AdapterOutput {
     pub fn self_closing() -> Self {
         Self {
             self_closing: true,
+            ..Self::default()
+        }
+    }
+
+    /// An output whose events are the helpers' own, uncanonicalized: what
+    /// a transport behind a [`Local`](crate::driver::Local) wire scripts a
+    /// reply with. The driver's sink canonicalizes them once, so a malformed
+    /// block scripted here reaches the consumer as the in-band error it
+    /// would be on a provider's stream.
+    pub fn scripted() -> Self {
+        Self {
+            scripted: true,
             ..Self::default()
         }
     }
@@ -568,7 +584,12 @@ impl AdapterOutput {
                 self.active_reasoning = None;
             }
         }
-        if let Some(item) = self.canonical(item) {
+        let item = if self.scripted {
+            Some(item)
+        } else {
+            self.canonical(item)
+        };
+        if let Some(item) = item {
             self.items.push(item);
         }
     }

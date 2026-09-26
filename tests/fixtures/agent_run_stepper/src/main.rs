@@ -25,17 +25,17 @@ use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
 use rig_core::completion::{AssistantContent, CompletionRequest, CompletionRequestBuilder, ModelRef, Usage};
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Local, Model, Observation, Opened, Transport};
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::operation::{AdapterOutput, Completion, ImagePart};
-use rig_core::streaming::StreamFinal;
+use rig_core::streaming::{StreamEvent, StreamFinal};
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::wasm_compat::WasmCompatSend;
-use rig_core::error::{EncodeError, ProviderError};
-use rig_core::wire::{Decoder, Mode, Wire, WireEvent};
+use rig_core::error::ProviderError;
+use rig_core::wire::Mode;
 
 /// Every future here is ready on first poll (a scripted model, in-process
 /// tools); a no-op waker is all the "runtime" this driver needs.
@@ -62,41 +62,21 @@ fn drive<F: Future + Unpin>(mut future: F, driver: &mut BusDriver) -> F::Output 
     }
 }
 
-/// Calls `add(2, 3)` on its first turn, answers "done" on its second. It is
-/// its own wire (the request is the payload), transport (the scripted
-/// answer) and decoder (the answer as events).
+/// Calls `add(2, 3)` on its first turn, answers "done" on its second: the
+/// transport behind a [`Local`] wire, answering with the turn's events.
 #[derive(Clone, Default)]
 struct Scripted {
     calls: Arc<AtomicUsize>,
 }
 
-impl Wire for Scripted {
-    type Op = Completion;
-    type Payload = CompletionRequest;
-    type Frame = Vec<AssistantContent>;
-    type Decoder = Self;
-
-    fn name(&self) -> &str {
-        "fixture"
-    }
-
-    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<CompletionRequest, EncodeError> {
-        Ok(request)
-    }
-
-    fn decoder(&self, _mode: Mode) -> Self {
-        self.clone()
-    }
-}
-
-impl Transport<Scripted> for Scripted {
+impl Transport<Local<Completion>> for Scripted {
     fn send(
         &self,
         request: CompletionRequest,
         mode: Mode,
         _observation: Option<Observation>,
     ) -> Result<
-        impl Future<Output = Opened<CompletionRequest, Vec<AssistantContent>>> + WasmCompatSend + 'static + use<>,
+        impl Future<Output = Opened<CompletionRequest, StreamEvent>> + WasmCompatSend + 'static + use<>,
         ProviderError,
     > {
         if mode == Mode::Streaming {
@@ -125,24 +105,13 @@ impl Transport<Scripted> for Scripted {
         } else {
             vec![AssistantContent::text("done")]
         };
-        Ok(std::future::ready(Opened::new(futures::stream::iter([Ok(choice)]))))
-    }
-}
-
-impl Decoder<Completion, Vec<AssistantContent>> for Scripted {
-    type Event = Vec<AssistantContent>;
-
-    fn classify(&self, choice: Vec<AssistantContent>) -> WireEvent<Vec<AssistantContent>> {
-        WireEvent::Known(choice)
-    }
-
-    fn interpret(&mut self, choice: Vec<AssistantContent>, out: &mut AdapterOutput) {
+        let mut out = AdapterOutput::scripted();
         out.content(&choice, ImagePart::Block);
         out.final_record(StreamFinal::new("fixture", Usage::default(), serde_json::Value::Null));
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        Some(serde_json::json!({ "provider": "fixture" }))
+        Ok(std::future::ready(Opened {
+            document: Some(serde_json::json!({ "provider": "fixture" })),
+            ..Opened::new(futures::stream::iter(out.into_items()))
+        }))
     }
 }
 
@@ -174,7 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "model",
         ModelAdapter::new(
             ModelRef::new("fixture"),
-            Model::new(Scripted::default(), Scripted::default()),
+            Model::new(Local::new("fixture"), Scripted::default()),
         ),
     )?;
     let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;

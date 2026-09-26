@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Model, Opened, Transport};
+use super::{Local, Model, Opened, Transport};
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
@@ -1247,48 +1247,11 @@ impl Fold<PoseEstimation> for PoseTrack {
     }
 }
 
-/// A wire whose payload is the request and whose frames are the events.
-#[derive(Clone)]
-struct PoseWire;
-
-struct PoseDecoder;
-
-impl Decoder<PoseEstimation, SkeletonFrame> for PoseDecoder {
-    type Event = SkeletonFrame;
-
-    fn classify(&self, frame: SkeletonFrame) -> WireEvent<SkeletonFrame> {
-        WireEvent::Known(frame)
-    }
-
-    fn interpret(&mut self, frame: SkeletonFrame, out: &mut Output<PoseEstimation>) {
-        out.push(Ok(frame));
-    }
-}
-
-impl Wire for PoseWire {
-    type Op = PoseEstimation;
-    type Payload = VideoRequest;
-    type Frame = SkeletonFrame;
-    type Decoder = PoseDecoder;
-
-    fn name(&self) -> &str {
-        "pose"
-    }
-
-    fn encode(&self, request: VideoRequest, _: Mode) -> Result<VideoRequest, EncodeError> {
-        Ok(request)
-    }
-
-    fn decoder(&self, _: Mode) -> PoseDecoder {
-        PoseDecoder
-    }
-}
-
 /// The runtime behind the wire: one skeleton per frame of the video.
 #[derive(Clone)]
 struct PoseRuntime;
 
-impl Transport<PoseWire> for PoseRuntime {
+impl Transport<Local<PoseEstimation>> for PoseRuntime {
     fn send(
         &self,
         request: VideoRequest,
@@ -1314,7 +1277,7 @@ impl Transport<PoseWire> for PoseRuntime {
 /// driver, typed and erased, and the erased call can be spawned.
 #[tokio::test]
 async fn an_operation_the_crate_never_heard_of_calls_and_streams_typed_and_erased() {
-    let model = Model::new(PoseWire, PoseRuntime);
+    let model = Model::new(Local::<PoseEstimation>::new("pose"), PoseRuntime);
     let video = VideoRequest { frames: 3 };
 
     let called = model.call(video.clone()).await.expect("the track folds");
