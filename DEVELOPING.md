@@ -70,16 +70,17 @@ failed job's ID. A truncated log is not evidence that later errors are absent.
 
 ## What each mode selects
 
-`--quick` takes the same change set as `--changed` and supports `--dry-run`.
-It maps each changed file to its owning package, or a provider source or
-cassette to that provider's test target. For those alone it runs `cargo check`
-and then `cargo nextest run --profile local`. A package gets its default
-features plus every feature its targets require, so no target is skipped; a
-provider target gets its required features. It never escalates. Shared inputs
-(the same list as `--changed` below), documentation, files outside any package,
-reverse dependencies, doctests and other feature sets are not built. The run
-ends by listing them as not checked locally, and with `--base REF` it also
-prints the check ids `--pr` selects for the same change set.
+`--quick` takes the same change set as `--changed` and supports `--dry-run`. It
+maps each changed file to its owning package, or a provider source or cassette
+to that provider's test target. For those alone it runs `cargo check` and then
+`cargo nextest run --profile local`. A package gets its default features plus
+every feature its targets require, so no target is skipped; a provider target
+gets its required features. It never escalates. Shared inputs (the same list as
+`--changed` below), documentation, files no package or test target owns
+(including the facade's own files), reverse dependencies, doctests and other
+feature sets are not built. The run ends by listing them as not checked
+locally, and with `--base REF` it also prints the check ids `--pr` selects for
+the same change set.
 
 `--changed` compares the working tree (staged, unstaged and untracked files)
 to `HEAD`, or to the merge base of `--base REF`. Provider source or cassette
@@ -135,12 +136,12 @@ than on its own PR; that tradeoff is deliberate.
 
 The repository toolchain (`rust-toolchain.toml`), nextest (0.9.77 or newer is
 required by `.config/nextest.toml`; 0.9.91 or newer honours its test
-priorities, and older versions warn and run every test in default order),
-Clippy, rustfmt, protoc, Docker for the storage suites, Node,
-wasm-bindgen-test-runner at the lock file's `wasm-bindgen` version, and Python
-3.12+ for the floor checker and its isolation tests. The planner probes for
-what the selected checks need before compiling anything; a missing tool is a
-failed run.
+priorities, which versions before it ignore with a warning, running every test
+in default order), Clippy, rustfmt, protoc, Docker for the storage suites,
+Node, wasm-bindgen-test-runner at the lock file's `wasm-bindgen` version, and
+Python 3.12+ for the floor checker and its isolation tests. The planner probes
+for what the selected checks need before compiling anything; a missing tool is
+a failed run.
 
 ## Hosted CI
 
