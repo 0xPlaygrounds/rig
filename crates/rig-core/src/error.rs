@@ -473,6 +473,7 @@ impl ProviderError {
             Self::ProviderResponse(response)
             | Self::InvalidAuthentication(response)
             | Self::CacheExpired { response, .. } => Some(response),
+            Self::Relayed(report) => report.provider_response.as_ref(),
             _ => None,
         }
     }

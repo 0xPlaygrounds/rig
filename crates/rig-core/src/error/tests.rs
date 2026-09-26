@@ -513,6 +513,28 @@ fn a_provider_response_travels_with_the_report() {
 }
 
 #[test]
+fn a_relayed_report_keeps_its_provider_response() {
+    let error = ProviderError::ProviderResponse(
+        ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#)
+            .with_provider_request_id(Some("req-9".to_owned())),
+    );
+    let report = ErrorReport::from(&error);
+    let relayed = ProviderError::Relayed(Box::new(report.clone()));
+
+    assert_eq!(relayed.provider_response(), error.provider_response());
+    assert_eq!(
+        relayed.provider_response_status(),
+        Some(StatusCode::TOO_MANY_REQUESTS)
+    );
+    assert_eq!(
+        relayed.provider_response_body(),
+        Some(r#"{"error":"slow down"}"#)
+    );
+    assert_eq!(relayed.provider_request_id(), Some("req-9"));
+    assert_eq!(ErrorReport::from(&relayed), report);
+}
+
+#[test]
 fn provider_reports_retain_structured_provider_metadata() {
     let response = ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, "retry later")
         .with_provider_request_id(Some("req-retained".into()));
