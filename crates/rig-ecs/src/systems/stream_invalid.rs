@@ -10,9 +10,9 @@
 use super::*;
 use rig_core::{
     message::{ToolCall, ToolCallId, ToolFunction},
-    operation::CompletionFold,
+    operation::{AdapterOutput, CompletionFold},
     streaming::{Delta, StreamEvent},
-    wire::Fold as _,
+    wire::{Fold as _, Sink as _},
 };
 
 /// Return the successful event count before the first error, or the full length.
@@ -147,9 +147,19 @@ pub fn discover_streamed_invalid_calls(
             }) {
                 continue;
             }
-            let mut fold = CompletionFold::default();
+            // The prefix is the reply as if it had ended here: the sink
+            // closes what is still open (text a wire closes only at its
+            // terminal) and the fold collects the finalized blocks.
+            let mut out = AdapterOutput::new();
             for earlier in stream.events.iter().take(index) {
-                if fold.absorb(earlier).is_err() {
+                out.push(Ok(earlier.clone()));
+            }
+            out.finish();
+            let mut fold = CompletionFold::default();
+            for item in out.into_items() {
+                if let Ok(event) = item
+                    && fold.absorb(&event).is_err()
+                {
                     break;
                 }
             }

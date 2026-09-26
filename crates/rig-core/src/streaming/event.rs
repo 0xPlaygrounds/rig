@@ -2,9 +2,9 @@
 //! Blocks share a [`BlockId`] across starts, deltas, and ends. A delta can
 //! implicitly open a block; an end can supply an authoritative payload.
 //!
-//! Adapters emit `block: None` on end events. The
-//! [`BlockAccumulator`](super::BlockAccumulator) fills it with finalized tool
-//! calls or reasoning while assembling the assistant response.
+//! Adapters emit `block: None` on end events. The sink
+//! ([`AdapterOutput`](crate::operation::AdapterOutput)) fills it with the block
+//! the end finalized, so a consumer reads every block off its end.
 //!
 //! ```
 //! use rig_core::streaming::{BlockId, MintKind, StreamEvent};
@@ -132,8 +132,9 @@ pub enum BlockClose {
         /// text.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
-        /// Whether the provider explicitly ended the block. Explicit ends yield
-        /// a completed block even when bare; synthesized bare ends yield `None`.
+        /// Whether the provider explicitly ended the block. A synthesized
+        /// end closes a part the adapter opened for bare deltas; both carry
+        /// the block they finalized.
         wire_sent: bool,
     },
     /// A tool call's input ended: the accumulator finalizes the assembled

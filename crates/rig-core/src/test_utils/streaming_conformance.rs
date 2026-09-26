@@ -486,9 +486,8 @@ pub fn assert_valid_event_stream(
 
     // Law 4b: reasoning correlation. Every completed reasoning block
     // carries a block id no other completed block shares (a delta-only
-    // part may legitimately have no completed block — e.g. a visible chain
-    // of thought whose synthesized end stays silent — so delta ids are not
-    // required to appear among the completed ids).
+    // part still open at a truncation has no completed block, so delta ids
+    // are not required to appear among the completed ids).
     let mut completed_reasoning_ids: Vec<&BlockId> = Vec::new();
     for item in &ok_items {
         if let StreamEvent::BlockEnd {

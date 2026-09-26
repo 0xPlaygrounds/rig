@@ -325,7 +325,7 @@ impl Fold<Completion> for CompletionFold {
                     *slot = Some(block.clone());
                 }
             }
-            StreamEvent::Final(response) if self.terminal.is_none() => {
+            StreamEvent::Final(response) => {
                 // An explicit message-id block keeps precedence; the terminal
                 // record only fills a gap.
                 if self.message_id.is_none() {

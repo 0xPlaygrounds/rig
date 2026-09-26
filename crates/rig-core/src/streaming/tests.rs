@@ -49,16 +49,13 @@ fn opened(
             }
             futures::stream::iter(out.drain().collect::<Vec<_>>())
         })
-        .chain(futures::stream::iter(
-            std::iter::from_fn(move || None).chain({
-                let at_eof = at_eof.clone();
-                std::iter::once(()).flat_map(move |()| {
-                    let mut out = at_eof.lock().expect("sink");
-                    out.finish();
-                    out.drain().collect::<Vec<_>>()
-                })
-            }),
-        ));
+        .chain(futures::stream::iter(std::iter::once(()).flat_map(
+            move |()| {
+                let mut out = at_eof.lock().expect("sink");
+                out.finish();
+                out.drain().collect::<Vec<_>>()
+            },
+        )));
     CompletionStream::events(
         CompletionFold::opened(provider, None, crate::wire::Mode::Streaming),
         provider,
@@ -913,10 +910,9 @@ async fn full_reasoning_block_with_a_different_id_appends() {
     assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("rs_2")]);
 }
 
-/// A bare end the wire actually sent yields the completed block (the
-/// wire announced the boundary and the consumer must see it — e.g.
-/// anthropic's `content_block_stop` on an unsigned thinking block); a
-/// bare end an adapter synthesized stays silent.
+/// A bare end carries the completed block whether the wire sent it (e.g.
+/// anthropic's `content_block_stop` on an unsigned thinking block) or an
+/// adapter synthesized it at a boundary.
 #[tokio::test]
 async fn a_bare_end_carries_the_completed_block_wire_sent_or_synthesized() {
     let run = |wire_sent: bool| async move {

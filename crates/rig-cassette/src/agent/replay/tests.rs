@@ -1162,16 +1162,15 @@ async fn a_record_names_the_scope_of_the_program_that_made_it() {
     assert_eq!(restored[1].scope.as_deref(), Some("run-1"));
 }
 
-/// A stream whose *fold* fails — a tool call closed with malformed
-/// arguments under `UnparseableToolInput::Error` — reaches the consumer as
-/// the provider sent it (the malformed close is an `Ok` item; the
-/// consumer's own accumulator reports it) while the record's outcome is
-/// the fold's error. A replay with kept events re-emits the items as they
-/// were and nothing more: the consumer re-derives the same error and a
-/// re-record folds to the same outcome. It never appends the folded error
-/// as an item the live consumer did not receive.
+/// A stream whose sink reports a defect (a tool call closed with malformed
+/// arguments under `UnparseableToolInput::Error`) reaches the consumer as
+/// the handler wrote it: the error is one in-band item among the events,
+/// and the record's outcome is that error. A replay with kept events
+/// re-emits the items as they were and nothing more: the consumer sees the
+/// same item and a re-record folds to the same outcome. It never appends
+/// the folded error as an item the live consumer did not receive.
 #[tokio::test]
-async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
+async fn kept_events_replay_the_sinks_error_item_as_the_items_that_produced_it() {
     use rig_core::streaming::{
         BlockClose, BlockId, BlockKind, Delta, StreamFinal, ToolCallEnd, UnparseableToolInput,
     };

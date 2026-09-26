@@ -171,8 +171,8 @@ where
     T: Transport<W>,
 {
     /// Send `request` and fold the whole reply into the operation's
-    /// response: [`Self::stream`] drained. A paged operation follows every
-    /// page the reply names.
+    /// response: the pipeline behind [`Self::stream`], run in unary mode and
+    /// drained. A paged operation follows every page the reply names.
     pub fn call(
         &self,
         request: Request<W>,

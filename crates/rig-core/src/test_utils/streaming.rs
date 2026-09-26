@@ -240,7 +240,9 @@ impl MockStreamEvent {
         Self::FinalResponse(mock_final_with_total_tokens(total_tokens))
     }
 
-    /// Create a stream error event.
+    /// A scripted failure. The mock's transport delivers what was scripted
+    /// before it, then the failure ends the turn as a transport failure
+    /// would; nothing scripted after it is delivered.
     pub fn error(message: impl Into<String>) -> Self {
         Self::Error(MockError::provider(message))
     }

@@ -156,6 +156,12 @@ macro_rules! modality_operation {
                 );
             }
 
+            /// The one event is the response, so a stream records it as a
+            /// call does.
+            fn record_event(span: &tracing::Span, event: &Self::Event) {
+                Self::record(span, event);
+            }
+
             $(
                 fn accept(
                     capabilities: &Self::Capabilities,

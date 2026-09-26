@@ -550,7 +550,7 @@ fn interleaved_delta_parts_stay_distinct_in_arrival_order() {
 #[test]
 fn delta_only_part_survives_alongside_a_completed_block() {
     // The openrouter shape: visible chain-of-thought streams as deltas
-    // whose synthesized end stays silent, while an encrypted block
+    // that the sink closes at the boundary, while an encrypted block
     // arrives completed. Both must reach history, deltas first.
     let mut asm = assembler();
     ingest_all(

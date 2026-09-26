@@ -43,7 +43,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 http = { workspace = true }
-tracing-futures = { workspace = true, features = ["futures-03"] }
 fastrand = { workspace = true }
 futures-timer = { workspace = true }
 mime = { workspace = true }

@@ -1482,70 +1482,45 @@ pub const RERANK_KEY: &str = "host/rerank";
 pub const RERANK_DOCUMENTS: [&str; 2] = ["the harbor label", "the orchard label"];
 
 /// A reranker that ranks by document length, longest first: the mock rerank
-/// wire and its own transport, since no keyed provider in the tree has a
-/// rerank cassette suite.
+/// transport, since no keyed provider in the tree has a rerank cassette
+/// suite.
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MockRerank;
 
-impl rig_core::wire::Wire for MockRerank {
-    type Op = rig_core::operation::Rerank;
-    type Payload = Vec<String>;
-    type Frame = Vec<String>;
-    type Decoder = MockRerank;
-
-    fn name(&self) -> &str {
-        "mock"
-    }
-
-    fn capabilities(&self) -> usize {
-        16
-    }
-
-    fn encode(
-        &self,
-        request: rig_core::operation::RerankRequest,
-        _mode: rig_core::wire::Mode,
-    ) -> Result<Vec<String>, rig_core::error::EncodeError> {
-        Ok(request.documents)
-    }
-
-    fn decoder(&self, _mode: rig_core::wire::Mode) -> MockRerank {
-        MockRerank
+impl MockRerank {
+    /// The mock reranker as a model: the mock provider at batch size 16.
+    #[allow(dead_code)]
+    pub fn model() -> rig_core::Model<rig_core::driver::Local<rig_core::operation::Rerank>, Self> {
+        rig_core::Model::new(
+            rig_core::driver::Local::new("mock").with_capabilities(16),
+            Self,
+        )
     }
 }
 
-impl rig_core::driver::Transport<MockRerank> for MockRerank {
+impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Rerank>>
+    for MockRerank
+{
     fn send(
         &self,
-        documents: Vec<String>,
+        request: rig_core::operation::RerankRequest,
         _mode: rig_core::wire::Mode,
         _observation: Option<rig_core::driver::Observation>,
     ) -> Result<
-        impl Future<Output = rig_core::driver::Opened<Vec<String>, Vec<String>>>
+        impl Future<
+            Output = rig_core::driver::Opened<
+                rig_core::operation::RerankRequest,
+                rig_core::rerank::RerankResponse,
+            >,
+        >
         + Send
         + 'static
         + use<>,
         rig_core::error::ProviderError,
     > {
-        Ok(async move { rig_core::driver::Opened::new(futures::stream::iter([Ok(documents)])) })
-    }
-}
-
-impl rig_core::wire::Decoder<rig_core::operation::Rerank, Vec<String>> for MockRerank {
-    type Event = Vec<String>;
-
-    fn classify(&self, documents: Vec<String>) -> rig_core::wire::WireEvent<Vec<String>> {
-        rig_core::wire::WireEvent::Known(documents)
-    }
-
-    fn interpret(
-        &mut self,
-        documents: Vec<String>,
-        out: &mut rig_core::wire::Output<rig_core::operation::Rerank>,
-    ) {
-        use rig_core::wire::Sink as _;
-        let mut results: Vec<rig_core::rerank::RerankResult> = documents
+        let mut results: Vec<rig_core::rerank::RerankResult> = request
+            .documents
             .iter()
             .enumerate()
             .map(|(index, document)| rig_core::rerank::RerankResult {
@@ -1557,7 +1532,7 @@ impl rig_core::wire::Decoder<rig_core::operation::Rerank, Vec<String>> for MockR
         results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
         let mut response = rig_core::rerank::RerankResponse::new(results, "mock");
         response.model = Some("mock-rerank".to_owned());
-        out.push(Ok(response));
+        Ok(async move { rig_core::driver::Opened::new(futures::stream::iter([Ok(response)])) })
     }
 }
 

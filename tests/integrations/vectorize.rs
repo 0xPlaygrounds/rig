@@ -482,80 +482,43 @@ impl Embed for TestDocument {
 
 /// A deterministic embedding endpoint and its transport: each text embeds
 /// to a hash-derived vector of `dimensions` values.
+/// The mock embedding transport: a deterministic vector per text at
+/// `dimensions` width.
 #[derive(Clone)]
 struct MockEmbeddings {
     dimensions: usize,
 }
 
-type MockEmbeddingModel = rig::Model<MockEmbeddings, MockEmbeddings>;
+type MockEmbeddingModel = rig::Model<rig::driver::Local<rig::operation::Embedding>, MockEmbeddings>;
 
 /// The mock endpoint as a model.
 fn mock_model(dimensions: usize) -> MockEmbeddingModel {
-    let mock = MockEmbeddings { dimensions };
-    rig::Model::new(mock.clone(), mock)
+    rig::Model::new(
+        rig::driver::Local::new("mock")
+            .with_capabilities(rig::operation::EmbeddingCapabilities::new(100, dimensions)),
+        MockEmbeddings { dimensions },
+    )
 }
 
-impl rig::wire::Wire for MockEmbeddings {
-    type Op = rig::operation::Embedding;
-    type Payload = Vec<String>;
-    type Frame = Vec<String>;
-    type Decoder = Self;
-
-    fn name(&self) -> &str {
-        "mock"
-    }
-
-    fn encode(
-        &self,
-        texts: Vec<String>,
-        _mode: rig::wire::Mode,
-    ) -> Result<Vec<String>, rig::error::EncodeError> {
-        Ok(texts)
-    }
-
-    fn decoder(&self, _mode: rig::wire::Mode) -> Self {
-        self.clone()
-    }
-
-    fn capabilities(&self) -> rig::operation::EmbeddingCapabilities {
-        rig::operation::EmbeddingCapabilities::new(100, self.dimensions)
-    }
-}
-
-impl rig::driver::Transport<MockEmbeddings> for MockEmbeddings {
+impl rig::driver::Transport<rig::driver::Local<rig::operation::Embedding>> for MockEmbeddings {
     fn send(
         &self,
         texts: Vec<String>,
         _mode: rig::wire::Mode,
         _observation: Option<rig::driver::Observation>,
     ) -> Result<
-        impl Future<Output = rig::driver::Opened<Vec<String>, Vec<String>>> + Send + 'static + use<>,
+        impl Future<Output = rig::driver::Opened<Vec<String>, rig::embeddings::EmbeddingResponse>>
+        + Send
+        + 'static
+        + use<>,
         rig::error::ProviderError,
     > {
-        Ok(std::future::ready(rig::driver::Opened::new(
-            futures::stream::iter([Ok(texts)]),
-        )))
-    }
-}
-
-impl rig::wire::Decoder<rig::operation::Embedding, Vec<String>> for MockEmbeddings {
-    type Event = Vec<String>;
-
-    fn classify(&self, texts: Vec<String>) -> rig::wire::WireEvent<Vec<String>> {
-        rig::wire::WireEvent::Known(texts)
-    }
-
-    fn interpret(
-        &mut self,
-        texts: Vec<String>,
-        out: &mut rig::wire::Output<rig::operation::Embedding>,
-    ) {
-        use rig::wire::Sink as _;
+        let dimensions = self.dimensions;
         let embeddings = texts
             .into_iter()
             .map(|text| {
                 let hash = simple_hash(&text);
-                let vec: Vec<f64> = (0..self.dimensions)
+                let vec: Vec<f64> = (0..dimensions)
                     .map(|i| {
                         let val = ((hash.wrapping_add(i as u64)) % 1000) as f64 / 1000.0;
                         val * 2.0 - 1.0
@@ -567,9 +530,11 @@ impl rig::wire::Decoder<rig::operation::Embedding, Vec<String>> for MockEmbeddin
                 }
             })
             .collect();
-        out.push(Ok(rig::embeddings::EmbeddingResponse::new(
-            embeddings, "mock",
-        )));
+        Ok(std::future::ready(rig::driver::Opened::new(
+            futures::stream::iter([Ok(rig::embeddings::EmbeddingResponse::new(
+                embeddings, "mock",
+            ))]),
+        )))
     }
 }
 

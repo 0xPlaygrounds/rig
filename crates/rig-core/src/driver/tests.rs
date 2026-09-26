@@ -115,6 +115,8 @@ enum Frame {
     Message { text: String, usage: Usage },
     /// One text delta.
     Delta { text: String },
+    /// A whole tool call, its arguments as the wire spelled them.
+    Call { arguments: String },
     /// The provider's own end of turn.
     Stop { usage: Usage },
 }
@@ -132,7 +134,7 @@ impl Decoder<Completion> for EchoDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         crate::providers::internal::wire::classify_tagged_frame(&frame.as_str(), "type", |kind| {
-            matches!(kind, "message" | "delta" | "stop")
+            matches!(kind, "message" | "delta" | "call" | "stop")
         })
     }
 
@@ -145,6 +147,17 @@ impl Decoder<Completion> for EchoDecoder {
                 terminal(out, usage);
             }
             Frame::Delta { text } => out.text(text),
+            Frame::Call { arguments } => {
+                let id = crate::streaming::BlockId::wire("call_1");
+                out.tool_name(&id, "lookup");
+                out.tool_arguments(&id, arguments);
+                out.tool_end(
+                    id,
+                    crate::streaming::ToolCallEnd::new(
+                        crate::streaming::UnparseableToolInput::Error,
+                    ),
+                );
+            }
             Frame::Stop { usage } => terminal(out, usage),
         }
     }
@@ -639,6 +652,63 @@ async fn a_unary_call_closes_its_attempt_as_decoded() {
         events(&log),
         vec!["started", "response", "usage", "provider", "finished"]
     );
+}
+
+/// The ending the trace recorded for the attempt, serialized.
+fn ending(log: &ObservationLog) -> Option<serde_json::Value> {
+    log.trace()
+        .observations
+        .iter()
+        .find_map(|observation| match &observation.action {
+            crate::observe::Action::Adapter { observation } => {
+                serde_json::to_value(&observation.event)
+                    .ok()
+                    .filter(|event| {
+                        event.get("event").and_then(|kind| kind.as_str()) == Some("finished")
+                    })
+                    .and_then(|event| event.get("ending").cloned())
+            }
+            _ => None,
+        })
+}
+
+/// A malformed tool input is the sink's error item, so the decoder reports
+/// it and the attempt ends as an error on both surfaces, with the same
+/// ending a whole reply always recorded for it.
+#[tokio::test]
+async fn a_malformed_tool_input_ends_the_observed_attempt_as_an_error_on_both_surfaces() {
+    const CALL: &str = r#"{"type":"call","arguments":"{not json"}"#;
+    let (unary_log, unary_context) = observed();
+    let http = RecordingHttpClient::new(CALL);
+    call(&Echo::unary(), &http, prompt(), Some(unary_context))
+        .await
+        .expect_err("a malformed tool input fails the call");
+
+    let (streamed_log, streamed_context) = observed();
+    let http = MockStreamingClient {
+        sse_bytes: Bytes::from(format!(
+            "data: {CALL}\n\ndata: {{\"type\":\"stop\",\"usage\":{{\"output_tokens\":1}}}}\n\n"
+        )),
+    };
+    let stream = stream(&Echo::streaming(), &http, prompt(), Some(streamed_context))
+        .expect("the stream opens");
+    let items: Vec<_> = stream.collect().await;
+    assert_eq!(items.iter().filter(|item| item.is_err()).count(), 1);
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, Ok(StreamEvent::Final(_)))),
+        "the terminal still completes the stream: {items:?}"
+    );
+
+    let unary = ending(&unary_log).expect("the unary attempt ended");
+    let streamed = ending(&streamed_log).expect("the streamed attempt ended");
+    assert_eq!(
+        unary.get("ending").and_then(|e| e.as_str()),
+        Some("error"),
+        "{unary}"
+    );
+    assert_eq!(streamed, unary);
 }
 
 #[tokio::test]

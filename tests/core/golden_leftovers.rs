@@ -348,7 +348,7 @@ async fn required_rerank_effect_log_is_the_golden_fixture() {
                 HandlerKey::from("host/rerank"),
                 ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "host",
-                    rig::Model::new(MockRerank, MockRerank),
+                    MockRerank::model(),
                 )),
             )
             .expect("a fresh key");
