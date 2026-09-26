@@ -765,6 +765,10 @@ impl Wire for Chat {
         super::replay_issuers(&self.provider.dialect, model.unwrap_or(&self.model))
     }
 
+    fn reasoning_issuer(&self, model: Option<&str>) -> Option<String> {
+        super::request_reasoning_issuer(&self.provider.dialect, model.unwrap_or(&self.model))
+    }
+
     fn route(&self) -> Option<&str> {
         Some(self.provider.dialect.quirks.completion_path)
     }

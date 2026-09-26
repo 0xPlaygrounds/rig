@@ -566,3 +566,211 @@ async fn openrouter_reasoning_records_its_upstream_family() {
         assert_eq!(issuers(&streamed.choice), [expected], "streamed {model}");
     }
 }
+
+/// An OpenRouter chat stream cut short after Claude's reasoning: content
+/// deltas, then EOF, with no finish reason and no `[DONE]`.
+const TRUNCATED_OPENROUTER_CHAT: &str = concat!(
+    "data: {\"id\":\"gen-1\",\"model\":\"anthropic/claude-haiku-4.5\",\"object\":\"chat.completion.chunk\",",
+    "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"thinking\",",
+    "\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"thinking\",\"format\":\"anthropic-claude-v1\",\"index\":0}]},",
+    "\"finish_reason\":null}]}\n\n",
+);
+
+/// The issuer a stream opened for `model` records before any reply byte.
+async fn upfront_issuer<W>(wire: W, model: Option<&str>) -> Option<String>
+where
+    W: Wire<Op = super::Completion>,
+{
+    use crate::completion::CompletionModel as _;
+    let mut request = history("unused");
+    request.model = model.map(str::to_owned);
+    let http = crate::test_utils::SequencedStreamingHttpClient::new(Vec::new());
+    let stream = crate::driver::Bound::new(wire, http)
+        .stream(request)
+        .await
+        .expect("the stream opens");
+    stream.reasoning_issuer().map(str::to_owned)
+}
+
+#[tokio::test]
+async fn a_gateway_stream_names_the_requested_family_before_its_terminal() {
+    let chat = |model: &str| OpenAI::with_key(&OPENROUTER, "test-key").chat(model);
+    let responses = |model: &str| OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
+    for (wire_model, requested, expected) in [
+        ("anthropic/claude-haiku-4.5", None, "anthropic"),
+        ("openai/gpt-5-mini", None, "openrouter/openai"),
+        // A per-request model decides, not the one the wire was built for.
+        (
+            "anthropic/claude-haiku-4.5",
+            Some("google/gemini-3-flash-preview"),
+            "openrouter/google",
+        ),
+        // A router or preset names no family: only router requests replay it.
+        ("openrouter/auto", None, "openrouter/openrouter"),
+        ("@preset/work", None, "openrouter/@preset"),
+    ] {
+        assert_eq!(
+            upfront_issuer(chat(wire_model), requested).await.as_deref(),
+            Some(expected),
+            "chat {wire_model} {requested:?}"
+        );
+        assert_eq!(
+            upfront_issuer(responses(wire_model), requested)
+                .await
+                .as_deref(),
+            Some(expected),
+            "responses {wire_model} {requested:?}"
+        );
+    }
+    // A wire that relays no upstream family keeps its own name.
+    assert_eq!(
+        upfront_issuer(
+            OpenAI::with_key(&DEEPSEEK, "test-key").chat("deepseek-chat"),
+            None
+        )
+        .await
+        .as_deref(),
+        Some("deepseek")
+    );
+}
+
+#[tokio::test]
+async fn a_truncated_openrouter_stream_keeps_its_reasoning_to_the_requested_family() {
+    use crate::completion::CompletionModel as _;
+    use futures::StreamExt;
+
+    let http = crate::test_utils::SequencedStreamingHttpClient::new(vec![Ok(Bytes::from_static(
+        TRUNCATED_OPENROUTER_CHAT.as_bytes(),
+    ))]);
+    let mut stream = crate::driver::Bound::new(
+        OpenAI::with_key(&OPENROUTER, "test-key").chat("anthropic/claude-haiku-4.5"),
+        http,
+    )
+    .stream(history("unused"))
+    .await
+    .expect("the stream opens");
+    while stream.next().await.is_some() {}
+    assert!(
+        stream.response.is_none(),
+        "the stream never reached its terminal"
+    );
+
+    let issuer = stream.reasoning_issuer().expect("an issuer").to_owned();
+    assert_eq!(issuer, "anthropic");
+    let stamped = crate::streaming::stamp_reasoning(stream.snapshot(), &issuer);
+    let reasoning: Vec<&Reasoning> = stamped
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(reasoning.len(), 1, "{stamped:?}");
+    // A request to another family over OpenRouter replays its own family and
+    // the bare gateway issuer: neither accepts this reasoning.
+    for other in crate::providers::openai::wire::replay_issuers(&OPENROUTER, "openai/gpt-5-mini") {
+        assert!(!reasoning[0].replayable_to(&other), "replayed to {other}");
+    }
+    assert!(reasoning[0].replayable_to("anthropic"));
+}
+
+/// A complete OpenRouter chat stream whose chunks never report a model: its
+/// terminal names no issuer.
+const MODELLESS_OPENROUTER_CHAT: &str = concat!(
+    "data: {\"id\":\"gen-2\",\"object\":\"chat.completion.chunk\",",
+    "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"thinking\",",
+    "\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"thinking\",\"format\":\"anthropic-claude-v1\",\"index\":0}]},",
+    "\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"gen-2\",\"object\":\"chat.completion.chunk\",",
+    "\"choices\":[{\"index\":0,\"delta\":{\"content\":\"4\"},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n",
+);
+
+#[tokio::test]
+async fn a_complete_stream_whose_terminal_names_no_issuer_keeps_the_requested_family() {
+    use crate::completion::CompletionModel as _;
+    use futures::StreamExt;
+
+    let http = crate::test_utils::SequencedStreamingHttpClient::new(vec![Ok(Bytes::from_static(
+        MODELLESS_OPENROUTER_CHAT.as_bytes(),
+    ))]);
+    let mut stream = crate::driver::Bound::new(
+        OpenAI::with_key(&OPENROUTER, "test-key").chat("anthropic/claude-haiku-4.5"),
+        http,
+    )
+    .stream(history("unused"))
+    .await
+    .expect("the stream opens");
+    while stream.next().await.is_some() {}
+    let terminal = stream.response.as_ref().expect("the stream completed");
+    assert_eq!(terminal.model, None, "the stream never reported a model");
+    // The decoder named no issuer; the fold gave the terminal the up-front one.
+    assert_eq!(terminal.reasoning_issuer.as_deref(), Some("anthropic"));
+
+    assert_eq!(stream.reasoning_issuer(), Some("anthropic"));
+    let response = stream.finish().expect("a complete stream finishes");
+    let issuers: Vec<Option<&str>> = response
+        .choice
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.provider.as_deref()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(issuers, [Some("anthropic")], "{:?}", response.choice);
+}
+
+/// The bus path: an agent run takes a provider's stream as events, carries
+/// them across the effect bus serialized, and rebuilds a stream from them
+/// (`from_events`), which knows no up-front issuer. The model-less terminal
+/// must carry the requested family itself.
+#[tokio::test]
+async fn a_model_less_terminal_carries_the_requested_family_across_the_bus() {
+    use crate::completion::CompletionModel as _;
+    use crate::streaming::{StreamEvent, StreamEvents, StreamingCompletionResponse};
+    use futures::StreamExt;
+
+    let http = crate::test_utils::SequencedStreamingHttpClient::new(vec![Ok(Bytes::from_static(
+        MODELLESS_OPENROUTER_CHAT.as_bytes(),
+    ))]);
+    let provider_stream = crate::driver::Bound::new(
+        OpenAI::with_key(&OPENROUTER, "test-key").chat("anthropic/claude-haiku-4.5"),
+        http,
+    )
+    .stream(history("unused"))
+    .await
+    .expect("the stream opens");
+    // What crosses the bus: each yielded event, serialized and read back.
+    let carried: Vec<StreamEvent> = provider_stream
+        .map(|event| {
+            let event = event.expect("a stream event");
+            let json = serde_json::to_value(&event).expect("serializes");
+            serde_json::from_value(json).expect("loads")
+        })
+        .collect()
+        .await;
+    let terminal = carried
+        .iter()
+        .find_map(|event| match event {
+            StreamEvent::Final(terminal) => Some(terminal),
+            _ => None,
+        })
+        .expect("the stream completed");
+    assert_eq!(terminal.model, None, "the stream never reported a model");
+    assert_eq!(terminal.issuer(), "anthropic");
+
+    let events: StreamEvents = Box::pin(futures::stream::iter(carried.into_iter().map(Ok)));
+    let mut rebuilt = StreamingCompletionResponse::from_events("default", events);
+    while rebuilt.next().await.is_some() {}
+    assert_eq!(rebuilt.reasoning_issuer(), Some("anthropic"));
+    let response = rebuilt.finish().expect("a complete stream finishes");
+    let issuers: Vec<Option<&str>> = response
+        .choice
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.provider.as_deref()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(issuers, [Some("anthropic")], "{:?}", response.choice);
+}

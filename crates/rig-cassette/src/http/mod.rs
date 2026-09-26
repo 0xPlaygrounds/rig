@@ -2068,8 +2068,8 @@ fn sanitize_path_segment(segment: &str) -> String {
         .collect()
 }
 
-/// Return YAML in recorded form: credentials, AWS account numbers and
-/// home-directory paths scrubbed, everything the provider sent kept verbatim.
+/// Return YAML in recorded form: credentials, AWS account numbers, account
+/// team ids and home-directory paths scrubbed, everything the provider sent kept verbatim.
 /// Placeholders an older fixture already holds are left in place, so the
 /// function is the identity on every committed cassette.
 /// Panics if the cassette cannot be parsed.
@@ -2575,8 +2575,8 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 /// Credential material a token exchange can return in a body.
 const OAUTH_TOKEN_KEYS: &[&str] = &["access_token", "id_token", "refresh_token"];
 
-/// Removes credentials, AWS account numbers and home-directory paths from a
-/// recording and normalizes its volatile fields. Everything else the provider
+/// Removes credentials, AWS account numbers, account team ids and
+/// home-directory paths from a recording and normalizes its volatile fields. Everything else the provider
 /// sent is kept verbatim, so a fixture can seed a live call and a replay
 /// decodes the provider's own bytes.
 struct CassetteScrubber {
@@ -2767,6 +2767,12 @@ impl CassetteScrubber {
                         *text = self.placeholder(text, "id_");
                         return;
                     }
+
+                    // An account's team, named by its key.
+                    if matches!(key, "team" | "team_id" | "teamid") && is_uuid(text) {
+                        *text = self.placeholder(text, "team_");
+                        return;
+                    }
                 }
 
                 *text = self.scrub_text(text);
@@ -2791,7 +2797,67 @@ impl CassetteScrubber {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
+        let scrubbed = self.scrub_team_ids(&scrubbed);
         scrub_local_filesystem_paths(&scrubbed)
+    }
+
+    /// Replace a UUID a provider names as the account's team with a
+    /// placeholder: the word `team` or `teams` (not inside a longer word),
+    /// then any run of ASCII separators (whitespace and `_ / : = - ( [ " ' \\`
+    /// and a backtick) and the word `id` in any case, then a hyphenated UUID.
+    /// This covers xAI's "your team <uuid>", "team ID <uuid>",
+    /// `team_id: <uuid>`, `/teams/<uuid>` and `team (<uuid>)`.
+    /// Percent-encoded separators and non-ASCII spaces are not matched.
+    fn scrub_team_ids(&mut self, text: &str) -> String {
+        const UUID_LEN: usize = 36;
+        let bytes = text.as_bytes();
+        let mut output = String::with_capacity(text.len());
+        let mut copied = 0;
+        let mut index = 0;
+        while index + 4 <= bytes.len() {
+            let is_word = bytes[index..index + 4].eq_ignore_ascii_case(b"team")
+                && (index == 0 || !bytes[index - 1].is_ascii_alphanumeric());
+            if !is_word {
+                index += 1;
+                continue;
+            }
+            let mut cursor = index + 4;
+            if bytes
+                .get(cursor)
+                .is_some_and(|byte| byte.eq_ignore_ascii_case(&b's'))
+            {
+                cursor += 1;
+            }
+            loop {
+                match bytes.get(cursor) {
+                    Some(byte) if byte.is_ascii_whitespace() || b"_/:=-([`\"'\\".contains(byte) => {
+                        cursor += 1;
+                    }
+                    Some(_)
+                        if bytes
+                            .get(cursor..cursor + 2)
+                            .is_some_and(|word| word.eq_ignore_ascii_case(b"id")) =>
+                    {
+                        cursor += 2;
+                    }
+                    _ => break,
+                }
+            }
+            let bounded = bytes
+                .get(cursor + UUID_LEN)
+                .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-');
+            match text.get(cursor..cursor + UUID_LEN) {
+                Some(candidate) if bounded && is_uuid(candidate) => {
+                    output.push_str(&text[copied..cursor]);
+                    output.push_str(&self.placeholder(candidate, "team_"));
+                    copied = cursor + UUID_LEN;
+                    index = copied;
+                }
+                _ => index += 4,
+            }
+        }
+        output.push_str(&text[copied..]);
+        output
     }
 
     /// Replace 12-digit account-ID segments in ARNs, preserving partition,
@@ -3132,6 +3198,15 @@ fn find_query_param(input: &str, needle: &str) -> Option<usize> {
     None
 }
 
+/// Whether `text` is a hyphenated UUID (8-4-4-4-12 hex digits).
+fn is_uuid(text: &str) -> bool {
+    let groups: Vec<&str> = text.split('-').collect();
+    groups.len() == 5
+        && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, len)| {
+            group.len() == len && group.chars().all(|ch| ch.is_ascii_hexdigit())
+        })
+}
+
 fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
     let input = input.as_bytes();
     let needle = needle.as_bytes();
@@ -3145,9 +3220,10 @@ fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
 mod tests;
 
 /// A reqwest client that buffers unary responses and optionally records complete
-/// exchanges, preserving non-UTF-8 bodies as base64. Multipart requests are
-/// not recorded, but a file they upload is logged in the created-resource
-/// ledger; streaming requests pass through untouched.
+/// exchanges, preserving non-UTF-8 bodies as base64. Multipart and streaming
+/// requests are not recorded, but what they create is logged in the
+/// created-resource ledger: a streamed reply's SSE events before the chunk
+/// that completes each one reaches the caller.
 #[derive(Clone, Debug, Default)]
 pub struct DirectRecordingHttpClient {
     inner: rig_reqwest::ReqwestClient,
@@ -3250,7 +3326,139 @@ impl HttpClientExt for DirectRecordingHttpClient {
     where
         T: Into<Bytes> + Send,
     {
-        self.inner.send_streaming(req)
+        use futures::StreamExt as _;
+
+        let inner = self.inner.clone();
+        let recorder = self.recorder.clone();
+        let (parts, body) = req.into_parts();
+        let body: Bytes = body.into();
+        let method = parts.method.to_string();
+        let uri = parts.uri.to_string();
+        let request = HttpRequest::from_parts(parts, body.clone());
+        async move {
+            let response = inner.send_streaming(request).await?;
+            let Some(recorder) = recorder else {
+                return Ok(response);
+            };
+            // An error reply creates nothing, and a binary stream (audio)
+            // names nothing: both pass through untouched.
+            if !(200..300).contains(&response.status().as_u16())
+                || !StreamLedgerTap::taps(response.headers())
+            {
+                return Ok(response);
+            }
+            let (parts, stream) = response.into_parts();
+            let status = parts.status.as_u16();
+            let tap = Arc::new(std::sync::Mutex::new(StreamLedgerTap {
+                recorder,
+                method,
+                uri,
+                request_body: body,
+                status,
+                pending: Vec::new(),
+            }));
+            let per_chunk = tap.clone();
+            let logged = stream
+                .map(move |chunk| {
+                    if let Ok(bytes) = &chunk {
+                        StreamLedgerTap::locked(&per_chunk).feed(bytes);
+                    }
+                    chunk
+                })
+                .chain(
+                    futures::stream::once(async move {
+                        StreamLedgerTap::locked(&tap).finish();
+                    })
+                    .filter_map(|()| async { None }),
+                );
+            let stream: http_client::BoxedStream = Box::pin(logged);
+            Ok(HttpResponse::from_parts(parts, stream))
+        }
+    }
+}
+
+/// Ledger logging for a streamed reply on the direct path: each complete SSE
+/// event is checked for created resources before the chunk that completed
+/// it reaches the caller. A body that is not SSE (one JSON document or
+/// array) is checked when the stream ends.
+struct StreamLedgerTap {
+    recorder: DirectRecorder,
+    method: String,
+    uri: String,
+    request_body: Bytes,
+    status: u16,
+    /// Bytes after the last complete event.
+    pending: Vec<u8>,
+}
+
+impl StreamLedgerTap {
+    /// Whether a streamed reply with `headers` is tapped: every body except
+    /// a known binary one (audio, image, video, octet stream), which names
+    /// nothing and would only accumulate. Error statuses are filtered before
+    /// this is asked, and again in `log_created`.
+    fn taps(headers: &http_client::HeaderMap) -> bool {
+        let content_type = headers
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        !["audio/", "image/", "video/", "application/octet-stream"]
+            .iter()
+            .any(|binary| content_type.starts_with(binary))
+    }
+
+    fn feed(&mut self, bytes: &[u8]) {
+        // Only bytes that could complete an event are searched, so a long
+        // body with no event terminator costs linear, not quadratic, work.
+        // The three-byte overlap catches a `\r\n\r\n` split across chunks.
+        let from = self.pending.len().saturating_sub(3);
+        self.pending.extend_from_slice(bytes);
+        let fresh = &self.pending[from..];
+        let terminated = fresh.windows(2).any(|pair| pair == b"\n\n")
+            || fresh.windows(4).any(|quad| quad == b"\r\n\r\n");
+        if !terminated {
+            return;
+        }
+        let events = relay::complete_events(&self.pending);
+        let consumed: usize = events.iter().map(Vec::len).sum();
+        for event in events {
+            self.log(&event);
+        }
+        self.pending.drain(..consumed);
+    }
+
+    /// The tap behind `shared`. A lock poisoned by a panic elsewhere still
+    /// yields the tap: the ledger is the safety net and must keep logging.
+    fn locked(shared: &std::sync::Mutex<Self>) -> std::sync::MutexGuard<'_, Self> {
+        shared
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Check what is left after the last complete event. Runs when the
+    /// stream ends and again when the tap is dropped, so a stream the caller
+    /// abandons is still checked; the second call finds nothing left.
+    fn finish(&mut self) {
+        let rest = std::mem::take(&mut self.pending);
+        if !rest.iter().all(u8::is_ascii_whitespace) {
+            self.log(&rest);
+        }
+    }
+
+    fn log(&self, body: &[u8]) {
+        self.recorder.log_created(
+            &self.method,
+            &self.uri,
+            &self.request_body,
+            self.status,
+            body,
+        );
+    }
+}
+
+impl Drop for StreamLedgerTap {
+    fn drop(&mut self) {
+        self.finish();
     }
 }
 

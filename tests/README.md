@@ -182,6 +182,11 @@ The recorder refuses to write a fixture, and panics, in two cases:
   deleted. Send `store: false` unless the cell is a chain that deletes its
   own state.
 
+The xAI cassette wrappers send every Responses request with `store: false`
+unless the cell sets `store` itself, because xAI cannot list stored responses to
+delete them. The bogus-key wrapper and the live `live_cache_economics` probe
+build their own clients and do not.
+
 Fixtures older than the stored-state rule are listed in
 `crates/rig-cassette/tests/common/stored_state_grandfathered.txt`. When you
 re-record one with `store: false`, delete its line; the safety tests fail

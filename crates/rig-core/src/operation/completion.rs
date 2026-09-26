@@ -162,6 +162,7 @@ impl Fold<Completion> for CompletionFold {
             message_id: &mut self.message_id,
             provider: &mut self.provider,
             provider_from_terminal: false,
+            reasoning_issuer: None,
         };
         match crate::streaming::absorb(step, event) {
             Absorbed::Yield(_) | Absorbed::Skip => Ok(()),

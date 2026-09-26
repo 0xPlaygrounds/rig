@@ -8,6 +8,38 @@ use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
+/// Sends `"store": false` on every Responses request that does not choose
+/// `store` itself. xAI stores a Responses reply by default and offers no way
+/// to list what it stored, so a recording would otherwise leave responses
+/// nobody can find to delete. A cell that needs stored state (a chain that
+/// deletes it again) sets `store` explicitly and is left alone. The body is
+/// rewritten before it is sent, so the cassette records what xAI received.
+struct StorelessResponses;
+
+impl rig::http_client::HttpMiddleware for StorelessResponses {
+    fn before_request_body<'a>(
+        &'a self,
+        method: &'a rig::http_client::Method,
+        uri: &'a rig::http_client::Uri,
+        _headers: &'a rig::http_client::HeaderMap,
+        body: bytes::Bytes,
+    ) -> rig::wasm_compat::WasmBoxedFuture<'a, rig::http_client::Result<bytes::Bytes>> {
+        Box::pin(async move {
+            if method != rig::http_client::Method::POST || !uri.path().ends_with("/responses") {
+                return Ok(body);
+            }
+            let Ok(serde_json::Value::Object(mut request)) = serde_json::from_slice(&body) else {
+                return Ok(body);
+            };
+            if request.contains_key("store") {
+                return Ok(body);
+            }
+            request.insert("store".to_owned(), serde_json::Value::Bool(false));
+            Ok(serde_json::to_vec(&request).map_or(body, bytes::Bytes::from))
+        })
+    }
+}
+
 async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<OpenAI>) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -18,8 +50,11 @@ async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound
     .await;
     let client = OpenAI::with_key(&xai::DIALECT, cassette.api_key("XAI_API_KEY"))
         .with_base_url(cassette.base_url())
-        .bound()
-        .expect("xAI client should build");
+        .bind(
+            rig::http_client::ReqwestClient::default()
+                .boxed()
+                .with_middleware(StorelessResponses),
+        );
 
     (cassette, client)
 }

@@ -341,3 +341,213 @@ fn the_attempt_root_is_in_the_target_directory_the_binary_was_built_in() {
     );
     assert_eq!(target_dir_of(Path::new("/usr/local/bin/tool")), None);
 }
+
+fn openai_direct_recorder(ledger: &Path) -> DirectRecorder {
+    DirectRecorder {
+        interactions: Arc::new(Mutex::new(Vec::new())),
+        policy: CassettePolicy::for_scenario("openai", "direct/stream", ReplayMatching::Ordered),
+        ledger: Arc::new(relay::LedgerTarget {
+            path: ledger.to_path_buf(),
+            provider: "openai".to_owned(),
+            scenario: "direct/stream".to_owned(),
+            origin: "https://api.openai.com".to_owned(),
+        }),
+    }
+}
+
+/// A streamed Responses reply: the creation event names the stored response.
+const CREATED_STREAM: &str = "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_direct\"}}\n\n\
+event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_direct\"}}\n\n";
+
+async fn stream_through_direct_client(
+    ledger: &Path,
+    request_body: &'static str,
+) -> (Vec<Vec<String>>, usize) {
+    use futures::StreamExt as _;
+
+    let stub = httpmock::MockServer::start_async().await;
+    stub.mock_async(|when, then| {
+        when.method("POST").path("/v1/responses");
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(CREATED_STREAM);
+    })
+    .await;
+    let client = DirectRecordingHttpClient::new(Some(openai_direct_recorder(ledger)));
+    let request = HttpRequest::builder()
+        .method("POST")
+        .uri(format!("{}/v1/responses", stub.base_url()))
+        .body(Bytes::from_static(request_body.as_bytes()))
+        .expect("request");
+    let response = client.send_streaming(request).await.expect("stream opens");
+    let mut stream = response.into_body();
+    // The ledger's ids as each chunk reaches the caller, before the next poll.
+    let mut seen_per_chunk = Vec::new();
+    let mut bytes = 0;
+    while let Some(chunk) = stream.next().await {
+        bytes += chunk.expect("chunk").len();
+        seen_per_chunk.push(
+            ledger::outstanding(ledger)
+                .into_iter()
+                .map(|resource| resource.id)
+                .collect(),
+        );
+    }
+    (seen_per_chunk, bytes)
+}
+
+#[tokio::test]
+async fn the_direct_path_logs_a_streamed_creation_before_the_caller_reads_it() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let (seen, bytes) = stream_through_direct_client(&ledger_path, "{}").await;
+    assert_eq!(
+        bytes,
+        CREATED_STREAM.len(),
+        "the reply passes through whole"
+    );
+    assert!(!seen.is_empty(), "at least one chunk");
+    // Every chunk the caller got, the first included, was preceded by the
+    // ledger line of the response it names.
+    for (index, ids) in seen.iter().enumerate() {
+        assert_eq!(ids, &["resp_direct"], "chunk {index}");
+    }
+    let outstanding = ledger::outstanding(&ledger_path);
+    assert_eq!(
+        outstanding[0].delete_url,
+        "https://api.openai.com/v1/responses/resp_direct"
+    );
+    assert_eq!(outstanding[0].scenario, "direct/stream");
+
+    // `store: false` creates nothing, streamed or not.
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let stateless = dir.path().join(ledger::LEDGER_FILE);
+    let (seen, _) = stream_through_direct_client(&stateless, r#"{"store":false}"#).await;
+    assert!(seen.iter().all(Vec::is_empty), "{seen:?}");
+}
+
+#[test]
+fn a_streamed_event_split_across_chunks_is_logged_when_it_completes() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let mut tap = StreamLedgerTap {
+        recorder: openai_direct_recorder(&ledger_path),
+        method: "POST".to_owned(),
+        uri: "https://api.openai.com/v1/responses".to_owned(),
+        request_body: Bytes::from_static(b"{}"),
+        status: 200,
+        pending: Vec::new(),
+    };
+    let (head, tail) = CREATED_STREAM.split_at(40);
+    tap.feed(head.as_bytes());
+    assert!(
+        ledger::outstanding(&ledger_path).is_empty(),
+        "half an event names nothing"
+    );
+    tap.feed(tail.as_bytes());
+    let ids: Vec<String> = ledger::outstanding(&ledger_path)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect();
+    assert_eq!(ids, ["resp_direct"]);
+    assert!(tap.pending.is_empty(), "every complete event was consumed");
+}
+
+#[test]
+fn a_stream_fed_a_byte_at_a_time_is_still_logged() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let mut tap = StreamLedgerTap {
+        recorder: openai_direct_recorder(&ledger_path),
+        method: "POST".to_owned(),
+        uri: "https://api.openai.com/v1/responses".to_owned(),
+        request_body: Bytes::from_static(b"{}"),
+        status: 200,
+        pending: Vec::new(),
+    };
+    // CRLF-delimited, so every terminator spans several one-byte chunks.
+    let crlf = CREATED_STREAM.replace('\n', "\r\n");
+    for byte in crlf.as_bytes() {
+        tap.feed(std::slice::from_ref(byte));
+    }
+    let ids: Vec<String> = ledger::outstanding(&ledger_path)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect();
+    assert_eq!(ids, ["resp_direct"]);
+    assert!(tap.pending.is_empty(), "every complete event was consumed");
+}
+
+#[test]
+fn every_stream_but_a_known_binary_one_is_tapped() {
+    let headers = |content_type: &str| {
+        let mut headers = http_client::HeaderMap::new();
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_str(content_type).expect("header"),
+        );
+        headers
+    };
+    assert!(StreamLedgerTap::taps(&headers(
+        "text/event-stream; charset=utf-8"
+    )));
+    assert!(StreamLedgerTap::taps(&headers("application/json")));
+    // A stream that names no type may still name what it created.
+    assert!(StreamLedgerTap::taps(&http_client::HeaderMap::new()));
+    for binary in [
+        "audio/mpeg",
+        "image/png",
+        "video/mp4",
+        "application/octet-stream",
+    ] {
+        assert!(!StreamLedgerTap::taps(&headers(binary)), "{binary}");
+    }
+}
+
+fn json_tap(ledger_path: &Path) -> StreamLedgerTap {
+    StreamLedgerTap {
+        recorder: openai_direct_recorder(ledger_path),
+        method: "POST".to_owned(),
+        uri: "https://api.openai.com/v1/responses".to_owned(),
+        request_body: Bytes::from_static(b"{}"),
+        status: 200,
+        pending: Vec::new(),
+    }
+}
+
+#[test]
+fn a_stream_dropped_before_its_end_still_logs_what_it_held() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    // A JSON (not SSE) reply is only checked once complete: the caller reads
+    // all of it but drops the stream before polling its end.
+    let mut tap = json_tap(&ledger_path);
+    tap.feed(br#"{"id":"resp_dropped","object":"response"}"#);
+    assert!(ledger::outstanding(&ledger_path).is_empty());
+    drop(tap);
+    let ids: Vec<String> = ledger::outstanding(&ledger_path)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect();
+    assert_eq!(ids, ["resp_dropped"]);
+}
+
+#[test]
+fn a_poisoned_tap_keeps_logging() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let ledger_path = dir.path().join(ledger::LEDGER_FILE);
+    let shared = Arc::new(std::sync::Mutex::new(json_tap(&ledger_path)));
+    let poisoner = shared.clone();
+    let _ = std::thread::spawn(move || {
+        let _guard = poisoner.lock();
+        panic!("poison the tap's lock");
+    })
+    .join();
+    assert!(shared.is_poisoned());
+    StreamLedgerTap::locked(&shared).feed(CREATED_STREAM.as_bytes());
+    let ids: Vec<String> = ledger::outstanding(&ledger_path)
+        .into_iter()
+        .map(|resource| resource.id)
+        .collect();
+    assert_eq!(ids, ["resp_direct"]);
+}

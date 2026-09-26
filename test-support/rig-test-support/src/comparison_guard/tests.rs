@@ -217,3 +217,305 @@ fn only_the_arm_pattern_decides_a_replay_arm() {
     "#;
     assert_eq!(findings(source).len(), 2, "{:?}", findings(source));
 }
+
+#[test]
+fn the_else_of_a_branch_that_rules_replay_out_is_replay() {
+    let source = r#"
+        fn branches() {
+            if mode != CassetteMode::Replay {
+                assert!(raw.get("created").is_some());
+            } else {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if !matches!(mode, CassetteMode::Replay) {
+                assert!(raw.get("created_at").is_some());
+            } else {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+            // The `else` of a replay branch is the recording pass.
+            if mode == CassetteMode::Replay {
+                assert_eq!(raw["updated"], body["updated"]);
+            } else {
+                assert_eq!(raw["updated_at"], body["updated_at"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    assert_eq!(found.len(), 1, "{found:?}");
+}
+
+#[test]
+fn a_rebound_name_no_longer_holds_a_recorded_document() {
+    let source = r#"
+        fn shadowed() {
+            let recorded = recorded_additional_params(&chunks);
+            let recorded = recorded["service_tier"].clone();
+            assert_eq!(observation.raw["service_tier"], recorded);
+        }
+        fn typed() {
+            let recorded: Value = recorded_additional_params(&chunks);
+            assert_eq!(observation.raw["additional_params"], recorded);
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["typed"], "{found:?}");
+}
+
+#[test]
+fn an_entry_by_entry_loop_over_a_recorded_object_is_flagged() {
+    let source = r#"
+        fn entries() {
+            let body = crate::cassettes::recorded_json_response("x", "cell");
+            for (key, value) in body.as_object().unwrap() {
+                assert_eq!(raw.get(key), Some(value), "{key}");
+            }
+        }
+        fn entries_of_a_live_document() {
+            let body = recorded_json_response("x", "cell");
+            for (key, value) in raw.as_object().unwrap() {
+                assert_eq!(body.get(key), Some(value), "{key}");
+            }
+        }
+        fn entries_treated() {
+            let body = recorded_json_response("x", "cell");
+            for (key, value) in body.as_object().unwrap() {
+                if !is_volatile_json_key(key) {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        // A live document against a re-serialization of itself holds in
+        // both modes.
+        fn live_against_itself() {
+            let reserialized = serde_json::to_value(&typed).unwrap();
+            for (field, value) in reserialized.as_object().unwrap() {
+                assert_eq!(raw.get(field), Some(value));
+            }
+        }
+        fn unrelated_pairs() {
+            for (index, call) in calls.iter().enumerate() {
+                assert_eq!(call.width, expected[index]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        functions,
+        ["entries", "entries_of_a_live_document"],
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_matches_pattern_with_another_mode_is_not_replay() {
+    let source = r#"
+        fn either_mode() {
+            if matches!(mode, CassetteMode::Replay | CassetteMode::Record) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if !matches!(mode, CassetteMode::Replay | CassetteMode::Record) {
+                assert!(raw.get("created").is_none());
+            } else {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+            if let CassetteMode::Replay | CassetteMode::Record = mode {
+                assert_eq!(raw["updated"], body["updated"]);
+            }
+        }
+        fn replay_only() {
+            if matches!(mode, CassetteMode::Replay) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if matches!(mode, CassetteMode::Replay if strict) {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        functions,
+        ["either_mode", "either_mode", "either_mode"],
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_loop_over_a_let_bound_recorded_object_is_flagged() {
+    let source = r#"
+        fn bound_object() {
+            let body = recorded_json_response("x", "cell");
+            let object = body.as_object().expect("an object");
+            for (key, value) in object {
+                assert_eq!(raw.get(key), Some(value));
+            }
+        }
+        fn rebound_by_a_tuple() {
+            let body = recorded_json_response("x", "cell");
+            let (body, other) = (live_document(), 0);
+            assert_eq!(raw["extras"], body);
+        }
+        fn a_live_object() {
+            let object = raw.as_object().expect("an object");
+            for (key, value) in object {
+                assert_eq!(copy.get(key), Some(value));
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["bound_object"], "{found:?}");
+}
+
+#[test]
+fn a_nested_or_pattern_with_another_mode_is_not_replay() {
+    let source = r#"
+        fn nested() {
+            if matches!(mode, Some(CassetteMode::Replay | CassetteMode::Record)) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if let (CassetteMode::Replay | _, true) = (mode, strict) {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+        }
+        fn nested_replay_only() {
+            if matches!(mode, Some(CassetteMode::Replay)) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["nested", "nested"], "{found:?}");
+}
+
+#[test]
+fn recorded_objects_bound_by_let_else_and_if_let_are_followed() {
+    let source = r#"
+        fn let_else() {
+            let body = recorded_json_response("x", "cell");
+            let Some(object) = body.as_object() else { return };
+            for (key, value) in object {
+                assert_eq!(raw.get(key), Some(value));
+            }
+        }
+        fn if_let() {
+            let body = recorded_json_response("x", "cell");
+            if let Some(object) = body.as_object() {
+                for (key, value) in object {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        fn same_name_if_let() {
+            let body = recorded_json_response("x", "cell");
+            if let Some(body) = body.as_object() {
+                for (key, value) in body {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        fn if_let_scope_ends() {
+            let body = recorded_json_response("x", "cell");
+            let object = raw.as_object().expect("live");
+            if let Some(object) = body.as_object() {
+                let _ = object;
+            }
+            // The outer, live `object` again: no longer the recorded one.
+            for (key, value) in object {
+                assert_eq!(copy.get(key), Some(value));
+            }
+        }
+        fn if_let_binding_several_names_shadows() {
+            let body = recorded_json_response("x", "cell");
+            if let Ok((body, _)) = live_pair() {
+                for (key, value) in body.as_object().unwrap() {
+                    assert_eq!(copy.get(key), Some(value));
+                }
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        functions,
+        ["let_else", "if_let", "same_name_if_let"],
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_pattern_over_two_modes_naming_record_is_not_replay() {
+    let source = r#"
+        fn two_modes() {
+            match (mode, fallback) {
+                (CassetteMode::Record, CassetteMode::Replay) => {
+                    assert_eq!(raw["created"], body["created"]);
+                }
+                _ => {}
+            }
+            if let (CassetteMode::Record, CassetteMode::Replay) = (mode, fallback) {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    assert_eq!(found.len(), 2, "{found:?}");
+}
+
+#[test]
+fn let_chains_bind_and_shadow_like_if_let() {
+    let source = r#"
+        fn chained() {
+            let body = recorded_json_response("x", "cell");
+            if let Some(object) = body.as_object() && ready {
+                for (key, value) in object {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        fn chained_twice() {
+            if let Ok(body) = recorded_json_result("x", "cell")
+                && let Some(object) = body.as_object()
+            {
+                for (key, value) in object {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        fn chained_shadow() {
+            let body = recorded_json_response("x", "cell");
+            if ready && let Ok((body, _)) = live_pair() {
+                for (key, value) in body.as_object().unwrap() {
+                    assert_eq!(copy.get(key), Some(value));
+                }
+            }
+        }
+    "#;
+    let found = findings(source);
+    let functions: Vec<&str> = found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect();
+    assert_eq!(functions, ["chained", "chained_twice"], "{found:?}");
+}

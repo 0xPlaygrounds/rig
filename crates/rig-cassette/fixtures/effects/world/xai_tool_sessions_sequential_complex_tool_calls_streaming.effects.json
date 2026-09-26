@@ -2,31 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
         "batch": 17,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,7 +18,7 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,7 +26,7 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -50,15 +34,7 @@
         }
       },
       {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 30,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -66,7 +42,7 @@
         }
       },
       {
-        "batch": 40,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,21 +50,21 @@
         }
       },
       {
-        "batch": 40,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 41,
+        "batch": 30,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 52,
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -96,7 +72,7 @@
         }
       },
       {
-        "batch": 53,
+        "batch": 46,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -104,7 +80,31 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 47,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 50,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 52,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -120,7 +120,7 @@
         }
       },
       {
-        "batch": 57,
+        "batch": 63,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -128,69 +128,29 @@
         }
       },
       {
-        "batch": 58,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 59,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 62,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 74,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 74,
+        "batch": 63,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 75,
+        "batch": 64,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 96,
+        "batch": 77,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 97,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 99,
+        "batch": 78,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -198,7 +158,7 @@
         }
       },
       {
-        "batch": 108,
+        "batch": 81,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -206,21 +166,21 @@
         }
       },
       {
-        "batch": 108,
+        "batch": 81,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 109,
+        "batch": 82,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 130,
+        "batch": 102,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -228,7 +188,7 @@
         }
       },
       {
-        "batch": 131,
+        "batch": 103,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -236,7 +196,7 @@
         }
       },
       {
-        "batch": 134,
+        "batch": 105,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -244,7 +204,7 @@
         }
       },
       {
-        "batch": 144,
+        "batch": 115,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -252,37 +212,29 @@
         }
       },
       {
-        "batch": 144,
+        "batch": 115,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 146,
+        "batch": 117,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 167,
+        "batch": 126,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 25
         }
       },
       {
-        "batch": 168,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 169,
+        "batch": 127,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -290,135 +242,7 @@
         }
       },
       {
-        "batch": 170,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 171,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 172,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 173,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 174,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 175,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 176,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 177,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 178,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 179,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 180,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 181,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 182,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 183,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 187,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 198,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 198,
+        "batch": 127,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -718,11 +542,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+              "id": "rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
               "content": [
                 {
                   "type": "summary",
-                  "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
+                  "content": "Running the production-readiness scenario."
                 }
               ],
               "provider": "xai"
@@ -731,11 +555,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
               },
               "provider": {
-                "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
               },
               "function": {
                 "name": "ping_empty",
@@ -747,14 +571,14 @@
           ],
           "usage": {
             "input_tokens": 743,
-            "output_tokens": 391,
-            "total_tokens": 1134,
+            "output_tokens": 369,
+            "total_tokens": 1112,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 385
+            "reasoning_tokens": 363
           },
           "message_id": null,
-          "response_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "provider_request_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
+          "response_id": "a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
+          "provider_request_id": "a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -764,18 +588,18 @@
               "input_tokens_details": {
                 "cached_tokens": 192
               },
-              "output_tokens": 391,
+              "output_tokens": 369,
               "output_tokens_details": {
-                "reasoning_tokens": 385
+                "reasoning_tokens": 363
               },
-              "total_tokens": 1134
+              "total_tokens": 1112
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "response_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
+            "response_id": "a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
             "model": "grok-4.3"
           }
         }
@@ -783,15 +607,15 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+          "id": "wire:rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
           "kind": {
             "kind": "reasoning",
-            "provider_id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62"
+            "provider_id": "rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+          "id": "wire:rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
           "delta": {
             "delta": "reasoning",
             "text": "Running the production-readiness"
@@ -799,95 +623,23 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+          "id": "wire:rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
           "delta": {
             "delta": "reasoning",
             "text": " scenario."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": "\n\nThe manifest note "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": "and escaped text are"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": " noted. The harness "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": "will call ping_empty"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": " with an empty JSON "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": "object first, then inspect_manifest"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": " for project rig-xai"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": " with critical=true,"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "delta": {
-            "delta": "reasoning",
-            "text": " retries=2, plan weight=1, verify weight=2, and the exact note."
-          }
-        },
-        {
           "event": "block_end",
-          "id": "wire:rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+          "id": "wire:rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
           "end": {
             "close": "reasoning",
             "reasoning": {
-              "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+              "id": "rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
               "content": [
                 {
                   "type": "summary",
-                  "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
+                  "content": "Running the production-readiness scenario."
                 }
               ]
             },
@@ -895,25 +647,25 @@
           },
           "block": {
             "type": "reasoning",
-            "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+            "id": "rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
             "content": [
               {
                 "type": "summary",
-                "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
+                "content": "Running the production-readiness scenario."
               }
             ]
           }
         },
         {
           "event": "block_start",
-          "id": "wire:fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0",
+          "id": "wire:fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0",
+          "id": "wire:fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0",
           "delta": {
             "delta": "tool_name",
             "name": "ping_empty"
@@ -921,7 +673,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0",
+          "id": "wire:fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{}"
@@ -929,24 +681,24 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0",
+          "id": "wire:fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0",
+            "tool_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0",
             "name": "ping_empty",
             "arguments": {},
-            "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
+            "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+              "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
             },
             "provider": {
-              "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-              "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+              "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+              "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
             },
             "function": {
               "name": "ping_empty",
@@ -960,15 +712,15 @@
           "event": "final",
           "usage": {
             "input_tokens": 743,
-            "output_tokens": 391,
-            "total_tokens": 1134,
+            "output_tokens": 369,
+            "total_tokens": 1112,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 385
+            "reasoning_tokens": 363
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
-          "provider_request_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
+          "response_id": "a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
+          "provider_request_id": "a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
@@ -977,18 +729,18 @@
               "input_tokens_details": {
                 "cached_tokens": 192
               },
-              "output_tokens": 391,
+              "output_tokens": 369,
               "output_tokens_details": {
-                "reasoning_tokens": 385
+                "reasoning_tokens": 363
               },
-              "total_tokens": 1134
+              "total_tokens": 1112
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "response_id": "abf917ce-adad-9183-9e42-ec55cb27eb62",
+            "response_id": "a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
             "model": "grok-4.3"
           }
         }
@@ -1048,11 +800,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+                  "id": "rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -1061,11 +813,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                    "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
                   },
                   "provider": {
-                    "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                    "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                    "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                    "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1083,11 +835,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                    "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
                   },
                   "provider": {
-                    "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                    "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                    "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                    "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1219,11 +971,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+              "id": "rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+                  "content": "Running the production-readiness scenario by calling one tool at a time in sequence."
                 }
               ],
               "provider": "xai"
@@ -1232,11 +984,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1"
+                "id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1"
               },
               "provider": {
-                "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
+                "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
+                "item_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -1265,14 +1017,14 @@
           ],
           "usage": {
             "input_tokens": 757,
-            "output_tokens": 364,
-            "total_tokens": 1121,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 291
+            "output_tokens": 351,
+            "total_tokens": 1108,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 278
           },
           "message_id": null,
-          "response_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
-          "provider_request_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
+          "response_id": "43caa896-3d69-9ee5-8f21-c48b2ce3733f",
+          "provider_request_id": "43caa896-3d69-9ee5-8f21-c48b2ce3733f",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -1280,20 +1032,20 @@
             "usage": {
               "input_tokens": 757,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 704
               },
-              "output_tokens": 364,
+              "output_tokens": 351,
               "output_tokens_details": {
-                "reasoning_tokens": 291
+                "reasoning_tokens": 278
               },
-              "total_tokens": 1121
+              "total_tokens": 1108
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "response_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
+            "response_id": "43caa896-3d69-9ee5-8f21-c48b2ce3733f",
             "model": "grok-4.3"
           }
         }
@@ -1301,55 +1053,47 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+          "id": "wire:rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
           "kind": {
             "kind": "reasoning",
-            "provider_id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707"
+            "provider_id": "rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+          "id": "wire:rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
           "delta": {
             "delta": "reasoning",
-            "text": "The production-readiness"
+            "text": "Running the production-readiness"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+          "id": "wire:rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
           "delta": {
             "delta": "reasoning",
-            "text": " scenario requires calling"
+            "text": " scenario by calling"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+          "id": "wire:rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
           "delta": {
             "delta": "reasoning",
-            "text": " exactly one tool at"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
-          "delta": {
-            "delta": "reasoning",
-            "text": " a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+            "text": " one tool at a time in sequence."
           }
         },
         {
           "event": "block_end",
-          "id": "wire:rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+          "id": "wire:rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
           "end": {
             "close": "reasoning",
             "reasoning": {
-              "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+              "id": "rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
               "content": [
                 {
                   "type": "summary",
-                  "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+                  "content": "Running the production-readiness scenario by calling one tool at a time in sequence."
                 }
               ]
             },
@@ -1357,25 +1101,25 @@
           },
           "block": {
             "type": "reasoning",
-            "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+            "id": "rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
             "content": [
               {
                 "type": "summary",
-                "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+                "content": "Running the production-readiness scenario by calling one tool at a time in sequence."
               }
             ]
           }
         },
         {
           "event": "block_start",
-          "id": "wire:fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0",
+          "id": "wire:fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0",
+          "id": "wire:fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0",
           "delta": {
             "delta": "tool_name",
             "name": "inspect_manifest"
@@ -1383,7 +1127,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0",
+          "id": "wire:fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}"
@@ -1391,10 +1135,10 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0",
+          "id": "wire:fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0",
+            "tool_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0",
             "name": "inspect_manifest",
             "arguments": {
               "project": "rig-xai",
@@ -1414,18 +1158,18 @@
               ],
               "note": "line one; line two says \"hello\" and path C:\\rig\\xai"
             },
-            "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
+            "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1"
+              "id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1"
             },
             "provider": {
-              "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-              "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
+              "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
+              "item_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0"
             },
             "function": {
               "name": "inspect_manifest",
@@ -1456,35 +1200,35 @@
           "event": "final",
           "usage": {
             "input_tokens": 757,
-            "output_tokens": 364,
-            "total_tokens": 1121,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 291
+            "output_tokens": 351,
+            "total_tokens": 1108,
+            "cached_input_tokens": 704,
+            "reasoning_tokens": 278
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
-          "provider_request_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
+          "response_id": "43caa896-3d69-9ee5-8f21-c48b2ce3733f",
+          "provider_request_id": "43caa896-3d69-9ee5-8f21-c48b2ce3733f",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
             "usage": {
               "input_tokens": 757,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 704
               },
-              "output_tokens": 364,
+              "output_tokens": 351,
               "output_tokens_details": {
-                "reasoning_tokens": 291
+                "reasoning_tokens": 278
               },
-              "total_tokens": 1121
+              "total_tokens": 1108
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "response_id": "4ac551d1-6cc0-9773-8ad6-11abae114707",
+            "response_id": "43caa896-3d69-9ee5-8f21-c48b2ce3733f",
             "model": "grok-4.3"
           }
         }
@@ -1544,11 +1288,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+                  "id": "rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -1557,11 +1301,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                    "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
                   },
                   "provider": {
-                    "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                    "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                    "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                    "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1579,11 +1323,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                    "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
                   },
                   "provider": {
-                    "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                    "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                    "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                    "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1601,11 +1345,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+                  "id": "rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+                      "content": "Running the production-readiness scenario by calling one tool at a time in sequence."
                     }
                   ],
                   "provider": "xai"
@@ -1614,11 +1358,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1"
+                    "id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1"
                   },
                   "provider": {
-                    "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                    "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
+                    "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
+                    "item_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1653,11 +1397,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1"
+                    "id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1"
                   },
                   "provider": {
-                    "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                    "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
+                    "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
+                    "item_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1791,11 +1535,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2"
+                "id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2"
               },
               "provider": {
-                "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
+                "call_id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2",
+                "item_id": "fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0"
               },
               "function": {
                 "name": "join_labels",
@@ -1821,8 +1565,8 @@
             "reasoning_tokens": 25
           },
           "message_id": null,
-          "response_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
-          "provider_request_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
+          "response_id": "3be83609-f5b4-9d94-b305-5d0e0524dbb7",
+          "provider_request_id": "3be83609-f5b4-9d94-b305-5d0e0524dbb7",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -1843,7 +1587,7 @@
               "summary": null
             },
             "status": "completed",
-            "response_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
+            "response_id": "3be83609-f5b4-9d94-b305-5d0e0524dbb7",
             "model": "grok-4.3"
           }
         }
@@ -1851,14 +1595,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0",
+          "id": "wire:fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0",
+          "id": "wire:fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0",
           "delta": {
             "delta": "tool_name",
             "name": "join_labels"
@@ -1866,7 +1610,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0",
+          "id": "wire:fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
@@ -1874,10 +1618,10 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0",
+          "id": "wire:fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0",
+            "tool_id": "fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0",
             "name": "join_labels",
             "arguments": {
               "labels": [
@@ -1888,18 +1632,18 @@
               ],
               "separator": "|"
             },
-            "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
+            "call_id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2"
+              "id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2"
             },
             "provider": {
-              "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-              "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
+              "call_id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2",
+              "item_id": "fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0"
             },
             "function": {
               "name": "join_labels",
@@ -1928,8 +1672,8 @@
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
-          "provider_request_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
+          "response_id": "3be83609-f5b4-9d94-b305-5d0e0524dbb7",
+          "provider_request_id": "3be83609-f5b4-9d94-b305-5d0e0524dbb7",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
@@ -1949,7 +1693,7 @@
               "summary": null
             },
             "status": "completed",
-            "response_id": "642b692e-5f38-94ea-baf9-e65f6317e3a6",
+            "response_id": "3be83609-f5b4-9d94-b305-5d0e0524dbb7",
             "model": "grok-4.3"
           }
         }
@@ -2009,11 +1753,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+                  "id": "rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -2022,11 +1766,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                    "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
                   },
                   "provider": {
-                    "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                    "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                    "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                    "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -2044,11 +1788,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                    "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
                   },
                   "provider": {
-                    "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                    "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                    "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                    "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2066,11 +1810,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+                  "id": "rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+                      "content": "Running the production-readiness scenario by calling one tool at a time in sequence."
                     }
                   ],
                   "provider": "xai"
@@ -2079,11 +1823,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1"
+                    "id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1"
                   },
                   "provider": {
-                    "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                    "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
+                    "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
+                    "item_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2118,11 +1862,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1"
+                    "id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1"
                   },
                   "provider": {
-                    "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                    "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
+                    "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
+                    "item_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2142,11 +1886,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2"
+                    "id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2"
                   },
                   "provider": {
-                    "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                    "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
+                    "call_id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2",
+                    "item_id": "fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2172,11 +1916,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2"
+                    "id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2"
                   },
                   "provider": {
-                    "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                    "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
+                    "call_id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2",
+                    "item_id": "fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2310,11 +2054,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3"
+                "id": "call-db313885-8bd1-4536-9295-d5401288b984-3"
               },
               "provider": {
-                "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
-                "item_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0"
+                "call_id": "call-db313885-8bd1-4536-9295-d5401288b984-3",
+                "item_id": "fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0"
               },
               "function": {
                 "name": "escape_echo",
@@ -2328,14 +2072,14 @@
           ],
           "usage": {
             "input_tokens": 890,
-            "output_tokens": 124,
-            "total_tokens": 1014,
+            "output_tokens": 119,
+            "total_tokens": 1009,
             "cached_input_tokens": 832,
-            "reasoning_tokens": 97
+            "reasoning_tokens": 92
           },
           "message_id": null,
-          "response_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
-          "provider_request_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
+          "response_id": "fdcb5835-dd54-904a-9995-65b9f7cfc167",
+          "provider_request_id": "fdcb5835-dd54-904a-9995-65b9f7cfc167",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -2345,18 +2089,18 @@
               "input_tokens_details": {
                 "cached_tokens": 832
               },
-              "output_tokens": 124,
+              "output_tokens": 119,
               "output_tokens_details": {
-                "reasoning_tokens": 97
+                "reasoning_tokens": 92
               },
-              "total_tokens": 1014
+              "total_tokens": 1009
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "response_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
+            "response_id": "fdcb5835-dd54-904a-9995-65b9f7cfc167",
             "model": "grok-4.3"
           }
         }
@@ -2364,14 +2108,14 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0",
+          "id": "wire:fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0",
           "kind": {
             "kind": "tool_call"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0",
+          "id": "wire:fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0",
           "delta": {
             "delta": "tool_name",
             "name": "escape_echo"
@@ -2379,7 +2123,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0",
+          "id": "wire:fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0",
           "delta": {
             "delta": "tool_arguments",
             "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
@@ -2387,26 +2131,26 @@
         },
         {
           "event": "block_end",
-          "id": "wire:fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0",
+          "id": "wire:fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0",
           "end": {
             "close": "tool_call",
-            "tool_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0",
+            "tool_id": "fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0",
             "name": "escape_echo",
             "arguments": {
               "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
             },
-            "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
+            "call_id": "call-db313885-8bd1-4536-9295-d5401288b984-3",
             "on_unparseable": "drop"
           },
           "block": {
             "type": "toolcall",
             "id": {
               "origin": "explicit",
-              "id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3"
+              "id": "call-db313885-8bd1-4536-9295-d5401288b984-3"
             },
             "provider": {
-              "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
-              "item_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0"
+              "call_id": "call-db313885-8bd1-4536-9295-d5401288b984-3",
+              "item_id": "fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0"
             },
             "function": {
               "name": "escape_echo",
@@ -2422,15 +2166,15 @@
           "event": "final",
           "usage": {
             "input_tokens": 890,
-            "output_tokens": 124,
-            "total_tokens": 1014,
+            "output_tokens": 119,
+            "total_tokens": 1009,
             "cached_input_tokens": 832,
-            "reasoning_tokens": 97
+            "reasoning_tokens": 92
           },
           "finish_reason": "tool_calls",
           "message_id": null,
-          "response_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
-          "provider_request_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
+          "response_id": "fdcb5835-dd54-904a-9995-65b9f7cfc167",
+          "provider_request_id": "fdcb5835-dd54-904a-9995-65b9f7cfc167",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
@@ -2439,18 +2183,18 @@
               "input_tokens_details": {
                 "cached_tokens": 832
               },
-              "output_tokens": 124,
+              "output_tokens": 119,
               "output_tokens_details": {
-                "reasoning_tokens": 97
+                "reasoning_tokens": 92
               },
-              "total_tokens": 1014
+              "total_tokens": 1009
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "response_id": "88072a89-fca1-93f5-8620-e986d0bdaa2b",
+            "response_id": "fdcb5835-dd54-904a-9995-65b9f7cfc167",
             "model": "grok-4.3"
           }
         }
@@ -2510,11 +2254,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_abf917ce-adad-9183-9e42-ec55cb27eb62",
+                  "id": "rs_a8a63673-5cd4-905b-ba58-b376d6c1b7a6",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Running the production-readiness scenario.\n\nThe manifest note and escaped text are noted. The harness will call ping_empty with an empty JSON object first, then inspect_manifest for project rig-xai with critical=true, retries=2, plan weight=1, verify weight=2, and the exact note."
+                      "content": "Running the production-readiness scenario."
                     }
                   ],
                   "provider": "xai"
@@ -2523,11 +2267,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                    "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
                   },
                   "provider": {
-                    "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                    "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                    "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                    "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -2545,11 +2289,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0"
+                    "id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0"
                   },
                   "provider": {
-                    "call_id": "call-6c3ed923-d119-47b7-a501-9dae090cc04f-0",
-                    "item_id": "fc_abf917ce-adad-9183-9e42-ec55cb27eb62_0"
+                    "call_id": "call-1c82eb33-f4a6-47b0-8ec5-2a709befa99e-0",
+                    "item_id": "fc_a8a63673-5cd4-905b-ba58-b376d6c1b7a6_0"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2567,11 +2311,11 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "id": "rs_4ac551d1-6cc0-9773-8ad6-11abae114707",
+                  "id": "rs_43caa896-3d69-9ee5-8f21-c48b2ce3733f",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "The production-readiness scenario requires calling exactly one tool at a time in a specific order.\n\nping_empty returned EMPTY-OK. Now calling inspect_manifest."
+                      "content": "Running the production-readiness scenario by calling one tool at a time in sequence."
                     }
                   ],
                   "provider": "xai"
@@ -2580,11 +2324,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1"
+                    "id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1"
                   },
                   "provider": {
-                    "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                    "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
+                    "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
+                    "item_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2619,11 +2363,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1"
+                    "id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1"
                   },
                   "provider": {
-                    "call_id": "call-cc3b5fc3-f003-46fa-8f5e-06b82ba8d788-1",
-                    "item_id": "fc_4ac551d1-6cc0-9773-8ad6-11abae114707_0"
+                    "call_id": "call-7e9bff8a-af80-447e-ab46-e298d4ecbd23-1",
+                    "item_id": "fc_43caa896-3d69-9ee5-8f21-c48b2ce3733f_0"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2643,11 +2387,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2"
+                    "id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2"
                   },
                   "provider": {
-                    "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                    "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
+                    "call_id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2",
+                    "item_id": "fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2673,11 +2417,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2"
+                    "id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2"
                   },
                   "provider": {
-                    "call_id": "call-c463f29d-580c-4878-9e8f-c0994284225e-2",
-                    "item_id": "fc_642b692e-5f38-94ea-baf9-e65f6317e3a6_0"
+                    "call_id": "call-f7749e55-a37d-4f85-8d46-46682b72dac4-2",
+                    "item_id": "fc_3be83609-f5b4-9d94-b305-5d0e0524dbb7_0"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2697,11 +2441,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3"
+                    "id": "call-db313885-8bd1-4536-9295-d5401288b984-3"
                   },
                   "provider": {
-                    "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
-                    "item_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0"
+                    "call_id": "call-db313885-8bd1-4536-9295-d5401288b984-3",
+                    "item_id": "fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -2721,11 +2465,11 @@
                   "type": "toolresult",
                   "call": {
                     "origin": "explicit",
-                    "id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3"
+                    "id": "call-db313885-8bd1-4536-9295-d5401288b984-3"
                   },
                   "provider": {
-                    "call_id": "call-ed7cdb07-668e-4992-89c6-1cd04fcaebea-3",
-                    "item_id": "fc_88072a89-fca1-93f5-8620-e986d0bdaa2b_0"
+                    "call_id": "call-db313885-8bd1-4536-9295-d5401288b984-3",
+                    "item_id": "fc_fdcb5835-dd54-904a-9995-65b9f7cfc167_0"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -2857,19 +2601,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK."
+              "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK."
             }
           ],
           "usage": {
             "input_tokens": 944,
-            "output_tokens": 279,
-            "total_tokens": 1223,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 259
+            "output_tokens": 97,
+            "total_tokens": 1041,
+            "cached_input_tokens": 896,
+            "reasoning_tokens": 74
           },
-          "message_id": "msg_02c3b20b-920e-9b19-b525-25cc4643076c",
-          "response_id": "02c3b20b-920e-9b19-b525-25cc4643076c",
-          "provider_request_id": "02c3b20b-920e-9b19-b525-25cc4643076c",
+          "message_id": "msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+          "response_id": "87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+          "provider_request_id": "87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "finish_reason": "stop",
           "provider": "xai",
           "model": "grok-4.3",
@@ -2877,21 +2621,21 @@
             "usage": {
               "input_tokens": 944,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 896
               },
-              "output_tokens": 279,
+              "output_tokens": 97,
               "output_tokens_details": {
-                "reasoning_tokens": 259
+                "reasoning_tokens": 74
               },
-              "total_tokens": 1223
+              "total_tokens": 1041
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_02c3b20b-920e-9b19-b525-25cc4643076c",
-            "response_id": "02c3b20b-920e-9b19-b525-25cc4643076c",
+            "message_id": "msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+            "response_id": "87b1e77c-79c9-9db7-88fb-7781dc328dc8",
             "model": "grok-4.3"
           }
         }
@@ -2899,38 +2643,38 @@
       "events": [
         {
           "event": "block_start",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "kind": {
             "kind": "text"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
-            "text": "Production"
+            "text": "All"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
-            "text": " readiness"
+            "text": " checks"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
-            "text": " complete"
+            "text": " passed"
           }
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": ":"
@@ -2938,7 +2682,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": " EMPTY"
@@ -2946,7 +2690,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "-"
@@ -2954,7 +2698,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "OK"
@@ -2962,7 +2706,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": " MAN"
@@ -2970,7 +2722,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "IFEST"
@@ -2978,7 +2730,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "-"
@@ -2986,7 +2738,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "OK"
@@ -2994,7 +2746,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": " LABEL"
@@ -3002,7 +2762,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "S"
@@ -3010,7 +2770,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "-"
@@ -3018,7 +2778,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "OK"
@@ -3026,7 +2786,15 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": " ESC"
@@ -3034,7 +2802,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "APE"
@@ -3042,7 +2810,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "-"
@@ -3050,7 +2818,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "OK"
@@ -3058,7 +2826,7 @@
         },
         {
           "event": "block_delta",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "delta": {
             "delta": "text",
             "text": "."
@@ -3066,7 +2834,7 @@
         },
         {
           "event": "block_start",
-          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "id": "wire:msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "kind": {
             "kind": "message"
           }
@@ -3075,36 +2843,36 @@
           "event": "final",
           "usage": {
             "input_tokens": 944,
-            "output_tokens": 279,
-            "total_tokens": 1223,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 259
+            "output_tokens": 97,
+            "total_tokens": 1041,
+            "cached_input_tokens": 896,
+            "reasoning_tokens": 74
           },
           "finish_reason": "stop",
-          "message_id": "msg_02c3b20b-920e-9b19-b525-25cc4643076c",
-          "response_id": "02c3b20b-920e-9b19-b525-25cc4643076c",
-          "provider_request_id": "02c3b20b-920e-9b19-b525-25cc4643076c",
+          "message_id": "msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+          "response_id": "87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+          "provider_request_id": "87b1e77c-79c9-9db7-88fb-7781dc328dc8",
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
             "usage": {
               "input_tokens": 944,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 896
               },
-              "output_tokens": 279,
+              "output_tokens": 97,
               "output_tokens_details": {
-                "reasoning_tokens": 259
+                "reasoning_tokens": 74
               },
-              "total_tokens": 1223
+              "total_tokens": 1041
             },
             "reasoning_metadata": {
               "effort": null,
               "summary": null
             },
             "status": "completed",
-            "message_id": "msg_02c3b20b-920e-9b19-b525-25cc4643076c",
-            "response_id": "02c3b20b-920e-9b19-b525-25cc4643076c",
+            "message_id": "msg_87b1e77c-79c9-9db7-88fb-7781dc328dc8",
+            "response_id": "87b1e77c-79c9-9db7-88fb-7781dc328dc8",
             "model": "grok-4.3"
           }
         }

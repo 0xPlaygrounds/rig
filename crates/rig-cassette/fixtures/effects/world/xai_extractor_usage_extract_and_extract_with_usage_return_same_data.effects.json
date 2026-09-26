@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -120,14 +120,25 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "reasoning",
+              "id": "rs_ff987e93-c063-9ede-ac1d-0cdebe34691f",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "Extracting structured data from the text about Bob Johnson."
+                }
+              ],
+              "provider": "xai"
+            },
+            {
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0"
+                "id": "call-5e123a93-9b25-4184-83a5-02427aa7acaa-0"
               },
               "provider": {
-                "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
-                "item_id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0"
+                "call_id": "call-5e123a93-9b25-4184-83a5-02427aa7acaa-0",
+                "item_id": "fc_ff987e93-c063-9ede-ac1d-0cdebe34691f_0"
               },
               "function": {
                 "name": "submit",
@@ -143,14 +154,14 @@
           ],
           "usage": {
             "input_tokens": 408,
-            "output_tokens": 177,
-            "total_tokens": 585,
+            "output_tokens": 226,
+            "total_tokens": 634,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 157
+            "reasoning_tokens": 206
           },
           "message_id": null,
-          "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
-          "provider_request_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
+          "response_id": "ff987e93-c063-9ede-ac1d-0cdebe34691f",
+          "provider_request_id": "ff987e93-c063-9ede-ac1d-0cdebe34691f",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -160,7 +171,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
+            "id": "ff987e93-c063-9ede-ac1d-0cdebe34691f",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -172,9 +183,20 @@
             "object": "response",
             "output": [
               {
+                "id": "rs_ff987e93-c063-9ede-ac1d-0cdebe34691f",
+                "status": "completed",
+                "summary": [
+                  {
+                    "text": "Extracting structured data from the text about Bob Johnson.",
+                    "type": "summary_text"
+                  }
+                ],
+                "type": "reasoning"
+              },
+              {
                 "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
-                "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
-                "id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0",
+                "call_id": "call-5e123a93-9b25-4184-83a5-02427aa7acaa-0",
+                "id": "fc_ff987e93-c063-9ede-ac1d-0cdebe34691f_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -191,7 +213,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -241,20 +263,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 408,
-                "output_tokens": 181
+                "output_tokens": 230
               },
-              "cost_in_usd_ticks": 7509000,
+              "cost_in_usd_ticks": 8734000,
               "input_tokens": 408,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 177,
+              "output_tokens": 226,
               "output_tokens_details": {
-                "reasoning_tokens": 157
+                "reasoning_tokens": 206
               },
-              "total_tokens": 585
+              "total_tokens": 634
             },
             "user": null
           }
@@ -334,11 +356,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+              "id": "rs_ef1903f0-5c4e-9d0e-b8e8-5d382db15a0d",
               "content": [
                 {
                   "type": "summary",
-                  "content": "Extracting structured data from the text. The name is Bob Johnson. The age is 55. The occupation is retired teacher."
+                  "content": "Extracting structured data from the text about Bob Johnson."
                 }
               ],
               "provider": "xai"
@@ -347,11 +369,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0"
+                "id": "call-593a4bc3-a257-46d9-8ac1-c4787c459169-0"
               },
               "provider": {
-                "call_id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0",
-                "item_id": "fc_08c8041e-9ca8-9fcb-8bee-ff65d347a213_0"
+                "call_id": "call-593a4bc3-a257-46d9-8ac1-c4787c459169-0",
+                "item_id": "fc_ef1903f0-5c4e-9d0e-b8e8-5d382db15a0d_0"
               },
               "function": {
                 "name": "submit",
@@ -367,14 +389,14 @@
           ],
           "usage": {
             "input_tokens": 408,
-            "output_tokens": 218,
-            "total_tokens": 626,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 198
+            "output_tokens": 237,
+            "total_tokens": 645,
+            "cached_input_tokens": 384,
+            "reasoning_tokens": 217
           },
           "message_id": null,
-          "response_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
-          "provider_request_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+          "response_id": "ef1903f0-5c4e-9d0e-b8e8-5d382db15a0d",
+          "provider_request_id": "ef1903f0-5c4e-9d0e-b8e8-5d382db15a0d",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -384,7 +406,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+            "id": "ef1903f0-5c4e-9d0e-b8e8-5d382db15a0d",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -396,11 +418,11 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+                "id": "rs_ef1903f0-5c4e-9d0e-b8e8-5d382db15a0d",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "Extracting structured data from the text. The name is Bob Johnson. The age is 55. The occupation is retired teacher.",
+                    "text": "Extracting structured data from the text about Bob Johnson.",
                     "type": "summary_text"
                   }
                 ],
@@ -408,8 +430,8 @@
               },
               {
                 "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
-                "call_id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0",
-                "id": "fc_08c8041e-9ca8-9fcb-8bee-ff65d347a213_0",
+                "call_id": "call-593a4bc3-a257-46d9-8ac1-c4787c459169-0",
+                "id": "fc_ef1903f0-5c4e-9d0e-b8e8-5d382db15a0d_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -426,7 +448,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -476,20 +498,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 408,
-                "output_tokens": 222
+                "output_tokens": 241
               },
-              "cost_in_usd_ticks": 8534000,
+              "cost_in_usd_ticks": 6993000,
               "input_tokens": 408,
               "input_tokens_details": {
-                "cached_tokens": 192
+                "cached_tokens": 384
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 218,
+              "output_tokens": 237,
               "output_tokens_details": {
-                "reasoning_tokens": 198
+                "reasoning_tokens": 217
               },
-              "total_tokens": 626
+              "total_tokens": 645
             },
             "user": null
           }

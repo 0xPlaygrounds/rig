@@ -143,14 +143,20 @@ pub enum SseShape {
 impl SseShape {
     /// Whether `frame` is the recorded turn's terminal, or follows it:
     /// nothing at or after it belongs in a cut.
-    fn is_terminal(self, frame: &str) -> bool {
+    pub fn is_terminal(self, frame: &str) -> bool {
         match self {
             // A `finish_reason` other than `null` closes the choice; the
             // usage frame and `[DONE]` follow it.
             Self::Chat => {
                 frame.contains(r#""finish_reason":""#) || frame.starts_with("data: [DONE]")
             }
-            Self::Responses => frame.starts_with("event: response.completed"),
+            // OpenAI names the event on an `event:` line; OpenRouter sends
+            // only the data, whose `type` names it.
+            Self::Responses => {
+                frame.starts_with("event: response.completed")
+                    || frame.starts_with("data: [DONE]")
+                    || frame.contains(r#""type":"response.completed""#)
+            }
             Self::Gemini => frame.contains("finishReason"),
         }
     }

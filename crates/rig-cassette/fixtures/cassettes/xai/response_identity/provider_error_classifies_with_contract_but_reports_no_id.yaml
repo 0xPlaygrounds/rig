@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"Never answered","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-nonexistent-model-for-identity-edge"}'
+  body: '{"input":[{"content":[{"text":"Never answered","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-nonexistent-model-for-identity-edge","store":false}'
 then:
-  status: 400
+  status: 404
   header:
   - name: content-type
     value: application/json
-  body: '{"code":"invalid-argument","error":"Model not found: grok-nonexistent-model-for-identity-edge"}'
+  body: '{"code":"not-found","error":"The model grok-nonexistent-model-for-identity-edge does not exist or your team team_REDACTED_1 does not have access to it. If you believe this is a mistake, please contact support and quote your team ID and the model name."}'

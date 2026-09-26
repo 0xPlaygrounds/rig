@@ -207,10 +207,10 @@
           "rig_ecs::agent::StreamRequested": false,
           "rig_ecs::agent::Usage": {
             "input_tokens": 406,
-            "output_tokens": 194,
-            "total_tokens": 600,
+            "output_tokens": 205,
+            "total_tokens": 611,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 177
+            "reasoning_tokens": 188
           },
           "rig_ecs::agent::UsesModel": 0,
           "rig_ecs::bus::effect::Scope": "parity/run#0"
@@ -234,11 +234,11 @@
             "content": [
               {
                 "type": "reasoning",
-                "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                "id": "rs_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
                 "content": [
                   {
                     "type": "summary",
-                    "content": "Extracting structured data from the text about Alice."
+                    "content": "Extracting structured data from the text: name, age, and profession."
                   }
                 ],
                 "provider": "xai"
@@ -247,11 +247,11 @@
                 "type": "toolcall",
                 "id": {
                   "origin": "explicit",
-                  "id": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
+                  "id": "call-63c829f0-1257-42f2-9857-f78c32d78aee-0"
                 },
                 "provider": {
-                  "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                  "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                  "call_id": "call-63c829f0-1257-42f2-9857-f78c32d78aee-0",
+                  "item_id": "fc_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25_0"
                 },
                 "function": {
                   "name": "submit",
@@ -286,11 +286,11 @@
               "choice": [
                 {
                   "type": "reasoning",
-                  "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                  "id": "rs_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
                   "content": [
                     {
                       "type": "summary",
-                      "content": "Extracting structured data from the text about Alice."
+                      "content": "Extracting structured data from the text: name, age, and profession."
                     }
                   ],
                   "provider": "xai"
@@ -299,11 +299,11 @@
                   "type": "toolcall",
                   "id": {
                     "origin": "explicit",
-                    "id": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
+                    "id": "call-63c829f0-1257-42f2-9857-f78c32d78aee-0"
                   },
                   "provider": {
-                    "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                    "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
+                    "call_id": "call-63c829f0-1257-42f2-9857-f78c32d78aee-0",
+                    "item_id": "fc_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25_0"
                   },
                   "function": {
                     "name": "submit",
@@ -319,14 +319,14 @@
               ],
               "usage": {
                 "input_tokens": 406,
-                "output_tokens": 194,
-                "total_tokens": 600,
+                "output_tokens": 205,
+                "total_tokens": 611,
                 "cached_input_tokens": 192,
-                "reasoning_tokens": 177
+                "reasoning_tokens": 188
               },
               "message_id": null,
-              "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
-              "provider_request_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+              "response_id": "36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
+              "provider_request_id": "36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
               "finish_reason": "tool_calls",
               "provider": "xai",
               "model": "grok-4.3",
@@ -336,7 +336,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+                "id": "36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
                 "incomplete_details": null,
                 "instructions": null,
                 "max_output_tokens": null,
@@ -348,11 +348,11 @@
                 "object": "response",
                 "output": [
                   {
-                    "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                    "id": "rs_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
                     "status": "completed",
                     "summary": [
                       {
-                        "text": "Extracting structured data from the text about Alice.",
+                        "text": "Extracting structured data from the text: name, age, and profession.",
                         "type": "summary_text"
                       }
                     ],
@@ -360,8 +360,8 @@
                   },
                   {
                     "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                    "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                    "id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0",
+                    "call_id": "call-63c829f0-1257-42f2-9857-f78c32d78aee-0",
+                    "id": "fc_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25_0",
                     "name": "submit",
                     "status": "completed",
                     "type": "function_call"
@@ -378,7 +378,7 @@
                 "safety_identifier": null,
                 "service_tier": "default",
                 "status": "completed",
-                "store": true,
+                "store": false,
                 "temperature": 0.7,
                 "text": {
                   "format": {
@@ -428,20 +428,20 @@
                 "usage": {
                   "context_details": {
                     "input_tokens": 406,
-                    "output_tokens": 197
+                    "output_tokens": 208
                   },
-                  "cost_in_usd_ticks": 7909000,
+                  "cost_in_usd_ticks": 8184000,
                   "input_tokens": 406,
                   "input_tokens_details": {
                     "cached_tokens": 192
                   },
                   "num_server_side_tools_used": 0,
                   "num_sources_used": 0,
-                  "output_tokens": 194,
+                  "output_tokens": 205,
                   "output_tokens_details": {
-                    "reasoning_tokens": 177
+                    "reasoning_tokens": 188
                   },
-                  "total_tokens": 600
+                  "total_tokens": 611
                 },
                 "user": null
               }
@@ -461,11 +461,11 @@
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
-              "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+              "id": "rs_36d9abf1-c9bd-9f1e-a2a4-8bae139e0c25",
               "content": [
                 {
                   "type": "summary",
-                  "content": "Extracting structured data from the text about Alice."
+                  "content": "Extracting structured data from the text: name, age, and profession."
                 }
               ],
               "provider": "xai"

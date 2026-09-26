@@ -120,11 +120,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
+              "id": "rs_518cf035-5689-91e1-bac4-3273b9d7db60",
               "content": [
                 {
                   "type": "summary",
-                  "content": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data."
+                  "content": "I will extract the address details from the provided text."
                 }
               ],
               "provider": "xai"
@@ -133,11 +133,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0"
+                "id": "call-4beb8cb5-c675-4848-b400-f9385a7e91d0-0"
               },
               "provider": {
-                "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
-                "item_id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0"
+                "call_id": "call-4beb8cb5-c675-4848-b400-f9385a7e91d0-0",
+                "item_id": "fc_518cf035-5689-91e1-bac4-3273b9d7db60_0"
               },
               "function": {
                 "name": "submit",
@@ -154,14 +154,14 @@
           ],
           "usage": {
             "input_tokens": 425,
-            "output_tokens": 349,
-            "total_tokens": 774,
+            "output_tokens": 222,
+            "total_tokens": 647,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 323
+            "reasoning_tokens": 196
           },
           "message_id": null,
-          "response_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
-          "provider_request_id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
+          "response_id": "518cf035-5689-91e1-bac4-3273b9d7db60",
+          "provider_request_id": "518cf035-5689-91e1-bac4-3273b9d7db60",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -171,7 +171,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "937fc0da-7da5-912f-a5e1-b9c203d20abd",
+            "id": "518cf035-5689-91e1-bac4-3273b9d7db60",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -183,11 +183,11 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_937fc0da-7da5-912f-a5e1-b9c203d20abd",
+                "id": "rs_518cf035-5689-91e1-bac4-3273b9d7db60",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "Extracting structured data from the provided address.\n\nIdentified the address components: street 123 Main St, city Springfield, state IL, and zip code 62701. Preparing to submit the structured data.",
+                    "text": "I will extract the address details from the provided text.",
                     "type": "summary_text"
                   }
                 ],
@@ -195,8 +195,8 @@
               },
               {
                 "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
-                "call_id": "call-ca18eae2-52f1-4b76-96f1-186c4fe2f711-0",
-                "id": "fc_937fc0da-7da5-912f-a5e1-b9c203d20abd_0",
+                "call_id": "call-4beb8cb5-c675-4848-b400-f9385a7e91d0-0",
+                "id": "fc_518cf035-5689-91e1-bac4-3273b9d7db60_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -213,7 +213,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -266,20 +266,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 425,
-                "output_tokens": 353
+                "output_tokens": 226
               },
-              "cost_in_usd_ticks": 12021500,
+              "cost_in_usd_ticks": 8846500,
               "input_tokens": 425,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 349,
+              "output_tokens": 222,
               "output_tokens_details": {
-                "reasoning_tokens": 323
+                "reasoning_tokens": 196
               },
-              "total_tokens": 774
+              "total_tokens": 647
             },
             "user": null
           }

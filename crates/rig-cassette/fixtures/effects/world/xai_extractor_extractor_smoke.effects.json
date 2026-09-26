@@ -101,11 +101,11 @@
           "choice": [
             {
               "type": "reasoning",
-              "id": "rs_c27e3876-1b04-92ce-8e03-b4620aa3c89e",
+              "id": "rs_4e988236-18b3-963b-a7bc-7f18e0545df3",
               "content": [
                 {
                   "type": "summary",
-                  "content": "I will extract structured data from the provided text."
+                  "content": "I will extract structured data from the provided text using the submit function."
                 }
               ],
               "provider": "xai"
@@ -114,11 +114,11 @@
               "type": "toolcall",
               "id": {
                 "origin": "explicit",
-                "id": "call-d2253617-9347-4b26-a5fc-4b56c257a20a-0"
+                "id": "call-b1083d6a-7830-4000-b0bf-d5d26c1ba42b-0"
               },
               "provider": {
-                "call_id": "call-d2253617-9347-4b26-a5fc-4b56c257a20a-0",
-                "item_id": "fc_c27e3876-1b04-92ce-8e03-b4620aa3c89e_0"
+                "call_id": "call-b1083d6a-7830-4000-b0bf-d5d26c1ba42b-0",
+                "item_id": "fc_4e988236-18b3-963b-a7bc-7f18e0545df3_0"
               },
               "function": {
                 "name": "submit",
@@ -134,14 +134,14 @@
           ],
           "usage": {
             "input_tokens": 404,
-            "output_tokens": 203,
-            "total_tokens": 607,
+            "output_tokens": 193,
+            "total_tokens": 597,
             "cached_input_tokens": 192,
-            "reasoning_tokens": 179
+            "reasoning_tokens": 169
           },
           "message_id": null,
-          "response_id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
-          "provider_request_id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
+          "response_id": "4e988236-18b3-963b-a7bc-7f18e0545df3",
+          "provider_request_id": "4e988236-18b3-963b-a7bc-7f18e0545df3",
           "finish_reason": "tool_calls",
           "provider": "xai",
           "model": "grok-4.3",
@@ -151,7 +151,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "c27e3876-1b04-92ce-8e03-b4620aa3c89e",
+            "id": "4e988236-18b3-963b-a7bc-7f18e0545df3",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
@@ -163,11 +163,11 @@
             "object": "response",
             "output": [
               {
-                "id": "rs_c27e3876-1b04-92ce-8e03-b4620aa3c89e",
+                "id": "rs_4e988236-18b3-963b-a7bc-7f18e0545df3",
                 "status": "completed",
                 "summary": [
                   {
-                    "text": "I will extract structured data from the provided text.",
+                    "text": "I will extract structured data from the provided text using the submit function.",
                     "type": "summary_text"
                   }
                 ],
@@ -175,8 +175,8 @@
               },
               {
                 "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
-                "call_id": "call-d2253617-9347-4b26-a5fc-4b56c257a20a-0",
-                "id": "fc_c27e3876-1b04-92ce-8e03-b4620aa3c89e_0",
+                "call_id": "call-b1083d6a-7830-4000-b0bf-d5d26c1ba42b-0",
+                "id": "fc_4e988236-18b3-963b-a7bc-7f18e0545df3_0",
                 "name": "submit",
                 "status": "completed",
                 "type": "function_call"
@@ -193,7 +193,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.7,
             "text": {
               "format": {
@@ -236,20 +236,20 @@
             "usage": {
               "context_details": {
                 "input_tokens": 404,
-                "output_tokens": 207
+                "output_tokens": 197
               },
-              "cost_in_usd_ticks": 8109000,
+              "cost_in_usd_ticks": 7859000,
               "input_tokens": 404,
               "input_tokens_details": {
                 "cached_tokens": 192
               },
               "num_server_side_tools_used": 0,
               "num_sources_used": 0,
-              "output_tokens": 203,
+              "output_tokens": 193,
               "output_tokens_details": {
-                "reasoning_tokens": 179
+                "reasoning_tokens": 169
               },
-              "total_tokens": 607
+              "total_tokens": 597
             },
             "user": null
           }

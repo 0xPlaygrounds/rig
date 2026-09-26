@@ -331,6 +331,10 @@ impl Wire for CopilotWire {
         self.wire.replay_issuers(model)
     }
 
+    fn reasoning_issuer(&self, model: Option<&str>) -> Option<String> {
+        self.wire.reasoning_issuer(model)
+    }
+
     fn route(&self) -> Option<&str> {
         self.wire.route()
     }

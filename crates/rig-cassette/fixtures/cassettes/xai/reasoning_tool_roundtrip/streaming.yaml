@@ -7,53 +7,59 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"grok-3-mini","stream":true,"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"grok-3-mini","store":false,"stream":true,"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: f1952012-2ca3-92de-b420-84f834142727
+    value: 283314d6-8d2b-91cf-9c5f-9eb13cce3657
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"f1952012-2ca3-92de-b420-84f834142727","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"283314d6-8d2b-91cf-9c5f-9eb13cce3657","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"f1952012-2ca3-92de-b420-84f834142727","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"283314d6-8d2b-91cf-9c5f-9eb13cce3657","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"id":"rs_f1952012-2ca3-92de-b420-84f834142727","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.reasoning_summary_part.added
-    data: {"item_id":"rs_f1952012-2ca3-92de-b420-84f834142727","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+    data: {"item_id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
 
     event: response.reasoning_summary_text.delta
-    data: {"delta":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","item_id":"rs_f1952012-2ca3-92de-b420-84f834142727","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+    data: {"delta":"Checking the current","item_id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" weather in Tokyo to","item_id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" advise on packing an umbrella or sunscreen.","item_id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
 
     event: response.reasoning_summary_text.done
-    data: {"item_id":"rs_f1952012-2ca3-92de-b420-84f834142727","output_index":0,"sequence_number":5,"summary_index":0,"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"response.reasoning_summary_text.done"}
+    data: {"item_id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","output_index":0,"sequence_number":7,"summary_index":0,"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"response.reasoning_summary_text.done"}
 
     event: response.reasoning_summary_part.done
-    data: {"item_id":"rs_f1952012-2ca3-92de-b420-84f834142727","output_index":0,"part":{"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"summary_text"},"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+    data: {"item_id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","output_index":0,"part":{"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"summary_text"},"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"id":"rs_f1952012-2ca3-92de-b420-84f834142727","status":"completed","summary":[{"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":7,"type":"response.output_item.done"}
+    data: {"item":{"id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","status":"completed","summary":[{"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
 
     event: response.output_item.added
-    data: {"item":{"arguments":"","call_id":"call-f26b62e8-dc76-4ee5-a6c6-9a82c3023a0d-0","id":"fc_f1952012-2ca3-92de-b420-84f834142727_0","name":"get_weather","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":8,"type":"response.output_item.added"}
+    data: {"item":{"arguments":"","call_id":"call-83969e6b-6789-4183-b835-abdb3687c1d8-0","id":"fc_283314d6-8d2b-91cf-9c5f-9eb13cce3657_0","name":"get_weather","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":10,"type":"response.output_item.added"}
 
     event: response.function_call_arguments.delta
-    data: {"delta":"{\"city\":\"Tokyo\"}","item_id":"fc_f1952012-2ca3-92de-b420-84f834142727_0","output_index":1,"sequence_number":9,"type":"response.function_call_arguments.delta"}
+    data: {"delta":"{\"city\":\"Tokyo\"}","item_id":"fc_283314d6-8d2b-91cf-9c5f-9eb13cce3657_0","output_index":1,"sequence_number":11,"type":"response.function_call_arguments.delta"}
 
     event: response.function_call_arguments.done
-    data: {"arguments":"{\"city\":\"Tokyo\"}","item_id":"fc_f1952012-2ca3-92de-b420-84f834142727_0","name":"get_weather","output_index":1,"sequence_number":10,"type":"response.function_call_arguments.done"}
+    data: {"arguments":"{\"city\":\"Tokyo\"}","item_id":"fc_283314d6-8d2b-91cf-9c5f-9eb13cce3657_0","name":"get_weather","output_index":1,"sequence_number":12,"type":"response.function_call_arguments.done"}
 
     event: response.output_item.done
-    data: {"item":{"arguments":"{\"city\":\"Tokyo\"}","call_id":"call-f26b62e8-dc76-4ee5-a6c6-9a82c3023a0d-0","id":"fc_f1952012-2ca3-92de-b420-84f834142727_0","name":"get_weather","status":"completed","type":"function_call"},"output_index":1,"sequence_number":11,"type":"response.output_item.done"}
+    data: {"item":{"arguments":"{\"city\":\"Tokyo\"}","call_id":"call-83969e6b-6789-4183-b835-abdb3687c1d8-0","id":"fc_283314d6-8d2b-91cf-9c5f-9eb13cce3657_0","name":"get_weather","status":"completed","type":"function_call"},"output_index":1,"sequence_number":13,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"f1952012-2ca3-92de-b420-84f834142727","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_f1952012-2ca3-92de-b420-84f834142727","status":"completed","summary":[{"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"city\":\"Tokyo\"}","call_id":"call-f26b62e8-dc76-4ee5-a6c6-9a82c3023a0d-0","id":"fc_f1952012-2ca3-92de-b420-84f834142727_0","name":"get_weather","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":375,"output_tokens":273},"cost_in_usd_ticks":8077500,"input_tokens":375,"input_tokens_details":{"cached_tokens":320},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":270,"output_tokens_details":{"reasoning_tokens":260},"total_tokens":645},"user":null},"sequence_number":12,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"283314d6-8d2b-91cf-9c5f-9eb13cce3657","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","status":"completed","summary":[{"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"city\":\"Tokyo\"}","call_id":"call-83969e6b-6789-4183-b835-abdb3687c1d8-0","id":"fc_283314d6-8d2b-91cf-9c5f-9eb13cce3657_0","name":"get_weather","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":375,"output_tokens":199},"cost_in_usd_ticks":6227500,"input_tokens":375,"input_tokens_details":{"cached_tokens":320},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":196,"output_tokens_details":{"reasoning_tokens":186},"total_tokens":571},"user":null},"sequence_number":14,"type":"response.completed"}
 
 ---
 when:
@@ -65,108 +71,156 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"input_text"}],"role":"user","type":"message"},{"id":"rs_f1952012-2ca3-92de-b420-84f834142727","summary":[{"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"city\":\"Tokyo\"}","call_id":"call-f26b62e8-dc76-4ee5-a6c6-9a82c3023a0d-0","id":"fc_f1952012-2ca3-92de-b420-84f834142727_0","name":"get_weather","status":"completed","type":"function_call"},{"call_id":"call-f26b62e8-dc76-4ee5-a6c6-9a82c3023a0d-0","output":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","status":"completed","type":"function_call_output"}],"max_output_tokens":4096,"model":"grok-3-mini","stream":true,"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"input_text"}],"role":"user","type":"message"},{"id":"rs_283314d6-8d2b-91cf-9c5f-9eb13cce3657","summary":[{"text":"Checking the current weather in Tokyo to advise on packing an umbrella or sunscreen.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"city\":\"Tokyo\"}","call_id":"call-83969e6b-6789-4183-b835-abdb3687c1d8-0","id":"fc_283314d6-8d2b-91cf-9c5f-9eb13cce3657_0","name":"get_weather","status":"completed","type":"function_call"},{"call_id":"call-83969e6b-6789-4183-b835-abdb3687c1d8-0","output":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","status":"completed","type":"function_call_output"}],"max_output_tokens":4096,"model":"grok-3-mini","store":false,"stream":true,"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
   - name: x-request-id
-    value: b4025ad9-c4de-9845-a114-2ce871d27eab
+    value: 17f8a01e-e6b0-98c0-b056-a26dea39c9f6
   body: |+
     event: response.created
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"b4025ad9-c4de-9845-a114-2ce871d27eab","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"17f8a01e-e6b0-98c0-b056-a26dea39c9f6","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
 
     event: response.in_progress
-    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"b4025ad9-c4de-9845-a114-2ce871d27eab","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"17f8a01e-e6b0-98c0-b056-a26dea39c9f6","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
 
     event: response.output_item.added
-    data: {"item":{"content":[],"id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+    data: {"item":{"content":[],"id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
 
     event: response.content_part.added
-    data: {"content_index":0,"item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+    data: {"content_index":0,"item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"It's","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"Current","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" currently","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" weather","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" ","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" in","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"72","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" Tokyo","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"°F","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":":","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" (","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" ","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"22","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"72","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"°C","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"°F","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":")","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" (","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" and","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"22","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" sunny","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"°C","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" with","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"),","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" light","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" sunny","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" clouds","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" with","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" in","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" light","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Tokyo","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" clouds","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":",","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Pack","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" ","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" sunscreen","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"45","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"%","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" not","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" humidity","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" an","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":",","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" umbrella","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" ","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":27,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"8","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":27,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" mph","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":28,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" NW","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":29,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" wind","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":30,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Pack","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" sunscreen","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"—","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"it's","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":35,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" sunny","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":36,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" and","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":37,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" dry","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":38,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":39,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" no","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":40,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" rain","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":41,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" expected","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":42,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":43,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","logprobs":[],"output_index":0,"sequence_number":28,"text":"It's currently 72°F (22°C) and sunny with light clouds in Tokyo. Pack sunscreen, not an umbrella.","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","logprobs":[],"output_index":0,"sequence_number":44,"text":"Current weather in Tokyo: 72°F (22°C), sunny with light clouds, 45% humidity, 8 mph NW wind. Pack sunscreen—it's sunny and dry, no rain expected.","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"It's currently 72°F (22°C) and sunny with light clouds in Tokyo. Pack sunscreen, not an umbrella.","type":"output_text"},"sequence_number":29,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"Current weather in Tokyo: 72°F (22°C), sunny with light clouds, 45% humidity, 8 mph NW wind. Pack sunscreen—it's sunny and dry, no rain expected.","type":"output_text"},"sequence_number":45,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"It's currently 72°F (22°C) and sunny with light clouds in Tokyo. Pack sunscreen, not an umbrella.","type":"output_text"}],"id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":30,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"Current weather in Tokyo: 72°F (22°C), sunny with light clouds, 45% humidity, 8 mph NW wind. Pack sunscreen—it's sunny and dry, no rain expected.","type":"output_text"}],"id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":46,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"b4025ad9-c4de-9845-a114-2ce871d27eab","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"It's currently 72°F (22°C) and sunny with light clouds in Tokyo. Pack sunscreen, not an umbrella.","type":"output_text"}],"id":"msg_b4025ad9-c4de-9845-a114-2ce871d27eab","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":415,"output_tokens":133},"cost_in_usd_ticks":4305500,"input_tokens":415,"input_tokens_details":{"cached_tokens":384},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":126,"output_tokens_details":{"reasoning_tokens":102},"total_tokens":541},"user":null},"sequence_number":31,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"17f8a01e-e6b0-98c0-b056-a26dea39c9f6","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Current weather in Tokyo: 72°F (22°C), sunny with light clouds, 45% humidity, 8 mph NW wind. Pack sunscreen—it's sunny and dry, no rain expected.","type":"output_text"}],"id":"msg_17f8a01e-e6b0-98c0-b056-a26dea39c9f6","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":415,"output_tokens":112},"cost_in_usd_ticks":4427500,"input_tokens":415,"input_tokens_details":{"cached_tokens":320},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":104,"output_tokens_details":{"reasoning_tokens":64},"total_tokens":519},"user":null},"sequence_number":47,"type":"response.completed"}
 

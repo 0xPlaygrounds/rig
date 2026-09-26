@@ -223,6 +223,13 @@ impl Wire for Responses {
         )
     }
 
+    fn reasoning_issuer(&self, model: Option<&str>) -> Option<String> {
+        crate::providers::openai::wire::request_reasoning_issuer(
+            &self.provider.dialect,
+            model.unwrap_or(&self.model),
+        )
+    }
+
     fn route(&self) -> Option<&str> {
         Some(self.provider.dialect.quirks.responses.path)
     }

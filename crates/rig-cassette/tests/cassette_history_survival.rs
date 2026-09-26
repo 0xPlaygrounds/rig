@@ -43,12 +43,21 @@ use rig_test_support::history_survival::{
 /// `(cassette path suffix, token kind, reason)`. The reason must cite the
 /// provider behavior; an entry that stops matching a real loss is reported
 /// as stale so exemptions cannot outlive the behavior they excuse.
-const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[(
-    "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
-    "tool_call_id",
-    "the cell's repair hook renames the call from `sum_values` to `add` by design, \
-     so the id returns on a call whose name no longer anchors it",
-)];
+const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
+    (
+        "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
+        "tool_call_id",
+        "the cell's repair hook renames the call from `sum_values` to `add` by design, \
+         so the id returns on a call whose name no longer anchors it",
+    ),
+    (
+        "xai/prompt_caching/streaming_probe.yaml",
+        "reasoning_id",
+        "the shared streaming cache probe rebuilds its third turn's assistant message \
+         from the streamed text alone by design (`run_cache_probe_streaming`), so any \
+         reasoning the second turn delivered is not sent back",
+    ),
+];
 
 /// Scenarios whose recorded requests deliberately carry unpaired calls.
 const PAIRING_EXEMPT: &[(&str, &str)] = &[];

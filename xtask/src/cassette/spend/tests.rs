@@ -17,6 +17,26 @@ fn usage_is_read_from_every_provider_shape() {
         ),
         Some((117, 2))
     );
+    // A one-hour write costs twice an input token, the rest 1.25 times.
+    assert_eq!(
+        usage(
+            r#"{"usage":{"cache_creation":{"ephemeral_1h_input_tokens":9708,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":9708,"cache_read_input_tokens":0,"input_tokens":3,"output_tokens":6}}"#
+        ),
+        Some((3 + 9708 * 2, 6))
+    );
+    assert_eq!(
+        usage(
+            r#"{"usage":{"cache_creation":{"ephemeral_1h_input_tokens":4,"ephemeral_5m_input_tokens":8},"cache_creation_input_tokens":12,"input_tokens":0,"output_tokens":0}}"#
+        ),
+        Some((4 * 2 + 10, 0))
+    );
+    // Only the breakdown: its parts are the writes.
+    assert_eq!(
+        usage(
+            r#"{"usage":{"cache_creation":{"ephemeral_1h_input_tokens":4,"ephemeral_5m_input_tokens":8},"input_tokens":0,"output_tokens":0}}"#
+        ),
+        Some((4 * 2 + 10, 0))
+    );
     assert_eq!(
         usage(
             r#"{"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1,"thoughtsTokenCount":4}}"#
