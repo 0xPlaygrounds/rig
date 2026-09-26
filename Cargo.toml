@@ -143,6 +143,16 @@ type_complexity = "allow"
 too_many_arguments = "allow"
 should_implement_trait = "allow"
 
+# Line tables keep file and line numbers in backtraces of workspace code while
+# emitting far less debuginfo, so linking the test binaries is faster.
+[profile.dev]
+debug = "line-tables-only"
+
+# Dependency debuginfo dominates the target directory and link time, and
+# dependency frames are rarely read. DEVELOPING.md shows how to restore it.
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = true
 opt-level = "s"
