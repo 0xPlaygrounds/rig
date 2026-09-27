@@ -7,11 +7,8 @@
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAIConfig, Route, wire::OpenAiWire};
-//! use rig_core::test_utils::RecordingHttpClient;
 //!
-//! let openai = OpenAIConfig::new("key")
-//!     .with_route(Route::Chat)
-//!     .connect(RecordingHttpClient::new("{}"));
+//! let openai = OpenAIConfig::new("key").with_route(Route::Chat).client();
 //! assert!(matches!(openai.completion("gpt-5.2").wire, OpenAiWire::Chat(_)));
 //! ```
 
@@ -835,9 +832,16 @@ impl OpenAIConfig {
     /// route carries it and there is no default that would not silently
     /// address the wrong API.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
+        let (api_key, auth) = Self::credential_from_env(dialect)?;
+        Self::from_env_with_credential(dialect, api_key, auth)
+    }
+
+    /// The credential `dialect` reads from the environment, and how it is
+    /// sent. Alternative credentials require their own header policy; the
+    /// primary is preferred.
+    pub(crate) fn credential_from_env(dialect: &Dialect) -> Result<(String, Auth), EnvError> {
         let quirks = &dialect.quirks;
-        // Alternative credentials require their own header policy; prefer the primary.
-        let (api_key, auth) = match dialect.alternate_auth {
+        Ok(match dialect.alternate_auth {
             Some(alternative) => match env::optional(dialect.api_key_env)? {
                 Some(api_key) => (api_key, quirks.auth),
                 None => match env::optional(alternative.api_key_env)? {
@@ -854,7 +858,16 @@ impl OpenAIConfig {
                 },
             },
             None => (env::required(dialect.api_key_env)?, quirks.auth),
-        };
+        })
+    }
+
+    /// [`Self::from_env_with`] with the credential already read.
+    pub(crate) fn from_env_with_credential(
+        dialect: &Dialect,
+        api_key: String,
+        auth: Auth,
+    ) -> Result<Self, EnvError> {
+        let quirks = &dialect.quirks;
         let mut provider = Self::with_key(dialect, api_key);
         provider.auth = auth;
         for name in [dialect.base_url_env, quirks.base_url_env_alias]

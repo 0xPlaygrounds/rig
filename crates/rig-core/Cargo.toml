@@ -70,8 +70,8 @@ anyhow = { workspace = true }
 # Self-dependency: feature unification compiles the lib with `test-utils`
 # for every rig-core test target (unit, integration, doctest), so the
 # sequence laws panic in ALL of rig's own suites while staying log-only in
-# downstream builds.
-rig-core = { path = ".", features = ["test-utils", "websocket"] }
+# downstream builds. `reqwest` gives the doc examples their clients.
+rig-core = { path = ".", features = ["reqwest", "test-utils", "websocket"] }
 # streaming identity/merge law property tests
 proptest = "1"
 assert_fs = { workspace = true }

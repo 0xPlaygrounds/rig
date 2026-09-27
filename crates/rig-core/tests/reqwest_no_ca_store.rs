@@ -19,7 +19,6 @@
 #![cfg(all(target_os = "linux", feature = "rustls", not(feature = "native-tls")))]
 
 use futures::StreamExt;
-use rig_core::Model;
 use rig_core::completion::CompletionRequest;
 use rig_core::error::{ErrorKind, ProviderError};
 use rig_core::providers::openai::OpenAIConfig;

@@ -204,3 +204,21 @@ fn an_erased_model_names_its_wire() {
     let clone = erased.clone();
     assert_eq!(clone.name(), erased.name());
 }
+
+/// The erased call's future stays `'static` when the prompt is borrowed: it
+/// converts the prompt before it returns, so the future outlives the
+/// prompt and can be spawned.
+#[test]
+fn an_erased_call_on_a_borrowed_prompt_outlives_the_prompt() {
+    fn spawnable<F: std::future::Future + Send + 'static>(future: F) -> F {
+        future
+    }
+    let dyn_model: DynModel<Completion> =
+        MockCompletionModel::from_turns([MockTurn::text("hi")]).erase();
+    let future = {
+        let prompt = String::from("Say hi.");
+        spawnable(dyn_model.call(prompt.as_str()))
+    };
+    let response = futures::executor::block_on(future).expect("the call succeeds");
+    assert_eq!(response.text(), "hi");
+}

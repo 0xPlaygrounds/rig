@@ -3,14 +3,13 @@
 //! continued with its own reply, erased, and streamed as parts. Runs with no
 //! network: the OpenAI client reads its base URL from the environment and
 //! reaches a local server that answers with a recorded reply, and the
-//! Anthropic client sends through a scripted HTTP client.
-
-#![cfg(feature = "bedrock")]
+//! Anthropic client sends through a scripted HTTP client. The Bedrock line
+//! needs the `bedrock` feature.
 
 use futures::StreamExt;
 use rig::DynModel;
-use rig::bedrock::client::BedrockRuntime;
-use rig::bedrock::completion::AMAZON_NOVA_LITE;
+#[cfg(feature = "bedrock")]
+use rig::bedrock::{client::BedrockRuntime, completion::AMAZON_NOVA_LITE};
 use rig::completion::{CompletionRequest, Message};
 use rig::operation::Completion;
 use rig::providers::anthropic::{self, Anthropic};
@@ -78,8 +77,11 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result
     let width = model.capabilities().ndims;
     anyhow::ensure!(width == 1536);
 
-    let model = BedrockRuntime::from_env().completion(AMAZON_NOVA_LITE);
-    anyhow::ensure!(model.id() == Some(AMAZON_NOVA_LITE));
+    #[cfg(feature = "bedrock")]
+    {
+        let model = BedrockRuntime::from_env().completion(AMAZON_NOVA_LITE);
+        anyhow::ensure!(model.id() == Some(AMAZON_NOVA_LITE));
+    }
     Ok(())
 }
 

@@ -2850,3 +2850,47 @@ fn the_last_text_signature_is_the_items() {
     assert_eq!(item.signature.as_deref(), Some("final"));
     assert_eq!(item.content, ["first", "second"]);
 }
+
+/// A tool round trip in plain values: the decoded call goes back as the
+/// assistant turn, and the result names the call by its own id. Both legs
+/// reach the wire under the call's `call_id` from the recorded body, not
+/// its item id.
+#[test]
+fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
+    let response: CompletionResponse =
+        serde_json::from_value(response_with_object_top_p()).expect("response should deserialize");
+    let choice = folded_choice(response.output);
+    let Some(completion::AssistantContent::ToolCall(call)) = choice.first() else {
+        panic!("the body's one output is a call: {choice:?}");
+    };
+    let result = completion::Message::tool_result(call.id.wire_hint(), "get_weather", "sunny");
+    let history = vec![
+        completion::Message::user("Weather in Paris?"),
+        completion::Message::Assistant {
+            id: None,
+            content: choice.clone().try_into().expect("one part"),
+        },
+        result,
+    ];
+
+    let request = CompletionRequest::try_from((
+        "gpt-4o-mini".to_string(),
+        crate::completion::CompletionRequest::from(history),
+    ))
+    .expect("request conversion should succeed");
+    let input = serde_json::to_value(&request).expect("request should serialize")["input"].clone();
+
+    let call_ids: Vec<(&str, &str)> = input
+        .as_array()
+        .expect("input should be an array")
+        .iter()
+        .filter_map(|item| Some((item["type"].as_str()?, item["call_id"].as_str()?)))
+        .collect();
+    assert_eq!(
+        call_ids,
+        [
+            ("function_call", "call_1"),
+            ("function_call_output", "call_1")
+        ]
+    );
+}

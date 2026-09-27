@@ -272,7 +272,10 @@ impl ProviderId {
     fn config_from_env(&self) -> Result<ProviderConfig, EnvError> {
         Ok(match &self.0 {
             Registered::OpenAi(dialect) => {
-                ProviderConfig::OpenAi(openai::wire::OpenAIConfig::from_env_with(dialect)?)
+                let (api_key, auth) = openai_credential_from_env(dialect)?;
+                ProviderConfig::OpenAi(openai::wire::OpenAIConfig::from_env_with_credential(
+                    dialect, api_key, auth,
+                )?)
             }
             Registered::Anthropic(dialect) => {
                 ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::from_env_with(dialect)?)
@@ -470,21 +473,43 @@ impl ProviderConfig {
     /// environment. A vendor whose credential is optional reads an unset
     /// variable as no credential.
     #[cfg(feature = "reqwest")]
-    fn credential_from_env(&self) -> Result<String, EnvError> {
-        let (name, required) = match self {
-            Self::OpenAi(provider) => (
-                provider.dialect.api_key_env,
-                !matches!(provider.auth, openai::wire::Auth::OptionalBearer),
-            ),
-            Self::Anthropic(provider) => (provider.dialect.api_key_env, true),
-            Self::Gemini(_) => (gemini::API_KEY_ENV, true),
-        };
-        if required {
-            env::required(name)
-        } else {
-            Ok(env::optional(name)?.unwrap_or_default())
-        }
+    fn with_credential_from_env(self) -> Result<Self, EnvError> {
+        Ok(match self {
+            Self::OpenAi(mut provider) => {
+                let (api_key, auth) = openai_credential_from_env(&provider.dialect)?;
+                provider.api_key = api_key.into();
+                // Only an alternative credential changes how it is sent.
+                if auth != provider.dialect.quirks.auth {
+                    provider.auth = auth;
+                }
+                Self::OpenAi(provider)
+            }
+            Self::Anthropic(mut provider) => {
+                provider.api_key = env::required(provider.dialect.api_key_env)?.into();
+                Self::Anthropic(provider)
+            }
+            Self::Gemini(mut provider) => {
+                provider.api_key = env::required(gemini::API_KEY_ENV)?.into();
+                Self::Gemini(provider)
+            }
+        })
     }
+}
+
+/// The credential an OpenAI-family `dialect` reads from the environment:
+/// its alternative when only that is set, and none when the dialect
+/// authenticates optionally and nothing is set.
+#[cfg(feature = "reqwest")]
+fn openai_credential_from_env(
+    dialect: &openai::wire::Dialect,
+) -> Result<(String, openai::wire::Auth), EnvError> {
+    if matches!(dialect.quirks.auth, openai::wire::Auth::OptionalBearer)
+        && dialect.alternate_auth.is_none()
+    {
+        let api_key = env::optional(dialect.api_key_env)?.unwrap_or_default();
+        return Ok((api_key, dialect.quirks.auth));
+    }
+    openai::wire::OpenAIConfig::credential_from_env(dialect)
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a
@@ -607,10 +632,7 @@ impl ProviderRef {
     pub fn completion_model(&self) -> Result<DynModel<Completion>, EnvError> {
         let config = match &self.provider {
             Provider::Registered(id) => id.config_from_env()?,
-            Provider::Configured(config) => {
-                let credential = config.credential_from_env()?;
-                config.clone().with_credential(credential)
-            }
+            Provider::Configured(config) => config.clone().with_credential_from_env()?,
         };
         Ok(config.completion_model(&self.model, rig_reqwest::shared()))
     }

@@ -101,3 +101,81 @@ fn a_client_holds_the_configuration_it_was_built_from() {
         .connect(crate::test_utils::RecordingHttpClient::new("{}"));
     assert_eq!(client.config(), &config);
 }
+
+/// A token exchange whose recorded reply names an enterprise API root.
+const EXCHANGE: &str = r#"{"token":"tid=session","expires_at":4102444800,"endpoints":{"api":"https://api.enterprise.githubcopilot.com"}}"#;
+
+fn github_token_sign_in() -> copilot::auth::Authenticator {
+    copilot::auth::Authenticator::new(
+        copilot::auth::AuthSource::GitHubAccessToken("gho_token".into()),
+        None,
+        None,
+        copilot::auth::DeviceCodeHandler::default(),
+        false,
+    )
+}
+
+/// Copilot's token exchange sends through the client's own transport, and
+/// the client takes the session token and the API root the exchange names.
+#[tokio::test]
+async fn copilot_signs_in_through_its_own_transport() {
+    let http = crate::test_utils::RecordingHttpClient::new(EXCHANGE);
+    let copilot = copilot::CopilotConfig::new("")
+        .connect(http.clone())
+        .authenticate(&github_token_sign_in())
+        .await
+        .expect("the exchange succeeds");
+
+    let requests = http.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests.first().map(|request| request.uri.as_str()),
+        Some("https://api.github.com/copilot_internal/v2/token")
+    );
+    assert_eq!(copilot.config().api_key.expose(), "tid=session");
+    assert_eq!(
+        copilot.config().base_url,
+        "https://api.enterprise.githubcopilot.com"
+    );
+}
+
+/// An API root set on the client before signing in is kept.
+#[tokio::test]
+async fn copilot_sign_in_keeps_an_explicit_api_root() {
+    let copilot = copilot::CopilotConfig::new("")
+        .with_base_url("http://localhost:4141")
+        .connect(crate::test_utils::RecordingHttpClient::new(EXCHANGE))
+        .authenticate(&github_token_sign_in())
+        .await
+        .expect("the exchange succeeds");
+    assert_eq!(copilot.config().api_key.expose(), "tid=session");
+    assert_eq!(copilot.config().base_url, "http://localhost:4141");
+}
+
+/// ChatGPT's sign-in keeps the configuration and takes the token and the
+/// account it resolves.
+#[tokio::test]
+async fn chatgpt_sign_in_sets_the_token_and_account() {
+    use crate::providers::chatgpt;
+    let authenticator = chatgpt::auth::Authenticator::new(
+        chatgpt::auth::AuthSource::AccessToken {
+            access_token: "chatgpt-token".into(),
+            account_id: Some("acct_1".into()),
+        },
+        None,
+        chatgpt::auth::DeviceCodeHandler::default(),
+        false,
+    );
+    let chatgpt = openai::OpenAIConfig::with_key(&chatgpt::DIALECT, "")
+        .with_base_url("http://localhost:1/backend-api/codex")
+        .connect(crate::test_utils::RecordingHttpClient::new("{}"))
+        .authenticate(&authenticator)
+        .await
+        .expect("an access token needs no exchange");
+    assert_eq!(chatgpt.config().api_key.expose(), "chatgpt-token");
+    assert_eq!(chatgpt.config().account_id.as_deref(), Some("acct_1"));
+    assert_eq!(
+        chatgpt.config().base_url,
+        "http://localhost:1/backend-api/codex"
+    );
+}

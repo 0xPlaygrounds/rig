@@ -24,6 +24,32 @@ fn updates_of(items: Vec<Result<StreamEvent, ProviderError>>) -> Vec<Result<Upda
     futures::executor::block_on(stream.updates().collect::<Vec<_>>())
 }
 
+/// The updates of `items` read in turns: for each step of `plan` (cycled),
+/// `true` reads one update through a fresh [`CompletionStream::updates`]
+/// call, `false` reads one event from the stream itself. Once the events
+/// run out, the updates are read to their end.
+fn updates_in_turns(
+    items: Vec<Result<StreamEvent, ProviderError>>,
+    plan: &[bool],
+) -> Vec<Result<Update, ErrorReport>> {
+    let mut stream = relayed(items);
+    let mut updates = Vec::new();
+    futures::executor::block_on(async {
+        for through_updates in plan.iter().cycle() {
+            if *through_updates {
+                match stream.updates().next().await {
+                    Some(update) => updates.push(update),
+                    None => return,
+                }
+            } else if stream.next().await.is_none() {
+                break;
+            }
+        }
+        updates.extend(stream.updates().collect::<Vec<_>>().await);
+    });
+    updates
+}
+
 /// The finished text a part's deltas must concatenate to, written out here
 /// rather than taken from the projection.
 fn expected_text(part: &AssistantContent) -> String {
@@ -399,8 +425,13 @@ proptest! {
         parts in proptest::collection::vec(part(), 0..7),
         order in proptest::collection::vec(0usize..7, 1..40),
         error_at in proptest::option::of(0usize..30),
+        plan in proptest::collection::vec(any::<bool>(), 1..12),
     ) {
         let done = assert_contract(&updates_of(stream_of(&parts, &order, error_at)));
+        // Read in turns, across calls and around events read directly, the
+        // updates keep the contract and end with the same response.
+        let in_turns = assert_contract(&updates_in_turns(stream_of(&parts, &order, error_at), &plan));
+        prop_assert_eq!(&in_turns, &done);
         // The fold after every item, in-band errors included.
         let mut stream = relayed(stream_of(&parts, &order, error_at));
         futures::executor::block_on(async { while stream.next().await.is_some() {} });
@@ -539,17 +570,34 @@ fn partial_after_dropping_the_updates_early_holds_what_was_read() {
         None,
     );
     let mut stream = relayed(items);
-    {
+    let first_update = {
         let mut updates = stream.updates();
         let first = futures::executor::block_on(updates.next());
         assert!(matches!(first, Some(Ok(Update::Start { index: 0, .. }))));
-    }
+        first.expect("an update")
+    };
     let partial = stream.partial();
     assert!(partial.choice.len() <= 1, "{partial:?}");
     assert!(!partial.text().contains("two"));
-    // Reading on finishes to the whole response.
+    // Reading on continues where the first call stopped: the whole
+    // conversation of updates keeps the contract.
     let rest = futures::executor::block_on(stream.updates().collect::<Vec<_>>());
-    assert!(matches!(rest.last(), Some(Ok(Update::Done(response))) if response.text() == "onetwo"));
+    let mut all = vec![first_update];
+    all.extend(rest);
+    assert_eq!(assert_contract(&all).text(), "onetwo");
+    assert_eq!(
+        all[1..3],
+        [
+            Ok(Update::Delta {
+                index: 0,
+                text: "one".into()
+            }),
+            Ok(Update::End {
+                index: 0,
+                part: AssistantContent::text("one")
+            })
+        ]
+    );
     assert_eq!(stream.partial().text(), "onetwo");
     assert_eq!(stream.partial().usage, usage());
 }

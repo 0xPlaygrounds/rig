@@ -81,6 +81,36 @@ struct Slot {
     emitted: String,
     /// An end not yet emitted.
     end: Option<AssistantContent>,
+    /// Some of the part's fragments were read from the stream itself, so
+    /// the rest of its text is sent at its end.
+    whole: bool,
+    /// The part as the fold held it when its end was last emitted.
+    ended_as: Option<AssistantContent>,
+}
+
+/// What [`super::Streamed::updates`] has projected so far, kept on the
+/// stream so a later call continues it.
+#[derive(Debug, Default)]
+pub(crate) struct Projection {
+    pub(crate) projector: Projector,
+    /// Updates projected and not yet read.
+    pub(crate) queue: VecDeque<Result<Update, ErrorReport>>,
+    /// The stream ended and its last updates are queued.
+    pub(crate) ended: bool,
+    /// An error was queued, so a missing terminal record is not reported
+    /// again.
+    pub(crate) failed: bool,
+    /// Events were read from the stream itself since the last projection.
+    pub(crate) stale: bool,
+}
+
+impl Slot {
+    /// The part ended as `block` before this projection saw it.
+    fn settle(&mut self, block: &AssistantContent) {
+        self.kind.get_or_insert_with(|| kind_of(block));
+        self.certain = true;
+        self.end = Some(block.clone());
+    }
 }
 
 /// Projects the canonical completion events the fold has absorbed into
@@ -175,13 +205,60 @@ impl Projector {
         self.flush(out);
     }
 
+    /// Catch up with events read from the stream itself: every part the
+    /// fold placed that is not finished here is sent whole at its end.
+    pub(crate) fn catch_up(
+        &mut self,
+        fold: &CompletionFold,
+        out: &mut VecDeque<Result<Update, ErrorReport>>,
+    ) {
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            match (
+                slot.end.as_ref().or(slot.ended_as.as_ref()),
+                fold.block(index),
+            ) {
+                // Ended here, and extended since (a late signature).
+                (Some(ended), Some(block)) if ended != block => slot.end = Some(block.clone()),
+                (Some(_), _) => {}
+                (None, block) => {
+                    slot.whole = true;
+                    if let Some(block) = block {
+                        slot.settle(block);
+                    }
+                }
+            }
+        }
+        while self.slots.len() < fold.placed() {
+            let mut slot = Slot {
+                whole: true,
+                ..Slot::default()
+            };
+            if let Some(block) = fold.block(self.slots.len()) {
+                slot.settle(block);
+            }
+            self.slots.push(slot);
+        }
+        self.flush(out);
+    }
+
     /// The stream ended: emit what is held, stamping reasoning with the
-    /// issuer the fold names when no terminal record arrived.
+    /// issuer the fold names when no terminal record arrived. A slot still
+    /// in doubt is settled by the fold: it is in `choice` exactly when it
+    /// ended with content.
     pub(crate) fn finish(
         &mut self,
         fold: &CompletionFold,
         out: &mut VecDeque<Result<Update, ErrorReport>>,
     ) {
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            if slot.certain {
+                continue;
+            }
+            match fold.block(index) {
+                Some(block) => slot.settle(block),
+                None => slot.empty = true,
+            }
+        }
         if self.issuer.is_none() {
             self.issuer = Some(
                 fold.reasoning_issuer()
@@ -202,7 +279,14 @@ impl Projector {
     ) -> Option<&mut Slot> {
         let index = fold.slot(id)?;
         while self.slots.len() <= index {
-            self.slots.push(Slot::default());
+            // A slot placed while nobody projected (its events were read
+            // from the stream itself) is caught up from the fold when it
+            // has ended.
+            let mut slot = Slot::default();
+            if let Some(block) = fold.block(self.slots.len()) {
+                slot.settle(block);
+            }
+            self.slots.push(slot);
         }
         let slot = self.slots.get_mut(index)?;
         slot.kind.get_or_insert(kind);
@@ -236,6 +320,9 @@ impl Projector {
                 out.push_back(Ok(Update::Start { index, part }));
                 slot.started = true;
             }
+            if slot.whole {
+                slot.pending.clear();
+            }
             for text in slot.pending.drain(..) {
                 slot.emitted.push_str(&text);
                 out.push_back(Ok(Update::Delta { index, text }));
@@ -243,6 +330,7 @@ impl Projector {
             let issuer = issuer.as_deref();
             let held = matches!(slot.end, Some(AssistantContent::Reasoning(_))) && issuer.is_none();
             if let Some(part) = slot.end.take_if(|_| !held) {
+                slot.ended_as = Some(part.clone());
                 let part = match (part, issuer) {
                     (AssistantContent::Reasoning(reasoning), Some(issuer))
                         if reasoning.provider.is_none() =>

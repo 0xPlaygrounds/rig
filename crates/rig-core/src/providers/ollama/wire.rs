@@ -2,7 +2,7 @@
 //!
 //! ```
 //! use rig_core::providers::ollama::OllamaConfig;
-//! let ollama = OllamaConfig::new().connect(rig_core::test_utils::RecordingHttpClient::new("{}"));
+//! let ollama = OllamaConfig::new().client();
 //! assert_eq!(ollama.completion("qwen3").wire.model, "qwen3");
 //! ```
 

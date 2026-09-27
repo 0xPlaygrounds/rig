@@ -75,6 +75,35 @@ fn preamble_is_the_first_message_and_the_prompt_the_last() {
     );
 }
 
+/// The setters apply in call order: a second preamble adds a system message
+/// ahead of the first, where the builder kept only the last.
+#[test]
+fn a_second_preamble_goes_ahead_of_the_first() {
+    let request = CompletionRequest::new("prompt")
+        .preamble("first")
+        .preamble("second");
+    assert_same(
+        &request,
+        &bare(vec![
+            Message::system("second"),
+            Message::system("first"),
+            Message::user("prompt"),
+        ]),
+    );
+}
+
+/// A conversation with no prompt yet: the last message stays last.
+#[test]
+fn a_message_goes_before_the_last_message_of_any_conversation() {
+    let request = CompletionRequest::from(Vec::<Message>::new())
+        .preamble("system")
+        .message(Message::user("hi"));
+    assert_same(
+        &request,
+        &bare(vec![Message::user("hi"), Message::system("system")]),
+    );
+}
+
 #[test]
 fn message_and_messages_go_before_the_prompt_in_order() {
     let request = CompletionRequest::new("prompt")
@@ -125,6 +154,33 @@ fn provider_tools_land_in_additional_params_tools() {
         "tools": [{"type": "web_search"}, {"type": "code", "x": 1}],
     }));
     assert_same(&request, &expected);
+}
+
+/// Provider tools live in `additional_params`, so parameters set after them
+/// with a `tools` key, or cleared, replace them.
+#[test]
+fn additional_params_after_provider_tools_replace_them() {
+    let replaced = CompletionRequest::new("p")
+        .provider_tool(ProviderToolDefinition::new("web_search"))
+        .additional_params(serde_json::json!({"tools": [{"type": "x"}]}));
+    let mut expected = bare(vec![Message::user("p")]);
+    expected.additional_params = Some(serde_json::json!({"tools": [{"type": "x"}]}));
+    assert_same(&replaced, &expected);
+
+    let cleared = CompletionRequest::new("p")
+        .provider_tool(ProviderToolDefinition::new("web_search"))
+        .additional_params(None);
+    assert_same(&cleared, &bare(vec![Message::user("p")]));
+
+    // Set first, the parameters keep their tools and the provider tools
+    // follow them, as the builder sent them.
+    let kept = CompletionRequest::new("p")
+        .additional_params(serde_json::json!({"tools": [{"type": "x"}]}))
+        .provider_tool(ProviderToolDefinition::new("web_search"));
+    expected.additional_params = Some(serde_json::json!({
+        "tools": [{"type": "x"}, {"type": "web_search"}],
+    }));
+    assert_same(&kept, &expected);
 }
 
 #[test]

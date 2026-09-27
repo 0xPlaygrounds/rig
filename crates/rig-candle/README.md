@@ -1,12 +1,13 @@
 # rig-candle
 
-`rig-candle` runs validated local checkpoints through Rig's `Model` and agent
-APIs: the `Generation` wire on a `CandleModel` transport. The crate receives byte buffers and performs no filesystem or
-network access itself.
+`rig-candle` runs validated local checkpoints through Rig's model and agent
+APIs: `CandleModel::completion()` is the model a loaded checkpoint serves. The
+crate receives byte buffers and performs no filesystem or network access
+itself.
 
 ```rust,no_run
 use rig_agent::agent::AgentBuilder;
-use rig_candle::{CandleModel, Generation, ModelData};
+use rig_candle::{CandleModel, ModelData};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

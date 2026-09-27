@@ -314,6 +314,8 @@ pub struct Streamed<Op: Operation> {
     /// request id, and once the reply closed, its document.
     reply: Reply,
     finished: bool,
+    /// Where [`Streamed::updates`] stopped, so a later call continues it.
+    projection: update::Projection,
 }
 
 /// A streamed completion.
@@ -339,6 +341,7 @@ impl<Op: Operation> Streamed<Op> {
                 provider_request_id: None,
             },
             finished: false,
+            projection: update::Projection::default(),
         }
     }
 
@@ -458,6 +461,11 @@ impl Streamed<Completion> {
     /// error is an item, as on the event stream; a stream that ends without
     /// its terminal record ends with that error instead of [`Update::Done`].
     ///
+    /// A later call, or [`Self::text`], continues where an earlier one
+    /// stopped. Events read from the stream itself in between are not
+    /// projected as they pass: a part they touched is sent whole, or the
+    /// rest of it at its end, so the contract still holds.
+    ///
     /// ```no_run
     /// use futures::StreamExt;
     /// use rig_core::streaming::Update;
@@ -474,32 +482,45 @@ impl Streamed<Completion> {
     /// # }
     /// ```
     pub fn updates(&mut self) -> impl Stream<Item = Result<Update, ErrorReport>> + '_ {
-        let mut projector = update::Projector::default();
-        let mut queue = std::collections::VecDeque::new();
-        let mut ended = false;
-        let mut failed = false;
         futures::stream::poll_fn(move |cx| {
+            if std::mem::take(&mut self.projection.stale) {
+                self.projection
+                    .projector
+                    .catch_up(&self.fold, &mut self.projection.queue);
+            }
             loop {
-                if let Some(item) = queue.pop_front() {
+                if let Some(item) = self.projection.queue.pop_front() {
                     return Poll::Ready(Some(item));
                 }
-                if ended {
+                if self.projection.ended {
                     return Poll::Ready(None);
                 }
                 match self.poll_step(cx) {
                     Poll::Pending => return Poll::Pending,
-                    Poll::Ready(Some(Ok(event))) => projector.push(&event, &self.fold, &mut queue),
+                    Poll::Ready(Some(Ok(event))) => self.projection.projector.push(
+                        &event,
+                        &self.fold,
+                        &mut self.projection.queue,
+                    ),
                     Poll::Ready(Some(Err(error))) => {
-                        failed = true;
-                        queue.push_back(Err(ErrorReport::from(&error)));
+                        self.projection.failed = true;
+                        self.projection
+                            .queue
+                            .push_back(Err(ErrorReport::from(&error)));
                     }
                     Poll::Ready(None) => {
-                        ended = true;
-                        projector.finish(&self.fold, &mut queue);
+                        self.projection.ended = true;
+                        self.projection
+                            .projector
+                            .finish(&self.fold, &mut self.projection.queue);
                         match self.fold.streamed_response(&self.reply) {
-                            Ok(response) => queue.push_back(Ok(Update::Done(response))),
-                            Err(error) if !failed => {
-                                queue.push_back(Err(ErrorReport::from(&error)));
+                            Ok(response) => {
+                                self.projection.queue.push_back(Ok(Update::Done(response)));
+                            }
+                            Err(error) if !self.projection.failed => {
+                                self.projection
+                                    .queue
+                                    .push_back(Err(ErrorReport::from(&error)));
                             }
                             Err(_) => {}
                         }
@@ -544,9 +565,12 @@ impl<Op: Operation> Stream for Streamed<Op> {
     type Item = Result<Op::Event, ErrorReport>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.get_mut()
-            .poll_step(cx)
-            .map(|item| item.map(|item| item.map_err(|error| ErrorReport::from(&error))))
+        let this = self.get_mut();
+        let item = this.poll_step(cx);
+        if matches!(item, Poll::Ready(Some(_))) {
+            this.projection.stale = true;
+        }
+        item.map(|item| item.map(|item| item.map_err(|error| ErrorReport::from(&error))))
     }
 }
 

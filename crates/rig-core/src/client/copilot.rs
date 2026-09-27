@@ -51,7 +51,8 @@ impl Copilot {
     /// A client on this client's transport, configured with the session
     /// `authenticator` resolves: the device login, the GitHub token
     /// exchange and the refresh all send through this client's transport.
-    /// The configuration is [`CopilotConfig::from_auth`]'s.
+    /// The session token replaces the credential; the API root is the one
+    /// the exchange names, unless this client's was set explicitly.
     ///
     /// ```no_run
     /// use rig_core::providers::copilot::{CopilotConfig, auth::{AuthSource, Authenticator, DeviceCodeHandler}};
@@ -65,8 +66,15 @@ impl Copilot {
     /// ```
     pub async fn authenticate(self, authenticator: &Authenticator) -> Result<Self, AuthError> {
         let context = authenticator.auth_context(&self.http).await?;
+        let explicit = self.config.base_url != CopilotConfig::new(self.config.api_key).base_url;
+        let signed_in = CopilotConfig::from_auth(&context);
+        let config = if explicit {
+            signed_in.with_base_url(self.config.base_url)
+        } else {
+            signed_in
+        };
         Ok(Self {
-            config: CopilotConfig::from_auth(&context),
+            config,
             http: self.http,
         })
     }

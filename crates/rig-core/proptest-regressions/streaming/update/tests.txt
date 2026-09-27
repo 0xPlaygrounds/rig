@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc f47fbe5dbc6fc16f82321ca7076a7f68e3747f48c141036bee41c0b964f839ae # shrinks to parts = [Tool { name: "a", arguments: ["{\"q\": \"\", \"n\": 1}"] }, Tool { name: "a", arguments: ["{\"q\": \"\", \"n\": 1}"] }, Text(["", ""])], order = [0], error_at = Some(0)
+cc 86a87bedeb6e68882c0bc1a74384c37664a444463f9e63948ed62c652f03bcf8 # shrinks to parts = [ToolWhole("a"), Reasoning { fragments: ["", ""], signature: Some("sig_a"), restated: false, late_signature: true }], order = [0], error_at = None, plan = [false, true, false, false, false]

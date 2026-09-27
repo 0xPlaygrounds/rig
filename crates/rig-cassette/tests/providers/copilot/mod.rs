@@ -80,10 +80,10 @@ fn cassette_base_url() -> String {
 /// Resolve a Copilot credential and hold it in a provider configuration.
 ///
 /// The exchange is a conversation — a device flow, a refresh, a shared file
-/// cache — so it is not a wire and never will be: `copilot::auth` runs it
-/// over the same transport the wire then uses, and `Copilot::from_auth`
-/// holds the result, honouring the API base the exchange reported. This is
-/// what `ClientBuilder::{api_key, github_access_token, oauth, token_dir,
+/// cache — so it is not a wire and never will be: `Copilot::authenticate`
+/// runs it over the client's own transport, which the wire then uses, and
+/// takes the API base the exchange reported. This is what
+/// `ClientBuilder::{api_key, github_access_token, oauth, token_dir,
 /// allow_device_flow}` plus `Client::authorize` did between them.
 ///
 /// `token_dir` is `None` when the caller wants no on-disk cache; the cells
@@ -100,16 +100,18 @@ pub(crate) async fn authorize(
         ),
         None => (None, None),
     };
-    let context = Authenticator::new(
+    let authenticator = Authenticator::new(
         source,
         access_token_file,
         api_key_file,
         DeviceCodeHandler::default(),
         allow_device_flow,
-    )
-    .auth_context(&rig::rig_reqwest::shared())
-    .await?;
-    let provider = CopilotConfig::from_auth(&context);
+    );
+    let provider = copilot::Copilot::new("")
+        .authenticate(&authenticator)
+        .await?
+        .config()
+        .clone();
 
     Ok(match env_base_url() {
         Some(base_url) => provider.with_base_url(base_url),

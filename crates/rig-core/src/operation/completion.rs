@@ -278,6 +278,11 @@ impl CompletionFold {
         self.slots.get(id).copied()
     }
 
+    /// How many slots the fold has placed.
+    pub(crate) fn placed(&self) -> usize {
+        self.blocks.len()
+    }
+
     /// The finalized block in `slot`, `None` while it has not ended (or
     /// when it ended with nothing).
     pub(crate) fn block(&self, slot: usize) -> Option<&AssistantContent> {

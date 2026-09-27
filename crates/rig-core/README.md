@@ -26,8 +26,12 @@ More information about this crate can be found in the [crate documentation](http
 
 ## Installation
 ```bash
-cargo add rig-core
+cargo add rig-core --features reqwest
 ```
+
+The `reqwest` feature gives provider clients a default HTTP transport, so
+`OpenAI::from_env()` needs no client of yours. Without it, pass a transport
+with `OpenAIConfig::from_env()?.connect(http)`.
 
 ## WASM target support
 

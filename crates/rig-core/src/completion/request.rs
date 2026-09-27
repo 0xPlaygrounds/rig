@@ -672,6 +672,12 @@ impl CompletionRequest {
     /// no preamble, documents or tools. The setters below add to it; like
     /// [`Self::validate_message_content`], nothing here checks the content.
     ///
+    /// Each setter changes the request's public fields as it is called, so
+    /// order matters where two setters touch the same field: a second
+    /// [`Self::preamble`] adds a second system message, and
+    /// [`Self::additional_params`] with a `tools` key (or `None`) replaces
+    /// provider tools added before it. Set `additional_params` first.
+    ///
     /// ```
     /// use rig_core::completion::CompletionRequest;
     ///
@@ -701,7 +707,8 @@ impl CompletionRequest {
         }
     }
 
-    /// Put `preamble` first in the conversation, as a [`Message::System`].
+    /// Put `preamble` first in the conversation, as a [`Message::System`],
+    /// ahead of any system message already there.
     pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
         self.chat_history
             .insert(0, Message::system(preamble.into()));
@@ -743,18 +750,21 @@ impl CompletionRequest {
     }
 
     /// Add a tool.
-    pub fn tool(mut self, tool: ToolDefinition) -> Self {
-        self.tools.push(tool);
-        self
+    pub fn tool(self, tool: ToolDefinition) -> Self {
+        self.tools(vec![tool])
     }
 
     /// Add tools in order.
     pub fn tools(mut self, tools: Vec<ToolDefinition>) -> Self {
+        let first = self.tools.is_empty();
         self.tools.extend(tools);
+        self.warn_if_shadowed("tools", first && !self.tools.is_empty());
         self
     }
 
-    /// Add a provider-hosted tool: appended to `additional_params.tools`.
+    /// Add a provider-hosted tool: appended to `additional_params.tools`,
+    /// so a later [`Self::additional_params`] with a `tools` key replaces
+    /// it.
     pub fn provider_tool(self, tool: ProviderToolDefinition) -> Self {
         self.provider_tools(vec![tool])
     }
@@ -767,8 +777,8 @@ impl CompletionRequest {
         self
     }
 
-    /// Merge provider-specific parameters into the request's; `None` clears
-    /// them. Provider conversion determines precedence over typed fields,
+    /// Merge provider-specific parameters into the request's, key by key;
+    /// `None` clears them, provider tools included. Provider conversion determines precedence over typed fields,
     /// and a key that overrides a typed field this request sets is logged.
     pub fn additional_params(
         mut self,
@@ -820,6 +830,7 @@ impl CompletionRequest {
     /// deserialized.
     pub fn output_schema(mut self, schema: impl Into<Option<schemars::Schema>>) -> Self {
         self.output_schema = schema.into();
+        self.warn_if_shadowed("response_format", self.output_schema.is_some());
         self
     }
 
