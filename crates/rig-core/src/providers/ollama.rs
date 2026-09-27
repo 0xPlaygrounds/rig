@@ -464,6 +464,8 @@ impl OllamaDecoder {
     }
 }
 
+/// EOF without a `done: true` record is truncation, so the decoder adds
+/// nothing at the end of the reply.
 impl crate::wire::Decoder<Completion> for OllamaDecoder {
     type Event = CompletionResponse;
 
@@ -477,14 +479,10 @@ impl crate::wire::Decoder<Completion> for OllamaDecoder {
     fn interpret(
         &mut self,
         response: CompletionResponse,
-        out: &mut crate::operation::AdapterOutput,
+        out: &mut crate::wire::Out<'_, Completion>,
     ) {
         self.interpret_record(response, out);
     }
-
-    /// EOF without a `done: true` record is truncation: no terminal record
-    /// may be synthesized.
-    fn finish(&mut self, _out: &mut crate::operation::AdapterOutput) {}
 }
 
 /// The reply of `GET /api/tags`: every model the daemon has pulled.

@@ -27,11 +27,11 @@ pub use fastembed::EmbeddingModel as FastembedModel;
 #[cfg(feature = "hf-hub")]
 use fastembed::InitOptions;
 use fastembed::{InitOptionsUserDefined, TextEmbedding, UserDefinedEmbeddingModel};
-use rig_core::driver::{Local, Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use rig_core::embeddings;
 use rig_core::error::ProviderError;
-use rig_core::operation::{Embedding, EmbeddingCapabilities};
-use rig_core::wire::Mode;
+use rig_core::operation::Embedding;
+use rig_core::wire::Capabilities;
 
 /// Errors raised while resolving or initializing a Fastembed model.
 #[derive(Debug, Clone)]
@@ -76,7 +76,7 @@ pub fn text_embeddings(
     };
     Ok(Local::new("fastembed")
         .with_id(format!("{model:?}"))
-        .with_capabilities(EmbeddingCapabilities::new(1024, ndims)))
+        .with_capabilities(Capabilities::embedding(1024, ndims)))
 }
 
 /// A loaded Fastembed model: the transport that embeds in the calling
@@ -136,17 +136,10 @@ impl Transport<Local<Embedding>> for Fastembed {
     fn send(
         &self,
         texts: Vec<String>,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Result<embeddings::EmbeddingResponse, ProviderError>>>
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<Result<embeddings::EmbeddingResponse, ProviderError>>, ProviderError> {
         let embedder = Arc::clone(&self.embedder);
-        Ok(async move {
+        Ok(Sending::later(async move {
             let embedded = embedder
                 .embed(texts.iter().map(String::as_str).collect(), None)
                 .map(|vectors| {
@@ -163,6 +156,6 @@ impl Transport<Local<Embedding>> for Fastembed {
                 .map_err(|err| ProviderError::Provider(err.to_string()));
             // A failed embed fails the reply, as a transport failure does.
             Opened::new(futures::stream::iter([embedded.map(Ok)]))
-        })
+        }))
     }
 }

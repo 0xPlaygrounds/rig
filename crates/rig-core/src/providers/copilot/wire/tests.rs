@@ -233,7 +233,7 @@ fn both_routes_carry_copilots_editor_envelope() {
             request.uri().path(),
             path,
             "{:?} posts to {path}",
-            wire.id()
+            wire.describe().model
         );
         let headers = request.headers();
         assert_eq!(
@@ -595,7 +595,7 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
         copilot().models(),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .call(())
+    .list()
     .await
     .expect("the recorded catalogue folds");
 

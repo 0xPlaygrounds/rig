@@ -1980,12 +1980,16 @@ fn the_mode_chooses_the_endpoint_and_the_framing() {
 fn the_wire_keeps_its_span_names() {
     let wire = wire("gemini-2.5-flash");
     assert_eq!(
-        Wire::telemetry(&wire, crate::wire::Mode::Unary),
-        GenAiOperation::GenerateContent
+        wire.describe()
+            .telemetry
+            .map(|telemetry| telemetry(crate::wire::Mode::Unary)),
+        Some(GenAiOperation::GenerateContent)
     );
     assert_eq!(
-        Wire::telemetry(&wire, crate::wire::Mode::Streaming),
-        GenAiOperation::ChatStreaming
+        wire.describe()
+            .telemetry
+            .map(|telemetry| telemetry(crate::wire::Mode::Streaming)),
+        Some(GenAiOperation::ChatStreaming)
     );
 }
 

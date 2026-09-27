@@ -42,7 +42,7 @@ use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
 use crate::telemetry::GenAiOperation;
-use crate::wire::{Body, Encoded, Framing, Mode, Wire};
+use crate::wire::{Body, Descriptor, Encoded, Framing, Mode, Wire};
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerationConfig, Part,
     PartKind, Role, Tool,
@@ -91,23 +91,17 @@ impl Wire for GenerateContent {
     type Frame = crate::wire::WireFrame;
     type Decoder = super::streaming::GenerateContentDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .telemetry(|mode| match mode {
+                Mode::Unary => GenAiOperation::GenerateContent,
+                Mode::Streaming => GenAiOperation::ChatStreaming,
+            })
     }
 
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    /// Select the telemetry operation for unary or streamed completion.
-    fn telemetry(&self, mode: Mode) -> GenAiOperation {
-        match mode {
-            Mode::Unary => GenAiOperation::GenerateContent,
-            Mode::Streaming => GenAiOperation::ChatStreaming,
-        }
-    }
-
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
         // The request may name a model of its own; the wire's is the default.
         let model = resolve_request_model(&self.model, &request);
         let mut body = create_request_body(request)?;
@@ -133,7 +127,9 @@ impl Wire for GenerateContent {
             .header("Content-Type", "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         // Gemini supplies no transport request-id response header.
-        Ok(Encoded::new(request, framing))
+        Ok(Encoded::new(request, framing)
+            .with_projection(super::streaming::GenerateContentDecoder::project)
+            .with_analysis_only(super::streaming::GenerateContentDecoder::is_analysis_only))
     }
 
     fn decoder(&self, mode: Mode) -> Self::Decoder {

@@ -12,9 +12,10 @@ use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::json_utils;
-use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ImageEmbedding};
+use crate::operation::{Completion, Embedding, ImageEmbedding};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
+    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
+    WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -121,15 +122,12 @@ impl Wire for Chat {
     type Frame = crate::wire::WireFrame;
     type Decoder = ChatDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
     }
 
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
         let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
         if mode == Mode::Streaming {
             body.additional_params = Some(json_utils::merge(
@@ -243,12 +241,10 @@ impl Wire for Embeddings {
     type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::embedding(MAX_DOCUMENTS, self.ndims))
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -267,10 +263,6 @@ impl Wire for Embeddings {
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         EmbeddingsDecoder
     }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(MAX_DOCUMENTS, self.ndims)
-    }
 }
 
 /// Decodes one `/v1/embed` reply for texts.
@@ -283,7 +275,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
         classify_embed_reply(&frame.as_str())
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Output<Embedding>) {
+    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, Embedding>) {
         let reply = match reply {
             EmbedReply::Reply(reply) => reply,
             // Preserve the error body so the driver can attach its HTTP status.
@@ -343,12 +335,10 @@ impl Wire for ImageEmbeddings {
     type Frame = crate::wire::WireFrame;
     type Decoder = ImageEmbeddingsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(super::EMBED_ENGLISH_V3)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
+            .model(super::EMBED_ENGLISH_V3)
+            .capabilities(Capabilities::embedding(1, IMAGE_NDIMS))
     }
 
     fn encode(&self, images: Vec<Vec<u8>>, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -375,10 +365,6 @@ impl Wire for ImageEmbeddings {
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         ImageEmbeddingsDecoder
     }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(1, IMAGE_NDIMS)
-    }
 }
 
 /// Decodes one `/v1/embed` reply for a single image.
@@ -391,7 +377,7 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
         classify_embed_reply(&frame.as_str())
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Output<ImageEmbedding>) {
+    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, ImageEmbedding>) {
         let reply = match reply {
             EmbedReply::Reply(reply) => reply,
             // Same 200-with-an-envelope reply as the text route: the body

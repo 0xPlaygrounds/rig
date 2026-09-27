@@ -466,7 +466,7 @@ impl ResponsesWebSocketSession {
         &mut self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, ProviderError> {
-        let provider = self.wire.name().to_owned();
+        let provider = self.wire.describe().name.to_owned();
         self.send(completion_request).await?;
         let (response, events) = self.wait_for_terminal_response().await?;
         let folded = fold_events(&provider, events, &response)?;

@@ -24,10 +24,10 @@ use crate::{
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::completion::CompletionRequest;
-use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Opened, Sending, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
-use rig_core::wire::{Mode, Wire};
+use rig_core::wire::{Descriptor, Mode, Wire};
 
 // Profile identifiers with a us. prefix route inference within the US region
 // family; callers elsewhere must select a supported regional profile.
@@ -209,30 +209,23 @@ impl Wire for Converse {
     type Frame = ConverseFrame;
     type Decoder = StreamState;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
     }
 
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    /// Claude reasoning on Bedrock is Anthropic's; other models' is Bedrock's.
-    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
-        Some(vec![reasoning_issuer(self.request_model(model)).to_owned()])
-    }
-
-    fn reasoning_issuer(&self, model: Option<&str>) -> Option<&str> {
-        let issuer = reasoning_issuer(self.request_model(model));
-        (issuer != PROVIDER_NAME).then_some(issuer)
-    }
-
+    /// Claude reasoning on Bedrock is Anthropic's; other models' is
+    /// Bedrock's, so a request replays only the reasoning its model's issuer
+    /// signed.
     fn encode(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         _mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
+        rig_core::message::retain_replayable_reasoning(
+            &mut request.chat_history,
+            &[reasoning_issuer(&model)],
+        );
         Ok(ConverseRequest {
             request: AwsCompletionRequest::new(request, self.prompt_caching),
             model,
@@ -249,12 +242,9 @@ impl Transport<Converse> for BedrockRuntime {
     fn send(
         &self,
         payload: ConverseRequest,
-        mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        exchange: Exchange,
+    ) -> Result<Sending<ConverseFrame>, ProviderError> {
+        let mode = exchange.mode;
         let ConverseRequest {
             model,
             request,
@@ -267,7 +257,7 @@ impl Transport<Converse> for BedrockRuntime {
         let system_prompt = request.system_prompt()?;
         let messages = request.messages()?;
         let runtime = self.clone();
-        Ok(async move {
+        Ok(Sending::later(async move {
             let client = runtime.inner().await;
             match mode {
                 Mode::Unary => {
@@ -292,13 +282,14 @@ impl Transport<Converse> for BedrockRuntime {
                     match sent {
                         Ok(output) => {
                             let request_id = output.request_id().map(str::to_owned);
-                            Opened {
-                                request_id: request_id.clone(),
-                                ..Opened::new(futures::stream::iter([
-                                    Ok(ConverseFrame::Opened { model, request_id }),
-                                    Ok(ConverseFrame::Whole(Box::new(output))),
-                                ]))
-                            }
+                            Opened::new(futures::stream::iter([
+                                Ok(ConverseFrame::Opened {
+                                    model,
+                                    request_id: request_id.clone(),
+                                }),
+                                Ok(ConverseFrame::Whole(Box::new(output))),
+                            ]))
+                            .with_request_id(request_id)
                         }
                         Err(error) => Opened::failed(error),
                     }
@@ -346,12 +337,9 @@ impl Transport<Converse> for BedrockRuntime {
                             }
                         }
                     };
-                    Opened {
-                        request_id,
-                        ..Opened::new(frames)
-                    }
+                    Opened::new(frames).with_request_id(request_id)
                 }
             }
-        })
+        }))
     }
 }

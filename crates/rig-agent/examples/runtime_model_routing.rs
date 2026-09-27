@@ -17,11 +17,10 @@ use rig_agent::{
     streaming::{StreamEvent, StreamFinal},
     tool::{Tool, ToolContext},
 };
-use rig_core::driver::{Local, Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 use rig_core::operation::{AdapterOutput, Completion, ImagePart};
-use rig_core::wire::Mode;
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
@@ -45,15 +44,8 @@ impl Transport<Local<Completion>> for Scripted {
     fn send(
         &self,
         request: CompletionRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<CompletionRequest, Result<StreamEvent, ProviderError>>>
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<Result<StreamEvent, ProviderError>>, ProviderError> {
         let mut out = AdapterOutput::new();
         out.message_id(format!("{}-message", self.provider));
         out.content(&[(self.answer)(&request)], ImagePart::Block);
@@ -62,7 +54,7 @@ impl Transport<Local<Completion>> for Scripted {
             usage(self.total_tokens),
             serde_json::Value::Null,
         ));
-        Ok(std::future::ready(Opened::new(stream::iter(
+        Ok(Sending::opened(Opened::new(stream::iter(
             out.into_items().into_iter().map(Ok),
         ))))
     }

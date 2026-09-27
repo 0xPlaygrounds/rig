@@ -9,27 +9,16 @@ use super::{Model, Transport};
 use crate::error::ProviderError;
 use crate::observe::AdapterContext;
 use crate::streaming::Streamed;
-use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
-use crate::wire::{Mode, Operation, Wire};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wire::{Capabilities, Descriptor, Mode, Operation, Wire};
 
 /// Object-safe mirror of the calls a [`Model`] answers, with the wire and
 /// transport fixed. Private: the only way to reach it is through
 /// [`DynModel`], which re-exposes the public surface.
 pub(crate) trait ErasedModel<Op: Operation>: WasmCompatSend + WasmCompatSync {
-    fn name(&self) -> &str;
+    fn describe(&self) -> Descriptor<'_>;
 
-    fn id(&self) -> Option<&str>;
-
-    fn capabilities(&self) -> Op::Capabilities;
-
-    /// A call that owns its share of the model, so it outlives the handle.
-    fn call(
-        self: Arc<Self>,
-        request: Op::Request,
-        observation: Option<AdapterContext>,
-    ) -> WasmBoxedFuture<'static, Result<Op::Response, ProviderError>>;
-
-    fn streamed(
+    fn open(
         &self,
         request: Op::Request,
         mode: Mode,
@@ -42,33 +31,17 @@ where
     W: Wire,
     T: Transport<W>,
 {
-    fn name(&self) -> &str {
-        self.wire.name()
+    fn describe(&self) -> Descriptor<'_> {
+        self.wire.describe()
     }
 
-    fn id(&self) -> Option<&str> {
-        self.wire.id()
-    }
-
-    fn capabilities(&self) -> <W::Op as Operation>::Capabilities {
-        Wire::capabilities(&self.wire)
-    }
-
-    fn call(
-        self: Arc<Self>,
-        request: <W::Op as Operation>::Request,
-        observation: Option<AdapterContext>,
-    ) -> WasmBoxedFuture<'static, Result<<W::Op as Operation>::Response, ProviderError>> {
-        Box::pin(async move { self.drained(request, observation).await })
-    }
-
-    fn streamed(
+    fn open(
         &self,
         request: <W::Op as Operation>::Request,
         mode: Mode,
         observation: Option<AdapterContext>,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        Model::streamed(self, request, mode, observation)
+        Model::open(self, request, mode, observation)
     }
 }
 
@@ -77,7 +50,7 @@ where
 /// consumer takes `impl Into<DynModel<Op>>` and accepts either.
 ///
 /// Every call runs the driver the concrete model runs: spans, request ids,
-/// the operation's `accept` check and error enrichment are the same.
+/// the operation's fold and error enrichment are the same.
 ///
 /// A model used by one consumer is passed as is; a model shared by several
 /// is erased once and the handle is cloned. A model the bus serves is a
@@ -147,43 +120,51 @@ impl<Op: Operation> fmt::Debug for DynModel<Op> {
 impl<Op: Operation> DynModel<Op> {
     /// The wire's provider descriptor name (`"anthropic"`).
     pub fn name(&self) -> &str {
-        self.inner.name()
+        self.inner.describe().name
     }
 
     /// The model id the wire addresses, when the operation addresses one.
     pub fn id(&self) -> Option<&str> {
-        self.inner.id()
+        self.inner.describe().model
     }
 
     /// What a runtime accounts for about this model.
-    pub fn capabilities(&self) -> Op::Capabilities {
-        self.inner.capabilities()
+    pub fn capabilities(&self) -> Capabilities {
+        self.inner.describe().capabilities
     }
 
     /// Send `request` and fold the whole reply into the operation's
-    /// response; [`Model::call`] with the model erased. The call shares the
-    /// model, so it can be spawned when `request` owns its data.
-    pub fn call<R: Into<Op::Request>>(
+    /// response; [`Model::call`] with the model erased. The call owns what
+    /// it sends, so it can be spawned.
+    pub fn call(
         &self,
-        request: R,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static + use<Op, R>
-    {
-        Arc::clone(&self.inner).call(request.into(), None)
+        request: impl Into<Op::Request>,
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+        self.drained(request.into(), None)
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
-    pub fn call_observed<R: Into<Op::Request>>(
+    pub fn call_observed(
         &self,
-        request: R,
+        request: impl Into<Op::Request>,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static + use<Op, R>
-    {
-        Arc::clone(&self.inner).call(request.into(), Some(observation))
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+        self.drained(request.into(), Some(observation))
+    }
+
+    /// The call opens when first polled, as [`Model::call`] does.
+    fn drained(
+        &self,
+        request: Op::Request,
+        observation: Option<AdapterContext>,
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+        let inner = self.inner.clone();
+        async move { inner.open(request, Mode::Unary, observation)?.drain().await }
     }
 
     /// Open a streamed reply; [`Model::stream`] with the model erased.
     pub fn stream(&self, request: impl Into<Op::Request>) -> Result<Streamed<Op>, ProviderError> {
-        self.inner.streamed(request.into(), Mode::Streaming, None)
+        self.inner.open(request.into(), Mode::Streaming, None)
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
@@ -193,7 +174,7 @@ impl<Op: Operation> DynModel<Op> {
         observation: AdapterContext,
     ) -> Result<Streamed<Op>, ProviderError> {
         self.inner
-            .streamed(request.into(), Mode::Streaming, Some(observation))
+            .open(request.into(), Mode::Streaming, Some(observation))
     }
 }
 

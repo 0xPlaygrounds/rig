@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::completion::{CompletionRequest, ProviderCapabilities};
+use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
 use crate::operation::Completion;
 use crate::providers::openai::responses_api::streaming::{ResponsesDecoder, ResponsesEvent};
@@ -17,8 +17,7 @@ use crate::providers::openai::responses_api::wire::Responses;
 use crate::providers::openai::responses_api::{
     ResponsesToolDefinition, SystemInstructionsPlacement,
 };
-use crate::telemetry::GenAiOperation;
-use crate::wire::{Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame};
+use crate::wire::{Decoder, Descriptor, Encoded, End, Mode, Out, Wire, WireEvent, WireFrame};
 
 use super::OpenAIConfig;
 use super::chat::{Chat, ChatDecoder, ChatEvent};
@@ -178,16 +177,8 @@ impl Wire for OpenAiWire {
     type Frame = crate::wire::WireFrame;
     type Decoder = OpenAiDecoder;
 
-    fn name(&self) -> &str {
-        on_route!(self, wire => wire.name())
-    }
-
-    fn id(&self) -> Option<&str> {
-        on_route!(self, wire => wire.id())
-    }
-
-    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
-        on_route!(self, wire => wire.replay_issuers(model))
+    fn describe(&self) -> Descriptor<'_> {
+        on_route!(self, wire => wire.describe())
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
@@ -199,14 +190,6 @@ impl Wire for OpenAiWire {
             Self::Chat(wire) => OpenAiDecoder::Chat(wire.decoder(mode)),
             Self::Responses(wire) => OpenAiDecoder::Responses(wire.decoder(mode)),
         }
-    }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        on_route!(self, wire => wire.capabilities())
-    }
-
-    fn telemetry(&self, mode: Mode) -> GenAiOperation {
-        on_route!(self, wire => wire.telemetry(mode))
     }
 }
 
@@ -236,7 +219,7 @@ impl Decoder<Completion> for OpenAiDecoder {
         }
     }
 
-    fn interpret(&mut self, event: OpenAiEvent, out: &mut Output<Completion>) {
+    fn interpret(&mut self, event: OpenAiEvent, out: &mut Out<'_, Completion>) {
         match (self, event) {
             (Self::Chat(decoder), OpenAiEvent::Chat(event)) => decoder.interpret(event, out),
             (Self::Responses(decoder), OpenAiEvent::Responses(event)) => {
@@ -248,28 +231,8 @@ impl Decoder<Completion> for OpenAiDecoder {
         }
     }
 
-    fn finish(&mut self, out: &mut Output<Completion>) {
-        on_route!(self, decoder => decoder.finish(out))
-    }
-
-    fn flush_before_terminal_error(&mut self, out: &mut Output<Completion>) {
-        on_route!(self, decoder => decoder.flush_before_terminal_error(out))
-    }
-
-    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
-        on_route!(self, decoder => decoder.project(payload, sink))
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        on_route!(self, decoder => decoder.document())
-    }
-
-    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        on_route!(self, decoder => decoder.is_analysis_only(frame))
-    }
-
-    fn is_finished(&self) -> bool {
-        on_route!(self, decoder => decoder.is_finished())
+    fn end(&mut self, out: &mut Out<'_, Completion>, end: End) {
+        on_route!(self, decoder => decoder.end(out, end))
     }
 }
 

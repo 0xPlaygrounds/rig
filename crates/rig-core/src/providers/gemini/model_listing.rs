@@ -2,9 +2,11 @@ use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::{
     model::{ModelInfo, ModelList, listing},
-    operation::{ModelListing, Verify},
+    operation::{ModelListing, ModelPage, Verify},
     providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
-    wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
+    wire::{
+        Body, Decoder, Descriptor, Encoded, End, Framing, Mode, Out, Wire, WireEvent, WireFrame,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt};
@@ -178,27 +180,20 @@ impl Wire for Models {
     type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
-    fn name(&self) -> &str {
-        super::PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(super::PROVIDER_NAME)
     }
 
     /// A listing never streams, so both modes send the one request.
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         Ok(Encoded::new(
-            list_models_request(&self.provider, Auth::Query, None)?,
-            Framing::Whole,
-        ))
-    }
-
-    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
-        Ok(Encoded::new(
-            list_models_request(&self.provider, Auth::Query, Some(cursor))?,
+            list_models_request(&self.provider, Auth::Query, cursor.as_deref())?,
             Framing::Whole,
         ))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder::default()
+        ModelsDecoder
     }
 }
 
@@ -223,36 +218,26 @@ impl Wire for InteractionsModels {
     type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
-    fn name(&self) -> &str {
-        super::PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(super::PROVIDER_NAME)
     }
 
     /// A listing never streams, so both modes send the one request.
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         Ok(Encoded::new(
-            list_models_request(&self.provider, Auth::Header, None)?,
-            Framing::Whole,
-        ))
-    }
-
-    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
-        Ok(Encoded::new(
-            list_models_request(&self.provider, Auth::Header, Some(cursor))?,
+            list_models_request(&self.provider, Auth::Header, cursor.as_deref())?,
             Framing::Whole,
         ))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder::default()
+        ModelsDecoder
     }
 }
 
-/// Decode model pages and name the cursor the wire follows.
+/// Decode model pages and the cursor each names.
 #[derive(Default)]
-pub struct ModelsDecoder {
-    /// The cursor the page just interpreted named, when it named a usable one.
-    next: Option<String>,
-}
+pub struct ModelsDecoder;
 
 impl Decoder<ModelListing> for ModelsDecoder {
     /// The page JSON, retained for model-entry error context.
@@ -265,20 +250,16 @@ impl Decoder<ModelListing> for ModelsDecoder {
         classified.map(|_| payload)
     }
 
-    fn interpret(&mut self, payload: Self::Event, out: &mut Output<ModelListing>) {
+    fn interpret(&mut self, payload: Self::Event, out: &mut Out<'_, ModelListing>) {
         // Diagnostics identify the endpoint without retaining the previous page's cursor.
         let path = list_models_path(None);
         match parse_models_page(payload.as_bytes(), &path) {
-            Ok(page) => {
-                self.next = page.next_cursor;
-                out.push(Ok(ModelList::new(page.models)));
-            }
+            Ok(page) => out.push(Ok(ModelPage {
+                models: ModelList::new(page.models),
+                next: page.next_cursor,
+            })),
             Err(error) => out.push(Err(error)),
         }
-    }
-
-    fn cursor(&self) -> Option<String> {
-        self.next.clone()
     }
 }
 
@@ -302,8 +283,8 @@ impl Wire for VerifyKey {
     type Frame = crate::wire::WireFrame;
     type Decoder = VerifyKeyDecoder;
 
-    fn name(&self) -> &str {
-        super::PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(super::PROVIDER_NAME)
     }
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -335,14 +316,14 @@ impl Decoder<Verify> for VerifyKeyDecoder {
             .map(|_| ())
     }
 
-    fn interpret(&mut self, _event: Self::Event, out: &mut Output<Verify>) {
+    fn interpret(&mut self, _event: Self::Event, out: &mut Out<'_, Verify>) {
         self.answered = true;
         out.push(Ok(()));
     }
 
     /// Emit success if no recognized page supplied an event.
-    fn finish(&mut self, out: &mut Output<Verify>) {
-        if !self.answered {
+    fn end(&mut self, out: &mut Out<'_, Verify>, end: End) {
+        if end == End::Eof && !self.answered {
             out.push(Ok(()));
         }
     }

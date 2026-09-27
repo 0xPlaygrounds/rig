@@ -1,11 +1,10 @@
 use super::*;
 use crate::completion::{Converse, ConverseRequest};
 use futures::StreamExt;
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{AssistantContent, Reasoning};
 use rig_core::streaming::{CompletionStream, Delta, StreamEvent};
-use rig_core::wire::Mode;
 
 // ---- Event-seam helpers: a transport that replays scripted events ----
 
@@ -17,24 +16,20 @@ impl Transport<Converse> for Scripted {
     fn send(
         &self,
         payload: ConverseRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<ConverseFrame>, ProviderError> {
         let events = std::mem::take(&mut *self.0.lock().expect("script lock"));
         let opened = ConverseFrame::Opened {
             model: payload.model,
             request_id: None,
         };
-        Ok(async move {
+        Ok(Sending::later(async move {
             Opened::new(futures::stream::iter(
                 std::iter::once(opened)
                     .chain(events.into_iter().map(ConverseFrame::Event))
                     .map(Ok),
             ))
-        })
+        }))
     }
 }
 
@@ -914,6 +909,8 @@ async fn a_claude_stream_records_anthropic_as_its_reasoning_issuer() {
             metadata_event_with_usage(3, 1),
         ],
     );
+    // The reply names the model it answers for before its first event.
+    stream.next().await.expect("an event").expect("stream item");
     assert_eq!(stream.folded().reasoning_issuer(), Some("anthropic"));
     while let Some(item) = stream.next().await {
         item.expect("stream item");

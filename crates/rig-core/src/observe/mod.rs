@@ -28,8 +28,8 @@ mod adapter;
 pub(crate) mod sse_tail;
 pub use adapter::{
     AdapterAnalysis, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
-    AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, diagnostic_url_secrets,
-    scrub_diagnostic,
+    AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, ObservationSink,
+    diagnostic_url_secrets, scrub_diagnostic,
 };
 pub(crate) use adapter::{AdapterSlot, ObservedError, lenient_count};
 

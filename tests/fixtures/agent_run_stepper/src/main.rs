@@ -25,7 +25,7 @@ use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
 use rig_core::completion::{AssistantContent, CompletionRequest, ModelRef, Usage};
-use rig_core::driver::{Local, Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::serve::adapters::ModelAdapter;
@@ -33,7 +33,6 @@ use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::streaming::{StreamEvent, StreamFinal};
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
-use rig_core::wasm_compat::WasmCompatSend;
 use rig_core::error::ProviderError;
 use rig_core::wire::Mode;
 
@@ -73,12 +72,9 @@ impl Transport<Local<Completion>> for Scripted {
     fn send(
         &self,
         request: CompletionRequest,
-        mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<CompletionRequest, Result<StreamEvent, ProviderError>>> + WasmCompatSend + 'static + use<>,
-        ProviderError,
-    > {
+        exchange: Exchange,
+    ) -> Result<Sending<Result<StreamEvent, ProviderError>>, ProviderError> {
+        let mode = exchange.mode;
         if mode == Mode::Streaming {
             return Err(ProviderError::Provider(
                 "fixture drives unary completions only".to_string(),
@@ -108,10 +104,10 @@ impl Transport<Local<Completion>> for Scripted {
         let mut out = AdapterOutput::new();
         out.content(&choice, ImagePart::Block);
         out.final_record(StreamFinal::new("fixture", Usage::default(), serde_json::Value::Null));
-        Ok(std::future::ready(Opened {
-            document: Some(serde_json::json!({ "provider": "fixture" })),
-            ..Opened::new(futures::stream::iter(out.into_items().into_iter().map(Ok)))
-        }))
+        Ok(Sending::opened(
+            Opened::new(futures::stream::iter(out.into_items().into_iter().map(Ok)))
+                .with_document(serde_json::json!({ "provider": "fixture" })),
+        ))
     }
 }
 

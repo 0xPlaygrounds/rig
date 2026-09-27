@@ -159,6 +159,13 @@ Chat-compatible dialects use the shared `Chat` wire and decoder with
 `Dialect` data and `BodyRewrite` hooks rather than duplicating request conversion.
 This keeps normalization, retry classification, and telemetry consistent.
 
+An operation (`wire::Operation`) names its request, event and response types,
+which event ends a reply, and the fold one reply's events pass through; it is
+written once, and every provider of it is interchangeable behind a `DynModel`.
+A crate outside Rig adds an operation and serves it with its own wire and
+decoder over HTTP, or with `driver::Local` and a transport of its own for an
+in-process runtime.
+
 Each wire encodes requests without transport access and creates a fresh decoder
 for each reply. Buffered and streaming replies use the same classifier and event
 mapping. A buffered response with a distinct shape is another classified event,

@@ -13,18 +13,15 @@ use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 use super::*;
-use crate::completion::{CompletionRequest, CompletionResponse};
-use crate::driver::{Model, Observation, Opened, Transport};
+use crate::completion::CompletionRequest;
+use crate::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use crate::embeddings::EmbeddingResponse;
 use crate::error::{EncodeError, ProviderError};
-use crate::operation::AdapterOutput;
 use crate::operation::{Completion, Embedding, Rerank, RerankRequest, Transcription};
 use crate::rerank::RerankResponse;
 use crate::streaming::{StreamEvent, StreamFinal};
 use crate::transcription::{TranscriptionRequest, TranscriptionResponse};
-use crate::wasm_compat::WasmCompatSend;
-use crate::wire::Operation;
-use crate::wire::{Decoder, Mode, Wire, WireEvent};
+use crate::wire::{Decoder, Descriptor, Fold, Mode, Out, Wire, WireEvent};
 use futures::StreamExt;
 
 /// One JSON line per case, in the order [`cases`] runs them.
@@ -229,16 +226,14 @@ fn cases() -> Vec<Value> {
             let request = CompletionRequest::new("hi")
                 .preamble("sys")
                 .record_content_telemetry(true);
-            let span = Completion::span(
-                "prov",
-                Some("model"),
-                Completion::telemetry(Mode::Unary),
-                &request,
-            );
-            let response = CompletionResponse::new(vec![], usage(), "prov", Value::Null)
+            let wire = Local::<Completion>::new("prov").with_id("model");
+            let mut fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
+            let terminal = StreamFinal::new("prov", usage(), Value::Null)
                 .with_message_id("msg_1")
                 .with_model("resp_model");
-            Completion::record(&span, &response);
+            fold.absorb(&StreamEvent::Final(terminal))
+                .expect("the fold takes the terminal");
+            fold.finish(reply()).expect("the fold records its response");
         },
     );
     run(
@@ -258,34 +253,28 @@ fn cases() -> Vec<Value> {
         },
     );
     run("embedding operation span+record", &mut out, || {
-        let span = Embedding::span(
-            "prov",
-            Some("model"),
-            Embedding::telemetry(Mode::Unary),
-            &vec!["a".to_owned()],
-        );
+        let wire = Local::<Embedding>::new("prov").with_id("model");
+        let mut fold = crate::test_utils::fold_for(&Vec::new(), &wire, Mode::Unary);
         let response = EmbeddingResponse::new(vec![], "prov")
             .with_response_id("emb_id")
             .with_model("emb_model")
             .with_usage(usage());
-        Embedding::record(&span, &response);
+        fold.absorb(&response).expect("the fold takes the reply");
+        fold.finish(reply()).expect("the fold records its response");
     });
     run("rerank operation span+record", &mut out, || {
         let request = RerankRequest {
             query: "q".into(),
             documents: vec!["d".into()],
         };
-        let span = Rerank::span(
-            "prov",
-            Some("model"),
-            Rerank::telemetry(Mode::Unary),
-            &request,
-        );
+        let wire = Local::<Rerank>::new("prov").with_id("model");
+        let mut fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
         let response = RerankResponse::new(vec![], "prov")
             .with_response_id("rr_id")
             .with_model("rr_model")
             .with_usage(usage());
-        Rerank::record(&span, &response);
+        fold.absorb(&response).expect("the fold takes the reply");
+        fold.finish(reply()).expect("the fold records its response");
     });
     run("transcription operation span+record", &mut out, || {
         let request = TranscriptionRequest {
@@ -296,16 +285,13 @@ fn cases() -> Vec<Value> {
             temperature: None,
             additional_params: None,
         };
-        let span = Transcription::span(
-            "prov",
-            Some("model"),
-            Transcription::telemetry(Mode::Unary),
-            &request,
-        );
+        let wire = Local::<Transcription>::new("prov").with_id("model");
+        let mut fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
         let response = TranscriptionResponse::new("text", "prov")
             .with_response_id("tr_id")
             .with_usage(usage());
-        Transcription::record(&span, &response);
+        fold.absorb(&response).expect("the fold takes the reply");
+        fold.finish(reply()).expect("the fold records its response");
     });
     run("span combinator on a native response", &mut out, || {
         SpanBuilder::new("prov", "model", GenAiOperation::Chat)
@@ -313,6 +299,15 @@ fn cases() -> Vec<Value> {
             .record_response(Some("native_id"), Some("native_model"), &usage());
     });
     out
+}
+
+/// A reply that carried nothing beyond its events.
+fn reply() -> crate::wire::Reply {
+    crate::wire::Reply {
+        provider: "prov".to_owned(),
+        raw: Value::Null,
+        provider_request_id: None,
+    }
 }
 
 #[test]
@@ -358,12 +353,8 @@ impl Wire for Scripted {
     type Frame = StreamEvent;
     type Decoder = Relay;
 
-    fn name(&self) -> &str {
-        "prov"
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some("model")
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new("prov").model("model")
     }
 
     fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<(), EncodeError> {
@@ -379,16 +370,12 @@ impl Transport<Scripted> for Scripted {
     fn send(
         &self,
         _payload: (),
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<(), StreamEvent>> + WasmCompatSend + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<StreamEvent>, ProviderError> {
         let terminal = self.0.clone();
-        Ok(std::future::ready(Opened::new(futures::stream::iter([
-            Ok(StreamEvent::Final(terminal)),
-        ]))))
+        Ok(Sending::opened(Opened::new(futures::stream::iter([Ok(
+            StreamEvent::Final(terminal),
+        )]))))
     }
 }
 
@@ -402,7 +389,7 @@ impl Decoder<Completion, StreamEvent> for Relay {
         WireEvent::Known(frame)
     }
 
-    fn interpret(&mut self, event: StreamEvent, out: &mut AdapterOutput) {
+    fn interpret(&mut self, event: StreamEvent, out: &mut Out<'_, Completion>) {
         out.push(Ok(event));
     }
 }

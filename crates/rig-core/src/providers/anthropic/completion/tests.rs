@@ -5,7 +5,7 @@ use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::operation::Completion;
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::wire::WireFrame;
-use crate::wire::{Fold, Operation, Wire};
+use crate::wire::{Fold, Wire};
 use serde_json::json;
 use serde_path_to_error::deserialize;
 
@@ -33,8 +33,7 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
     let mut driver = WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
     driver.push(WireFrame::Text(body.to_string()));
     driver.finish();
-    let mut fold =
-        <Completion as Operation>::fold(&hello_request(), &wire, crate::wire::Mode::Unary);
+    let mut fold = crate::test_utils::fold_for(&hello_request(), &wire, crate::wire::Mode::Unary);
     for item in driver.drain() {
         fold.absorb(&item?)?;
     }

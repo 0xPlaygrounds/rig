@@ -15,10 +15,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
-use crate::completion::{CompletionRequest, ProviderCapabilities};
+use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
 use crate::model::{ModelInfo, ModelList};
-use crate::operation::{Completion, ModelListing};
+use crate::operation::{Completion, ModelListing, ModelPage};
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// Copilot's embeddings wire is the shared one, pointed at Copilot by
@@ -29,9 +29,8 @@ use crate::providers::openai::wire::{
     Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, OpenAiDecoder, OpenAiWire, Quirks,
     ResponsesQuirks, Route,
 };
-use crate::telemetry::GenAiOperation;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
+    Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent, WireFrame,
 };
 
 use super::{CopilotIntent, PROVIDER_NAME};
@@ -320,16 +319,8 @@ impl Wire for CopilotWire {
     type Frame = crate::wire::WireFrame;
     type Decoder = OpenAiDecoder;
 
-    fn name(&self) -> &str {
-        self.wire.name()
-    }
-
-    fn id(&self) -> Option<&str> {
-        self.wire.id()
-    }
-
-    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
-        self.wire.replay_issuers(model)
+    fn describe(&self) -> Descriptor<'_> {
+        self.wire.describe()
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
@@ -342,20 +333,12 @@ impl Wire for CopilotWire {
     fn decoder(&self, mode: Mode) -> OpenAiDecoder {
         self.wire.decoder(mode)
     }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        Wire::capabilities(&self.wire)
-    }
-
-    fn telemetry(&self, mode: Mode) -> GenAiOperation {
-        self.wire.telemetry(mode)
-    }
 }
 
 /// Copilot's model-listing wire.
 ///
-/// `GET /models` answers with the whole catalogue, so
-/// [`Decoder::cursor`] keeps its default `None`.
+/// `GET /models` answers with the whole catalogue, so a page never names a
+/// next one.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// Which Copilot, and how to reach it.
@@ -417,8 +400,11 @@ impl Decoder<ModelListing> for ModelsDecoder {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<ModelListing>) {
-        out.push(Ok(ModelList::new(event.into_models())));
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, ModelListing>) {
+        out.push(Ok(ModelPage {
+            models: ModelList::new(event.into_models()),
+            next: None,
+        }));
     }
 }
 
@@ -428,11 +414,11 @@ impl Wire for Models {
     type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, _cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let mut request = http::Request::get(self.provider.uri(super::MODEL_LISTING_PATH))
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::empty())?;

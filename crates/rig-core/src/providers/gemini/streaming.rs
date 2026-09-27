@@ -12,9 +12,9 @@ use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire;
 use crate::streaming;
-use crate::wire::WireEvent;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Mode, ObservationSink, Output, WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, End, Mode, ObservationSink, Out,
+    WireEvent, WireFrame,
 };
 
 /// Part-kind interpretation shared by the Gemini wires whose payloads
@@ -149,30 +149,13 @@ impl Decoder<Completion> for GenerateContentDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<GenerateContentResponse> {
         // ID-only metadata must not create an unknown-content truncation tail.
-        if <Self as Decoder<Completion>>::is_analysis_only(self, &frame) {
+        if Self::is_analysis_only(&frame) {
             return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
         }
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
     }
 
-    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct ResponseIdOnly {
-            #[serde(rename = "responseId")]
-            _id: String,
-        }
-        matches!(
-            wire::classify_marker_keyed_frame::<ResponseIdOnly>(&frame.as_str(), &["responseId"]),
-            WireEvent::Known(_)
-        )
-    }
-
-    fn interpret(&mut self, data: GenerateContentResponse, out: &mut Output<Completion>) {
-        if self.failed {
-            return;
-        }
-
+    fn interpret(&mut self, data: GenerateContentResponse, out: &mut Out<'_, Completion>) {
         let span = tracing::Span::current();
         // The document defaults an absent id to the empty string, which is
         // the same "not reported" the normalized record's setter filters.
@@ -192,7 +175,6 @@ impl Decoder<Completion> for GenerateContentDecoder {
 
         if let Some(error) = data.error {
             // Preserve in-band failures as provider errors, not unknown-frame truncation.
-            self.failed = true;
             // GenerateContent codes are HTTP statuses; only error statuses
             // participate in the unary retry policy.
             let status = error
@@ -207,13 +189,14 @@ impl Decoder<Completion> for GenerateContentDecoder {
                 None => crate::error::ProviderError::from_provider_body(body),
             };
             out.push(Err(error));
+            out.end_reply();
             return;
         }
 
         if let Some(blocked) = data.prompt_feedback.as_ref().and_then(blocked_prompt_error) {
             // Preserve the refusal reason rather than reporting an unexplained truncation.
-            self.failed = true;
             out.push(Err(blocked));
+            out.end_reply();
             return;
         }
 
@@ -233,8 +216,8 @@ impl Decoder<Completion> for GenerateContentDecoder {
         }
 
         if let Some(err) = tool_protocol_finish_reason_error(&choice) {
-            self.failed = true;
             out.push(Err(err));
+            out.end_reply();
             return;
         }
 
@@ -260,9 +243,17 @@ impl Decoder<Completion> for GenerateContentDecoder {
                 tracing::debug!(finish_reason = ?self.final_finish_reason, "Streaming candidate missing content");
             }
         }
+        // An unexpected part fails the turn; later frames cannot report it
+        // complete.
+        if self.failed {
+            out.end_reply();
+        }
     }
 
-    fn finish(&mut self, out: &mut Output<Completion>) {
+    fn end(&mut self, out: &mut Out<'_, Completion>, end: End) {
+        if end == End::Failed {
+            return;
+        }
         // Empty unary replies require a truncating finish reason; stream truncation
         // is represented by an absent terminal record instead.
         let cut_short = self
@@ -311,14 +302,24 @@ impl Decoder<Completion> for GenerateContentDecoder {
                 .with_optional_model(native.model_version),
         );
     }
+}
 
-    fn is_finished(&self) -> bool {
-        // Stop after terminal errors so later unknown frames cannot escape the failure gate.
-        self.failed
+impl GenerateContentDecoder {
+    pub(crate) fn is_analysis_only(frame: &WireFrame) -> bool {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct ResponseIdOnly {
+            #[serde(rename = "responseId")]
+            _id: String,
+        }
+        matches!(
+            wire::classify_marker_keyed_frame::<ResponseIdOnly>(&frame.as_str(), &["responseId"]),
+            WireEvent::Known(_)
+        )
     }
 
     /// Project provider verdicts, usage, response identity, and errors before normalization.
-    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
+    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         // The observation projection must not inherit native response
         // defaults: omitted prompt/total counts in UsageMetadata otherwise
         // become zero. Parsing failure has no effect on the provider's

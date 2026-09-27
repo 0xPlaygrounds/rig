@@ -11,11 +11,11 @@
 use serde_json::{Map, Value};
 
 use rig_core::driver::warn_unmodeled;
-use rig_core::operation::{AdapterOutput, Completion, ImagePart};
+use rig_core::operation::{Completion, ImagePart};
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use rig_core::providers::internal::wire;
 use rig_core::streaming;
-use rig_core::wire::{TypedEvent, WireEvent};
+use rig_core::wire::{Out, TypedEvent, WireEvent};
 
 use super::completion::{
     GrpcFrame, encode_optional_base64 as encode_signature, prost_struct_to_json,
@@ -31,10 +31,6 @@ pub struct GrpcAdapter {
     reasoning: MintedReasoningLifecycle,
     /// Mints a distinct identity for each call lacking a wire ID.
     tool_ids: streaming::SyntheticIds,
-    /// Suppresses further output after a tool-protocol terminal failure.
-    failed: bool,
-    /// The unary reply's document, for the response's `raw`.
-    document: Option<Value>,
 }
 
 impl Default for GrpcAdapter {
@@ -42,12 +38,12 @@ impl Default for GrpcAdapter {
         Self {
             reasoning: MintedReasoningLifecycle::new(streaming::MintKind::Reasoning),
             tool_ids: streaming::SyntheticIds::tool(),
-            failed: false,
-            document: None,
         }
     }
 }
 
+/// EOF without a finish reason is truncation, so the decoder adds nothing at
+/// the end of the reply.
 impl rig_core::wire::Decoder<Completion, GrpcFrame> for GrpcAdapter {
     type Event = GrpcFrame;
 
@@ -57,10 +53,8 @@ impl rig_core::wire::Decoder<Completion, GrpcFrame> for GrpcAdapter {
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, frame: Self::Event, out: &mut AdapterOutput) {
-        if self.failed {
-            return;
-        }
+    fn interpret(&mut self, frame: GrpcFrame, out: &mut Out<'_, Completion>) {
+        out.reasoning_issuer(super::completion::REASONING_ISSUER);
         let resp = match frame {
             GrpcFrame::Chunk(chunk) => chunk,
             GrpcFrame::Whole(response) => return self.whole(*response, out),
@@ -79,8 +73,9 @@ impl rig_core::wire::Decoder<Completion, GrpcFrame> for GrpcAdapter {
                 candidate.finish_reason,
                 candidate.finish_message.as_deref(),
             ) {
-                self.failed = true;
                 out.push(Err(err));
+                // Stop reading rather than drain the transport.
+                out.end_reply();
                 return;
             }
 
@@ -116,28 +111,15 @@ impl rig_core::wire::Decoder<Completion, GrpcFrame> for GrpcAdapter {
             }
         }
     }
-
-    fn finish(&mut self, _out: &mut AdapterOutput) {
-        // EOF without a finish reason is truncation: no terminal record.
-    }
-
-    fn is_finished(&self) -> bool {
-        // Stop reading after an emitted protocol failure rather than drain the transport.
-        self.failed
-    }
-
-    fn document(&self) -> Option<Value> {
-        self.document.clone()
-    }
 }
 
 impl GrpcAdapter {
     /// Replay a whole unary reply as the events a stream sends for it.
-    fn whole(&mut self, response: proto::GenerateContentResponse, out: &mut AdapterOutput) {
+    fn whole(&mut self, response: proto::GenerateContentResponse, out: &mut Out<'_, Completion>) {
         // The provider's own document, captured before the reply is consumed
         // into normalized content.
         match serde_json::to_value(&response) {
-            Ok(document) => self.document = Some(document),
+            Ok(document) => out.document(document),
             Err(error) => return out.error(error.into()),
         }
         match super::completion::assistant_content(&response) {

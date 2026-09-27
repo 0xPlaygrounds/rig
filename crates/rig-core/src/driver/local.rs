@@ -1,51 +1,54 @@
 //! The pass-through wire: the payload is the request and each frame is one
-//! item of the operation's sink. It is what a local runtime, a test script
-//! or an in-process model speaks, so its transport is the runtime itself.
+//! item of the reply. It is what a local runtime, a test script or an
+//! in-process model speaks, so its transport is the runtime itself.
 //!
 //! ```
 //! use rig_core::driver::Local;
-//! use rig_core::operation::{Embedding, EmbeddingCapabilities};
-//! use rig_core::wire::Wire;
+//! use rig_core::operation::Embedding;
+//! use rig_core::wire::{Capabilities, Wire};
 //!
-//! let wire = Local::<Embedding>::new("local").with_capabilities(EmbeddingCapabilities::new(8, 3));
-//! assert_eq!(wire.name(), "local");
-//! assert_eq!(wire.capabilities().ndims, 3);
+//! let wire = Local::<Embedding>::new("local").with_capabilities(Capabilities::embedding(8, 3));
+//! assert_eq!(wire.describe().name, "local");
+//! assert_eq!(wire.describe().capabilities.ndims, 3);
 //! ```
 
 use std::fmt;
 use std::marker::PhantomData;
 
+use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::wire::{Decoder, Mode, Operation, Output, Sink, Wire, WireEvent};
+use crate::message::retain_replayable_reasoning;
+use crate::wire::{Capabilities, Decoder, Descriptor, Mode, Operation, Out, Wire, WireEvent};
 
 /// A wire whose payload is the request and whose frames are the events.
 ///
 /// The transport is the runtime: it implements `Transport<Local<Op>>`,
 /// takes the request and delivers the operation's events, each frame one
-/// item of the sink: an event, or an in-band error the reply continues
+/// item of the reply: an event, or an in-band error the reply continues
 /// past. A failure that ends the reply is the transport's own `Err`. The
-/// items still pass through the operation's sink, so a completion
+/// items still pass through the operation's fold, so a completion
 /// runtime's events are made canonical like any provider's.
-pub struct Local<Op: Operation> {
+pub struct Local<Op> {
     name: String,
     id: Option<String>,
-    capabilities: Op::Capabilities,
+    capabilities: Capabilities,
+    op: PhantomData<fn() -> Op>,
 }
 
-impl<Op: Operation> Local<Op> {
+impl<Op> Local<Op> {
     /// A wire named `name` (as records and telemetry name it), addressing
-    /// no model id, with the operation's default capabilities.
+    /// no model id, with default capabilities.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             id: None,
-            capabilities: Op::Capabilities::default(),
+            capabilities: Capabilities::default(),
+            op: PhantomData,
         }
     }
 
     /// What a runtime accounts for, such as an embedding width.
-    pub fn with_capabilities(mut self, capabilities: Op::Capabilities) -> Self {
+    pub fn with_capabilities(mut self, capabilities: Capabilities) -> Self {
         self.capabilities = capabilities;
         self
     }
@@ -57,25 +60,18 @@ impl<Op: Operation> Local<Op> {
     }
 }
 
-impl<Op> Clone for Local<Op>
-where
-    Op: Operation,
-    Op::Capabilities: Clone,
-{
+impl<Op> Clone for Local<Op> {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
             id: self.id.clone(),
-            capabilities: self.capabilities.clone(),
+            capabilities: self.capabilities,
+            op: PhantomData,
         }
     }
 }
 
-impl<Op> fmt::Debug for Local<Op>
-where
-    Op: Operation,
-    Op::Capabilities: fmt::Debug,
-{
+impl<Op> fmt::Debug for Local<Op> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Local")
             .field("name", &self.name)
@@ -85,49 +81,45 @@ where
     }
 }
 
-impl<Op> Wire for Local<Op>
-where
-    Op: Operation,
-    Op::Capabilities: Clone + WasmCompatSend + WasmCompatSync,
-{
+impl<Op: Operation> Wire for Local<Op> {
     type Op = Op;
     type Payload = Op::Request;
     type Frame = Result<Op::Event, ProviderError>;
-    type Decoder = Passthrough<Op>;
+    type Decoder = Passthrough;
 
-    fn name(&self) -> &str {
-        &self.name
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(&self.name)
+            .model(self.id.as_deref())
+            .capabilities(self.capabilities)
     }
 
-    fn encode(&self, request: Op::Request, _mode: Mode) -> Result<Op::Request, EncodeError> {
+    fn encode(&self, mut request: Op::Request, _mode: Mode) -> Result<Op::Request, EncodeError> {
+        // A completion replays only the reasoning this runtime issued, as
+        // every completion wire's encode scopes it.
+        let any: &mut dyn std::any::Any = &mut request;
+        if let Some(request) = any.downcast_mut::<CompletionRequest>() {
+            retain_replayable_reasoning(&mut request.chat_history, &[&self.name]);
+        }
         Ok(request)
     }
 
-    fn decoder(&self, _mode: Mode) -> Passthrough<Op> {
-        Passthrough(PhantomData)
-    }
-
-    fn capabilities(&self) -> Op::Capabilities {
-        self.capabilities.clone()
-    }
-
-    fn id(&self) -> Option<&str> {
-        self.id.as_deref()
+    fn decoder(&self, _mode: Mode) -> Passthrough {
+        Passthrough
     }
 }
 
-/// The decoder of a [`Local`] wire: every frame is a sink item, pushed as
-/// is.
-pub struct Passthrough<Op>(PhantomData<fn() -> Op>);
+/// The decoder of a [`Local`] wire: every frame is an item, pushed as is.
+#[derive(Debug, Default)]
+pub struct Passthrough;
 
-impl<Op: Operation> Decoder<Op, Result<Op::Event, ProviderError>> for Passthrough<Op> {
+impl<Op: Operation> Decoder<Op, Result<Op::Event, ProviderError>> for Passthrough {
     type Event = Result<Op::Event, ProviderError>;
 
     fn classify(&self, item: Self::Event) -> WireEvent<Self::Event> {
         WireEvent::Known(item)
     }
 
-    fn interpret(&mut self, item: Self::Event, out: &mut Output<Op>) {
+    fn interpret(&mut self, item: Self::Event, out: &mut Out<'_, Op>) {
         out.push(item);
     }
 }

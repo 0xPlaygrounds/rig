@@ -3,18 +3,16 @@
 //! headers, framing, status and content-type checks, request ids and the
 //! observation of the exchange.
 
-use std::future::Future;
-
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Observation, Opened, Transport};
+use super::{Exchange, Opened, Sending, Transport};
 use crate::error::ProviderError;
 use crate::http_client::framing::{Framing, NdjsonFramer, SseFramer};
 use crate::http_client::{self, HttpClientExt};
-use crate::observe::{AdapterErrorBoundary, AdapterSlot};
+use crate::observe::{AdapterContext, AdapterErrorBoundary, AdapterSlot};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::wire::{Body, Encoded, Mode, Wire, WireFrame};
+use crate::wire::{Body, Encoded, Mode, Projector, Wire, WireFrame};
 
 impl<W, H> Transport<W> for H
 where
@@ -24,124 +22,116 @@ where
     fn send(
         &self,
         payload: Encoded,
-        mode: Mode,
-        observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<Encoded, WireFrame>> + WasmCompatSend + 'static + use<W, H>,
-        ProviderError,
-    > {
+        exchange: Exchange,
+    ) -> Result<Sending<WireFrame>, ProviderError> {
         let Encoded {
             requests,
             framing,
             request_id_header,
             relaxed_content_type,
             route,
+            project,
+            analysis_only,
         } = payload;
-        // A stream is one exchange: a payload that carries a batch (a
-        // provider taking a bounded number of items per request) is called
-        // whole instead.
-        if mode == Mode::Streaming && requests.len() != 1 {
-            return Err(ProviderError::Request(
-                format!(
-                    "a streamed reply takes exactly one request, not {}",
-                    requests.len()
-                )
-                .into(),
-            ));
-        }
-        let mut requests = requests.into_iter();
-        let Some(mut request) = requests.next() else {
-            // An empty batch sends nothing and folds to an empty answer.
-            return Ok(futures::future::Either::Left(std::future::ready(
-                Opened::new(futures::stream::empty()),
-            )));
-        };
-        let rest: Vec<_> = requests.collect();
-        let rest = (!rest.is_empty()).then(|| Encoded {
-            requests: rest,
-            framing,
-            request_id_header,
-            relaxed_content_type,
-            route,
-        });
-        accept_header(&mut request, framing);
-        // Errors need the actual path; observations use the declared template
-        // to group attempts independently of concrete URLs.
-        let path = request.uri().path().to_owned();
-        let declared = route.map_or_else(|| path.clone(), str::to_owned);
-        let exchange = Exchange {
-            framing,
-            request_id_header,
-            relaxed_content_type,
-            path,
-            observation,
-        };
-        let http = self.clone();
+        let Exchange { mode, observation } = exchange;
         // A whole reply has nothing to stream: it is read as a unary one is,
         // so its document is a fact of the reply in both modes.
-        let sending = match (mode, framing) {
-            (Mode::Unary, _) | (Mode::Streaming, Framing::Whole) => {
-                futures::future::Either::Left(async move {
-                    exchange.install(&request, &declared);
-                    exchange.unary(&http, request).await
-                })
+        let streamed = mode == Mode::Streaming && framing != Framing::Whole;
+        if mode == Mode::Streaming {
+            // A stream is one exchange: a payload that carries a batch (a
+            // provider taking a bounded number of items per request) is
+            // called whole instead.
+            if requests.len() != 1 {
+                return Err(ProviderError::Request(
+                    format!(
+                        "a streamed reply takes exactly one request, not {}",
+                        requests.len()
+                    )
+                    .into(),
+                ));
             }
-            (Mode::Streaming, Framing::Sse | Framing::Ndjson) => {
-                let request = byte_request(request)?;
-                futures::future::Either::Right(async move {
-                    // Unpolled streams must not report transport attempts.
-                    exchange.install(&request, &declared);
-                    exchange.streaming(&http, request).await
-                })
+            if streamed
+                && let Some(request) = requests.first()
+                && matches!(request.body(), Body::Multipart(_))
+            {
+                return Err(ProviderError::Request(
+                    "a multipart request cannot open a streamed reply".into(),
+                ));
             }
-        };
-        Ok(futures::future::Either::Right(async move {
-            let mut opened = sending.await;
-            opened.rest = rest;
-            opened
-        }))
+        }
+        if requests.is_empty() {
+            // An empty batch sends nothing and folds to an empty answer.
+            return Ok(Sending::opened(Opened::new(futures::stream::empty())));
+        }
+        let http = self.clone();
+        Ok(Sending::each(futures::stream::iter(requests).then(
+            move |mut request| {
+                accept_header(&mut request, framing);
+                // Errors need the actual path; observations use the declared
+                // template to group attempts independently of concrete URLs.
+                let path = request.uri().path().to_owned();
+                let declared = route.map_or_else(|| path.clone(), str::to_owned);
+                let exchange = HttpExchange {
+                    framing,
+                    request_id_header,
+                    relaxed_content_type,
+                    path,
+                    observation: observation
+                        .clone()
+                        .map(|context| (context, AdapterSlot::default())),
+                    project,
+                };
+                let http = http.clone();
+                async move {
+                    // Unpolled replies must not report transport attempts.
+                    exchange.install(&request, &declared);
+                    let slot = exchange.slot().cloned();
+                    let mut opened = if streamed {
+                        match byte_request(request) {
+                            Ok(request) => exchange.streaming(&http, request).await,
+                            Err(error) => Opened::failed(error),
+                        }
+                    } else {
+                        exchange.unary(&http, request).await
+                    };
+                    opened.slot = slot;
+                    opened.analysis_only = analysis_only;
+                    opened
+                }
+            },
+        )))
     }
 }
 
 /// What one request's exchange needs besides the client.
-struct Exchange {
+struct HttpExchange {
     framing: Framing,
     request_id_header: Option<&'static str>,
     relaxed_content_type: bool,
     path: String,
-    observation: Option<Observation>,
+    observation: Option<(AdapterContext, AdapterSlot)>,
+    project: Option<Projector>,
 }
 
-impl Exchange {
+impl HttpExchange {
     fn slot(&self) -> Option<&AdapterSlot> {
-        self.observation
-            .as_ref()
-            .map(|observation| &observation.slot)
+        self.observation.as_ref().map(|(_, slot)| slot)
     }
 
     fn project(&self, payload: &[u8]) {
-        if let Some(observation) = &self.observation {
-            observation.project(payload);
-        }
+        project(self.slot(), self.project, payload);
     }
 
     fn install<B>(&self, request: &http::Request<B>, declared: &str) {
-        if let Some(observation) = &self.observation {
-            observation
-                .slot
-                .install(observation.context.attempt_for(request, declared));
+        if let Some((context, slot)) = &self.observation {
+            slot.install(context.attempt_for(request, declared));
         }
     }
 
-    fn failed(
-        self,
-        error: ProviderError,
-        request_id: Option<String>,
-    ) -> Opened<Encoded, WireFrame> {
-        let mut opened = Opened::failed(error);
-        opened.request_id = request_id;
-        opened.route = Some(self.path);
-        opened
+    fn failed(self, error: ProviderError, request_id: Option<String>) -> Opened<WireFrame> {
+        Opened::failed(error)
+            .with_request_id(request_id)
+            .with_route(self.path)
     }
 
     /// Send a buffered request and frame its whole body. Every payload is
@@ -150,7 +140,7 @@ impl Exchange {
         self,
         http: &H,
         request: http::Request<Body>,
-    ) -> Opened<Encoded, WireFrame> {
+    ) -> Opened<WireFrame> {
         let sent = match send(http, request, self.request_id_header, self.slot()).await {
             Ok(sent) => sent,
             Err(error) => {
@@ -186,20 +176,18 @@ impl Exchange {
             .into_iter()
             .chain(framer.finish())
             .collect();
-        let observation = self.observation;
+        let slot = self.slot().cloned();
+        let projector = self.project;
         let frames = futures::stream::iter(payloads).filter_map(move |payload| {
-            if let Some(observation) = &observation {
-                observation.project(payload.payload());
-            }
+            project(slot.as_ref(), projector, payload.payload());
             futures::future::ready(payload.into_frame().map(Ok))
         });
         Opened {
-            request_id: sent.provider_request_id,
-            status: Some(sent.status),
-            headers: Some(sent.headers),
-            route: Some(self.path),
             document,
             ..Opened::new(frames)
+                .with_request_id(sent.provider_request_id)
+                .with_http(sent.status, sent.headers)
+                .with_route(self.path)
         }
     }
 
@@ -210,7 +198,7 @@ impl Exchange {
         self,
         http: &H,
         request: http::Request<Vec<u8>>,
-    ) -> Opened<Encoded, WireFrame> {
+    ) -> Opened<WireFrame> {
         let response = match http.send_streaming(request).await {
             // Custom transports may return rejected responses directly; preserve
             // their status, headers, and bounded body in the error.
@@ -255,10 +243,11 @@ impl Exchange {
         let request_id = request_id_from(response.headers(), self.request_id_header);
         let status = response.status();
         let headers = response.headers().clone();
+        let slot = self.slot().cloned();
         let Self {
             framing,
             path,
-            observation,
+            project: projector,
             ..
         } = self;
         let mut body = response.into_body();
@@ -268,41 +257,42 @@ impl Exchange {
                 let chunk = match chunk {
                     Ok(chunk) => chunk,
                     Err(error) => {
-                        if let Some(observation) = &observation {
-                            observation.slot.error_boundary(AdapterErrorBoundary::Transport);
+                        if let Some(slot) = &slot {
+                            slot.error_boundary(AdapterErrorBoundary::Transport);
                         }
                         yield Err(ProviderError::from_transport_error(error));
                         return;
                     }
                 };
-                if let Some(observation) = &observation {
-                    observation.slot.bytes(&chunk);
+                if let Some(slot) = &slot {
+                    slot.bytes(&chunk);
                 }
                 for payload in framer.push(&chunk) {
-                    if let Some(observation) = &observation {
-                        observation.project(payload.payload());
-                    }
+                    project(slot.as_ref(), projector, payload.payload());
                     if let Some(frame) = payload.into_frame() {
                         yield Ok(frame);
                     }
                 }
             }
             for payload in framer.finish() {
-                if let Some(observation) = &observation {
-                    observation.project(payload.payload());
-                }
+                project(slot.as_ref(), projector, payload.payload());
                 if let Some(frame) = payload.into_frame() {
                     yield Ok(frame);
                 }
             }
         };
-        Opened {
-            request_id,
-            status: Some(status),
-            headers: Some(headers),
-            route: Some(path),
-            ..Opened::new(frames)
-        }
+        Opened::new(frames)
+            .with_request_id(request_id)
+            .with_http(status, headers)
+            .with_route(path)
+    }
+}
+
+/// Project a payload's observation facts onto the attempt, when the call is
+/// observed and the wire reads any.
+fn project(slot: Option<&AdapterSlot>, project: Option<Projector>, payload: &[u8]) {
+    if let (Some(slot), Some(project)) = (slot, project) {
+        slot.project(|sink| project(payload, sink));
     }
 }
 

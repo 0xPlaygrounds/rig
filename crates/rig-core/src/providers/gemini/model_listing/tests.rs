@@ -158,7 +158,7 @@ fn parse_models_page_returns_parse_error_when_entry_has_no_usable_id() {
 #[test]
 fn models_sends_the_credential_as_the_last_query_pair() {
     let encoded = Models::new(GeminiConfig::new("test-key"))
-        .encode((), Mode::Unary)
+        .encode(None, Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.first().expect("one request");
 
@@ -175,7 +175,7 @@ fn models_sends_the_credential_as_the_last_query_pair() {
 #[test]
 fn interactions_models_sends_the_credential_as_a_header_only() {
     let encoded = InteractionsModels::new(GeminiConfig::new("test-key"))
-        .encode((), Mode::Unary)
+        .encode(None, Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.first().expect("one request");
 
@@ -201,23 +201,23 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
     const PAGE_TWO: &str = r#"{"models":[{"displayName":"Gemini 2.5 Flash-Lite","inputTokenLimit":1048576,"name":"models/gemini-2.5-flash-lite","outputTokenLimit":65536}]}"#;
 
     let wire = Models::new(GeminiConfig::new("test-key"));
-    let ids = |driver: &mut WireDriver<ModelListing, ModelsDecoder>, page: &str| {
+    let page = |page: &str| {
+        let mut driver = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
         driver.push(WireFrame::Text(page.to_owned()));
-        driver
+        let mut pages: Vec<_> = driver
             .drain()
-            .flat_map(|item| {
-                item.expect("the recorded page decodes")
-                    .iter()
-                    .map(|model| model.id.clone())
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>()
+            .map(|item| item.expect("the recorded page decodes"))
+            .collect();
+        let page = pages.pop().expect("one page");
+        let ids: Vec<_> = page.models.iter().map(|model| model.id.clone()).collect();
+        (ids, page.next)
     };
 
-    let mut first = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
-    let mut listed = ids(&mut first, PAGE_ONE);
-    let cursor = first.cursor().expect("page one named a cursor");
-    let continuation = wire.page(&cursor).expect("the next page encodes");
+    let (mut listed, cursor) = page(PAGE_ONE);
+    let cursor = cursor.expect("page one named a cursor");
+    let continuation = wire
+        .encode(Some(cursor), crate::wire::Mode::Unary)
+        .expect("the next page encodes");
     let continuation = &continuation.requests[0];
     assert_eq!(continuation.uri().path(), "/v1beta/models");
     assert_eq!(
@@ -225,8 +225,8 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
         Some("pageSize=1000&pageToken=page-two&key=test-key"),
     );
 
-    let mut second = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
-    listed.extend(ids(&mut second, PAGE_TWO));
+    let (second, next) = page(PAGE_TWO);
+    listed.extend(second);
 
     assert_eq!(
         listed,
@@ -236,8 +236,5 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
             "gemini-2.5-flash-lite"
         ],
     );
-    assert!(
-        second.cursor().is_none(),
-        "a page naming no cursor ends the listing",
-    );
+    assert!(next.is_none(), "a page naming no cursor ends the listing");
 }

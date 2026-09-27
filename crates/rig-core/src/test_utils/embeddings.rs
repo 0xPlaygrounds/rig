@@ -1,16 +1,14 @@
 //! Embedding helpers for deterministic tests.
 
-use crate::driver::{Local, Model, Observation, Opened, Transport};
+use crate::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use crate::error::ProviderError;
-use crate::operation::EmbeddingCapabilities;
-use crate::wire::Mode;
+use crate::wire::Capabilities;
 use crate::{
     Embed,
     embeddings::{
         Embedding, EmbeddingResponse,
         embed::{EmbedError, TextEmbedder},
     },
-    wasm_compat::WasmCompatSend,
 };
 
 /// The mock embedding runtime: every text embeds to one fixed vector, five
@@ -26,7 +24,7 @@ impl MockEmbeddings {
     /// The mock embedding model: its local wire over this runtime.
     pub fn model() -> MockEmbeddingModel {
         Model::new(
-            Local::new(super::MOCK_PROVIDER).with_capabilities(EmbeddingCapabilities::new(5, 10)),
+            Local::new(super::MOCK_PROVIDER).with_capabilities(Capabilities::embedding(5, 10)),
             Self,
         )
     }
@@ -36,17 +34,12 @@ impl Transport<Local<crate::operation::Embedding>> for MockEmbeddings {
     fn send(
         &self,
         texts: Vec<String>,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Result<EmbeddingResponse, ProviderError>>>
-        + WasmCompatSend
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<Result<EmbeddingResponse, ProviderError>>, ProviderError> {
         let response = Self::embed(texts);
-        Ok(async move { Opened::new(futures::stream::iter([Ok(Ok(response))])) })
+        Ok(Sending::opened(Opened::new(futures::stream::iter([Ok(
+            Ok(response),
+        )]))))
     }
 }
 

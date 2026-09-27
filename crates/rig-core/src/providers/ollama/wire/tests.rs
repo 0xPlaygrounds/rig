@@ -262,7 +262,7 @@ async fn the_model_listing_reads_every_installed_model() {
         OllamaConfig::new().models(),
         RecordingHttpClient::new(MODELS_BODY),
     )
-    .call(())
+    .list()
     .await
     .expect("the recorded reply decodes");
 
@@ -313,14 +313,16 @@ fn an_embedding_wire_reports_the_models_published_width() {
     assert_eq!(
         OllamaConfig::new()
             .embedding("all-minilm", None)
-            .capabilities(),
-        EmbeddingCapabilities::new(1024, 384)
+            .describe()
+            .capabilities,
+        Capabilities::embedding(1024, 384)
     );
     assert_eq!(
         OllamaConfig::new()
             .embedding("qwen3-embedding", Some(2048))
-            .capabilities(),
-        EmbeddingCapabilities::new(1024, 2048),
+            .describe()
+            .capabilities,
+        Capabilities::embedding(1024, 2048),
         "a family whose width varies by size takes the caller's"
     );
 }

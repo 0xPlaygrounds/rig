@@ -72,7 +72,7 @@ where
     W: Wire<Op = super::Completion>,
     RecordingHttpClient: crate::driver::Transport<W>,
 {
-    let own = wire.name().to_owned();
+    let own = wire.describe().name.to_owned();
     let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
     // The canned reply does not decode; only the request matters here.
     let _ = crate::driver::Model::new(wire, http.clone())
@@ -139,6 +139,19 @@ async fn deepseek_replays_only_its_own_reasoning() {
     );
 }
 
+#[tokio::test]
+async fn a_local_runtime_replays_only_its_own_reasoning() {
+    use crate::test_utils::{MOCK_PROVIDER, MockCompletionModel};
+
+    let model = MockCompletionModel::text("done");
+    let call = model.call(history(MOCK_PROVIDER));
+    // The call opens when first polled, under the caller's context.
+    assert!(model.requests().is_empty());
+    call.await.expect("the scripted turn answers");
+    let body = serde_json::to_string(&model.requests()).expect("serializes");
+    assert_scoped(&body, "a local runtime", true);
+}
+
 #[test]
 fn provenance_round_trips_and_older_histories_load() {
     let signed =
@@ -161,8 +174,6 @@ fn provenance_round_trips_and_older_histories_load() {
 
 #[test]
 fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
-    use crate::wire::Operation;
-
     let mut request = history("anthropic");
     request.chat_history.insert(
         1,
@@ -175,10 +186,8 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
         },
     );
     assert_eq!(request.chat_history.len(), 4);
-    super::Completion::scope_to_wire(
-        &mut request,
-        &AnthropicConfig::new("key").completion("claude"),
-    );
+    // What the Messages wire keeps of a history before it encodes it.
+    crate::message::retain_replayable_reasoning(&mut request.chat_history, &["anthropic"]);
     assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
     assert!(request.chat_history.iter().all(|message| match message {
         Message::Assistant { content, .. } => !content.is_empty(),

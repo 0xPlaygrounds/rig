@@ -20,7 +20,7 @@ use crate::streaming::{
     ToolCallEnd, UnknownPayload,
 };
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Fold, Mode, Operation, Reply, Sink};
+use crate::wire::{Call, End, Fold, Mode, Operation, Out, Ready, Reply};
 
 mod accumulator;
 
@@ -37,42 +37,146 @@ impl Operation for Completion {
     type Request = CompletionRequest;
     type Event = StreamEvent;
     type Response = CompletionResponse;
-    type Capabilities = crate::completion::ProviderCapabilities;
-    type Output = AdapterOutput;
-    type Fold = CompletionFold;
-    type Telemetry = GenAiOperation;
-
-    const NAME: &'static str = "completion";
+    type Fold = CompletionReply;
 
     fn is_terminal(event: &Self::Event) -> bool {
         matches!(event, StreamEvent::Final(_))
     }
 
-    fn fold<W: crate::wire::Wire<Op = Self>>(
-        request: &Self::Request,
-        wire: &W,
-        mode: Mode,
-    ) -> Self::Fold {
-        let issuer = wire.reasoning_issuer(request.model.as_deref().or(wire.id()));
-        CompletionFold::opened(wire.name(), issuer.map(str::to_owned), mode)
+    /// The call's span names the model the request overrides to, when it
+    /// names one: every wire honours the override on encode.
+    fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold {
+        let telemetry = call.wire.telemetry.map_or_else(
+            || match call.mode {
+                Mode::Unary => GenAiOperation::Chat,
+                Mode::Streaming => GenAiOperation::ChatStreaming,
+            },
+            |telemetry| telemetry(call.mode),
+        );
+        debug_assert!(telemetry.is_completion());
+        let model = request
+            .model
+            .as_deref()
+            .or(call.wire.model)
+            .unwrap_or_default();
+        let span = SpanBuilder::new(call.wire.name, model, telemetry)
+            .system_instructions(
+                request.system_instructions(),
+                request.record_telemetry_content,
+            )
+            .build();
+        call.instrument(span.clone());
+        CompletionReply {
+            span,
+            ..CompletionReply::written(CompletionFold::opened(call.wire.name, None, call.mode))
+        }
     }
+}
 
-    /// The transport request id reaches the terminal record, unless the
-    /// wire already put one there.
-    fn stamp_event(event: &mut Self::Event, reply: &Reply) {
-        if let StreamEvent::Final(terminal) = event
-            && terminal.provider_request_id.is_none()
-        {
-            terminal
-                .provider_request_id
-                .clone_from(&reply.provider_request_id);
+/// Completion decoders write through the canonical completion writer.
+impl std::ops::Deref for Out<'_, Completion> {
+    type Target = AdapterOutput;
+
+    fn deref(&self) -> &AdapterOutput {
+        &self.fold.writer
+    }
+}
+
+impl std::ops::DerefMut for Out<'_, Completion> {
+    fn deref_mut(&mut self) -> &mut AdapterOutput {
+        &mut self.fold.writer
+    }
+}
+
+impl Out<'_, Completion> {
+    /// Name the issuer of this reply's reasoning before its terminal record
+    /// names it: a deployment that serves another provider's models.
+    pub fn reasoning_issuer(&mut self, issuer: impl Into<String>) {
+        self.fold.fold.reasoning_issuer = Some(issuer.into());
+    }
+}
+
+/// One completion reply as it is written and taken.
+///
+/// Decoders write through its [`AdapterOutput`], which makes every item
+/// canonical before it is queued: each block assembled on its end, the
+/// blocks still open closed before a terminal, one terminal record, and the
+/// transport request id stamped onto it. As the consumer takes each event,
+/// its [`CompletionFold`] collects it and the call's span records it. It
+/// dereferences to that fold.
+pub struct CompletionReply {
+    /// The canonical writer decoders write through.
+    writer: AdapterOutput,
+    /// Debug-mode sequence laws over what a decoder emitted. `None` for a
+    /// relayed stream, which no decoder here produced.
+    laws: Option<Laws>,
+    /// The call's span, recorded as the reply arrives.
+    span: tracing::Span,
+    fold: CompletionFold,
+}
+
+impl Default for CompletionReply {
+    /// The reply of a stream relayed under no label, its decoder's output
+    /// checked against the sequence laws.
+    fn default() -> Self {
+        Self::written(CompletionFold::default())
+    }
+}
+
+impl std::ops::Deref for CompletionReply {
+    type Target = CompletionFold;
+
+    fn deref(&self) -> &CompletionFold {
+        &self.fold
+    }
+}
+
+impl CompletionReply {
+    /// A reply a decoder writes, folded by `fold`, under no span.
+    pub(crate) fn written(fold: CompletionFold) -> Self {
+        Self {
+            writer: AdapterOutput::new(),
+            laws: Some(Laws::default()),
+            span: tracing::Span::none(),
+            fold,
         }
     }
 
-    /// A streamed call records the terminal record as it passes.
-    fn record_event(span: &tracing::Span, event: &Self::Event) {
-        if let StreamEvent::Final(terminal) = event {
-            span.record_response(
+    /// The reply of a stream relayed under `label`, whose terminal record
+    /// names the provider behind it.
+    pub(crate) fn relayed(label: impl Into<String>) -> Self {
+        Self {
+            laws: None,
+            ..Self::written(CompletionFold::relayed(label))
+        }
+    }
+
+    /// Queue what the writer made canonical, stamping the transport request
+    /// id onto the terminal record unless the wire put one there.
+    fn drain_into(&mut self, ready: &mut Ready<Completion>) {
+        let request_id = ready.request_id().map(str::to_owned);
+        for item in self.writer.drain() {
+            let item = match item {
+                Ok(StreamEvent::Final(mut terminal)) => {
+                    if terminal.provider_request_id.is_none() {
+                        terminal.provider_request_id.clone_from(&request_id);
+                    }
+                    Ok(StreamEvent::Final(terminal))
+                }
+                other => other,
+            };
+            ready.push(item);
+        }
+    }
+}
+
+impl Fold<Completion> for CompletionReply {
+    fn absorb(&mut self, event: &StreamEvent) -> Result<(), ProviderError> {
+        // A streamed call records the terminal record as it passes.
+        if self.fold.mode == Mode::Streaming
+            && let StreamEvent::Final(terminal) = event
+        {
+            self.span.record_response(
                 terminal
                     .response_id
                     .as_deref()
@@ -81,106 +185,56 @@ impl Operation for Completion {
                 &terminal.usage,
             );
         }
+        self.fold.absorb(event)
     }
 
-    fn telemetry(mode: Mode) -> Self::Telemetry {
-        match mode {
-            Mode::Unary => GenAiOperation::Chat,
-            Mode::Streaming => GenAiOperation::ChatStreaming,
+    fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
+        let mode = self.fold.mode;
+        let response = self.fold.finish(reply)?;
+        // A unary call records its response; both prefer the response
+        // identity, falling back to the message identity.
+        if mode == Mode::Unary {
+            self.span.record_response(
+                response
+                    .response_id
+                    .as_deref()
+                    .or(response.message_id.as_deref()),
+                response.model.as_deref(),
+                &response.usage,
+            );
         }
+        Ok(response)
     }
 
-    /// Reasoning another wire issued is omitted; see
-    /// [`crate::message::retain_replayable_reasoning`]. The request's model
-    /// override, when it names one, is the model the wire replays for.
-    fn scope_to_wire<W: crate::wire::Wire<Op = Self>>(request: &mut Self::Request, wire: &W) {
-        let model = request.model.as_deref().or(wire.id());
-        let Some(issuers) = wire.replay_issuers(model) else {
-            return;
-        };
-        let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
-        crate::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
-    }
-
-    fn span(
-        provider: &str,
-        model: Option<&str>,
-        telemetry: Self::Telemetry,
-        request: &Self::Request,
-    ) -> tracing::Span {
-        // The request's override is the model actually sent (every wire
-        // honours it on encode), so it is the one the span names.
-        let model = request.model.as_deref().or(model).unwrap_or_default();
-        debug_assert!(telemetry.is_completion());
-        SpanBuilder::new(provider, model, telemetry)
-            .system_instructions(
-                request.system_instructions(),
-                request.record_telemetry_content,
-            )
-            .build()
-    }
-
-    // Both prefer the response identity, falling back to the message identity.
-    fn record(span: &tracing::Span, response: &Self::Response) {
-        span.record_response(
-            response
-                .response_id
-                .as_deref()
-                .or(response.message_id.as_deref()),
-            response.model.as_deref(),
-            &response.usage,
-        );
-    }
-}
-
-impl Sink<Completion> for AdapterOutput {
-    type Laws = Laws;
-
-    fn push(&mut self, item: Result<StreamEvent, ProviderError>) {
-        AdapterOutput::push(self, item);
-    }
-
-    fn drain(&mut self) -> std::vec::Drain<'_, Result<StreamEvent, ProviderError>> {
-        AdapterOutput::drain(self)
-    }
-
-    fn items(&self) -> &[Result<StreamEvent, ProviderError>] {
-        AdapterOutput::items(self)
+    fn push(&mut self, item: Result<StreamEvent, ProviderError>, _ready: &mut Ready<Completion>) {
+        self.writer.push(item);
     }
 
     /// Forwarded on the passthrough channel, never folded into the choice.
-    fn unknown(&mut self, payload: UnknownPayload) {
-        AdapterOutput::unknown(self, payload);
+    fn unknown(&mut self, payload: UnknownPayload, _ready: &mut Ready<Completion>) {
+        self.writer.unknown(payload);
     }
 
-    /// Closes every text and reasoning block still open, so each carries
-    /// its content on an end. The ends precede the terminal failure a
-    /// decoder pushed last.
-    fn finish(&mut self) {
-        if self.canonical.terminated {
-            return;
+    /// Hands the step's canonical items over. At the reply's end the text
+    /// and reasoning blocks still open close first, ahead of the terminal
+    /// failure a decoder pushed last.
+    fn settle(&mut self, ready: &mut Ready<Completion>, end: Option<End>) {
+        if end.is_some() {
+            self.writer.finish();
         }
-        let kept = self
-            .items
-            .iter()
-            .rposition(Result::is_ok)
-            .map_or(0, |last| last + 1);
-        let failures = self.items.split_off(kept);
-        self.close_open_blocks();
-        self.items.extend(failures);
-    }
-
-    fn check_laws(&self, laws: &mut Self::Laws) {
         #[cfg(any(test, debug_assertions))]
-        laws.check_batch(self);
-        #[cfg(not(any(test, debug_assertions)))]
-        let _ = laws;
+        if end != Some(End::Failed)
+            && let Some(laws) = &mut self.laws
+        {
+            laws.check_batch(&self.writer);
+        }
+        self.drain_into(ready);
     }
 }
 
 /// The fold from a completion reply's canonical events to its response.
 ///
-/// It collects what the sink already finalized: every block from its
+/// It collects what the writer already finalized: every block from its
 /// `BlockEnd`, in the order the blocks began, the message id and the
 /// terminal record. It assembles nothing, so a block still open is not in
 /// [`Self::snapshot`]. The default is the fold of a stream relayed under no
@@ -246,7 +300,7 @@ impl CompletionFold {
         }
     }
 
-    /// Hold the place of the block `id` where the sink's assembly puts it:
+    /// Hold the place of the block `id` where the writer's assembly puts it:
     /// text at its first content, reasoning when it begins, calls and
     /// images at their end.
     fn reserve(&mut self, id: &BlockId) {
@@ -493,8 +547,9 @@ impl Fold<Completion> for CompletionFold {
     }
 }
 
-/// The completion sink: buffers a decoder's events and in-band errors and
-/// makes them canonical.
+/// The completion writer: buffers a decoder's events and in-band errors and
+/// makes them canonical. A completion reply's [`CompletionReply`] holds one,
+/// and a completion decoder writes through it.
 ///
 /// Helpers open unseen tool and reasoning keys before deltas. Bare text uses
 /// an active key, minting a new one after non-text block events other than
@@ -503,9 +558,9 @@ impl Fold<Completion> for CompletionFold {
 /// finalized (text included), a malformed complete tool input is an error
 /// item in its place, the text and reasoning blocks still open are closed
 /// before the terminal record, the terminal's finish reason agrees with the
-/// completed tool calls, and a second terminal record is dropped. A sink
+/// completed tool calls, and a second terminal record is dropped. A writer
 /// driven by hand rather than by the driver ends a reply with
-/// [`Sink::finish`], as the driver does. Frame-classification errors are
+/// [`Self::finish`], as the driver does. Frame-classification errors are
 /// handled by the driver.
 #[derive(Debug, Default)]
 pub struct AdapterOutput {
@@ -534,9 +589,8 @@ pub struct AdapterOutput {
     canonical: Canonical,
 }
 
-/// The canonicalization the completion sink applies to every event pushed
-/// through it, without the sink's buffer or decoder helpers: what a relay
-/// or a tap keeps to canonicalize a stream it did not decode.
+/// The canonicalization the completion writer applies to every event pushed
+/// through it, apart from the writer's buffer and decoder helpers.
 #[derive(Debug, Default)]
 pub(crate) struct Canonical {
     /// The assembly that finalizes each block on its end.
@@ -647,17 +701,6 @@ impl Canonical {
                 true,
                 emit,
             );
-        }
-    }
-
-    /// The stream ended: close what is still open, unless the terminal
-    /// record already did.
-    pub(crate) fn finish(
-        &mut self,
-        emit: &mut impl FnMut(Result<StreamEvent, ProviderError>, bool),
-    ) {
-        if !self.terminated {
-            self.close_open_blocks(emit);
         }
     }
 }
@@ -833,6 +876,24 @@ impl AdapterOutput {
     /// What this output holds, without taking it.
     pub fn items(&self) -> &[Result<StreamEvent, ProviderError>] {
         &self.items
+    }
+
+    /// The reply ended, at EOF or before a terminal failure: close every
+    /// text and reasoning block still open, so each carries its content on
+    /// an end. The ends precede the trailing failures a decoder pushed
+    /// last.
+    pub fn finish(&mut self) {
+        if self.canonical.terminated {
+            return;
+        }
+        let kept = self
+            .items
+            .iter()
+            .rposition(Result::is_ok)
+            .map_or(0, |last| last + 1);
+        let failures = self.items.split_off(kept);
+        self.close_open_blocks();
+        self.items.extend(failures);
     }
 
     /// Iterate the buffered items.

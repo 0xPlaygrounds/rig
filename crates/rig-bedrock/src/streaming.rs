@@ -11,7 +11,7 @@ use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire;
 use rig_core::streaming::StreamFinal;
-use rig_core::wire::{TypedEvent, WireEvent};
+use rig_core::wire::{Out, TypedEvent, WireEvent};
 use rig_core::{message::ReasoningContent, streaming::UnparseableToolInput};
 use serde::{Deserialize, Serialize};
 
@@ -97,8 +97,6 @@ pub struct StreamState {
     /// The issuer the reply's reasoning records when it is not
     /// [`PROVIDER_NAME`] (see [`reasoning_issuer`]).
     reasoning_issuer: Option<&'static str>,
-    /// The unary reply's document, for the response's `raw`.
-    document: Option<serde_json::Value>,
 }
 
 /// A static, log-safe label for a stop reason: known variants map to their
@@ -284,11 +282,11 @@ fn process_event(
 }
 
 /// Emits a whole Converse reply as the events a stream sends for it.
-fn whole(state: &mut StreamState, output: InternalConverseOutput, out: &mut AdapterOutput) {
+fn whole(state: &mut StreamState, output: InternalConverseOutput, out: &mut Out<'_, Completion>) {
     // The provider's own document, captured before the output is consumed
     // into normalized content.
     match serde_json::to_value(&output) {
-        Ok(document) => state.document = Some(document),
+        Ok(document) => out.document(document),
         Err(error) => return out.error(error.into()),
     }
     let choice = match assistant_content(&output) {
@@ -350,25 +348,22 @@ impl rig_core::wire::Decoder<Completion, ConverseFrame> for StreamState {
         })
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput) {
+    /// EOF without Bedrock's `Metadata` terminal is truncation: in-flight
+    /// blocks drop and no terminal record is synthesized, so the decoder adds
+    /// nothing at the end of the reply.
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Completion>) {
         match event {
             ConverseFrame::Opened { model, request_id } => {
                 let issuer = reasoning_issuer(&model);
                 self.reasoning_issuer = (issuer != PROVIDER_NAME).then_some(issuer);
+                if let Some(issuer) = self.reasoning_issuer {
+                    out.reasoning_issuer(issuer);
+                }
                 self.provider_request_id = request_id;
             }
             ConverseFrame::Whole(output) => whole(self, *output, out),
             ConverseFrame::Event(event) => process_event(self, event, out),
         }
-    }
-
-    fn finish(&mut self, _out: &mut AdapterOutput) {
-        // EOF without Bedrock's `Metadata` terminal is truncation: in-flight
-        // blocks drop and no terminal record may be synthesized.
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        self.document.clone()
     }
 }
 

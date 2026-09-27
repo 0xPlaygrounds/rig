@@ -27,3 +27,17 @@ pub use streaming::{MOCK_PROVIDER, MockStreamEvent, mock_final, mock_final_with_
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,
 };
+
+/// The fold a call to `wire` in `mode` opens for `request`, for tests that
+/// drive a decoder by hand.
+#[cfg(test)]
+pub(crate) fn fold_for<W: crate::wire::Wire>(
+    request: &crate::wire::Request<W>,
+    wire: &W,
+    mode: crate::wire::Mode,
+) -> <W::Op as crate::wire::Operation>::Fold {
+    <W::Op as crate::wire::Operation>::fold(
+        request,
+        &mut crate::wire::Call::new(&wire.describe(), mode),
+    )
+}

@@ -352,17 +352,54 @@ pub(crate) fn scripted_stream(
     + Send
     + 'static,
 ) -> crate::streaming::CompletionStream {
-    use futures::StreamExt;
-
     crate::streaming::Streamed::new(
-        Box::pin(items.map(|item| item.map(crate::driver::Step::Event))),
-        crate::operation::CompletionFold::opened(
+        Box::new(Scripted {
+            items: Box::pin(items),
+            provider: provider.to_owned(),
+        }),
+        crate::operation::CompletionReply::written(crate::operation::CompletionFold::opened(
             provider,
             issuer.map(str::to_owned),
             crate::wire::Mode::Streaming,
-        ),
-        crate::wire::Mode::Streaming,
+        )),
         tracing::Span::none(),
         provider,
     )
+}
+
+/// Items handed to the consumer as they are: a stream already canonical.
+#[cfg(test)]
+struct Scripted {
+    items: crate::wasm_compat::WasmBoxedStream<
+        'static,
+        Result<crate::streaming::StreamEvent, ProviderError>,
+    >,
+    provider: String,
+}
+
+#[cfg(test)]
+impl crate::driver::Source<crate::operation::Completion> for Scripted {
+    fn poll_into(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+        _fold: &mut crate::operation::CompletionReply,
+        ready: &mut crate::wire::Ready<crate::operation::Completion>,
+    ) -> std::task::Poll<crate::driver::Progress> {
+        use futures::StreamExt;
+
+        match self.items.poll_next_unpin(cx) {
+            std::task::Poll::Pending => std::task::Poll::Pending,
+            std::task::Poll::Ready(Some(item)) => {
+                ready.push(item);
+                std::task::Poll::Ready(crate::driver::Progress::Pushed)
+            }
+            std::task::Poll::Ready(None) => {
+                std::task::Poll::Ready(crate::driver::Progress::Closed(crate::wire::Reply {
+                    provider: self.provider.clone(),
+                    raw: serde_json::Value::Null,
+                    provider_request_id: None,
+                }))
+            }
+        }
+    }
 }

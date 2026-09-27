@@ -32,7 +32,14 @@ where
     /// Every cached content this API key can see, following pagination at
     /// the wire's page size.
     pub async fn list(&self) -> Result<Vec<CachedContent>, ProviderError> {
-        self.call(CachedContentRequest::List).await?.entries()
+        let pages =
+            crate::driver::follow_cursors(self.name(), "cached_content", |page_token| async move {
+                let reply = self.call(CachedContentRequest::List { page_token }).await?;
+                let next = reply.next_page_token();
+                Ok((reply.entries()?, next))
+            })
+            .await?;
+        Ok(pages.into_iter().flatten().collect())
     }
 
     /// Changes cache expiry without modifying its immutable content.

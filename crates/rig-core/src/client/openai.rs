@@ -99,7 +99,7 @@ impl OpenAI {
 
     /// The models this provider serves, every page followed.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        self.model(self.config.models()).call(()).await
+        self.model(self.config.models()).list().await
     }
 
     /// Check that the provider accepts the configured credential. A 401 or

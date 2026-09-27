@@ -14,10 +14,9 @@ pub mod chunk_lifecycle;
 pub(crate) mod device_auth;
 pub(crate) mod openai_chat_completions_compatible;
 pub(crate) mod schema;
-/// The debug-mode sequence-law validator. Public only because it is the
-/// completion sink's `Laws` type; its checks run under `debug_assertions`.
-#[doc(hidden)]
-pub mod sequence_law;
+/// The debug-mode sequence-law validator the completion fold checks a
+/// decoder's output against; its checks run under `debug_assertions`.
+pub(crate) mod sequence_law;
 pub mod tool_call_bridge;
 pub mod tool_call_ids;
 pub mod wire;

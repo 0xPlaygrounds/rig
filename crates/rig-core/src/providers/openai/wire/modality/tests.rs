@@ -257,7 +257,7 @@ async fn a_recorded_model_listing_decodes() {
         OpenAIConfig::new("sk-test").models(),
         RecordingHttpClient::new(reply),
     )
-    .call(())
+    .list()
     .await
     .expect("the recorded catalogue decodes");
     assert!(!models.is_empty(), "the catalogue is not empty");
@@ -274,7 +274,7 @@ async fn a_listing_entry_keeps_the_limits_a_dialect_reports() {
         OpenAIConfig::with_key(&GROQ, "k").models(),
         RecordingHttpClient::new(reply),
     )
-    .call(())
+    .list()
     .await
     .expect("the catalogue decodes");
     let model = models.iter().next().expect("one entry");
@@ -572,7 +572,9 @@ fn a_rerank_request_is_the_jina_shape() {
     assert_eq!(
         OpenAIConfig::with_key(&LLAMACPP, "")
             .rerank("r")
-            .capabilities(),
+            .describe()
+            .capabilities
+            .max_documents,
         1024
     );
 }
@@ -781,7 +783,7 @@ fn azure_always_carries_an_api_version() {
 fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
     let unasked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, None);
     assert_eq!(
-        unasked.capabilities().ndims,
+        unasked.describe().capabilities.ndims,
         4_096,
         "the dialect's table is the only place this model's width is written down"
     );
@@ -812,7 +814,7 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
     // Mistral's fixed-width model is the same mechanism with a different
     // table: 1024 reported, and no `output_dimension` on the wire.
     let mistral = OpenAIConfig::with_key(&MISTRAL, "k").embedding(MISTRAL_EMBED, None);
-    assert_eq!(mistral.capabilities().ndims, 1_024);
+    assert_eq!(mistral.describe().capabilities.ndims, 1_024);
     let encoded = mistral
         .encode(documents(), Mode::Unary)
         .expect("the native width encodes");
@@ -871,7 +873,7 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
     // goes out unvalidated and the provider decides.
     let unknown =
         OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding("Qwen/Qwen4-Unreleased", Some(8_192));
-    assert_eq!(unknown.capabilities().ndims, 8_192);
+    assert_eq!(unknown.describe().capabilities.ndims, 8_192);
     let encoded = unknown
         .encode(documents(), Mode::Unary)
         .expect("an undocumented model's width is not rig's to refuse");
@@ -887,7 +889,7 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
 #[test]
 fn a_table_supplied_width_is_not_a_declaration() {
     let unasked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, None);
-    let capabilities = unasked.capabilities();
+    let capabilities = unasked.describe().capabilities;
     assert_eq!(capabilities.ndims, 4_096, "the table resolves the width");
     assert_eq!(
         capabilities.declared, None,
@@ -896,5 +898,5 @@ fn a_table_supplied_width_is_not_a_declaration() {
 
     // Declaring the same number is a different fact, and is recorded as one.
     let asked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096));
-    assert_eq!(asked.capabilities().declared, Some(4_096));
+    assert_eq!(asked.describe().capabilities.declared, Some(4_096));
 }

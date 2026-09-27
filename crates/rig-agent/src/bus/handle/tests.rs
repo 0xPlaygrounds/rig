@@ -7,17 +7,16 @@ use super::*;
 use crate::bus::Bus;
 use rig_core::{
     completion::{CompletionRequest, Message},
-    driver::{Local, Model, Observation, Opened, Transport},
+    driver::{Exchange, Local, Model, Opened, Sending, Transport},
     effect::{EffectFamily, HandlerKey, family},
     embeddings::{Embedding, EmbeddingResponse},
     error::ErrorKind,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
-    operation::EmbeddingCapabilities,
     serve::adapters::{MemoryAdapter, ModelAdapter, ToolAdapter},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolExecutionError},
-    wire::Mode,
+    wire::Capabilities,
 };
 
 async fn within<T>(future: impl Future<Output = T>) -> T {
@@ -60,7 +59,7 @@ struct Tiny;
 impl Tiny {
     fn model() -> Model<Local<rig_core::operation::Embedding>, Tiny> {
         Model::new(
-            Local::new("tiny").with_capabilities(EmbeddingCapabilities::new(8, 2)),
+            Local::new("tiny").with_capabilities(Capabilities::embedding(8, 2)),
             Tiny,
         )
     }
@@ -70,15 +69,9 @@ impl Transport<Local<rig_core::operation::Embedding>> for Tiny {
     fn send(
         &self,
         texts: Vec<String>,
-        _mode: Mode,
-        _observation: Option<Observation>,
+        _exchange: Exchange,
     ) -> Result<
-        impl Future<
-            Output = Opened<Vec<String>, Result<EmbeddingResponse, rig_core::error::ProviderError>>,
-        >
-        + Send
-        + 'static
-        + use<>,
+        Sending<Result<EmbeddingResponse, rig_core::error::ProviderError>>,
         rig_core::error::ProviderError,
     > {
         let response = EmbeddingResponse::new(
@@ -91,7 +84,9 @@ impl Transport<Local<rig_core::operation::Embedding>> for Tiny {
                 .collect(),
             "tiny",
         );
-        Ok(async move { Opened::new(futures::stream::iter([Ok(Ok(response))])) })
+        Ok(Sending::later(async move {
+            Opened::new(futures::stream::iter([Ok(Ok(response))]))
+        }))
     }
 }
 

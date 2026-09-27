@@ -206,7 +206,10 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 #[test]
 fn an_embedding_wire_reports_the_models_published_width() {
     let wire = cohere().embedding("embed-english-light-v3.0", None);
-    assert_eq!(wire.capabilities(), EmbeddingCapabilities::new(96, 384));
+    assert_eq!(
+        wire.describe().capabilities,
+        Capabilities::embedding(96, 384)
+    );
     assert_eq!(
         cohere()
             .embedding("embed-english-light-v3.0", Some(64))

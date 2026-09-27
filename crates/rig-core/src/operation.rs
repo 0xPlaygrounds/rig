@@ -1,17 +1,21 @@
 //! The operations a [`Wire`](crate::wire::Wire) can perform.
 //!
-//! Each operation declares request, event, response, and fold types.
-//! [`Completion`] streams events; other operations fold buffered replies,
-//! including pages for [`ModelListing`] and [`ContextCache`].
+//! Each operation declares request, event and response types and the fold
+//! one reply's events go through. [`Completion`] streams events; the others
+//! fold buffered replies. Listings follow their cursors above the driver:
+//! each page is one call.
 //!
 //! ```
-//! use rig_core::{operation::Completion, wire::Operation};
+//! use rig_core::operation::{Completion, Embedding};
+//! use rig_core::wire::Operation;
 //!
-//! assert_eq!(Completion::NAME, "completion");
+//! fn streams<Op: Operation>() {}
+//! streams::<Completion>();
+//! streams::<Embedding>();
 //! ```
 
 use crate::error::ProviderError;
-use crate::wire::{Fold, Operation, Reply, Sink};
+use crate::wire::{Fold, Operation, Reply};
 
 mod cached_content;
 mod completion;
@@ -21,58 +25,38 @@ mod verify;
 
 pub use cached_content::{CachedContentFold, ContextCache};
 pub(crate) use completion::Canonical;
-pub use completion::{AdapterOutput, Completion, CompletionFold, ImagePart};
-pub use listing::{ModelListing, ModelListingFold};
+pub use completion::{AdapterOutput, Completion, CompletionFold, CompletionReply, ImagePart};
+pub use listing::{ModelListing, ModelPage};
 #[cfg(feature = "audio")]
 pub use modality::AudioGeneration;
 #[cfg(feature = "image")]
 pub use modality::ImageGeneration;
-pub use modality::{
-    Embedding, EmbeddingCapabilities, ImageEmbedding, Rerank, RerankRequest, Transcription,
-};
+pub use modality::{Embedding, ImageEmbedding, Rerank, RerankRequest, Transcription};
 pub use verify::{Verify, VerifyDecoder};
 
-/// The sink every operation but [`Completion`] uses: the events a decoder
-/// pushed, in order.
-pub struct Events<Op: Operation> {
-    items: Vec<Result<Op::Event, ProviderError>>,
-}
-
-impl<Op: Operation> Default for Events<Op> {
-    fn default() -> Self {
-        Self { items: Vec::new() }
-    }
-}
-
-impl<Op: Operation> Sink<Op> for Events<Op> {
-    type Laws = ();
-
-    fn push(&mut self, item: Result<Op::Event, ProviderError>) {
-        self.items.push(item);
-    }
-
-    fn drain(&mut self) -> std::vec::Drain<'_, Result<Op::Event, ProviderError>> {
-        self.items.drain(..)
-    }
-
-    fn items(&self) -> &[Result<Op::Event, ProviderError>] {
-        &self.items
-    }
-}
-
-/// Retains the first event and ignores later events. Finishing without an
-/// event returns a decode error; otherwise reply metadata is stamped on the
-/// response.
+/// Retains the first event as the response and ignores later events.
+/// Finishing without an event returns a decode error; otherwise the stamp
+/// writes what the driver learned about the reply onto the response.
 ///
 /// The fold sees events by reference, so it clones the one event it keeps,
 /// once per reply.
 pub struct Take<Op: Operation> {
     value: Option<Op::Event>,
+    stamp: fn(&mut Op::Response, &Reply),
 }
 
+impl<Op: Operation> Take<Op> {
+    /// A fold that writes what the driver learned about the reply onto the
+    /// response with `stamp`.
+    pub fn stamping(stamp: fn(&mut Op::Response, &Reply)) -> Self {
+        Self { value: None, stamp }
+    }
+}
+
+/// A fold that stamps nothing.
 impl<Op: Operation> Default for Take<Op> {
     fn default() -> Self {
-        Self { value: None }
+        Self::stamping(|_, _| {})
     }
 }
 
@@ -91,11 +75,9 @@ where
     fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError> {
         let mut response: Op::Response = self
             .value
-            .ok_or_else(|| {
-                ProviderError::Response(format!("{} reply carried no payload", Op::NAME))
-            })?
+            .ok_or_else(|| ProviderError::Response("the reply carried no payload".to_owned()))?
             .into();
-        Op::stamp_reply(&mut response, &reply);
+        (self.stamp)(&mut response, &reply);
         Ok(response)
     }
 }

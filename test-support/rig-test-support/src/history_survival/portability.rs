@@ -23,7 +23,7 @@ use rig_core::providers::anthropic::wire::AnthropicConfig;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
-use rig_core::wire::{Fold, Mode, Operation, Reply, Wire, WireFrame};
+use rig_core::wire::{Call, Fold, Mode, Operation, Reply, Wire, WireFrame};
 
 use super::{Dialect, response_tokens, string_values, unpaired_tool_calls};
 use crate::reasoning::{TOOL_SYSTEM_PROMPT, TOOL_USER_PROMPT, WeatherTool};
@@ -45,14 +45,14 @@ where
     driver.push(WireFrame::Text(body.to_owned()));
     driver.finish();
     let request = rig_core::completion::CompletionRequest::new("");
-    let mut fold = <Completion as Operation>::fold(&request, wire, Mode::Unary);
+    let mut fold = Completion::fold(&request, &mut Call::new(&wire.describe(), Mode::Unary));
     for item in driver.drain() {
         fold.absorb(&item?)?;
     }
     let raw = serde_json::from_str::<Value>(body)
         .map_err(|error| ProviderError::Response(error.to_string()))?;
     fold.finish(Reply {
-        provider: wire.name().to_owned(),
+        provider: wire.describe().name.to_owned(),
         raw,
         provider_request_id: None,
     })

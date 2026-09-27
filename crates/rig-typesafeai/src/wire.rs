@@ -4,10 +4,10 @@ use rig_core::client::{EnvError, env};
 use rig_core::driver::Model;
 use rig_core::error::EncodeError;
 use rig_core::http_client::{DynHttpClient, HttpClientExt};
-use rig_core::operation::{Events, Take};
+use rig_core::operation::Take;
 use rig_core::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Call, Decoder, Descriptor, Encoded, Framing, Mode, Operation, Out, Secret, Wire,
+    WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -20,23 +20,19 @@ impl Operation for Evaluation {
     type Request = Request;
     type Event = Response;
     type Response = Response;
-    type Capabilities = ();
-    type Output = Events<Self>;
     type Fold = Take<Self>;
-    type Telemetry = ();
-    const NAME: &'static str = "evaluation";
 
     fn is_terminal(_event: &Response) -> bool {
         true
     }
-    fn fold<W: Wire<Op = Self>>(_request: &Request, _wire: &W, _mode: Mode) -> Take<Self> {
-        Take::default()
-    }
-    fn telemetry(_mode: Mode) {}
-    fn stamp_reply(response: &mut Response, reply: &Reply) {
-        response
-            .provider_request_id
-            .clone_from(&reply.provider_request_id);
+
+    /// The transport request id reaches the response.
+    fn fold(_request: &Request, _call: &mut Call<'_>) -> Take<Self> {
+        Take::<Self>::stamping(|response, reply| {
+            response
+                .provider_request_id
+                .clone_from(&reply.provider_request_id);
+        })
     }
 }
 
@@ -150,11 +146,8 @@ impl Wire for JevConfig {
     type Frame = rig_core::wire::WireFrame;
     type Decoder = JevDecoder;
 
-    fn name(&self) -> &str {
-        "typesafeai"
-    }
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new("typesafeai").model(self.model.as_str())
     }
     fn encode(&self, request: Request, _mode: Mode) -> Result<Encoded, EncodeError> {
         if self.token.is_empty() || self.model.trim().is_empty() {
@@ -203,7 +196,7 @@ impl Decoder<Evaluation> for JevDecoder {
         )
     }
 
-    fn interpret(&mut self, response: Response, out: &mut Output<Evaluation>) {
+    fn interpret(&mut self, response: Response, out: &mut Out<'_, Evaluation>) {
         out.push(Ok(response));
     }
 }

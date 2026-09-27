@@ -15,7 +15,7 @@ use crate::{
     },
     providers::internal::wire::classify_marker_keyed_frame,
     transcription::{self, NormalizeTranscriptionResponse},
-    wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
+    wire::{Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame},
 };
 
 use super::completion::gemini_api_types::GenerateContentResponse;
@@ -108,12 +108,8 @@ impl Wire for Transcriptions {
     type Frame = crate::wire::WireFrame;
     type Decoder = TranscriptionsDecoder;
 
-    fn name(&self) -> &str {
-        super::PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(super::PROVIDER_NAME).model(self.model.as_str())
     }
 
     fn encode(
@@ -154,7 +150,7 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
         )
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<Transcription>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Transcription>) {
         out.push(event.normalize(super::PROVIDER_NAME));
     }
 }

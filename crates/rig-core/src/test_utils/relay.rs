@@ -4,10 +4,9 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use crate::completion::{ModelRef, ProviderCapabilities};
-use crate::effect::{EffectFamily, EffectKind, HandlerDescriptor, family};
+use crate::effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, family};
 use crate::error::{ErrorKind, ErrorReport};
-use crate::operation::{AdapterOutput, Completion};
-use crate::serve::adapters::ServeOperation;
+use crate::operation::AdapterOutput;
 use crate::serve::{Dispatch, Reply, Serve};
 use crate::streaming::SyntheticIds;
 
@@ -44,7 +43,14 @@ impl Serve for MockRelay {
     type Family = family::Completion;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        <Completion as ServeOperation>::descriptor(&self.label, ProviderCapabilities::default())
+        HandlerDescriptor {
+            key: crate::effect::model_key(self.label.as_str()),
+            family: FamilyDescriptor::Completion {
+                model: self.label.clone(),
+                capabilities: ProviderCapabilities::default(),
+            },
+            layers: Vec::new(),
+        }
     }
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {

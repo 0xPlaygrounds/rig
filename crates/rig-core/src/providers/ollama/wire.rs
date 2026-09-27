@@ -11,9 +11,10 @@ use crate::completion::CompletionRequest;
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::model::{ModelInfo, ModelList};
-use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
+use crate::operation::{Completion, Embedding, ModelListing, ModelPage};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
+    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
+    WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -146,15 +147,12 @@ impl Wire for Chat {
     type Frame = crate::wire::WireFrame;
     type Decoder = OllamaDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
     }
 
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
         let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
         body.stream = mode == Mode::Streaming;
         crate::providers::internal::trace_json(
@@ -199,12 +197,10 @@ impl Wire for Embeddings {
     type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::embedding(MAX_DOCUMENTS, self.ndims))
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -218,10 +214,6 @@ impl Wire for Embeddings {
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         EmbeddingsDecoder
-    }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(MAX_DOCUMENTS, self.ndims)
     }
 }
 
@@ -238,7 +230,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
         )
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Output<Embedding>) {
+    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, Embedding>) {
         let raw = match serde_json::to_value(&reply) {
             Ok(raw) => raw,
             Err(error) => {
@@ -286,11 +278,11 @@ impl Wire for Models {
     type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+    fn encode(&self, _cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         let request = self
             .provider
             .request(http::Method::GET, "/api/tags")
@@ -314,10 +306,11 @@ impl Decoder<ModelListing> for ModelsDecoder {
         crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["models"])
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Output<ModelListing>) {
-        out.push(Ok(ModelList::new(
-            reply.models.into_iter().map(ModelInfo::from).collect(),
-        )));
+    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, ModelListing>) {
+        out.push(Ok(ModelPage {
+            models: ModelList::new(reply.models.into_iter().map(ModelInfo::from).collect()),
+            next: None,
+        }));
     }
 }
 

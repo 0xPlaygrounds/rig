@@ -1,7 +1,7 @@
 //! Synthetic wire edge cases complement cassette replay: missing and colliding IDs
 //! cannot be reliably requested from a live provider.
 use crate::operation::Completion;
-use crate::wire::{Fold, Operation, Reply, Wire, WireFrame};
+use crate::wire::{Fold, Reply, Wire, WireFrame};
 use crate::{completion::CompletionResponse, message::AssistantContent};
 use serde_json::{Value, json};
 
@@ -28,7 +28,7 @@ fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
         output_schema: None,
         record_telemetry_content: false,
     };
-    let mut fold = <Completion as Operation>::fold(&request, wire, crate::wire::Mode::Unary);
+    let mut fold = crate::test_utils::fold_for(&request, wire, crate::wire::Mode::Unary);
     for item in driver.drain() {
         fold.absorb(&item.expect("the reply decodes without an in-band error"))
             .expect("the fold accepts every event");
@@ -36,7 +36,7 @@ fn fold_document<W: Wire<Op = Completion, Frame = WireFrame>>(
     Fold::<Completion>::finish(
         fold,
         Reply {
-            provider: wire.name().to_owned(),
+            provider: wire.describe().name.to_owned(),
             raw: serde_json::from_str(&body).unwrap_or(Value::Null),
             provider_request_id: None,
         },

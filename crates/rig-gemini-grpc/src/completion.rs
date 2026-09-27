@@ -21,7 +21,7 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use base64::Engine as _;
 use futures::StreamExt;
 use rig_core::completion::{self, CompletionRequest};
-use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Opened, Sending, Transport};
 use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
 use rig_core::message::{self, MimeType, Reasoning};
@@ -32,7 +32,7 @@ use rig_core::providers::gemini::completion::gemini_api_types::{
 use rig_core::providers::gemini::{
     GEMINI_TEXT_EXTRAS_KEY, text_signature_extras, text_thought_signature,
 };
-use rig_core::wire::{Mode, Wire};
+use rig_core::wire::{Descriptor, Mode, Wire};
 use std::convert::TryFrom;
 
 use super::GeminiGrpc;
@@ -68,29 +68,21 @@ impl Wire for GenerateContent {
     type Frame = GrpcFrame;
     type Decoder = GrpcAdapter;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
     }
 
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn reasoning_issuer(&self, _model: Option<&str>) -> Option<&str> {
-        Some(REASONING_ISSUER)
-    }
-
-    /// The Gemini service issues this wire's reasoning, over gRPC or REST, so
-    /// that is the reasoning a request may replay.
-    fn replay_issuers(&self, _model: Option<&str>) -> Option<Vec<String>> {
-        Some(vec![REASONING_ISSUER.to_owned()])
-    }
-
+    /// The Gemini service issues this wire's reasoning, over gRPC or REST,
+    /// so that is the reasoning a request may replay.
     fn encode(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
+        rig_core::message::retain_replayable_reasoning(
+            &mut request.chat_history,
+            &[REASONING_ISSUER],
+        );
         create_grpc_request(&self.model, request)
     }
 
@@ -103,16 +95,13 @@ impl Transport<GenerateContent> for GeminiGrpc {
     fn send(
         &self,
         request: GenerateContentRequest,
-        mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<GenerateContentRequest, GrpcFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        exchange: Exchange,
+    ) -> Result<Sending<GrpcFrame>, ProviderError> {
+        let mode = exchange.mode;
         let mut client = self
             .grpc_client()
             .map_err(|error| ProviderError::Provider(error.to_string()))?;
-        Ok(async move {
+        Ok(Sending::later(async move {
             match mode {
                 Mode::Unary => match client.generate_content(request).await {
                     Ok(response) => Opened::new(futures::stream::iter([Ok(GrpcFrame::Whole(
@@ -139,7 +128,7 @@ impl Transport<GenerateContent> for GeminiGrpc {
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
             }
-        })
+        }))
     }
 }
 

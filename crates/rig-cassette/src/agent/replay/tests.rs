@@ -1263,7 +1263,7 @@ async fn kept_events_replay_a_malformed_call_as_the_items_that_carried_it() {
 /// alone: no end closes the block and no end carries it. This record is the
 /// last turn of `anthropic_causal_completion_streamed` as it was recorded
 /// then (at `22368226f`), outcome and events verbatim. Replay re-emits those
-/// items, and a consumer folds them through the completion sink, so the
+/// items, and a consumer folds them through the completion fold, so the
 /// replayed turn still holds its text.
 #[tokio::test]
 async fn a_log_recorded_before_canonical_streams_replays_its_text() {

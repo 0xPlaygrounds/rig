@@ -5,11 +5,10 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use crate::driver::{Local, Model, Observation, Opened, Transport};
+use crate::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use crate::error::ProviderError;
 use crate::operation::{AdapterOutput, Completion};
 use crate::streaming::{StreamEvent, SyntheticIds};
-use crate::wasm_compat::WasmCompatSend;
 use crate::wire::Mode;
 use crate::{
     completion::{AssistantContent, CompletionRequest, CompletionResponse, Usage},
@@ -385,17 +384,10 @@ impl Transport<Local<Completion>> for MockScript {
     fn send(
         &self,
         request: CompletionRequest,
-        mode: Mode,
-        observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<CompletionRequest, Result<StreamEvent, ProviderError>>>
-        + WasmCompatSend
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
-        self.requests_guard()
-            .push((request, observation.map(|observation| observation.context)));
+        exchange: Exchange,
+    ) -> Result<Sending<Result<StreamEvent, ProviderError>>, ProviderError> {
+        let mode = exchange.mode;
+        self.requests_guard().push((request, exchange.observation));
         let mut out = AdapterOutput::new();
         let mut document = None;
         match mode {
@@ -412,11 +404,7 @@ impl Transport<Local<Completion>> for MockScript {
                         document = Some(response.raw.clone());
                         out.response(&response, crate::operation::ImagePart::Block);
                     }
-                    Err(error) => {
-                        return Ok(futures::future::Either::Left(std::future::ready(
-                            Opened::failed(error),
-                        )));
-                    }
+                    Err(error) => return Ok(Sending::opened(Opened::failed(error))),
                 }
             }
             Mode::Streaming => {
@@ -436,10 +424,9 @@ impl Transport<Local<Completion>> for MockScript {
             }
         }
         let frames = out.into_items().into_iter().map(Ok);
-        Ok(futures::future::Either::Right(std::future::ready(Opened {
-            document,
-            ..Opened::new(futures::stream::iter(frames))
-        })))
+        let mut opened = Opened::new(futures::stream::iter(frames));
+        opened.document = document;
+        Ok(Sending::opened(opened))
     }
 }
 

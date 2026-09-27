@@ -1213,6 +1213,19 @@ fn model_vendor(model: &str) -> &str {
     vendor.trim_start_matches('~')
 }
 
+/// Drop the reasoning in `request`'s history that no issuer a request to its
+/// model over `dialect` replays can interpret. The request's model override,
+/// when it names one, is the model replayed for; `model` otherwise.
+pub(crate) fn scope_reasoning(
+    dialect: &Dialect,
+    model: &str,
+    request: &mut crate::completion::CompletionRequest,
+) {
+    let issuers = replay_issuers(dialect, request.model.as_deref().unwrap_or(model));
+    let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
+    crate::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
+}
+
 /// The reasoning issuers a request to `model` over `dialect` replays.
 ///
 /// A dialect without upstream issuers replays its own reasoning. A gateway

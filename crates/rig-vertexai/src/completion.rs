@@ -18,10 +18,10 @@ use crate::types::completion_request::VertexCompletionRequest;
 use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder};
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionRequest;
-use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Opened, Sending, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
-use rig_core::wire::{Mode, Wire};
+use rig_core::wire::{Descriptor, Mode, Wire};
 
 /// `gemini-1.5-pro`
 pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
@@ -66,19 +66,16 @@ impl Wire for GenerateContent {
     type Frame = vertexai::model::GenerateContentResponse;
     type Decoder = VertexDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
     }
 
     fn encode(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         _mode: Mode,
     ) -> Result<VertexRequest, EncodeError> {
+        rig_core::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"
@@ -90,7 +87,7 @@ impl Wire for GenerateContent {
     }
 
     fn decoder(&self, _mode: Mode) -> VertexDecoder {
-        VertexDecoder::default()
+        VertexDecoder
     }
 }
 
@@ -99,15 +96,8 @@ impl Transport<GenerateContent> for VertexAi {
     fn send(
         &self,
         payload: VertexRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<VertexRequest, vertexai::model::GenerateContentResponse>>
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<vertexai::model::GenerateContentResponse>, ProviderError> {
         let VertexRequest { model, request } = payload;
         let generation_config = request.generation_config()?;
         let system_instruction = request.system_instruction();
@@ -120,7 +110,7 @@ impl Transport<GenerateContent> for VertexAi {
             self.location()
         );
         let client = self.clone();
-        Ok(async move {
+        Ok(Sending::later(async move {
             let service = match client.inner().await {
                 Ok(service) => service,
                 Err(error) => return Opened::failed(ProviderError::Provider(error.to_string())),
@@ -151,7 +141,7 @@ impl Transport<GenerateContent> for VertexAi {
                 }
                 Err(error) => Opened::failed(rpc_error(&error)),
             }
-        })
+        }))
     }
 }
 

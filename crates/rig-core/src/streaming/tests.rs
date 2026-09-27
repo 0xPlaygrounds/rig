@@ -42,7 +42,7 @@ fn opened(
 fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, ProviderError>> {
     let mut out = AdapterOutput::new();
     build(&mut out);
-    crate::wire::Sink::<crate::operation::Completion>::finish(&mut out);
+    out.finish();
     out.into_items()
 }
 
