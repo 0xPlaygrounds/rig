@@ -84,6 +84,7 @@ actually ran the intended tests; a successful command running zero tests is not
 verification.
 
 ```bash
+cargo nextest run --locked --profile local -p rig-core --lib <test-name-filter>
 cargo test --locked -p rig-core --lib <test-name-filter>
 cargo test --locked -p rig --test <provider> <test-name-filter>
 cargo clippy --locked -p rig-core --all-features --tests -- -D warnings

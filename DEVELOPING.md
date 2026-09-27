@@ -17,8 +17,9 @@ Workspace-wide tests, all-features builds, every provider/example, full
 docs/doctests, WASM matrices, Docker suites, and dependency-floor checks belong
 in CI by default. Explain the concrete need before an expensive local check;
 do not invent hypothetical risks to justify a full local gate. Install only the
-prerequisites the small local checks you choose need. The planner commands
-remain available for explicit requests or deliberate debugging:
+prerequisites the small local checks you choose need. Iterate on one package
+with the `local` nextest profile ([Local builds](#local-builds)). The planner
+commands remain available for explicit requests or deliberate debugging:
 
 ```sh
 cargo xtask verify --changed --dry-run             # optional selection preview
@@ -100,11 +101,33 @@ than on its own PR; that tradeoff is deliberate.
 
 `--full` runs every check, including both slow lanes.
 
+## Local builds
+
+- `cargo nextest run --locked --profile local -p <crate> [filter]` is the inner
+  loop. The `local` profile has no retries, stops at the first failure, and
+  skips the service suites and tests that launch a nested Cargo build or
+  trybuild. Add `--ignore-default-filter` to run them.
+- The dev profile keeps line tables for workspace code and no debuginfo for
+  dependencies. For a debugger, add `--config 'profile.dev.debug=true' --config
+  'profile.dev.package."*".debug=true'`; `CARGO_PROFILE_DEV_DEBUG` alone does
+  not reach dependencies.
+- Keep incremental compilation on; CI sets `CARGO_INCREMENTAL=0` because its
+  runners start fresh.
+- Worktrees of this repository can share one target directory: set
+  `build.target-dir` in a `.cargo/config.toml` above them. Dependencies then
+  build once instead of once per worktree; builds that run at the same time
+  wait on the directory's lock.
+- Give rust-analyzer its own target directory
+  (`rust-analyzer.cargo.targetDir: true`) so it does not hold that lock while
+  you build.
+- On macOS, add your terminal to System Settings > Privacy & Security >
+  Developer Tools; otherwise each new test binary is scanned on its first run.
+
 ## Prerequisites
 
-The repository toolchain (`rust-toolchain.toml`), nextest (0.9.91 or newer
-honours the test priorities in `.config/nextest.toml`; older versions warn
-and run every test in default order), Clippy, rustfmt, protoc, Docker for the
+The repository toolchain (`rust-toolchain.toml`), nextest (0.9.77 or newer;
+from 0.9.91 it honours the test priorities in `.config/nextest.toml`, which
+earlier versions ignore with a warning), Clippy, rustfmt, protoc, Docker for the
 storage suites, Node, wasm-bindgen-test-runner at the lock file's
 `wasm-bindgen` version, and Python 3.12+ for the floor checker and its
 isolation tests. The planner probes for what the selected checks need before
@@ -182,7 +205,8 @@ it in `selection.rs` (or leave it in the fast set every `--pr` runs), add a
 `cargo xtask verify --check <id>` step to the matching ci.yaml job, and update
 the tests in `xtask/src/verify/tests.rs` that pin ids and lanes. Checks that
 shell out to a nested Cargo build (the facade guard, macro hygiene) get a
-nextest priority so they start first.
+nextest priority so they start first, and every nested-Cargo or trybuild test
+belongs in the `local` profile's filter in `.config/nextest.toml`.
 
 ## PR completion
 

@@ -16,6 +16,12 @@ signatures, module paths, and feature flags.
 - Do not make commits, comments, stage changes, push branches, or open PRs unless the user explicitly asks.
 - Do not discard user changes.
 
+## Fast Loop
+
+- Iterate with `cargo nextest run --locked --profile local -p <crate> [filter]`;
+  leave workspace-wide and facade `--all-features` runs to CI.
+- Keep incremental compilation on.
+
 ## Efficient Investigation
 
 - Reuse instructions and unchanged source already in context. Read the relevant

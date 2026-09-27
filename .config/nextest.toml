@@ -1,6 +1,9 @@
-# Test priorities need nextest 0.9.91; older versions warn and ignore the
-# `priority` keys below, so they still run every test, just in default order.
+# `default-filter` below arrived in 0.9.77 (changelog: "`default-set` is now
+# `default-filter`"); an older nextest would ignore it and run the Docker suites.
+# Versions before 0.9.91 warn, ignore the `priority` keys and run tests in
+# default order.
 [nextest-version]
+required = "0.9.77"
 recommended = "0.9.91"
 
 # The two tests that shell out to a nested Cargo build are the slowest in the
@@ -20,3 +23,27 @@ retries = 2
 [[profile.guards.overrides]]
 filter = 'test(telemetry::) + test(span_safety_net::)'
 retries = 0
+
+# The inner loop: skips the service suites (`rig-service-tests`, mostly
+# Docker-backed) and tests that launch a nested Cargo build or trybuild. CI
+# runs all of them. Each guard is named by binary and exact name, so ordinary
+# tests in the same binaries still run. A new guard belongs here; one missing
+# only slows the local loop.
+[profile.local]
+retries = 0
+fail-fast = true
+default-filter = '''not (
+    package(rig-service-tests)
+    | binary_id(rig-core::macro_hygiene)
+    | (binary_id(rig::tool_facade_features) & test(=portable_tool_facade_is_feature_additive))
+    | (binary_id(rig-reqwest::middleware_features) & test(=middleware_clients_are_available_for_each_tls_selector))
+    | (binary_id(rig::core) & test(=core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver))
+    | (binary_id(rig-derive::dependency_rename) & test(=generated_paths_follow_cargo_dependency_renames))
+    | (binary_id(rig-derive::dependency_rename) & test(=contextual_tool_compiles_with_rig_core_only))
+    | (binary_id(rig-derive::tool_args) & test(=invalid_tool_arguments_are_rejected))
+    | (binary_id(rig-derive::custom_name) & test(=test_custom_name_trybuild_cases))
+    | (binary_id(rig-derive::serve) & test(=a_type_that_is_not_a_serve_is_told_to_implement_serve))
+    | (binary_id(rig-derive::embed_attrs) & test(=conflicting_embed_attributes_are_rejected))
+    | (binary_id(rig-derive::context_value) & test(=a_bare_value_is_rejected_with_the_fix_named))
+    | (binary_id(rig-derive::tool_context) & test(=invalid_context_parameters_are_rejected))
+)'''

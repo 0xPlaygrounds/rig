@@ -25,8 +25,10 @@ runs:
   using: composite
   steps:
     # Exported before the toolchain step so every job's rust-cache key hashes
-    # the same values. Line-table debuginfo is all a CI backtrace needs;
-    # incremental compilation buys nothing on a fresh runner.
+    # the same values. Line-table debuginfo is all a CI backtrace needs; it
+    # reaches workspace crates only, since the manifest's
+    # `[profile.dev.package."*"]` builds dependencies without debuginfo.
+    # Incremental compilation buys nothing on a fresh runner.
     - name: Resolve toolchain and export shared cargo env
       shell: bash
       run: |
