@@ -12,7 +12,6 @@
 use std::sync::Arc;
 
 use rig_core::completion::CompletionRequest;
-use rig_core::completion::CompletionRequestBuilder;
 use rig_core::observe::{
     Action, AdapterContext, AdapterEvent, AdapterObservation, AdapterUsage, ObservationLog, Subject,
 };
@@ -54,7 +53,7 @@ async fn a_unary_responses_reply_projects_usage_verdict_and_id() {
 
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "projection");
-    let request: CompletionRequest = CompletionRequestBuilder::new("hi").build();
+    let request: CompletionRequest = CompletionRequest::new("hi");
     let response = model
         .call_observed(request, context)
         .await

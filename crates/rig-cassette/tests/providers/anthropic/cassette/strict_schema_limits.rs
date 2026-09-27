@@ -8,7 +8,7 @@ use rig_test_support::cassette_models::MapWire;
 use serde_json::{Map, Value, json};
 
 use super::super::support::with_anthropic_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn empty_tool(name: impl Into<String>) -> ToolDefinition {
     ToolDefinition {
@@ -91,15 +91,13 @@ async fn twenty_strict_tools_are_accepted() {
             let tools = (0..20)
                 .map(|index| empty_tool(format!("boundary_tool_{index:02}")))
                 .collect::<Vec<_>>();
-            let request =
-                CompletionRequestBuilder::new("Call boundary_tool_19 with an empty object.")
-                    .preamble("Call only the specifically selected tool.".to_string())
-                    .max_tokens(1024)
-                    .tools(tools)
-                    .tool_choice(ToolChoice::Specific {
-                        function_names: vec!["boundary_tool_19".to_string()],
-                    })
-                    .build();
+            let request = CompletionRequest::new("Call boundary_tool_19 with an empty object.")
+                .preamble("Call only the specifically selected tool.")
+                .max_tokens(1024)
+                .tools(tools)
+                .tool_choice(ToolChoice::Specific {
+                    function_names: vec!["boundary_tool_19".to_string()],
+                });
 
             let response = model
                 .call(request)
@@ -119,18 +117,16 @@ async fn twenty_one_strict_tools_are_rejected() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request =
-                CompletionRequestBuilder::new("Call boundary_tool_20 with an empty object.")
-                    .max_tokens(64)
-                    .tools(
-                        (0..21)
-                            .map(|index| empty_tool(format!("boundary_tool_{index:02}")))
-                            .collect(),
-                    )
-                    .tool_choice(ToolChoice::Specific {
-                        function_names: vec!["boundary_tool_20".to_string()],
-                    })
-                    .build();
+            let request = CompletionRequest::new("Call boundary_tool_20 with an empty object.")
+                .max_tokens(64)
+                .tools(
+                    (0..21)
+                        .map(|index| empty_tool(format!("boundary_tool_{index:02}")))
+                        .collect(),
+                )
+                .tool_choice(ToolChoice::Specific {
+                    function_names: vec!["boundary_tool_20".to_string()],
+                });
 
             let error = model
                 .call(request)
@@ -150,7 +146,7 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Call optional_boundary with an empty object; omit every optional field.",
             )
             .max_tokens(64)
@@ -159,8 +155,7 @@ async fn twenty_four_optional_parameters_in_one_schema_hit_internal_limit() {
                 name: "optional_boundary".to_string(),
                 description: "Exercise the strict optional-parameter boundary.".to_string(),
                 parameters: optional_parameters_schema(24),
-            })
-            .build();
+            });
 
             let error = model
                 .call(request)
@@ -180,16 +175,14 @@ async fn twenty_five_optional_parameters_are_rejected() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request =
-                CompletionRequestBuilder::new("Call optional_boundary with an empty object.")
-                    .max_tokens(64)
-                    .tool_choice(ToolChoice::Required)
-                    .tool(ToolDefinition {
-                        name: "optional_boundary".to_string(),
-                        description: "Exceed the strict optional-parameter boundary.".to_string(),
-                        parameters: optional_parameters_schema(25),
-                    })
-                    .build();
+            let request = CompletionRequest::new("Call optional_boundary with an empty object.")
+                .max_tokens(64)
+                .tool_choice(ToolChoice::Required)
+                .tool(ToolDefinition {
+                    name: "optional_boundary".to_string(),
+                    description: "Exceed the strict optional-parameter boundary.".to_string(),
+                    parameters: optional_parameters_schema(25),
+                });
 
             let error = model
                 .call(request)
@@ -209,7 +202,7 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Call union_boundary and set every union_00 through union_15 field to null.",
             )
             .max_tokens(64)
@@ -218,8 +211,7 @@ async fn sixteen_union_parameters_in_one_schema_hit_internal_limit() {
                 name: "union_boundary".to_string(),
                 description: "Exercise the strict union-parameter boundary.".to_string(),
                 parameters: union_parameters_schema(16),
-            })
-            .build();
+            });
 
             let error = model
                 .call(request)
@@ -252,14 +244,12 @@ async fn twenty_four_optional_parameters_across_tools_are_accepted() {
                     }),
                 })
                 .collect::<Vec<_>>();
-            let request =
-                CompletionRequestBuilder::new("Call optional_tool_00 with an empty object.")
-                    .max_tokens(1024)
-                    .tools(tools)
-                    .tool_choice(ToolChoice::Specific {
-                        function_names: vec!["optional_tool_00".to_string()],
-                    })
-                    .build();
+            let request = CompletionRequest::new("Call optional_tool_00 with an empty object.")
+                .max_tokens(1024)
+                .tools(tools)
+                .tool_choice(ToolChoice::Specific {
+                    function_names: vec!["optional_tool_00".to_string()],
+                });
 
             let response = model
                 .call(request)
@@ -292,13 +282,12 @@ async fn sixteen_union_parameters_across_tools_are_accepted() {
                     }),
                 })
                 .collect::<Vec<_>>();
-            let request = CompletionRequestBuilder::new("Call union_tool_00 with value = null.")
+            let request = CompletionRequest::new("Call union_tool_00 with value = null.")
                 .max_tokens(1024)
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["union_tool_00".to_string()],
-                })
-                .build();
+                });
 
             let response = model
                 .call(request)
@@ -319,15 +308,14 @@ async fn seventeen_union_parameters_are_rejected() {
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
             let request =
-                CompletionRequestBuilder::new("Call union_boundary with every field set to null.")
+                CompletionRequest::new("Call union_boundary with every field set to null.")
                     .max_tokens(64)
                     .tool_choice(ToolChoice::Required)
                     .tool(ToolDefinition {
                         name: "union_boundary".to_string(),
                         description: "Exceed the strict union-parameter boundary.".to_string(),
                         parameters: union_parameters_schema(17),
-                    })
-                    .build();
+                    });
 
             let error = model
                 .call(request)

@@ -52,7 +52,7 @@ async fn test_insert_documents() {
     ];
 
     let embeddings = model
-        .call(docs.iter().map(|d| d.content.clone()).collect())
+        .call(docs.iter().map(|d| d.content.clone()).collect::<Vec<_>>())
         .await
         .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
@@ -195,7 +195,7 @@ async fn test_top_n_with_multiple_documents() {
     ];
 
     let embeddings = model
-        .call(docs.iter().map(|d| d.content.clone()).collect())
+        .call(docs.iter().map(|d| d.content.clone()).collect::<Vec<_>>())
         .await
         .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
@@ -255,7 +255,7 @@ async fn test_query_with_eq_filter() {
     ];
 
     let embeddings = model
-        .call(docs.iter().map(|d| d.content.clone()).collect())
+        .call(docs.iter().map(|d| d.content.clone()).collect::<Vec<_>>())
         .await
         .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
@@ -332,7 +332,7 @@ async fn test_query_with_combined_filters() {
     ];
 
     let embeddings = model
-        .call(docs.iter().map(|d| d.content.clone()).collect())
+        .call(docs.iter().map(|d| d.content.clone()).collect::<Vec<_>>())
         .await
         .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");
@@ -412,7 +412,7 @@ async fn test_query_with_in_filter() {
     ];
 
     let embeddings = model
-        .call(docs.iter().map(|d| d.content.clone()).collect())
+        .call(docs.iter().map(|d| d.content.clone()).collect::<Vec<_>>())
         .await
         .map(|response| response.embeddings)
         .expect("Failed to generate embeddings");

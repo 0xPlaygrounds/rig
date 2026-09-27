@@ -11,7 +11,7 @@
 use std::collections::BTreeSet;
 
 use rig_core::completion::{
-    CompletionRequestBuilder, Document, Message, ProviderCapabilities, ToolDefinition,
+    CompletionRequest, Document, Message, ProviderCapabilities, ToolDefinition,
 };
 use rig_core::error::ProviderError;
 use rig_core::message::ToolChoice;
@@ -84,13 +84,13 @@ pub struct PreparedRequest {
 }
 
 impl PreparedRequest {
-    /// Apply every prepared field to a provider request builder, in the
-    /// protocol's canonical order. The builder keeps its prompt; the prepared
-    /// sampling fields (`temperature`, `max_tokens`, `output_schema`)
-    /// overwrite whatever the driver set on it, while messages, documents,
-    /// tools and additional parameters accumulate.
-    pub fn apply(self, builder: CompletionRequestBuilder) -> CompletionRequestBuilder {
-        let builder = builder
+    /// Apply every prepared field to `request`, in the protocol's canonical
+    /// order. The request keeps its prompt last; the prepared sampling fields
+    /// (`temperature`, `max_tokens`, `output_schema`) overwrite whatever the
+    /// driver set on it, while messages, documents, tools and additional
+    /// parameters accumulate.
+    pub fn apply(self, request: CompletionRequest) -> CompletionRequest {
+        let request = request
             .messages(self.chat_history)
             .temperature(self.temperature)
             .max_tokens(self.max_tokens)
@@ -99,8 +99,8 @@ impl PreparedRequest {
             .tools(self.tools)
             .output_schema(self.output_schema);
         match self.tool_choice {
-            Some(tool_choice) => builder.tool_choice(tool_choice),
-            None => builder,
+            Some(tool_choice) => request.tool_choice(tool_choice),
+            None => request,
         }
     }
 }

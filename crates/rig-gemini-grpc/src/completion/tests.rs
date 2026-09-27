@@ -43,7 +43,7 @@ fn scripted(
 }
 
 fn hello() -> CompletionRequest {
-    rig_core::completion::CompletionRequestBuilder::new("hello").build()
+    rig_core::completion::CompletionRequest::new("hello")
 }
 
 /// `response` as the unary endpoint answers it.

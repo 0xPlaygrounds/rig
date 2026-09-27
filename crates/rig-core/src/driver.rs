@@ -5,13 +5,13 @@
 //! `_observed` twins take the observation context a bus records under.
 //!
 //! ```no_run
-//! use rig_core::completion::CompletionRequestBuilder;
+//! use rig_core::completion::CompletionRequest;
 //! use rig_core::driver::Model;
 //! use rig_core::providers::openai::{self, OpenAI};
 //!
 //! # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 //! let model = OpenAI::from_env()?.with_http(http).responses(openai::GPT_5_2);
-//! let response = model.call(CompletionRequestBuilder::new("Hello").build()).await?;
+//! let response = model.call(CompletionRequest::new("Hello")).await?;
 //! # let _ = response;
 //! # Ok(())
 //! # }
@@ -28,7 +28,8 @@ use crate::streaming::Streamed;
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::WireEvent;
 use crate::wire::{
-    Decoder, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire, WireFrame,
+    Capabilities, Decoder, Mode, ObservationSink, Operation, Reply, Request, Response, Sink, Wire,
+    WireFrame,
 };
 
 mod dyn_model;
@@ -175,39 +176,56 @@ where
     W: Wire,
     T: Transport<W>,
 {
+    /// The wire's provider descriptor name (`"anthropic"`).
+    pub fn name(&self) -> &str {
+        self.wire.name()
+    }
+
+    /// The model id the wire addresses, when the operation addresses one.
+    pub fn id(&self) -> Option<&str> {
+        self.wire.id()
+    }
+
+    /// What a runtime accounts for about this model, such as an embedding
+    /// model's width.
+    pub fn capabilities(&self) -> Capabilities<W> {
+        self.wire.capabilities()
+    }
+
     /// Send `request` and fold the whole reply into the operation's
     /// response: [`Self::stream`] in unary mode, drained. A paged operation
-    /// follows every page the reply names.
+    /// follows every page the reply names. A completion takes a prompt, a
+    /// conversation or a [`CompletionRequest`](crate::completion::CompletionRequest).
     pub fn call(
         &self,
-        request: Request<W>,
+        request: impl Into<Request<W>>,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
-        self.drained(request, None)
+        self.drained(request.into(), None)
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
     pub fn call_observed(
         &self,
-        request: Request<W>,
+        request: impl Into<Request<W>>,
         observation: AdapterContext,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + '_ {
-        self.drained(request, Some(observation))
+        self.drained(request.into(), Some(observation))
     }
 
     /// Open a streamed reply. Encoding errors, and requests the transport
     /// cannot stream, return here; every later failure arrives in-band.
     /// Nothing is sent until the stream is first polled.
-    pub fn stream(&self, request: Request<W>) -> Result<Streamed<W::Op>, ProviderError> {
-        self.streamed(request, Mode::Streaming, None)
+    pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, ProviderError> {
+        self.streamed(request.into(), Mode::Streaming, None)
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
     pub fn stream_observed(
         &self,
-        request: Request<W>,
+        request: impl Into<Request<W>>,
         observation: AdapterContext,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        self.streamed(request, Mode::Streaming, Some(observation))
+        self.streamed(request.into(), Mode::Streaming, Some(observation))
     }
 
     /// [`Self::streamed`] in unary mode, drained, then accepted.

@@ -40,16 +40,15 @@ use serde_json::Value;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
 use crate::support::{Observed, json_contains_key};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 /// The recorded `message-end` frame's `delta` — the premise every cell rests

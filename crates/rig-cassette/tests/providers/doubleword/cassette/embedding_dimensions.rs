@@ -45,7 +45,6 @@ use rig::providers::doubleword;
 use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::{RecordedEmbeddingCall, with_doubleword_embedding_cassette};
-use rig::wire::Wire;
 
 const MODEL: &str = doubleword::QWEN3_EMBEDDING_8B;
 /// The width Doubleword returns when a request names none.
@@ -140,7 +139,7 @@ async fn embed_one(client: &OpenAiModels, width: Option<usize>, input: &str) {
     assert_eq!(embeddings.len(), 1);
     assert_eq!(
         embeddings[0].vec.len(),
-        model.wire.capabilities().ndims,
+        model.capabilities().ndims,
         "the returned vector must be exactly as wide as `ndims()` reports"
     );
 }
@@ -148,7 +147,12 @@ async fn embed_one(client: &OpenAiModels, width: Option<usize>, input: &str) {
 async fn embed_batch(client: &OpenAiModels, width: Option<usize>, inputs: &[&str]) {
     let model = embedding_model(client, width);
     let embeddings = model
-        .call(inputs.iter().map(|input| (*input).to_string()).collect())
+        .call(
+            inputs
+                .iter()
+                .map(|input| (*input).to_string())
+                .collect::<Vec<_>>(),
+        )
         .await
         .map(|response| response.embeddings)
         .expect("embedding request should succeed");
@@ -157,7 +161,7 @@ async fn embed_batch(client: &OpenAiModels, width: Option<usize>, inputs: &[&str
     for embedding in &embeddings {
         assert_eq!(
             embedding.vec.len(),
-            model.wire.capabilities().ndims,
+            model.capabilities().ndims,
             "every returned vector must be exactly as wide as `ndims()` reports"
         );
     }
@@ -359,10 +363,7 @@ async fn usage_survives_a_requested_width() {
                 .expect("embedding request should succeed");
 
             assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(
-                response.embeddings[0].vec.len(),
-                model.wire.capabilities().ndims
-            );
+            assert_eq!(response.embeddings[0].vec.len(), model.capabilities().ndims);
             assert!(
                 response.usage.input_tokens.is_some_and(|n| n > 0)
                     && response.usage.total_tokens.is_some_and(|n| n > 0),
@@ -390,10 +391,7 @@ async fn usage_at_the_default_width() {
                 .expect("embedding request should succeed");
 
             assert_eq!(response.embeddings.len(), 1);
-            assert_eq!(
-                response.embeddings[0].vec.len(),
-                model.wire.capabilities().ndims
-            );
+            assert_eq!(response.embeddings[0].vec.len(), model.capabilities().ndims);
             assert!(
                 response.usage.input_tokens.is_some_and(|n| n > 0)
                     && response.usage.total_tokens.is_some_and(|n| n > 0),
@@ -424,7 +422,7 @@ async fn builder_documents_at_a_requested_width() {
             assert_eq!(documents.len(), 2);
             for (_, embeddings) in &documents {
                 for embedding in embeddings.iter() {
-                    assert_eq!(embedding.vec.len(), model.wire.capabilities().ndims);
+                    assert_eq!(embedding.vec.len(), model.capabilities().ndims);
                 }
             }
         },
@@ -453,7 +451,7 @@ async fn builder_documents_at_the_default_width() {
             assert_eq!(documents.len(), 2);
             for (_, embeddings) in &documents {
                 for embedding in embeddings.iter() {
-                    assert_eq!(embedding.vec.len(), model.wire.capabilities().ndims);
+                    assert_eq!(embedding.vec.len(), model.capabilities().ndims);
                 }
             }
         },
@@ -560,7 +558,7 @@ async fn an_unknown_model_still_puts_the_requested_width_on_the_wire() {
         "embedding_dimensions/an_unknown_model_still_puts_the_requested_width_on_the_wire",
         |client| async move {
             let model = client.embedding("Qwen/Qwen4-Embedding-Unreleased", Some(8_192));
-            assert_eq!(model.wire.capabilities().ndims, 8_192);
+            assert_eq!(model.capabilities().ndims, 8_192);
             let error = model
                 .call(vec![PROBE.to_string()])
                 .await

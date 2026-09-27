@@ -3,7 +3,7 @@ use rig::message::{AssistantContent, Message, Reasoning};
 use rig::providers::moonshot;
 
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn response_text(choice: &[AssistantContent]) -> String {
     choice
@@ -31,12 +31,9 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
 
     let response = model
         .call(
-            CompletionRequestBuilder::new(
-                "What color was I asked to remember? Reply with one word.",
-            )
-            .message(Message::user("Remember the secret color is teal."))
-            .message(assistant)
-            .build(),
+            CompletionRequest::new("What color was I asked to remember? Reply with one word.")
+                .message(Message::user("Remember the secret color is teal."))
+                .message(assistant),
         )
         .await
         .expect("reasoning-history completion should succeed");

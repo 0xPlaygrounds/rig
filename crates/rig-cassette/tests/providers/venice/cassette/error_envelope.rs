@@ -9,7 +9,7 @@ use futures::StreamExt;
 use rig::error::ErrorReport;
 
 use super::super::support::with_venice_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn nonexistent_model_error_preserves_status_and_body() {
@@ -17,9 +17,7 @@ async fn nonexistent_model_error_preserves_status_and_body() {
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
             let model = client.completion("venice-nonexistent-rig-test");
-            let request = CompletionRequestBuilder::new("Say hi.")
-                .max_tokens(16)
-                .build();
+            let request = CompletionRequest::new("Say hi.").max_tokens(16);
 
             let error = model
                 .call(request)
@@ -53,9 +51,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             let model = client.completion("venice-nonexistent-rig-test");
-            let request = CompletionRequestBuilder::new("Say hi.")
-                .max_tokens(16)
-                .build();
+            let request = CompletionRequest::new("Say hi.").max_tokens(16);
 
             // The SSE connection opens lazily, so the HTTP error may surface
             // either from `stream()` itself or as the first stream item.

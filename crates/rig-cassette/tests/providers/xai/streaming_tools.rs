@@ -13,7 +13,7 @@ use crate::support::{
     assert_tool_call_precedes_later_text, collect_raw_stream_observation,
     collect_stream_observation, zero_arg_tool_definition,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const XAI_STATUS_TOOL_PREAMBLE: &str = "\
 You are a terse assistant. A function named `get_status_word` is available. \
@@ -65,10 +65,9 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
             let model = client.completion(xai::GROK_4);
-            let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                .tool_choice(ToolChoice::Required);
             let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -106,10 +105,9 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
             let model = client.completion(xai::GROK_4);
-            let request = CompletionRequestBuilder::new(XAI_STATUS_TOOL_PROMPT)
+            let request = CompletionRequest::new(XAI_STATUS_TOOL_PROMPT)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&StatusWordTool))
-                .build();
+                .tool(rig::tool::tool_definition(&StatusWordTool));
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -138,13 +136,12 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                     vec![ToolResultContent::text(XAI_STATUS_TOOL_OUTPUT)],
                 )],
             };
-            let followup_request = CompletionRequestBuilder::new(
+            let followup_request = CompletionRequest::new(
                 "Now reply in one short sentence using the provided tool result only.",
             )
-            .preamble("Use the provided tool result and answer directly.".to_string())
+            .preamble("Use the provided tool result and answer directly.")
             .message(assistant_message)
-            .message(tool_result_message)
-            .build();
+            .message(tool_result_message);
 
             let second_turn = collect_raw_stream_observation(
                 model

@@ -35,7 +35,7 @@ use rig::streaming::{Delta, StreamEvent};
 use serde_json::Value;
 
 use super::support::with_mistral_history_roundtrip_cassette_result;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -105,11 +105,11 @@ fn history(shape: Shape) -> Vec<Message> {
 }
 
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
-    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape)).max_tokens(24);
+    let mut builder = CompletionRequest::new(prompt(cell.shape)).max_tokens(24);
     for message in history(cell.shape) {
         builder = builder.message(message);
     }
-    builder.build()
+    builder
 }
 
 fn normalized_text(choice: &[AssistantContent]) -> String {

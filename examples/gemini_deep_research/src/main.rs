@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::{CompletionRequest, CompletionRequestBuilder};
+use rig::completion::CompletionRequest;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::interactions_api::{
     AgentConfig, Content, Interaction, InteractionStatus, Step, ThinkingSummaries,
@@ -57,9 +57,7 @@ fn deep_research_request(
         );
     }
 
-    Ok(CompletionRequestBuilder::new(prompt.into())
-        .additional_params(serde_json::Value::Object(params))
-        .build())
+    Ok(CompletionRequest::new(prompt.into()).additional_params(serde_json::Value::Object(params)))
 }
 
 fn extract_text(contents: &[Content]) -> String {

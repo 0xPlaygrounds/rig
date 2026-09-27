@@ -30,7 +30,7 @@ use serde_json::json;
 use super::super::support::{
     recorded_chat_calls, with_doubleword_bogus_key_cassette, with_doubleword_cassette,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Reply with error-probe.";
 const UNKNOWN_MODEL: &str = "rig/definitely-not-a-doubleword-model";
@@ -101,7 +101,7 @@ fn assert_recorded_transport_parity(blocking_scenario: &str, streaming_scenario:
 async fn unknown_model_blocking_body(client: OpenAiModels) {
     let model = client.completion(UNKNOWN_MODEL);
     let error = model
-        .call(CompletionRequestBuilder::new(PROMPT).max_tokens(8).build())
+        .call(CompletionRequest::new(PROMPT).max_tokens(8))
         .await
         .expect_err("an unknown model should be rejected");
     assert_preserved_client_error(&error, 404);
@@ -109,7 +109,7 @@ async fn unknown_model_blocking_body(client: OpenAiModels) {
 
 async fn unknown_model_streaming_body(client: OpenAiModels) {
     let model = client.completion(UNKNOWN_MODEL);
-    let result = model.stream(CompletionRequestBuilder::new(PROMPT).max_tokens(8).build());
+    let result = model.stream(CompletionRequest::new(PROMPT).max_tokens(8));
     let mut stream = result.expect("streaming HTTP failures are delivered in-band");
     let error = loop {
         match stream.next().await {
@@ -124,7 +124,7 @@ async fn unknown_model_streaming_body(client: OpenAiModels) {
 async fn invalid_key_blocking_body(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let error = model
-        .call(CompletionRequestBuilder::new(PROMPT).max_tokens(8).build())
+        .call(CompletionRequest::new(PROMPT).max_tokens(8))
         .await
         .expect_err("invalid credentials should be rejected");
     assert_preserved_client_error(&error, 403);
@@ -132,7 +132,7 @@ async fn invalid_key_blocking_body(client: OpenAiModels) {
 
 async fn invalid_key_streaming_body(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_9B);
-    let result = model.stream(CompletionRequestBuilder::new(PROMPT).max_tokens(8).build());
+    let result = model.stream(CompletionRequest::new(PROMPT).max_tokens(8));
     let mut stream = result.expect("streaming HTTP failures are delivered in-band");
     let error = loop {
         match stream.next().await {
@@ -148,10 +148,9 @@ async fn invalid_temperature_blocking_body(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let error = model
         .call(
-            CompletionRequestBuilder::new(PROMPT)
+            CompletionRequest::new(PROMPT)
                 .additional_params(json!({ "temperature": 100 }))
-                .max_tokens(8)
-                .build(),
+                .max_tokens(8),
         )
         .await
         .expect_err("an out-of-range temperature should be rejected");
@@ -161,10 +160,9 @@ async fn invalid_temperature_blocking_body(client: OpenAiModels) {
 async fn invalid_temperature_streaming_body(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let result = model.stream(
-        CompletionRequestBuilder::new(PROMPT)
+        CompletionRequest::new(PROMPT)
             .additional_params(json!({ "temperature": 100 }))
-            .max_tokens(8)
-            .build(),
+            .max_tokens(8),
     );
     let mut stream = result.expect("streaming HTTP failures are delivered in-band");
     let error = loop {

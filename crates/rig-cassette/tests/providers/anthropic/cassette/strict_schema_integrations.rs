@@ -7,7 +7,7 @@ use rig_test_support::cassette_models::MapWire;
 use serde_json::{Value, json};
 
 use super::super::support::with_anthropic_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn strict_value_tool(name: &str) -> ToolDefinition {
     ToolDefinition {
@@ -60,12 +60,10 @@ async fn default_model_remains_non_strict() {
         "strict_schema_integrations/default_model_remains_non_strict",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request =
-                CompletionRequestBuilder::new("Call default_mode with value = unchanged.")
-                    .max_tokens(1024)
-                    .tool_choice(ToolChoice::Required)
-                    .tool(strict_value_tool("default_mode"))
-                    .build();
+            let request = CompletionRequest::new("Call default_mode with value = unchanged.")
+                .max_tokens(1024)
+                .tool_choice(ToolChoice::Required)
+                .tool(strict_value_tool("default_mode"));
 
             let response = model
                 .call(request)
@@ -86,11 +84,7 @@ async fn strict_mode_without_tools_is_a_noop() {
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: no tools needed")
-                        .max_tokens(32)
-                        .build(),
-                )
+                .call(CompletionRequest::new("Reply with exactly: no tools needed").max_tokens(32))
                 .await
                 .expect("strict mode without tools should still complete");
             let text = response
@@ -116,12 +110,11 @@ async fn automatic_choice_calls_a_strict_tool() {
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
             let request =
-                CompletionRequestBuilder::new("You must call strict_auto with value = automatic.")
-                    .preamble("Obey the request by using the provided tool.".to_string())
+                CompletionRequest::new("You must call strict_auto with value = automatic.")
+                    .preamble("Obey the request by using the provided tool.")
                     .max_tokens(1024)
                     .tool_choice(ToolChoice::Auto)
-                    .tool(strict_value_tool("strict_auto"))
-                    .build();
+                    .tool(strict_value_tool("strict_auto"));
 
             let response = model
                 .call(request)
@@ -141,12 +134,10 @@ async fn none_choice_suppresses_a_strict_tool() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request =
-                CompletionRequestBuilder::new("Reply with exactly: strict tool suppressed")
-                    .max_tokens(32)
-                    .tool_choice(ToolChoice::None)
-                    .tool(strict_value_tool("unused_strict_tool"))
-                    .build();
+            let request = CompletionRequest::new("Reply with exactly: strict tool suppressed")
+                .max_tokens(32)
+                .tool_choice(ToolChoice::None)
+                .tool(strict_value_tool("unused_strict_tool"));
 
             let response = model
                 .call(request)
@@ -166,7 +157,7 @@ async fn specific_choice_selects_one_of_multiple_strict_tools() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new("Call strict_second with value = chosen.")
+            let request = CompletionRequest::new("Call strict_second with value = chosen.")
                 .max_tokens(1024)
                 .tools(vec![
                     strict_value_tool("strict_first"),
@@ -174,8 +165,7 @@ async fn specific_choice_selects_one_of_multiple_strict_tools() {
                 ])
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["strict_second".to_string()],
-                })
-                .build();
+                });
 
             let response = model
                 .call(request)
@@ -195,7 +185,7 @@ async fn rig_strict_and_provider_non_strict_tools_coexist() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new("Call raw_provider_tool with value = raw.")
+            let request = CompletionRequest::new("Call raw_provider_tool with value = raw.")
                 .max_tokens(1024)
                 .tool(strict_value_tool("rig_strict_tool"))
                 .tool_choice(ToolChoice::Specific {
@@ -211,8 +201,7 @@ async fn rig_strict_and_provider_non_strict_tools_coexist() {
                             "required": ["value"]
                         }
                     }]
-                }))
-                .build();
+                }));
 
             let response = model
                 .call(request)
@@ -230,7 +219,7 @@ async fn twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted() {
         "strict_schema_integrations/twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6).map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new("Call raw_boundary_tool with an empty object.")
+            let request = CompletionRequest::new("Call raw_boundary_tool with an empty object.")
                 .max_tokens(1024)
                 .tools(
                     (0..20)
@@ -246,7 +235,7 @@ async fn twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted() {
                         "description": "A non-strict tool that does not count toward the strict limit.",
                         "input_schema": { "type": "object", "properties": {} }
                     }]
-                })).build();
+                }));
 
             let response = model
                 .call(request)
@@ -266,12 +255,11 @@ async fn manual_prompt_caching_coexists_with_strict_tools() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_prompt_caching().with_strict_tools());
-            let request = CompletionRequestBuilder::new("Call cached_strict with value = manual.")
-                .preamble("Use the strict tool exactly once.".to_string())
+            let request = CompletionRequest::new("Call cached_strict with value = manual.")
+                .preamble("Use the strict tool exactly once.")
                 .max_tokens(1024)
                 .tool_choice(ToolChoice::Required)
-                .tool(strict_value_tool("cached_strict"))
-                .build();
+                .tool(strict_value_tool("cached_strict"));
 
             let response = model
                 .call(request)
@@ -291,12 +279,10 @@ async fn automatic_prompt_caching_coexists_with_strict_tools() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_automatic_caching().with_strict_tools());
-            let request =
-                CompletionRequestBuilder::new("Call cached_strict with value = automatic.")
-                    .max_tokens(1024)
-                    .tool_choice(ToolChoice::Required)
-                    .tool(strict_value_tool("cached_strict"))
-                    .build();
+            let request = CompletionRequest::new("Call cached_strict with value = automatic.")
+                .max_tokens(1024)
+                .tool_choice(ToolChoice::Required)
+                .tool(strict_value_tool("cached_strict"));
 
             let response = model
                 .call(request)
@@ -329,13 +315,11 @@ async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
                            padding about request routing, tool schemas, system instructions, \
                            and deterministic replay behavior. "
                 .repeat(60);
-            let request =
-                CompletionRequestBuilder::new("Call cached_strict with value = static-prefix.")
-                    .preamble(format!("Use the strict tool exactly once.\n{padding}"))
-                    .max_tokens(1024)
-                    .tool_choice(ToolChoice::Required)
-                    .tool(strict_value_tool("cached_strict"))
-                    .build();
+            let request = CompletionRequest::new("Call cached_strict with value = static-prefix.")
+                .preamble(format!("Use the strict tool exactly once.\n{padding}"))
+                .max_tokens(1024)
+                .tool_choice(ToolChoice::Required)
+                .tool(strict_value_tool("cached_strict"));
 
             let response = model
                 .call(request)
@@ -359,12 +343,10 @@ async fn one_hour_automatic_caching_coexists_with_strict_tools() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_automatic_caching_1h().with_strict_tools());
-            let request =
-                CompletionRequestBuilder::new("Call cached_strict with value = one-hour.")
-                    .max_tokens(1024)
-                    .tool_choice(ToolChoice::Required)
-                    .tool(strict_value_tool("cached_strict"))
-                    .build();
+            let request = CompletionRequest::new("Call cached_strict with value = one-hour.")
+                .max_tokens(1024)
+                .tool_choice(ToolChoice::Required)
+                .tool(strict_value_tool("cached_strict"));
 
             let response = model
                 .call(request)
@@ -390,13 +372,11 @@ async fn structured_output_and_strict_tool_use_coexist() {
                 "required": ["summary"]
             }))
             .expect("output schema should parse");
-            let request =
-                CompletionRequestBuilder::new("Call combined_strict with value = combined.")
-                    .max_tokens(1024)
-                    .tool_choice(ToolChoice::Required)
-                    .tool(strict_value_tool("combined_strict"))
-                    .output_schema(output_schema)
-                    .build();
+            let request = CompletionRequest::new("Call combined_strict with value = combined.")
+                .max_tokens(1024)
+                .tool_choice(ToolChoice::Required)
+                .tool(strict_value_tool("combined_strict"))
+                .output_schema(output_schema);
 
             let response = model
                 .call(request)
@@ -418,16 +398,16 @@ async fn parallel_strict_tool_calls_preserve_each_schema() {
         "strict_schema_integrations/parallel_strict_tool_calls_preserve_each_schema",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6).map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Call strict_alpha with value = A and strict_beta with value = B in parallel. Call both tools.",
                 )
-                .preamble("Use every tool requested by the user in the same turn.".to_string())
+                .preamble("Use every tool requested by the user in the same turn.")
                 .max_tokens(2048)
                 .tool_choice(ToolChoice::Auto)
                 .tools(vec![
                     strict_value_tool("strict_alpha"),
                     strict_value_tool("strict_beta"),
-                ]).build();
+                ]);
 
             let response = model
                 .call(request)

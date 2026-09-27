@@ -3,7 +3,7 @@ use std::{sync::Mutex, task::Context};
 use futures::{StreamExt, executor::block_on, task::noop_waker_ref};
 
 use super::*;
-use crate::completion::CompletionRequestBuilder;
+use crate::completion::CompletionRequest;
 use crate::completion::CompletionResponse;
 use crate::streaming::StreamFinal;
 
@@ -494,7 +494,7 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
     for explicit in [false, true] {
         let mut dispatch = Dispatch::new(EffectId::from_raw(1), false)
             .with_observer(Box::new(ProviderObserver(context.clone())));
-        let request = CompletionRequestBuilder::new("hello").build();
+        let request = CompletionRequest::new("hello");
         if explicit {
             dispatch = dispatch.with_adapter_context(AdapterContext::new(
                 direct_log.clone(),

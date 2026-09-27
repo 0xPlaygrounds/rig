@@ -42,16 +42,15 @@ use serde_json::Value;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::raw_capture::capture_completion_pair;
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: parity";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 #[tokio::test]

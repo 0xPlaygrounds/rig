@@ -9,7 +9,7 @@
 //! unknown-variant signal is the sub-frame `part.data` oneof decoding to
 //! `None`.
 
-use rig_core::completion::{CompletionRequest, CompletionRequestBuilder, FinishReason};
+use rig_core::completion::{CompletionRequest, FinishReason};
 use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
@@ -68,7 +68,7 @@ fn driver() -> WireDriver {
                     Err(error) => Err(ProviderError::Http(error)),
                 })
                 .collect();
-            let request: CompletionRequest = CompletionRequestBuilder::new("hello").build();
+            let request: CompletionRequest = CompletionRequest::new("hello");
             let stream = Model::new(
                 GenerateContent::new("gemini-2.5-pro"),
                 Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),

@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::super::support::with_anthropic_cassette;
 use super::messages_strict_tools::{assert_strict_tool_call, strict_tool_call_arguments};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 async fn assert_strict_schema_rejected(
     client: AnthropicModels,
@@ -20,15 +20,14 @@ async fn assert_strict_schema_rejected(
     let model = client
         .completion(anthropic::completion::CLAUDE_SONNET_4_6)
         .map_wire(|wire| wire.with_strict_tools());
-    let request = CompletionRequestBuilder::new(prompt)
+    let request = CompletionRequest::new(prompt)
         .max_tokens(64)
         .tool_choice(ToolChoice::Required)
         .tool(ToolDefinition {
             name: tool_name.to_string(),
             description: "Exercise a schema the strict compiler rejects.".to_string(),
             parameters,
-        })
-        .build();
+        });
     let error = model
         .call(request)
         .await
@@ -1087,10 +1086,10 @@ async fn required_and_optional_property_order_schema_is_accepted() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Call record_order with required_first = yes and optional_last = included.",
             )
-            .preamble("Copy both values exactly into one tool call.".to_string())
+            .preamble("Copy both values exactly into one tool call.")
             .max_tokens(1024)
             .tool_choice(ToolChoice::Required)
             .tool(ToolDefinition {
@@ -1104,8 +1103,7 @@ async fn required_and_optional_property_order_schema_is_accepted() {
                     },
                     "required": ["required_first"]
                 }),
-            })
-            .build();
+            });
 
             let response = model
                 .call(request)

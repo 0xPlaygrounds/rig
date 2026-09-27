@@ -9,7 +9,7 @@ mod support;
 
 use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::{
-    completion::CompletionRequestBuilder,
+    completion::CompletionRequest,
     effect::{EffectKind, HandlerDescriptor},
     serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::ModelAdapter},
 };
@@ -93,7 +93,7 @@ async fn real_vertex_requests_run_on_ecs_workers_and_strictly_resume_with_new_cr
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::new("hello").build(),
+                request: CompletionRequest::new("hello"),
                 stream: false,
             },
         ))
@@ -125,7 +125,7 @@ async fn real_vertex_requests_run_on_ecs_workers_and_strictly_resume_with_new_cr
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::new("again").build(),
+                request: CompletionRequest::new("again"),
                 stream: false,
             },
         ))
@@ -179,7 +179,7 @@ async fn dropping_the_world_cancels_the_real_sdk_rpc() {
     live.world_mut().spawn(PendingEffect::new(
         "model",
         EffectKind::Completion {
-            request: CompletionRequestBuilder::new("held").build(),
+            request: CompletionRequest::new("held"),
             stream: false,
         },
     ));

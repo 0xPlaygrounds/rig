@@ -67,7 +67,7 @@ use crate::support::{
     Adder, Observed, STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assistant_text,
     json_contains_key, normalized_without_raw,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "gemini";
 
@@ -80,32 +80,28 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: capture
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .temperature(0.0)
-        .build()
+    CompletionRequest::new(PROMPT).temperature(0.0)
 }
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
 /// `allowedFunctionNames`), so the recorded turn is a `functionCall` part.
 fn forced_tool_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .temperature(0.0)
         .tool(rig::tool::tool_definition(&Adder))
         .tool_choice(ToolChoice::Specific {
             function_names: vec![Adder::NAME.to_string()],
         })
-        .build()
 }
 
 /// The structured-output request: rig maps `output_schema` onto
 /// `generationConfig.responseMimeType: application/json` +
 /// `responseJsonSchema`, Gemini's native structured-output controls.
 fn structured_output_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(STRUCTURED_OUTPUT_PROMPT)
+    CompletionRequest::new(STRUCTURED_OUTPUT_PROMPT)
         .temperature(0.0)
         .output_schema(schemars::schema_for!(SmokeStructuredOutput))
-        .build()
 }
 
 /// The premise every cell rests on: the recorded body is a `generateContent`

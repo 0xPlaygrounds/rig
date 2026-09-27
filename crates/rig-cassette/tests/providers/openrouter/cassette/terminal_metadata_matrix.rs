@@ -44,7 +44,7 @@ use serde_json::{Value, json};
 
 use super::super::support::with_openrouter_terminal_metadata_cassette_result;
 use crate::support::assert_matches_recorded_document;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -130,13 +130,13 @@ fn model_name(model: ModelVariant) -> &'static str {
 
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.completion(model_name(cell.model));
-    let mut builder = CompletionRequestBuilder::new(prompt(cell))
+    let mut builder = CompletionRequest::new(prompt(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));
     if cell.shape == Shape::Tool {
         builder = builder.tool(rig::tool::tool_definition(&crate::support::Adder));
     }
-    let request = builder.build();
+    let request = builder;
 
     let raw = match cell.transport {
         Transport::Blocking => {

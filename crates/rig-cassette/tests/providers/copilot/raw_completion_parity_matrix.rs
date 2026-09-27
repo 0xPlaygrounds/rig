@@ -55,7 +55,7 @@ use crate::cassettes::{recorded_interaction_bodies, recorded_response_header};
 use crate::copilot::with_copilot_cassette_result;
 use crate::raw_capture::{assert_contracted_request_id, capture_completion, chat, responses};
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
@@ -64,7 +64,7 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
+    CompletionRequest::new(PROMPT).max_tokens(64)
 }
 
 /// The `x-request-id` interaction `index` of the scenario recorded. The

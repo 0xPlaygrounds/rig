@@ -11,7 +11,6 @@ use rig_agent::test_utils::{
 use rig_candle::{CandleCompletionResponse, CandleModel, Generation, ModelArtifacts, ModelData};
 use rig_core::Model;
 use rig_core::completion::CompletionRequest;
-use rig_core::completion::CompletionRequestBuilder;
 
 static MODEL: OnceLock<Result<CandleModel, String>> = OnceLock::new();
 
@@ -79,10 +78,9 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
     let simple = tokio::time::timeout(Duration::from_secs(300), async {
         raw_completion(
             &loaded_model,
-            CompletionRequestBuilder::new("Answer with only the capital of France.")
+            CompletionRequest::new("Answer with only the capital of France.")
                 .temperature(0.0)
-                .max_tokens(32)
-                .build(),
+                .max_tokens(32),
         )
         .await
     })

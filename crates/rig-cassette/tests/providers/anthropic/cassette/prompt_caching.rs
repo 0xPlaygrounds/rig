@@ -17,7 +17,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const CACHE_PROBE_RESPONSE: &str = "cache probe ready";
 const CACHE_PROBE_PROMPT: &str =
@@ -300,7 +300,7 @@ async fn send_matrix_raw_probe(
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> anthropic::completion::CompletionResponse {
-    let mut builder = CompletionRequestBuilder::new(CACHE_PROBE_PROMPT)
+    let mut builder = CompletionRequest::new(CACHE_PROBE_PROMPT)
         .preamble(preamble)
         .temperature(0.0)
         .max_tokens(16);
@@ -308,7 +308,7 @@ async fn send_matrix_raw_probe(
         builder = builder.tools(tools).tool_choice(ToolChoice::None);
     }
     let response = model
-        .call(builder.build())
+        .call(builder)
         .await
         .expect("matrix Anthropic request should succeed");
     anthropic::completion::CompletionResponse::deserialize(&response.raw)
@@ -338,7 +338,7 @@ async fn send_matrix_streaming_probe(
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> StreamingCacheProbeResponse {
-    let mut builder = CompletionRequestBuilder::new(STREAMING_CACHE_PROBE_PROMPT)
+    let mut builder = CompletionRequest::new(STREAMING_CACHE_PROBE_PROMPT)
         .preamble(preamble)
         .temperature(0.0)
         .max_tokens(16);
@@ -348,7 +348,7 @@ async fn send_matrix_streaming_probe(
         }));
     }
     let mut stream = model
-        .stream(builder.build())
+        .stream(builder)
         .expect("streaming matrix Anthropic request should start");
     let mut text = String::new();
     let mut usage = None;
@@ -1253,10 +1253,9 @@ async fn static_prefix_5m_with_automatic_1h_errors_client_side() {
     let model = matrix_model(&client, CachingMode::Automatic1h, PREFIX_5M);
     let error = model
         .call(
-            CompletionRequestBuilder::new(CACHE_PROBE_PROMPT)
+            CompletionRequest::new(CACHE_PROBE_PROMPT)
                 .preamble(cache_probe_preamble_for("illegal inversion"))
-                .max_tokens(16)
-                .build(),
+                .max_tokens(16),
         )
         .await
         .expect_err("5m static prefix under a 1h top-level TTL must fail client-side");
@@ -1276,10 +1275,9 @@ async fn static_prefix_5m_with_manual_automatic_1h_errors_client_side_streaming(
     let model = matrix_model(&client, CachingMode::ManualAutomatic1h, PREFIX_5M);
     let error = model
         .stream(
-            CompletionRequestBuilder::new(STREAMING_CACHE_PROBE_PROMPT)
+            CompletionRequest::new(STREAMING_CACHE_PROBE_PROMPT)
                 .preamble(cache_probe_preamble_for("illegal inversion streaming"))
-                .max_tokens(16)
-                .build(),
+                .max_tokens(16),
         )
         .err()
         .expect("5m static prefix under a 1h top-level TTL must fail client-side");
@@ -1302,7 +1300,7 @@ async fn static_prefix_with_explicit_tool_marker_at_marker_limit() {
             let model = matrix_model(&client, CachingMode::Automatic, PREFIX_1H);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(CACHE_PROBE_PROMPT)
+                    CompletionRequest::new(CACHE_PROBE_PROMPT)
                         .preamble(cache_probe_preamble_for("marker budget at the limit"))
                         .tools(cache_probe_tools_for("marker budget at the limit"))
                         .tool_choice(ToolChoice::None)
@@ -1320,8 +1318,7 @@ async fn static_prefix_with_explicit_tool_marker_at_marker_limit() {
                             }]
                         }))
                         .temperature(0.0)
-                        .max_tokens(16)
-                        .build(),
+                        .max_tokens(16),
                 )
                 .await
                 .expect("request at the 4-marker limit should succeed");
@@ -1351,11 +1348,10 @@ async fn static_prefix_with_excess_explicit_tool_markers_errors_client_side() {
         .collect();
     let error = model
         .call(
-            CompletionRequestBuilder::new(CACHE_PROBE_PROMPT)
+            CompletionRequest::new(CACHE_PROBE_PROMPT)
                 .preamble(cache_probe_preamble_for("marker budget over limit"))
                 .additional_params(json!({ "tools": provider_tools }))
-                .max_tokens(16)
-                .build(),
+                .max_tokens(16),
         )
         .await
         .expect_err("explicit markers beyond the budget must fail client-side");
@@ -1373,13 +1369,12 @@ async fn send_cache_probe(
 ) -> RigCompletionResponse {
     model
         .call(
-            CompletionRequestBuilder::new(prompt)
+            CompletionRequest::new(prompt)
                 .preamble(preamble)
                 .tools(tools)
                 .tool_choice(ToolChoice::None)
                 .temperature(0.0)
-                .max_tokens(16)
-                .build(),
+                .max_tokens(16),
         )
         .await
         .expect("prompt-cached Anthropic request should succeed")
@@ -1398,15 +1393,14 @@ async fn send_streaming_cache_probe(
 ) -> StreamingCacheProbeResponse {
     let mut stream = model
         .stream(
-            CompletionRequestBuilder::new(prompt)
+            CompletionRequest::new(prompt)
                 .preamble(preamble)
                 .tools(tools)
                 .additional_params(json!({
                     "tool_choice": { "type": "none" }
                 }))
                 .temperature(0.0)
-                .max_tokens(16)
-                .build(),
+                .max_tokens(16),
         )
         .expect("streaming prompt-cached Anthropic request should start");
     let mut text = String::new();

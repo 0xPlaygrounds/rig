@@ -12,7 +12,7 @@ use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
     collect_stream_final_response_and_provider_final,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn streaming_smoke() {
@@ -89,9 +89,8 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
         "streaming/final_metadata_exposes_finish_reason_and_model_version",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new("Reply with exactly: final metadata ok")
-                .temperature(0.0)
-                .build();
+            let request =
+                CompletionRequest::new("Reply with exactly: final metadata ok").temperature(0.0);
             let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
@@ -143,9 +142,8 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request =
-                CompletionRequestBuilder::new("Reply with exactly: contentless final metadata ok")
-                    .temperature(0.0)
-                    .build();
+                CompletionRequest::new("Reply with exactly: contentless final metadata ok")
+                    .temperature(0.0);
             let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();

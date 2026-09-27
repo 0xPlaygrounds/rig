@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -306,11 +306,9 @@ async fn long_history_replay_nonstreaming() {
 
             // First turn: obtain a real tool call so the follow-up can echo
             // its call_id back, the way a caller-owned history would.
-            let first_request =
-                CompletionRequestBuilder::new("Look up the harbor label with the tool.")
-                    .preamble(preamble.to_string())
-                    .tool(rig::tool::tool_definition(&AlphaSignal))
-                    .build();
+            let first_request = CompletionRequest::new("Look up the harbor label with the tool.")
+                .preamble(preamble.to_string())
+                .tool(rig::tool::tool_definition(&AlphaSignal));
             let first_response = model
                 .call(first_request)
                 .await
@@ -332,7 +330,7 @@ async fn long_history_replay_nonstreaming() {
             // roundtrip. The tool call is re-tagged with a local item ID (not
             // the provider's `fc_...` ID) — the request must still be accepted
             // because non-native IDs are omitted and calls pair by call_id.
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
             )
@@ -358,8 +356,7 @@ async fn long_history_replay_nonstreaming() {
                 vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             )))
             .message(Message::assistant("The harbor label is crimson-harbor."))
-            .tool(rig::tool::tool_definition(&AlphaSignal))
-            .build();
+            .tool(rig::tool::tool_definition(&AlphaSignal));
 
             let response = model
                 .call(request)

@@ -46,7 +46,7 @@ use serde_json::Value;
 use super::super::support::{with_gemini_cassette, with_gemini_interactions_cassette};
 use crate::raw_capture::{assert_no_request_id, capture_completion_pair};
 use crate::support::{Observed, assistant_text};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "gemini";
 const REST_MODEL: &str = "gemini-2.5-flash-lite";
@@ -57,9 +57,7 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: parity"
 /// seam is what makes "the same bytes went out twice" a claim about `encode`
 /// rather than about the cell.
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .temperature(0.0)
-        .build()
+    CompletionRequest::new(PROMPT).temperature(0.0)
 }
 
 /// The parity a caller can rely on across two turns of identical bytes:

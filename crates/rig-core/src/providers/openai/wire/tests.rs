@@ -105,7 +105,7 @@ fn a_gateway_configuration_round_trips_without_its_credential() {
 /// The endpoint template a wire's encoded request declares.
 fn route_of(wire: &OpenAiWire) -> Option<&'static str> {
     use crate::wire::Wire as _;
-    let request = crate::completion::CompletionRequestBuilder::new("hi").build();
+    let request = crate::completion::CompletionRequest::new("hi");
     wire.encode(request, crate::wire::Mode::Unary)
         .expect("the request encodes")
         .route

@@ -44,13 +44,12 @@ use super::super::DEFAULT_MODEL;
 use super::super::support::with_openrouter_cassette_result;
 use crate::raw_capture::{assert_no_request_id, capture_text_and_terminal, chat};
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
+    CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
 // ================================================================

@@ -6,7 +6,6 @@ use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_cohere_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
-use rig::wire::Wire;
 
 const PNG_2X2: &str = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACAQMAAABIeJ9nAAAAA1BMVEX/AAAZ4gk3AAAADElEQVQI12NgYGAAAAAEAAEnNCcKAAAAAElFTkSuQmCC";
 const GIF_2X2: &str = "R0lGODlhAgACAPAAAAAA/wAAACH5BAAAAAAALAAAAAACAAIAAAIChFEAOw==";
@@ -23,14 +22,14 @@ async fn embed_texts_smoke() {
         let model = client
             .embedding(cohere::EMBED_V4, None)
             .map_wire(|wire| wire.with_input_type("search_document"));
-        assert_eq!(model.wire.capabilities().ndims, 1536);
+        assert_eq!(model.capabilities().ndims, 1536);
 
         let embeddings = model
             .call(
                 EMBEDDING_INPUTS
                     .iter()
                     .map(|input| (*input).to_string())
-                    .collect(),
+                    .collect::<Vec<_>>(),
             )
             .await
             .map(|response| response.embeddings)
@@ -47,7 +46,7 @@ async fn embed_search_query_smoke() {
         let model = client
             .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
             .map_wire(|wire| wire.with_input_type("search_query"));
-        assert_eq!(model.wire.capabilities().ndims, 384);
+        assert_eq!(model.capabilities().ndims, 384);
 
         let embeddings = model
             .call(vec!["Where can I find coffee near the office?".to_string()])
@@ -68,7 +67,7 @@ async fn embed_classification_smoke() {
             let model = client
                 .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
                 .map_wire(|wire| wire.with_input_type("classification"));
-            assert_eq!(model.wire.capabilities().ndims, 384);
+            assert_eq!(model.capabilities().ndims, 384);
 
             let embeddings = model
                 .call(vec![
@@ -88,8 +87,8 @@ async fn embed_classification_smoke() {
 async fn embed_image_smoke() {
     with_cohere_cassette("embeddings/embed_image_smoke", |client| async move {
         let model = client.image_embedding();
-        assert_eq!(model.wire.capabilities().ndims, 1024);
-        assert_eq!(model.wire.capabilities().max_documents, 1);
+        assert_eq!(model.capabilities().ndims, 1024);
+        assert_eq!(model.capabilities().max_documents, 1);
 
         let response = model
             .call(vec![decode_image(PNG_2X2)])

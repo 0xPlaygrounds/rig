@@ -66,17 +66,16 @@ use super::super::support::with_bedrock_cassette;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{Observed, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 /// Answers every Converse request with one stored reply.

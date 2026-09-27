@@ -64,7 +64,7 @@ use super::super::support::{
 
 use crate::raw_capture::{capture_terminal, stream_normalized_without_raw};
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const ANTHROPIC_PROVIDER: &str = "anthropic";
 const PROMPT: &str = "Reply with exactly: raw stream capture probe";
@@ -89,16 +89,15 @@ const TOOL_USE_SCENARIO: &str =
     "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream";
 
 fn probe_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(32).build()
+    CompletionRequest::new(PROMPT).max_tokens(32)
 }
 
 /// From `reasoning_usage_matrix.rs`: extended thinking on, minimum budget,
 /// `max_tokens` above it as Anthropic requires.
 fn thinking_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(THINKING_PROMPT)
+    CompletionRequest::new(THINKING_PROMPT)
         .max_tokens(2048)
         .additional_params(json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }))
-        .build()
 }
 
 /// From `empty_stop_sequence_matrix.rs`.
@@ -117,11 +116,10 @@ fn weather_tool() -> ToolDefinition {
 /// `tool_choice: required` (Anthropic `any`) so the turn is a `tool_use`
 /// terminal by construction, not by the model's mood.
 fn tool_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .max_tokens(256)
         .tool(weather_tool())
         .tool_choice(ToolChoice::Required)
-        .build()
 }
 
 /// What a cell observed on the stream: every non-terminal item, and the
@@ -403,10 +401,9 @@ async fn raw_exposes_stop_sequence() {
         move |client| async move {
             capture_terminal(
                 client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
+                CompletionRequest::new(IMMEDIATE_PROMPT)
                     .max_tokens(32)
-                    .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                    .build(),
+                    .additional_params(json!({ "stop_sequences": ["alpha"] })),
                 sink,
             )
             .await
@@ -762,5 +759,65 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
             .map(|provider| provider.call_id.clone())],
         std::slice::from_ref(&recorded_tool_id),
         TOOL_USE_SCENARIO,
+    );
+}
+
+/// `updates()` over a streamed Anthropic turn that thinks, then answers: the
+/// stream keeps the index contract, the reasoning part's deltas are the
+/// recorded `thinking_delta` text and the text part's the recorded
+/// `text_delta` text, both read from the cassette's frames.
+#[tokio::test]
+async fn updates_carry_reasoning_then_text_for_a_thinking_stream() {
+    let sink = Observed::default();
+    with_anthropic_cassette(
+        "raw_stream_capture_matrix/terminal_raw_round_trips_for_thinking_stream",
+        {
+            let sink = sink.clone();
+            move |client: AnthropicModels| async move {
+                let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+                let mut stream = model
+                    .stream(thinking_request())
+                    .expect("stream should open");
+                sink.put(rig_test_support::updates::collect_updates(&mut stream).await);
+            }
+        },
+    )
+    .await;
+    let updates = sink.take();
+    let (_, parts) = rig_test_support::updates::assert_update_contract(&updates);
+
+    let frames = recorded_frames(THINKING_SCENARIO);
+    let recorded = |kind: &str, field: &str| -> String {
+        frames
+            .iter()
+            .filter(|frame| {
+                frame["type"] == "content_block_delta" && frame["delta"]["type"] == kind
+            })
+            .filter_map(|frame| frame["delta"][field].as_str())
+            .collect()
+    };
+    let delivered = |kind: rig::streaming::PartKind| -> String {
+        parts
+            .iter()
+            .filter(|part| part.kind == kind)
+            .map(|part| part.text.as_str())
+            .collect()
+    };
+    let thinking = recorded("thinking_delta", "thinking");
+    assert!(!thinking.is_empty(), "premise: the recording thinks");
+    assert_eq!(delivered(rig::streaming::PartKind::Reasoning), thinking);
+    assert_eq!(
+        delivered(rig::streaming::PartKind::Text),
+        recorded("text_delta", "text")
+    );
+    let first_reasoning = parts
+        .iter()
+        .position(|part| part.kind == rig::streaming::PartKind::Reasoning);
+    let first_text = parts
+        .iter()
+        .position(|part| part.kind == rig::streaming::PartKind::Text);
+    assert!(
+        first_reasoning < first_text,
+        "the reasoning part comes first"
     );
 }

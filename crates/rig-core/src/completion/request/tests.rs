@@ -1,5 +1,5 @@
 use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
-use crate::completion::CompletionRequestBuilder;
+use crate::completion::CompletionRequest;
 use crate::message::AssistantContent;
 use crate::{http_client, provider_response};
 
@@ -355,7 +355,7 @@ use super::*;
 
 #[test]
 fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
-    let default_request = CompletionRequestBuilder::new("completion prompt").build();
+    let default_request = CompletionRequest::new("completion prompt");
     assert!(!default_request.record_telemetry_content);
 
     let default_json = serde_json::to_value(&default_request).expect("serialize request");
@@ -367,9 +367,7 @@ fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
         serde_json::from_value(default_json).expect("deserialize default request");
     assert!(!default_roundtrip.record_telemetry_content);
 
-    let opt_in_request = CompletionRequestBuilder::new("completion prompt")
-        .record_content_telemetry(true)
-        .build();
+    let opt_in_request = CompletionRequest::new("completion prompt").record_content_telemetry(true);
     assert!(opt_in_request.record_telemetry_content);
 
     let opt_in_json = serde_json::to_value(&opt_in_request).expect("serialize opt-in request");
@@ -435,12 +433,12 @@ fn test_document(id: &str, text: &str) -> Document {
 
 #[test]
 fn message_telemetry_includes_normalized_documents() {
-    let builder = CompletionRequestBuilder::new("prompt")
-        .preamble("system".to_string())
+    let request = CompletionRequest::new("prompt")
+        .preamble("system")
         .message(Message::user("history"))
         .document(test_document("doc1", "static context secret"));
 
-    let messages = builder.messages_for_telemetry();
+    let messages = request.messages_for_telemetry();
     assert_eq!(messages.len(), 4);
     assert!(matches!(messages[0], Message::System { .. }));
     assert!(is_document_message(&messages[1], "doc1"));
@@ -455,7 +453,6 @@ fn message_telemetry_includes_normalized_documents() {
             if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "prompt")
     ));
 
-    let request = builder.build();
     assert_eq!(messages, request.chat_history_with_documents());
 }
 
@@ -569,10 +566,9 @@ fn test_normalize_documents_without_documents() {
 
 #[test]
 fn preamble_builder_funnels_to_system_message() {
-    let request = CompletionRequestBuilder::new(Message::user("Prompt"))
-        .preamble("System prompt".to_string())
-        .message(Message::user("History"))
-        .build();
+    let request = CompletionRequest::new(Message::user("Prompt"))
+        .preamble("System prompt")
+        .message(Message::user("History"));
 
     let history = request.chat_history.into_iter().collect::<Vec<_>>();
     assert_eq!(history.len(), 3);
@@ -586,10 +582,9 @@ fn preamble_builder_funnels_to_system_message() {
 
 #[test]
 fn build_places_documents_after_preamble_system_message() {
-    let request = CompletionRequestBuilder::new(Message::user("Prompt"))
-        .preamble("System prompt".to_string())
-        .document(test_document("doc1", "Document text."))
-        .build();
+    let request = CompletionRequest::new(Message::user("Prompt"))
+        .preamble("System prompt")
+        .document(test_document("doc1", "Document text."));
 
     assert_eq!(request.documents.len(), 1);
 
@@ -606,13 +601,12 @@ fn build_places_documents_after_preamble_system_message() {
 
 #[test]
 fn build_places_documents_after_leading_system_messages_before_prior_history() {
-    let request = CompletionRequestBuilder::new(Message::user("Prompt"))
+    let request = CompletionRequest::new(Message::user("Prompt"))
         .message(Message::system("System one"))
         .message(Message::system("System two"))
         .message(Message::user("Earlier user turn"))
         .message(Message::assistant("Earlier assistant turn"))
-        .document(test_document("doc1", "Document text."))
-        .build();
+        .document(test_document("doc1", "Document text."));
 
     let history = request.chat_history_with_documents();
     let history = history.iter().collect::<Vec<_>>();
@@ -633,10 +627,9 @@ fn build_places_documents_after_leading_system_messages_before_prior_history() {
 
 #[test]
 fn build_without_documents_keeps_message_order_unchanged() {
-    let request = CompletionRequestBuilder::new(Message::user("Prompt"))
+    let request = CompletionRequest::new(Message::user("Prompt"))
         .message(Message::system("System prompt"))
-        .message(Message::user("Earlier user turn"))
-        .build();
+        .message(Message::user("Earlier user turn"));
 
     let history = request.chat_history.iter().collect::<Vec<_>>();
     assert_eq!(history.len(), 3);
@@ -889,18 +882,16 @@ mod additional_params_precedence {
     /// than replacing it; `None` clears, like every other folded setter.
     #[test]
     fn additional_params_merges_and_none_clears() {
-        let request = crate::completion::CompletionRequestBuilder::new("p")
+        let request = crate::completion::CompletionRequest::new("p")
             .additional_params(json!({"a": 1}))
             .additional_params(json!({"b": 2}))
-            .temperature(None)
-            .build();
+            .temperature(None);
         assert_eq!(request.additional_params, Some(json!({"a": 1, "b": 2})));
         assert_eq!(request.temperature, None);
-        let cleared = crate::completion::CompletionRequestBuilder::new("p")
+        let cleared = crate::completion::CompletionRequest::new("p")
             .additional_params(json!({"a": 1}))
             .additional_params(None)
-            .additional_params(json!({"b": 2}))
-            .build();
+            .additional_params(json!({"b": 2}));
         assert_eq!(cleared.additional_params, Some(json!({"b": 2})));
     }
 }

@@ -69,7 +69,6 @@ use serde_json::{Value, json};
 use super::super::support::with_openai_cassette_result;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion, chat, responses};
 use crate::support::{Observed, assert_matches_recorded_token, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
@@ -87,10 +86,9 @@ const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 const STRUCTURED_PROMPT: &str = "Put the single word pong in the `word` field.";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 /// The reasoning request shape the `reasoning_roundtrip` module uses
@@ -98,11 +96,9 @@ fn request() -> CompletionRequest {
 /// carries `summary` as well as the `encrypted_content` the provider adds to
 /// `include` on every reasoning request.
 fn reasoning_request() -> CompletionRequest {
-    CompletionRequestBuilder::new(REASONING_PROMPT)
-        .additional_params(json!({
-            "reasoning": { "effort": "medium", "summary": "auto" }
-        }))
-        .build()
+    CompletionRequest::new(REASONING_PROMPT).additional_params(json!({
+        "reasoning": { "effort": "medium", "summary": "auto" }
+    }))
 }
 
 fn ping_tool() -> ToolDefinition {
@@ -116,12 +112,11 @@ fn ping_tool() -> ToolDefinition {
 /// The forced tool call `raw_completion_parity_matrix` records: `required`
 /// leaves the model no text-only exit.
 fn tool_request() -> CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .tool(ping_tool())
         .tool_choice(ToolChoice::Required)
         .temperature(0.0)
         .max_tokens(64)
-        .build()
 }
 
 /// The structured-output schema: one required string field, so the chat
@@ -132,11 +127,10 @@ struct Answer {
 }
 
 fn structured_request() -> CompletionRequest {
-    CompletionRequestBuilder::new(STRUCTURED_PROMPT)
+    CompletionRequest::new(STRUCTURED_PROMPT)
         .output_schema(schemars::schema_for!(Answer))
         .temperature(0.0)
         .max_tokens(32)
-        .build()
 }
 
 /// The premise shared by every chat cell: the recorded turn completed the way

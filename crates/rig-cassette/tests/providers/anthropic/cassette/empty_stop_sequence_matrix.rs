@@ -67,7 +67,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_empty_stop_cassette};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// Asks for exactly one word so a stop sequence naming that word matches
 /// before the model emits anything else.
@@ -83,10 +83,9 @@ fn request(
     stop_sequences: &[&str],
     max_tokens: u64,
 ) -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(prompt)
+    CompletionRequest::new(prompt)
         .max_tokens(max_tokens)
         .additional_params(json!({ "stop_sequences": stop_sequences }))
-        .build()
 }
 
 fn weather_tool() -> ToolDefinition {
@@ -426,11 +425,10 @@ async fn with_preamble_empty_stop() {
         "empty_stop_sequence_matrix/with_preamble_empty_stop",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
-                .preamble("You follow formatting instructions exactly.".to_string())
+            let request = CompletionRequest::new(IMMEDIATE_PROMPT)
+                .preamble("You follow formatting instructions exactly.")
                 .max_tokens(32)
-                .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                .build();
+                .additional_params(json!({ "stop_sequences": ["alpha"] }));
             let response = model
                 .call(request)
                 .await
@@ -449,11 +447,10 @@ async fn with_tools_empty_stop() {
         "empty_stop_sequence_matrix/with_tools_empty_stop",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
+            let request = CompletionRequest::new(IMMEDIATE_PROMPT)
                 .max_tokens(32)
                 .tool(weather_tool())
-                .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                .build();
+                .additional_params(json!({ "stop_sequences": ["alpha"] }));
             let response = model
                 .call(request)
                 .await

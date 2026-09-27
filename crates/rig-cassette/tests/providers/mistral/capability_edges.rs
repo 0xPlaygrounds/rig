@@ -17,10 +17,9 @@ use rig::streaming::Delta;
 use anyhow::Result;
 use futures::StreamExt;
 use rig::providers::mistral;
-use rig::wire::Wire;
 
 use super::support::with_mistral_capability_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// One more than Mistral's real per-request cap, so a single un-chunked
 /// request would be rejected and only correct chunking can succeed.
@@ -38,7 +37,7 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
                 .call(
                     (0..OVER_ONE_BATCH)
                         .map(|i| format!("document {i}"))
-                        .collect(),
+                        .collect::<Vec<_>>(),
                 )
                 .await
                 .map(|response| response.embeddings)
@@ -61,7 +60,7 @@ async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
             // The claim under test is the *declared* dimension; the live call
             // is what proves the declaration matches the vectors Mistral
             // actually returns.
-            let declared = model.wire.capabilities().ndims;
+            let declared = model.capabilities().ndims;
             let embedding = model.embed_text("dimension probe").await?;
             assert_declared_matches_returned(declared, embedding.vec.len());
             Ok::<_, anyhow::Error>(())
@@ -131,11 +130,10 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
         |client| async move {
             let model = client.completion(mistral::MISTRAL_SMALL);
             let mut stream: rig::streaming::CompletionStream = model.stream(
-                CompletionRequestBuilder::new("Say one random word.")
+                CompletionRequest::new("Say one random word.")
                     .temperature(1.0)
                     .max_tokens(8)
-                    .additional_params(serde_json::json!({"n": 2}))
-                    .build(),
+                    .additional_params(serde_json::json!({"n": 2})),
             )?;
 
             let mut text = String::new();
@@ -239,15 +237,14 @@ async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<(
             let model = client.completion(mistral::MISTRAL_SMALL);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new("Add 2 and 3, then report the total.")
-                        .preamble("Use the add tool, then report the total.".to_string())
+                    CompletionRequest::new("Add 2 and 3, then report the total.")
+                        .preamble("Use the add tool, then report the total.")
                         .messages(turn_one_history())
                         .tools(vec![add_tool_definition()])
                         .tool_choice(rig::message::ToolChoice::Required)
                         .output_schema(schemars::schema_for!(SumReport))
                         .temperature(0.0)
-                        .max_tokens(64)
-                        .build(),
+                        .max_tokens(64),
                 )
                 .await?;
 

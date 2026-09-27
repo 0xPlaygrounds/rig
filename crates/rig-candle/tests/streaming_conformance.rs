@@ -10,7 +10,7 @@ use rig_candle::{
     CandleCompletionResponse, CandleFrame, FinishReason as CandleFinishReason, Generation,
     GenerationEvent,
 };
-use rig_core::completion::{CompletionRequest, CompletionRequestBuilder, FinishReason};
+use rig_core::completion::{CompletionRequest, FinishReason};
 use rig_core::driver::{Model, Observation, Opened, Transport};
 use rig_core::error::ProviderError;
 use rig_core::streaming::{BlockId, ToolCallEnd};
@@ -72,7 +72,7 @@ fn driver() -> WireDriver {
                 Generation,
                 Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
             )
-            .stream(CompletionRequestBuilder::new("hello").build())?;
+            .stream(CompletionRequest::new("hello"))?;
             Ok(drain(stream).await)
         })
     })

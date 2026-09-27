@@ -3,7 +3,6 @@ use serde_json::json;
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
-use rig::wire::Wire;
 use rig::{
     embeddings::EmbeddingsBuilder, prelude::*, providers::openai, vector_store::VectorStoreIndex,
 };
@@ -141,7 +140,7 @@ async fn vector_search_test() {
     } else {
         db.create_table(
             table_name,
-            vec![as_record_batch(embeddings, model.wire.capabilities().ndims).unwrap()],
+            vec![as_record_batch(embeddings, model.capabilities().ndims).unwrap()],
         )
         .execute()
         .await
@@ -356,7 +355,7 @@ async fn agent_with_dynamic_context_test() {
     } else {
         db.create_table(
             table_name,
-            vec![as_record_batch(embeddings, model.wire.capabilities().ndims).unwrap()],
+            vec![as_record_batch(embeddings, model.capabilities().ndims).unwrap()],
         )
         .execute()
         .await

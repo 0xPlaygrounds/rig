@@ -27,7 +27,7 @@ use crate::{
     completion::{AssistantContent, Message, PromptError, ToolDefinition},
     tool::{Tool, ToolContext},
 };
-use rig_core::completion::CompletionRequestBuilder;
+use rig_core::completion::CompletionRequest;
 use rig_core::error::ProviderError;
 use rig_core::message::{ToolChoice, UserContent};
 
@@ -1249,10 +1249,9 @@ where
     const PROMPT: &str = "Answer with exactly the single word Paris.";
     let started = Instant::now();
     let request = || {
-        CompletionRequestBuilder::new(PROMPT)
+        CompletionRequest::new(PROMPT)
             .temperature(0.0)
             .max_tokens(32)
-            .build()
     };
     let buffered = model.call(request()).await?;
     let buffered_text = buffered
@@ -1966,12 +1965,11 @@ where
     let started = Instant::now();
     let none = model
         .call(
-            CompletionRequestBuilder::new("Answer with only the number 4. Do not call a function.")
+            CompletionRequest::new("Answer with only the number 4. Do not call a function.")
                 .tools(tools.clone())
                 .tool_choice(ToolChoice::None)
                 .temperature(0.0)
-                .max_tokens(64)
-                .build(),
+                .max_tokens(64),
         )
         .await?;
     if none
@@ -1987,12 +1985,11 @@ where
 
     let required = model
         .call(
-            CompletionRequestBuilder::new("Call alpha with value 7.")
+            CompletionRequest::new("Call alpha with value 7.")
                 .tools(tools.clone())
                 .tool_choice(ToolChoice::Required)
                 .temperature(0.0)
-                .max_tokens(96)
-                .build(),
+                .max_tokens(96),
         )
         .await?;
     let required_calls = required
@@ -2009,14 +2006,13 @@ where
 
     let specific = model
         .call(
-            CompletionRequestBuilder::new("Call beta with value 9.")
+            CompletionRequest::new("Call beta with value 9.")
                 .tools(tools)
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["beta".to_string()],
                 })
                 .temperature(0.0)
-                .max_tokens(96)
-                .build(),
+                .max_tokens(96),
         )
         .await?;
     let specific_calls = specific

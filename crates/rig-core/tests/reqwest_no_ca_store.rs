@@ -20,7 +20,7 @@
 
 use futures::StreamExt;
 use rig_core::Model;
-use rig_core::completion::CompletionRequestBuilder;
+use rig_core::completion::CompletionRequest;
 use rig_core::error::{ErrorKind, ProviderError};
 use rig_core::providers::openai::OpenAIConfig;
 
@@ -40,7 +40,7 @@ async fn the_shared_transport_reports_a_missing_ca_store_on_send() {
     let model = OpenAIConfig::new("test-key")
         .connect(rig_reqwest::shared())
         .completion("gpt-5.2");
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
     let outcome = match model.call(request.clone()).await {
         Err(ProviderError::Http(error)) => error.to_string(),
         Err(other) => format!("wrong variant: {other}"),

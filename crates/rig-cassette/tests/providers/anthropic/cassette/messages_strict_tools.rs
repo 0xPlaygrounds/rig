@@ -11,7 +11,7 @@ use rig_test_support::cassette_models::MapWire;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 pub(super) async fn assert_strict_tool_call(
     client: AnthropicModels,
@@ -33,7 +33,7 @@ pub(super) async fn strict_tool_call_arguments(
     let model = client
         .completion(anthropic::completion::CLAUDE_SONNET_4_6)
         .map_wire(|wire| wire.with_strict_tools());
-    let request = CompletionRequestBuilder::new(prompt)
+    let request = CompletionRequest::new(prompt)
         .preamble(
             "Call the supplied tool exactly once and follow the requested argument shape."
                 .to_string(),
@@ -44,8 +44,7 @@ pub(super) async fn strict_tool_call_arguments(
             name: tool_name.to_string(),
             description: "Record the exact structured arguments requested by the user.".to_string(),
             parameters,
-        })
-        .build();
+        });
 
     let response = model
         .call(request)
@@ -77,10 +76,10 @@ async fn strict_tools_opt_in_roundtrip() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Call record_booking exactly once with passengers = 2 and cabin = economy.",
             )
-            .preamble("Follow the tool-calling instruction exactly.".to_string())
+            .preamble("Follow the tool-calling instruction exactly.")
             .max_tokens(1024)
             .tool_choice(ToolChoice::Required)
             .tool(ToolDefinition {
@@ -98,8 +97,7 @@ async fn strict_tools_opt_in_roundtrip() {
                     "required": ["passengers", "cabin"],
                     "additionalProperties": false
                 }),
-            })
-            .build();
+            });
 
             let response = model
                 .call(request)

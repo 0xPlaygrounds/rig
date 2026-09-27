@@ -4,7 +4,7 @@ use anyhow::Context;
 use futures::StreamExt;
 use rig::candle::CandleCompletionResponse;
 use rig::candle::{CandleModel, ModelData};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig::streaming::{Delta, StreamEvent};
 
 #[tokio::main]
@@ -27,11 +27,10 @@ async fn main() -> anyhow::Result<()> {
         weights: std::fs::read(model_dir.join("model.gguf"))?,
     })?;
     let model = candle.completion();
-    let request = CompletionRequestBuilder::new(prompt)
-        .preamble("You are a concise and helpful assistant.".to_string())
+    let request = CompletionRequest::new(prompt)
+        .preamble("You are a concise and helpful assistant.")
         .temperature(0.0)
-        .max_tokens(64)
-        .build();
+        .max_tokens(64);
 
     // The local generation metrics printed below (throughput, prefill time,
     // time-to-first-token) are Candle's own — Rig's normalized `StreamFinal`

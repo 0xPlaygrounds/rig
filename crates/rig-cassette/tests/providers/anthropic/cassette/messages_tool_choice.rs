@@ -14,7 +14,7 @@ use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{Adder, Subtract, TOOLS_PREAMBLE};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn tool_call_names(choice: &[AssistantContent]) -> Vec<String> {
     choice
@@ -32,12 +32,11 @@ async fn required_maps_to_any_and_forces_tool_use() {
         "messages_tool_choice/required_maps_to_any_and_forces_tool_use",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequestBuilder::new("Please greet me.")
+            let request = CompletionRequest::new("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .max_tokens(1024)
                 .tool(rig::tool::tool_definition(&Adder))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                .tool_choice(ToolChoice::Required);
 
             let response = model
                 .call(request)
@@ -74,12 +73,11 @@ async fn none_suppresses_tool_use() {
             // The question must not match the forbidden tool: asking arithmetic
             // with the add tool blocked makes Anthropic return an empty
             // end_turn message instead of answering in text.
-            let request = CompletionRequestBuilder::new("Name the capital of France in one word.")
-                .preamble("You are a concise assistant. Answer directly.".to_string())
+            let request = CompletionRequest::new("Name the capital of France in one word.")
+                .preamble("You are a concise assistant. Answer directly.")
                 .max_tokens(1024)
                 .tool(rig::tool::tool_definition(&Adder))
-                .tool_choice(ToolChoice::None)
-                .build();
+                .tool_choice(ToolChoice::None);
 
             let response = model
                 .call(request)
@@ -119,15 +117,14 @@ async fn specific_tool_targets_named_tool() {
         "messages_tool_choice/specific_tool_targets_named_tool",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequestBuilder::new("Compute 9 minus 4 using a tool.")
+            let request = CompletionRequest::new("Compute 9 minus 4 using a tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .max_tokens(1024)
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
-                })
-                .build();
+                });
 
             let response = model
                 .call(request)

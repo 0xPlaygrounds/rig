@@ -53,7 +53,7 @@ use serde_json::Value;
 use super::super::support::with_gemini_cassette;
 use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
 use crate::support::{Adder, Observed, json_contains_key};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "gemini";
 
@@ -66,22 +66,19 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: streame
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .temperature(0.0)
-        .build()
+    CompletionRequest::new(PROMPT).temperature(0.0)
 }
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
 /// `allowedFunctionNames`), so the recorded stream carries a `functionCall`.
 fn forced_tool_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .temperature(0.0)
         .tool(rig::tool::tool_definition(&Adder))
         .tool_choice(ToolChoice::Specific {
             function_names: vec![Adder::NAME.to_string()],
         })
-        .build()
 }
 
 /// What a drained model stream carried: its tool calls and its single

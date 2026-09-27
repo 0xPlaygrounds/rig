@@ -51,7 +51,7 @@ use crate::cassettes::{
 };
 
 use super::super::cassette_support::*;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROBE: &str = "/no_think Reply with exactly the word: cedar.";
 
@@ -71,7 +71,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .call(CompletionRequestBuilder::new(PROBE).max_tokens(256).build())
+                .call(CompletionRequest::new(PROBE).max_tokens(256))
                 .await
                 .expect("completion should succeed");
 
@@ -90,7 +90,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
-                .stream(CompletionRequestBuilder::new(PROBE).max_tokens(256).build())
+                .stream(CompletionRequest::new(PROBE).max_tokens(256))
                 .expect("stream should start");
 
             let mut terminal = None;
@@ -151,7 +151,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .call(CompletionRequestBuilder::new(PROBE).max_tokens(256).build())
+                .call(CompletionRequest::new(PROBE).max_tokens(256))
                 .await
                 .expect("completion should succeed");
 
@@ -171,7 +171,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
-                .stream(CompletionRequestBuilder::new(PROBE).max_tokens(256).build())
+                .stream(CompletionRequest::new(PROBE).max_tokens(256))
                 .expect("stream should start");
 
             let mut terminal = None;
@@ -251,7 +251,7 @@ async fn the_typed_route_reproduces_the_normalized_one() {
         "response_identity_matrix/typed_route_parity",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = || CompletionRequestBuilder::new(PROBE).max_tokens(256).build();
+            let request = || CompletionRequest::new(PROBE).max_tokens(256);
 
             let first = model
                 .call(request())

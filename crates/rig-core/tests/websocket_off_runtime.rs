@@ -11,7 +11,7 @@
 #![cfg(not(target_family = "wasm"))]
 #![allow(clippy::expect_used, clippy::panic)]
 
-use rig_core::completion::CompletionRequestBuilder;
+use rig_core::completion::CompletionRequest;
 use rig_core::providers::openai::OpenAIConfig;
 
 use rig_core::test_utils::RecordingHttpClient;
@@ -159,7 +159,7 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
         };
 
         let response = session
-            .completion(CompletionRequestBuilder::new("hello").build())
+            .completion(CompletionRequest::new("hello"))
             .await
             .expect("the turn should complete off-runtime");
 
@@ -214,7 +214,7 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
         };
 
         session
-            .send(CompletionRequestBuilder::new("hello").build())
+            .send(CompletionRequest::new("hello"))
             .await
             .expect("request should send");
 
@@ -272,7 +272,7 @@ fn a_cancelled_read_does_not_lose_the_frame_off_runtime() {
             Err(error) => panic!("session should connect off-runtime: {error}"),
         };
         session
-            .send(CompletionRequestBuilder::new("hello").build())
+            .send(CompletionRequest::new("hello"))
             .await
             .expect("request should send");
 

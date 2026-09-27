@@ -1708,13 +1708,11 @@ impl Lookup {
             NestedChild::Completion => {
                 let model: rig_agent::bus::ModelHandle =
                     dispatcher.handle(&self.model_key).expect("the model");
-                let mut request =
-                    rig_core::completion::CompletionRequestBuilder::new(args.q.as_str())
-                        .preamble(NESTED_PREAMBLE.to_owned());
+                let mut request = rig_core::completion::CompletionRequest::new(args.q.as_str())
+                    .preamble(NESTED_PREAMBLE);
                 if !self.nesting.no_temperature {
                     request = request.temperature(0.0);
                 }
-                let request = request.build();
                 let response = model.call(request).await.expect("the nested completion");
                 response
                     .choice

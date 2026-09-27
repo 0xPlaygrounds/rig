@@ -17,7 +17,7 @@ use serde_json::json;
 
 use super::super::support::with_gemini_cassette;
 use crate::support::collect_raw_stream_observation;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const NESTED_ARGS_PREAMBLE: &str = "\
 You are a travel booking assistant. Use the plan_trip tool for every booking request \
@@ -202,11 +202,10 @@ async fn nested_arguments_streaming() {
         "generate_tool_args/nested_arguments_streaming",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(NESTED_ARGS_PROMPT)
+            let request = CompletionRequest::new(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&PlanTrip))
-                .build();
+                .tool(rig::tool::tool_definition(&PlanTrip));
 
             let observation = collect_raw_stream_observation(
                 model
@@ -237,7 +236,7 @@ async fn unicode_arguments_streaming() {
         "generate_tool_args/unicode_arguments_streaming",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",
             )
@@ -257,8 +256,7 @@ async fn unicode_arguments_streaming() {
                     },
                     "required": ["message"]
                 }),
-            })
-            .build();
+            });
 
             let observation = collect_raw_stream_observation(
                 model
@@ -300,7 +298,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
         "generate_tool_args/optional_nullable_argument_omitted_when_not_requested",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Log an event named \"deploy\" using the log_event tool. \
                      Do not attach a note.",
             )
@@ -325,8 +323,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
                     },
                     "required": ["name"]
                 }),
-            })
-            .build();
+            });
 
             let response = model
                 .call(request)

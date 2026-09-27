@@ -48,15 +48,12 @@ use super::super::support::with_doubleword_cassette_result;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .max_tokens(256)
-        .build()
+    CompletionRequest::new(PROMPT).max_tokens(256)
 }
 
 /// The backend usage fields Doubleword sends that no type here models.

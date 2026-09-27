@@ -50,7 +50,6 @@ use crate::raw_capture::{
 use crate::support::{
     Observed, assert_matches_recorded_token, assistant_text, normalized_without_raw,
 };
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "mistral";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -63,7 +62,7 @@ const TOOL_PROMPT: &str = "Call lookup_city exactly once with city Paris.";
 const TOOL_NAME: &str = "lookup_city";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
+    CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
 fn lookup_city_tool() -> ToolDefinition {
@@ -79,12 +78,11 @@ fn lookup_city_tool() -> ToolDefinition {
 }
 
 fn tool_request() -> CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .preamble(TOOL_PREAMBLE.to_owned())
         .tool(lookup_city_tool())
         .additional_params(json!({ "tool_choice": "any", "parallel_tool_calls": false }))
         .max_tokens(128)
-        .build()
 }
 
 /// The `mistral-correlation-id` the recorded interaction carried.

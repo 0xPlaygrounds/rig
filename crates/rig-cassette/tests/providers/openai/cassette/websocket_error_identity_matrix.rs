@@ -79,7 +79,7 @@
 use rig::error::ProviderError;
 
 use super::super::support::with_openai_websocket_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// What a caller can actually learn from a failed connection — the three
 /// accessors the rig#2314/#2315 contract is written in terms of.
@@ -152,7 +152,7 @@ async fn handshake_rejection_matches_the_http_twin() {
                 .expect("an invalid key must fail the upgrade");
 
             let http_error = model
-                .call(CompletionRequestBuilder::new("Never authenticated").build())
+                .call(CompletionRequest::new("Never authenticated"))
                 .await
                 .expect_err("the same key must fail the unary request");
 

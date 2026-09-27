@@ -17,7 +17,7 @@ use serde::Deserialize;
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};
 use crate::cassettes::recorded_interaction_bodies;
 use crate::support::{Adder, TOOLS_PREAMBLE};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 
@@ -32,10 +32,9 @@ async fn strict_tools_opt_in_roundtrip() {
             let model = client
                 .completion(chatgpt::GPT_5_4)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new("Use the add tool to add 7 and 5.")
+            let request = CompletionRequest::new("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .build();
+                .tool(rig::tool::tool_definition(&Adder));
 
             let response = model
                 .call(request)
@@ -95,11 +94,8 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
             // request still matches the recorded cassette.
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(
-                        "Reply with exactly this marker: CODEX-STORE-FALSE",
-                    )
-                    .preamble("Return only the requested marker.".to_string())
-                    .build(),
+                    CompletionRequest::new("Reply with exactly this marker: CODEX-STORE-FALSE")
+                        .preamble("Return only the requested marker."),
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");

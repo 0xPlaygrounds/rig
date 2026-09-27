@@ -499,11 +499,11 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
         RecordingHttpClient::new(Bytes::from(body)),
     );
     assert_eq!(
-        bound.wire.capabilities().ndims,
+        bound.capabilities().ndims,
         1536,
         "the width defaults from the model"
     );
-    assert_eq!(bound.wire.capabilities().max_documents, 1024);
+    assert_eq!(bound.capabilities().max_documents, 1024);
 
     let response = bound
         .call(documents.clone())

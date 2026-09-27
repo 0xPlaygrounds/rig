@@ -9,7 +9,7 @@
 //! the gateway — while a document carrying inline `file_data` goes out as
 //! OpenRouter's `file` content part with no `file_id` beside it.
 
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig::error::ProviderError;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, UserContent as RigUserContent,
@@ -28,7 +28,7 @@ const MODEL: &str = "openai/gpt-4o-mini";
 /// so the bytes are reachable with no cassette and no network.
 fn encoded_body(message: Message) -> Result<Value, ProviderError> {
     let encoded = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), MODEL)
-        .encode(CompletionRequestBuilder::new(message).build(), Mode::Unary)?;
+        .encode(CompletionRequest::new(message), Mode::Unary)?;
     Ok(sole_body(encoded))
 }
 

@@ -1,7 +1,7 @@
 //! Cassette-backed OpenRouter coverage for PDF `file_data` document messages.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
@@ -71,7 +71,7 @@ fn message_contains_base64_document(message: &RigMessage) -> bool {
 /// the recorded turns without spending a cassette interaction.
 fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
     let encoded = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), DOCUMENT_MODEL)
-        .encode(CompletionRequestBuilder::new(message).build(), Mode::Unary)
+        .encode(CompletionRequest::new(message), Mode::Unary)
         .expect("a history message should encode");
     let Body::Bytes(bytes) = encoded.requests[0].body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")

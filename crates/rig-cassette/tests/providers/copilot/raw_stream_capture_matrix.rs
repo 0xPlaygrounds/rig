@@ -61,7 +61,7 @@ use crate::raw_capture::{
     assert_normalized_lacks, capture_sole_terminal, chat, responses, stream_normalized_without_raw,
 };
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
@@ -69,7 +69,7 @@ const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
+    CompletionRequest::new(PROMPT).max_tokens(64)
 }
 
 /// Every cell records exactly one interaction; a scenario with more has

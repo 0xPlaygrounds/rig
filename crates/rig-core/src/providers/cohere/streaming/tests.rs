@@ -1,5 +1,5 @@
 use super::*;
-use crate::completion::CompletionRequestBuilder;
+use crate::completion::CompletionRequest;
 use serde_json::json;
 
 /// The chat wire bound to `http_client`: the model every streamed case
@@ -77,7 +77,7 @@ async fn stream_terminal_record_is_normalized() {
     );
 
     let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
 
     let mut stream = model.stream(request).expect("stream should open");
 
@@ -121,7 +121,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     );
 
     let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
 
     let mut stream = model.stream(request).expect("stream should open");
 
@@ -168,7 +168,7 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
     );
 
     let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
 
     let mut stream = model.stream(request).expect("stream should open");
 
@@ -216,7 +216,7 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
     );
 
     let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
 
     let mut stream = model.stream(request).expect("stream should open");
 
@@ -267,7 +267,7 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
     );
 
     let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
 
     let mut stream = model.stream(request).expect("stream should open");
 
@@ -309,7 +309,7 @@ async fn message_end_without_delta_still_emits_the_terminal_record() {
     );
 
     let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
 
     let mut stream = model.stream(request).expect("stream should open");
 
@@ -358,7 +358,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
     );
 
     let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
 
     let mut stream = model.stream(request).expect("stream should open");
 
@@ -401,7 +401,7 @@ async fn errored_stream_does_not_synthesize_a_terminal_record() {
         http::StatusCode::TOO_MANY_REQUESTS,
         r#"{"message":"slow down"}"#,
     ));
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
 
     let mut stream = model.stream(request).expect("stream should open");
 
@@ -670,7 +670,7 @@ async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
             .collect::<String>(),
     );
     let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequestBuilder::new("add twice").build();
+    let request = CompletionRequest::new("add twice");
     let mut stream = model.stream(request).expect("stream should open");
     let mut starts = Vec::new();
     let mut ends = Vec::new();

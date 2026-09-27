@@ -11,6 +11,7 @@
 
 mod block_id;
 mod event;
+mod update;
 
 use crate::completion::{CompletionResponse, Usage};
 use crate::driver::{Step, record_request_id};
@@ -26,6 +27,7 @@ use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+pub use update::{PartKind, Update};
 
 /// Record `issuer` on every reasoning part of `choice` that names none.
 pub fn stamp_reasoning(choice: Vec<AssistantContent>, issuer: &str) -> Vec<AssistantContent> {
@@ -447,6 +449,90 @@ impl Streamed<Completion> {
             tracing::Span::none(),
             label,
         )
+    }
+}
+
+impl Streamed<Completion> {
+    /// The parts of the response as they start, grow and finish, then the
+    /// response. See [`Update`] for the order and the index contract. An
+    /// error is an item, as on the event stream; a stream that ends without
+    /// its terminal record ends with that error instead of [`Update::Done`].
+    ///
+    /// ```no_run
+    /// use futures::StreamExt;
+    /// use rig_core::streaming::Update;
+    ///
+    /// # async fn run(model: rig_core::DynModel<rig_core::operation::Completion>) -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut stream = model.stream("Tell me a story.")?;
+    /// let mut updates = stream.updates();
+    /// while let Some(update) = updates.next().await {
+    ///     if let Update::Delta { text, .. } = update? {
+    ///         print!("{text}");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn updates(&mut self) -> impl Stream<Item = Result<Update, ErrorReport>> + '_ {
+        let mut projector = update::Projector::default();
+        let mut queue = std::collections::VecDeque::new();
+        let mut ended = false;
+        let mut failed = false;
+        futures::stream::poll_fn(move |cx| {
+            loop {
+                if let Some(item) = queue.pop_front() {
+                    return Poll::Ready(Some(item));
+                }
+                if ended {
+                    return Poll::Ready(None);
+                }
+                match self.poll_step(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(Some(Ok(event))) => projector.push(&event, &self.fold, &mut queue),
+                    Poll::Ready(Some(Err(error))) => {
+                        failed = true;
+                        queue.push_back(Err(ErrorReport::from(&error)));
+                    }
+                    Poll::Ready(None) => {
+                        ended = true;
+                        projector.finish(&self.fold, &mut queue);
+                        match self.fold.streamed_response(&self.reply) {
+                            Ok(response) => queue.push_back(Ok(Update::Done(response))),
+                            Err(error) if !failed => {
+                                queue.push_back(Err(ErrorReport::from(&error)));
+                            }
+                            Err(_) => {}
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    /// The text deltas of the response, in order; [`Self::updates`] without
+    /// reasoning, tool calls or the parts' boundaries.
+    pub fn text(&mut self) -> impl Stream<Item = Result<String, ErrorReport>> + '_ {
+        let mut text_parts = std::collections::HashSet::new();
+        self.updates().filter_map(move |update| {
+            std::future::ready(match update {
+                Ok(Update::Start {
+                    index,
+                    part: PartKind::Text,
+                }) => {
+                    text_parts.insert(index);
+                    None
+                }
+                Ok(Update::Delta { index, text }) if text_parts.contains(&index) => Some(Ok(text)),
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            })
+        })
+    }
+
+    /// What arrived so far: every part that ended, and the usage reported so
+    /// far. Valid after an error, and after the caller stopped polling.
+    pub fn partial(&self) -> CompletionResponse {
+        self.fold.partial(&self.reply)
     }
 }
 

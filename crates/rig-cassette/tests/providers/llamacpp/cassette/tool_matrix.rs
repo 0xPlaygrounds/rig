@@ -63,7 +63,7 @@ use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 use crate::support::{Adder, EmptyArgs, OperationArgs, Subtract, zero_arg_tool_definition};
 
 use super::super::cassette_support::*;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const NO_THINK: &str = "/no_think ";
 
@@ -134,11 +134,10 @@ async fn a_zero_argument_tool_is_called_with_an_empty_object() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Ping the service."))
+                CompletionRequest::new(format!("{NO_THINK}Ping the service."))
                     .tool(zero_arg_tool_definition("ping"))
                     .tool_choice(ToolChoice::Required)
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("a required zero-argument tool call should succeed");
@@ -257,12 +256,11 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
+                CompletionRequest::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool(zero_arg_tool_definition("ping"))
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("a three-tool request should succeed");
@@ -303,13 +301,12 @@ async fn two_independent_calls_arrive_in_one_turn() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!(
+                CompletionRequest::new(format!(
                     "{NO_THINK}Compute 2 + 3 and 10 - 4. Call both tools in this one turn."
                 ))
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
-                .max_tokens(512)
-                .build(),
+                .max_tokens(512),
             )
             .await
             .expect("a parallel tool request should succeed");
@@ -434,12 +431,11 @@ async fn tool_choice_auto_lets_the_model_decide() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
+                CompletionRequest::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool_choice(ToolChoice::Auto)
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("tool_choice auto should succeed");
@@ -474,12 +470,11 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Calculate 2 - 5."))
+                CompletionRequest::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool_choice(ToolChoice::None)
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("tool_choice none should succeed");
@@ -554,11 +549,10 @@ async fn tool_choice_required_forces_a_call() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Hello there."))
+                CompletionRequest::new(format!("{NO_THINK}Hello there."))
                     .tool(zero_arg_tool_definition("ping"))
                     .tool_choice(ToolChoice::Required)
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("tool_choice required should succeed");
@@ -609,14 +603,13 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 
     let error = model
         .call(
-            CompletionRequestBuilder::new(format!("{NO_THINK}Compute 2 + 3."))
+            CompletionRequest::new(format!("{NO_THINK}Compute 2 + 3."))
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["subtract".to_string()],
                 })
-                .max_tokens(256)
-                .build(),
+                .max_tokens(256),
         )
         .await
         .expect_err("a specific tool choice must not be sent to llama.cpp");
@@ -660,14 +653,13 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
 
     let error = model
         .stream(
-            CompletionRequestBuilder::new(format!("{NO_THINK}Compute 2 + 3."))
+            CompletionRequest::new(format!("{NO_THINK}Compute 2 + 3."))
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["subtract".to_string()],
                 })
-                .max_tokens(256)
-                .build(),
+                .max_tokens(256),
         )
         .err()
         .expect("opening the stream must fail before anything is sent");
@@ -691,7 +683,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(Message::User {
+                CompletionRequest::new(Message::User {
                     content: vec![UserContent::ToolResult(ToolResult {
                         call: ToolCallId::new_or_minted("call_text", 0),
                         provider: ProviderCallId::new("call_text"),
@@ -714,8 +706,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                     },
                     lookup_call_turn("call_text"),
                 ])
-                .max_tokens(512)
-                .build(),
+                .max_tokens(512),
             )
             .await
             .expect("a text tool result should be accepted");
@@ -752,7 +743,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(Message::User {
+                CompletionRequest::new(Message::User {
                     content: vec![UserContent::ToolResult(ToolResult {
                         call: ToolCallId::new_or_minted("call_json", 0),
                         provider: ProviderCallId::new("call_json"),
@@ -773,8 +764,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                     },
                     lookup_call_turn("call_json"),
                 ])
-                .max_tokens(512)
-                .build(),
+                .max_tokens(512),
             )
             .await
             .expect("a JSON tool result should be accepted");

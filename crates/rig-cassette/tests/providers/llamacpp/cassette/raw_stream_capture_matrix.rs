@@ -65,15 +65,13 @@ use crate::raw_capture::{
     assert_normalized_lacks, capture_sole_terminal, chat, stream_normalized_without_raw,
 };
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .max_tokens(1024)
-        .build()
+    CompletionRequest::new(PROMPT).max_tokens(1024)
 }
 
 // ---------------------------------------------------------------------------

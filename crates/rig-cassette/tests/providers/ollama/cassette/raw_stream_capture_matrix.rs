@@ -55,17 +55,16 @@ use crate::raw_capture::{
     assert_normalized_lacks, capture_sole_terminal, stream_normalized_without_raw,
 };
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .max_tokens(64)
         .additional_params(json!({ "think": false }))
-        .build()
 }
 
 /// The premise every streaming cell rests on: the scenario recorded exactly

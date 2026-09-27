@@ -44,7 +44,7 @@ where
     let mut driver = WireDriver::new(wire.decoder(Mode::Unary));
     driver.push(WireFrame::Text(body.to_owned()));
     driver.finish();
-    let request = rig_core::completion::CompletionRequestBuilder::new("").build();
+    let request = rig_core::completion::CompletionRequest::new("");
     let mut fold = <Completion as Operation>::fold(&request, wire, Mode::Unary);
     for item in driver.drain() {
         fold.absorb(&item?)?;

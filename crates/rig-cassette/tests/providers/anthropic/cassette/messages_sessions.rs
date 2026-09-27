@@ -11,7 +11,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{CompletionRequestBuilder, FinishReason, Message};
+use rig::completion::{CompletionRequest, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -270,12 +270,10 @@ async fn long_history_replay_nonstreaming() {
 
             // First turn: obtain a real tool_use so the follow-up can echo its
             // id back, the way a caller-owned history would.
-            let first_request =
-                CompletionRequestBuilder::new("Look up the harbor label with the tool.")
-                    .preamble(preamble.to_string())
-                    .max_tokens(1024)
-                    .tool(rig::tool::tool_definition(&AlphaSignal))
-                    .build();
+            let first_request = CompletionRequest::new("Look up the harbor label with the tool.")
+                .preamble(preamble.to_string())
+                .max_tokens(1024)
+                .tool(rig::tool::tool_definition(&AlphaSignal));
             let first_response = model
                 .call(first_request)
                 .await
@@ -297,7 +295,7 @@ async fn long_history_replay_nonstreaming() {
             // Follow-up: replay a long client-owned history around that tool
             // roundtrip, including assistant text before the tool_use (in the
             // same assistant message) and assistant text after the result.
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
             )
@@ -322,8 +320,7 @@ async fn long_history_replay_nonstreaming() {
                 vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             )))
             .message(Message::assistant("The harbor label is crimson-harbor."))
-            .tool(rig::tool::tool_definition(&AlphaSignal))
-            .build();
+            .tool(rig::tool::tool_definition(&AlphaSignal));
 
             let response = model
                 .call(request)

@@ -272,6 +272,70 @@ impl CompletionFold {
         }
     }
 
+    /// The slot of `choice` the block `id` currently names, once the fold
+    /// placed it.
+    pub(crate) fn slot(&self, id: &BlockId) -> Option<usize> {
+        self.slots.get(id).copied()
+    }
+
+    /// The finalized block in `slot`, `None` while it has not ended (or
+    /// when it ended with nothing).
+    pub(crate) fn block(&self, slot: usize) -> Option<&AssistantContent> {
+        self.blocks.get(slot).and_then(Option::as_ref)
+    }
+
+    /// What arrived so far as a response: every block that ended, and the
+    /// terminal record's usage and metadata when it arrived.
+    pub(crate) fn partial(&self, reply: &Reply) -> CompletionResponse {
+        let issuer = self.reasoning_issuer().unwrap_or(&self.provider).to_owned();
+        let response = crate::streaming::fold_finish(
+            self.snapshot(),
+            self.terminal.as_ref(),
+            self.message_id.clone(),
+            self.provider.clone(),
+            &issuer,
+            self.terminal
+                .as_ref()
+                .map_or(serde_json::Value::Null, |terminal| terminal.raw.clone()),
+        );
+        if response.provider_request_id.is_none() {
+            response.with_optional_provider_request_id(reply.provider_request_id.clone())
+        } else {
+            response
+        }
+    }
+
+    /// A streamed reply's response: the terminal record's document, under
+    /// the provider that opened the stream (the terminal's, for a relayed
+    /// one). Without a terminal record the reply was truncated and is
+    /// refused.
+    pub(crate) fn streamed_response(
+        &self,
+        reply: &Reply,
+    ) -> Result<CompletionResponse, ProviderError> {
+        let Some(terminal) = self.terminal.as_ref() else {
+            return Err(ProviderError::Response(
+                "provider stream ended without a terminal record; treating the turn \
+                 as truncated"
+                    .to_owned(),
+            ));
+        };
+        let response = crate::streaming::fold_finish(
+            self.snapshot(),
+            Some(terminal),
+            self.message_id.clone(),
+            self.provider.clone(),
+            terminal.issuer(),
+            terminal.raw.clone(),
+        );
+        // The terminal's own id wins; the reply headers only fill a gap.
+        if response.provider_request_id.is_none() {
+            Ok(response.with_optional_provider_request_id(reply.provider_request_id.clone()))
+        } else {
+            Ok(response)
+        }
+    }
+
     /// The provider this fold's response names.
     pub fn provider(&self) -> &str {
         &self.provider
@@ -395,9 +459,9 @@ impl Fold<Completion> for CompletionFold {
     /// names the provider that opened it (the terminal's, for a relayed
     /// stream); without a terminal record it was truncated and is refused.
     fn finish(self, reply: Reply) -> Result<CompletionResponse, ProviderError> {
-        let choice = self.snapshot();
         let response = match self.mode {
             Mode::Unary => {
+                let choice = self.snapshot();
                 let issuer = self
                     .terminal
                     .as_ref()
@@ -413,23 +477,7 @@ impl Fold<Completion> for CompletionFold {
                     reply.raw,
                 )
             }
-            Mode::Streaming => {
-                let Some(terminal) = self.terminal.as_ref() else {
-                    return Err(ProviderError::Response(
-                        "provider stream ended without a terminal record; treating the turn \
-                         as truncated"
-                            .to_owned(),
-                    ));
-                };
-                crate::streaming::fold_finish(
-                    choice,
-                    Some(terminal),
-                    self.message_id,
-                    self.provider,
-                    terminal.issuer(),
-                    terminal.raw.clone(),
-                )
-            }
+            Mode::Streaming => return self.streamed_response(&reply),
         };
         // The terminal's own id wins; the reply headers only fill a gap.
         if response.provider_request_id.is_none() {

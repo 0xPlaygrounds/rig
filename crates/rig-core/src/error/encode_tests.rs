@@ -4,7 +4,7 @@
 use serde_json::json;
 
 use super::*;
-use crate::completion::{CompletionRequest, CompletionRequestBuilder, ToolDefinition};
+use crate::completion::{CompletionRequest, ToolDefinition};
 use crate::message::ToolChoice;
 use crate::providers::anthropic::AnthropicConfig;
 use crate::providers::cohere::CohereConfig;
@@ -20,7 +20,7 @@ use crate::wire::{Mode, Wire};
 const BAD: &str = "http://bad host";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new("hi").max_tokens(16).build()
+    CompletionRequest::new("hi").max_tokens(16)
 }
 
 fn failure<T>(result: Result<T, EncodeError>) -> ProviderError {
@@ -90,7 +90,7 @@ fn provider_encode_failures_classify_as_request_building() {
     let perplexity = OpenAIConfig::with_key(&PERPLEXITY, "k");
     let anthropic = AnthropicConfig::new("k").with_base_url(BAD);
     let gemini = GeminiConfig::new("k").with_base_url(BAD);
-    let specific_tool = CompletionRequestBuilder::new("hi")
+    let specific_tool = CompletionRequest::new("hi")
         .tool(ToolDefinition {
             name: "f".into(),
             description: "d".into(),
@@ -98,19 +98,16 @@ fn provider_encode_failures_classify_as_request_building() {
         })
         .tool_choice(ToolChoice::Specific {
             function_names: vec!["f".into()],
-        })
-        .build();
-    let unflattenable_schema = CompletionRequestBuilder::new("hi")
-        .tool(ToolDefinition {
-            name: "f".into(),
-            description: "d".into(),
-            parameters: json!({
-                "type": "object",
-                "$defs": 5,
-                "properties": {"a": {"$ref": "#/$defs/x"}},
-            }),
-        })
-        .build();
+        });
+    let unflattenable_schema = CompletionRequest::new("hi").tool(ToolDefinition {
+        name: "f".into(),
+        description: "d".into(),
+        parameters: json!({
+            "type": "object",
+            "$defs": 5,
+            "properties": {"a": {"$ref": "#/$defs/x"}},
+        }),
+    });
     let cases = [
         (
             "openai chat",

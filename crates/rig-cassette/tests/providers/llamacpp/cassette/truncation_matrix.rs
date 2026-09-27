@@ -36,7 +36,7 @@ use serde_json::Value;
 use crate::cassettes::{recorded_sse_json_frames, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const NOTE_PROMPT: &str = "/no_think Record this note: The quarterly incident review found \
      three unrelated regressions in the billing pipeline.";
@@ -85,11 +85,10 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(NOTE_PROMPT)
+                    CompletionRequest::new(NOTE_PROMPT)
                         .tool(record_tool())
                         .tool_choice(rig::message::ToolChoice::Required)
-                        .max_tokens(CUTTING_CAP)
-                        .build(),
+                        .max_tokens(CUTTING_CAP),
                 )
                 .await
                 .expect(
@@ -149,11 +148,10 @@ async fn the_streaming_path_drops_the_same_cut_call() {
             let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
                 .stream(
-                    CompletionRequestBuilder::new(NOTE_PROMPT)
+                    CompletionRequest::new(NOTE_PROMPT)
                         .tool(record_tool())
                         .tool_choice(rig::message::ToolChoice::Required)
-                        .max_tokens(CUTTING_CAP)
-                        .build(),
+                        .max_tokens(CUTTING_CAP),
                 )
                 .expect("stream should start");
 
@@ -221,11 +219,10 @@ async fn a_complete_call_under_the_same_cap_survives() {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(NOTE_PROMPT)
+                    CompletionRequest::new(NOTE_PROMPT)
                         .tool(record_tool())
                         .tool_choice(rig::message::ToolChoice::Required)
-                        .max_tokens(COMPLETE_CAP)
-                        .build(),
+                        .max_tokens(COMPLETE_CAP),
                 )
                 .await
                 .expect("a generous budget should succeed");

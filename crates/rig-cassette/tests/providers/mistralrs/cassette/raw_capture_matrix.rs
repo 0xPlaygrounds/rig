@@ -53,7 +53,6 @@ use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{
     Observed, assert_matches_recorded_document, assert_wire_value_matches, normalized_without_raw,
 };
-use rig::completion::CompletionRequestBuilder;
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
 /// The plain OpenAI dialect names itself `openai`, and a normalized response
@@ -64,7 +63,7 @@ const NORMALIZED_PROVIDER: &str = "openai";
 const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
+    CompletionRequest::new(PROMPT).max_tokens(64)
 }
 
 fn assert_recorded_envelope(body: &Value, scenario: &str) {

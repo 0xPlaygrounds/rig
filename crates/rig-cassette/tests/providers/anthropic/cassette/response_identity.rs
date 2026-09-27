@@ -13,7 +13,7 @@ use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn assert_request_id(id: Option<&str>, context: &str) {
     assert!(
@@ -30,11 +30,7 @@ async fn nonstreaming_response_carries_identity() {
         |client| async move {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe")
-                        .max_tokens(32)
-                        .build(),
-                )
+                .call(CompletionRequest::new("Reply with exactly: identity probe").max_tokens(32))
                 .await
                 .expect("completion should succeed");
 
@@ -60,9 +56,8 @@ async fn streaming_terminal_carries_identity() {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let mut stream = model
                 .stream(
-                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
-                        .max_tokens(32)
-                        .build(),
+                    CompletionRequest::new("Reply with exactly: stream identity probe")
+                        .max_tokens(32),
                 )
                 .expect("stream should open");
 

@@ -14,7 +14,7 @@ use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 use super::DynModel;
-use crate::completion::{CompletionRequest, CompletionRequestBuilder, Usage};
+use crate::completion::{CompletionRequest, Usage};
 use crate::message::AssistantContent;
 use crate::operation::Completion;
 use crate::streaming::StreamEvent;
@@ -90,10 +90,9 @@ fn spans_of(body: impl FnOnce()) -> Vec<Value> {
 }
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new("hello")
-        .preamble("be brief".to_owned())
+    CompletionRequest::new("hello")
+        .preamble("be brief")
         .model("probe-model")
-        .build()
 }
 
 fn usage() -> Usage {

@@ -10,7 +10,7 @@ use rig_cassette::{
 };
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::{
-    completion::CompletionRequestBuilder,
+    completion::CompletionRequest,
     effect::EffectKind,
     error::{ErrorKind, ErrorReport},
     serve::{ErasedHandler, adapters::ModelAdapter},
@@ -72,7 +72,7 @@ fn main() -> Result<(), ErrorReport> {
     live.world_mut().spawn(PendingEffect::new(
         KEY,
         EffectKind::Completion {
-            request: CompletionRequestBuilder::new("hello").build(),
+            request: CompletionRequest::new("hello"),
             stream: false,
         },
     ));

@@ -13,7 +13,7 @@ use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 use super::*;
-use crate::completion::{CompletionRequest, CompletionRequestBuilder, CompletionResponse};
+use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::driver::{Model, Observation, Opened, Transport};
 use crate::embeddings::EmbeddingResponse;
 use crate::error::{EncodeError, ProviderError};
@@ -226,10 +226,9 @@ fn cases() -> Vec<Value> {
         "completion operation span+record (message id fallback)",
         &mut out,
         || {
-            let request = CompletionRequestBuilder::new("hi")
-                .preamble("sys".into())
-                .record_content_telemetry(true)
-                .build();
+            let request = CompletionRequest::new("hi")
+                .preamble("sys")
+                .record_content_telemetry(true);
             let span = Completion::span(
                 "prov",
                 Some("model"),
@@ -246,9 +245,7 @@ fn cases() -> Vec<Value> {
         "completion operation streaming span+record_event",
         &mut out,
         || {
-            let request = CompletionRequestBuilder::new("hi")
-                .model("override")
-                .build();
+            let request = CompletionRequest::new("hi").model("override");
             let terminal = StreamFinal::new("prov", usage(), Value::Null)
                 .with_response_id("resp_1")
                 .with_message_id("msg_1")

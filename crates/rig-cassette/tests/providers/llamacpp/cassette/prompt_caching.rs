@@ -37,6 +37,7 @@
 //! RIG_PROVIDER_TEST_MODE=record cargo test -p rig --test llamacpp --all-features \
 //!     prompt_caching:: -- --test-threads=1
 //! ```
+//!
 
 use serde_json::{Value, json};
 
@@ -48,7 +49,7 @@ use crate::cache_conformance::{
 use crate::cassettes::recorded_statuses_and_bodies;
 
 use super::super::cassette_support::*;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// llama.cpp's cache, as a descriptor.
 ///
@@ -198,11 +199,10 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
             // Warm the slot.
             let warm = model
                 .call(
-                    CompletionRequestBuilder::new(probe.prompt)
+                    CompletionRequest::new(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
-                        .max_tokens(16)
-                        .build(),
+                        .max_tokens(16),
                 )
                 .await
                 .expect("the warming turn should succeed");
@@ -210,11 +210,10 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 
             let second = model
                 .call(
-                    CompletionRequestBuilder::new(probe.prompt)
+                    CompletionRequest::new(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
-                        .max_tokens(16)
-                        .build(),
+                        .max_tokens(16),
                 )
                 .await
                 .expect("the warm turn should succeed");
@@ -226,12 +225,11 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 
             let disabled = model
                 .call(
-                    CompletionRequestBuilder::new(probe.prompt)
+                    CompletionRequest::new(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
-                        .additional_params(json!({ "cache_prompt": false }))
-                        .build(),
+                        .additional_params(json!({ "cache_prompt": false })),
                 )
                 .await
                 .expect("cache_prompt: false should succeed");
@@ -244,11 +242,10 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
 
             let after = model
                 .call(
-                    CompletionRequestBuilder::new(probe.prompt)
+                    CompletionRequest::new(probe.prompt)
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
-                        .max_tokens(16)
-                        .build(),
+                        .max_tokens(16),
                 )
                 .await
                 .expect("the turn after the switch should succeed");

@@ -32,7 +32,7 @@ use futures::StreamExt as _;
 use serde_json::{Value, json};
 
 use super::support::with_mistral_logprobs_rejection_cassette_result;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -63,10 +63,9 @@ fn model_name(model: Model) -> &'static str {
 
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedError) -> Result<()> {
     let model = client.completion(model_name(cell.model));
-    let request = CompletionRequestBuilder::new("Reply with exactly: cobalt")
+    let request = CompletionRequest::new("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
-        .max_tokens(8)
-        .build();
+        .max_tokens(8);
 
     // The blocking path fails with the provider's `ProviderError`; a stream
     // fails in-band with the `ErrorReport` it was mapped to. Both display the

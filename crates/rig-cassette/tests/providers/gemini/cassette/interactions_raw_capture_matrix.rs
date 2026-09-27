@@ -45,7 +45,7 @@ use std::sync::{Arc, Mutex};
 
 use super::super::support::with_gemini_interactions_cassette;
 use crate::support::{json_contains_key, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "gemini";
 
@@ -56,9 +56,7 @@ const MODEL: &str = "gemini-3-flash-preview";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: captured";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .temperature(0.0)
-        .build()
+    CompletionRequest::new(PROMPT).temperature(0.0)
 }
 
 /// The premise every cell rests on: the recorded body is a completed

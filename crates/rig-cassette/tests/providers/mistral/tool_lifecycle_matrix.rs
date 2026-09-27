@@ -45,7 +45,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::support::with_mistral_tool_lifecycle_cassette_result;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
@@ -155,7 +155,7 @@ fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
 }
 
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
-    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape))
+    let mut builder = CompletionRequest::new(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())
         .additional_params(
             json!({ "tool_choice": "any", "parallel_tool_calls": cell.shape == Shape::Parallel }),
@@ -164,7 +164,7 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
     for name in expected_names(cell.shape) {
         builder = builder.tool(tool_definition(name));
     }
-    builder.build()
+    builder
 }
 
 fn normalized_calls(choice: &[AssistantContent]) -> (Vec<String>, Vec<String>, Vec<Value>) {

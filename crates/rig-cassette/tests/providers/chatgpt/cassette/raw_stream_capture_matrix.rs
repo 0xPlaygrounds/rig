@@ -41,14 +41,14 @@ use crate::raw_capture::{
     assert_normalized_lacks, capture_sole_terminal, responses, stream_normalized_without_raw,
 };
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
+    CompletionRequest::new(PROMPT).max_tokens(64)
 }
 
 /// The premise every streaming cell rests on: the scenario recorded exactly

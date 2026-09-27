@@ -20,7 +20,7 @@ use serde::Deserialize as _;
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_raw_stream_observation;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Compute 17 * 23. Give the number only after thinking.";
 const CAP: u64 = 128;
@@ -28,11 +28,7 @@ const CAP: u64 = 128;
 async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
     let model = client.completion(model_name);
     let response = model
-        .call(
-            CompletionRequestBuilder::new(PROMPT)
-                .max_tokens(CAP)
-                .build(),
-        )
+        .call(CompletionRequest::new(PROMPT).max_tokens(CAP))
         .await
         .expect("reasoning completion should decode");
 
@@ -64,11 +60,7 @@ async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
 async fn exercise_streaming(client: OpenAiModels, model_name: &'static str) {
     let model = client.completion(model_name);
     let stream = model
-        .stream(
-            CompletionRequestBuilder::new(PROMPT)
-                .max_tokens(CAP)
-                .build(),
-        )
+        .stream(CompletionRequest::new(PROMPT).max_tokens(CAP))
         .expect("reasoning stream should connect");
     let observation = collect_raw_stream_observation(stream).await;
 

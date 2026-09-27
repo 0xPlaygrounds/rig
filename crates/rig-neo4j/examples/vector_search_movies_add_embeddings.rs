@@ -5,7 +5,6 @@
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
 
-use rig_core::wire::Wire;
 use std::env;
 
 use rig_core::{
@@ -108,7 +107,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .create_vector_index(
             IndexConfig::new(INDEX_NAME),
             NODE_LABEL,
-            model.wire.capabilities().ndims,
+            model.capabilities().ndims,
         )
         .await?;
 

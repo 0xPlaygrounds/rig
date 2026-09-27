@@ -18,7 +18,7 @@ use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, Subtract, assert_mentions_expected_number,
     collect_stream_observation,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const SEQUENTIAL_TOOLS_PREAMBLE: &str = "\
 You are a calculator. Use the provided tools instead of doing arithmetic yourself. \
@@ -200,7 +200,7 @@ async fn long_history_replay_nonstreaming() {
             // functionResponse parts to functionCall parts by name, so a fully
             // client-constructed history (including model text before the
             // functionCall and after the functionResponse) must be accepted.
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
             )
@@ -229,8 +229,7 @@ async fn long_history_replay_nonstreaming() {
                 ALPHA_SIGNAL_OUTPUT,
             ))
             .message(Message::assistant("The harbor label is crimson-harbor."))
-            .tool(rig::tool::tool_definition(&AlphaSignal))
-            .build();
+            .tool(rig::tool::tool_definition(&AlphaSignal));
 
             let response = model
                 .call(request)
@@ -278,7 +277,7 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
                      Think it through, then answer in one short sentence.",
             )
@@ -287,8 +286,7 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
                 "generationConfig": {
                     "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
                 }
-            }))
-            .build();
+            }));
 
             let response = model
                 .call(request)

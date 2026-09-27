@@ -7,7 +7,7 @@
 
 use bevy_ecs::prelude::*;
 use rig_core::{
-    completion::CompletionRequestBuilder,
+    completion::CompletionRequest,
     effect::{EffectKind, HandlerKey, Outcome},
     message::AssistantContent,
     tool::{ToolOutput, ToolResult},
@@ -83,12 +83,10 @@ fn serve_lookup(
         };
         match spec.nesting.child {
             NestedChild::Completion => {
-                let mut request = CompletionRequestBuilder::new(args.q.as_str())
-                    .preamble(NESTED_PREAMBLE.to_owned());
+                let mut request = CompletionRequest::new(args.q.as_str()).preamble(NESTED_PREAMBLE);
                 if !spec.nesting.no_temperature {
                     request = request.temperature(0.0);
                 }
-                let request = request.build();
                 spawn(PendingEffect::new(
                     spec.model_key,
                     EffectKind::Completion {

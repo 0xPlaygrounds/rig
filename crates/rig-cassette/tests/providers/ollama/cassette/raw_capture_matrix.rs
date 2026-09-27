@@ -51,7 +51,7 @@ use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{Observed, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
@@ -63,10 +63,9 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 /// `think: false` keeps qwen3's reasoning trace out of the recording; the
 /// durations this matrix reads are reported either way.
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .max_tokens(64)
         .additional_params(json!({ "think": false }))
-        .build()
 }
 
 /// The premise every duration cell rests on: the recorded body is a completed

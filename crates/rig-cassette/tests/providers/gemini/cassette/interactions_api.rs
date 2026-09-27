@@ -9,7 +9,7 @@ use rig::streaming::{Delta, StreamEvent};
 use serde::Deserialize;
 
 use crate::support::assert_nonempty_response;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn extract_text(choice: &[AssistantContent]) -> String {
     choice
@@ -39,13 +39,9 @@ async fn basic_interaction_returns_id() {
                 store: Some(true),
                 ..Default::default()
             };
-            let request =
-                CompletionRequestBuilder::new("Give me two fun facts about hummingbirds.")
-                    .preamble("Be concise.".to_string())
-                    .additional_params(
-                        serde_json::to_value(params).expect("params should serialize"),
-                    )
-                    .build();
+            let request = CompletionRequest::new("Give me two fun facts about hummingbirds.")
+                .preamble("Be concise.")
+                .additional_params(serde_json::to_value(params).expect("params should serialize"));
             let response = model
                 .call(request)
                 .await
@@ -80,15 +76,14 @@ async fn followup_with_previous_interaction_id() {
             let model = client.interactions("gemini-3-flash-preview");
             let initial = model
                 .call(
-                    CompletionRequestBuilder::new("Give me one short fact about hummingbirds.")
+                    CompletionRequest::new("Give me one short fact about hummingbirds.")
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {
                                 store: Some(true),
                                 ..Default::default()
                             })
                             .expect("params should serialize"),
-                        )
-                        .build(),
+                        ),
                 )
                 .await
                 .expect("initial completion should succeed");
@@ -103,15 +98,13 @@ async fn followup_with_previous_interaction_id() {
 
             let followup = model
                 .call(
-                    CompletionRequestBuilder::new("Now answer with a short analogy.")
-                        .additional_params(
-                            serde_json::to_value(AdditionalParameters {
-                                previous_interaction_id: Some(interaction_id),
-                                ..Default::default()
-                            })
-                            .expect("params should serialize"),
-                        )
-                        .build(),
+                    CompletionRequest::new("Now answer with a short analogy.").additional_params(
+                        serde_json::to_value(AdditionalParameters {
+                            previous_interaction_id: Some(interaction_id),
+                            ..Default::default()
+                        })
+                        .expect("params should serialize"),
+                    ),
                 )
                 .await
                 .expect("followup completion should succeed");
@@ -134,15 +127,13 @@ async fn google_search_tool_interaction() {
             // bytes — one request, exactly as the cassette recorded it.
             let response = model
                 .call(
-                    CompletionRequestBuilder::new("Who won the Euro 2024 tournament?")
-                        .additional_params(
-                            serde_json::to_value(AdditionalParameters {
-                                tools: Some(vec![Tool::GoogleSearch]),
-                                ..Default::default()
-                            })
-                            .expect("params should serialize"),
-                        )
-                        .build(),
+                    CompletionRequest::new("Who won the Euro 2024 tournament?").additional_params(
+                        serde_json::to_value(AdditionalParameters {
+                            tools: Some(vec![Tool::GoogleSearch]),
+                            ..Default::default()
+                        })
+                        .expect("params should serialize"),
+                    ),
                 )
                 .await
                 .expect("search completion should succeed");
@@ -181,7 +172,7 @@ async fn tool_result_roundtrip() {
 
             let initial = model
                 .call(
-                    CompletionRequestBuilder::new("Use the add tool to sum 7 and 11.")
+                    CompletionRequest::new("Use the add tool to sum 7 and 11.")
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
                         .additional_params(
@@ -190,8 +181,7 @@ async fn tool_result_roundtrip() {
                                 ..Default::default()
                             })
                             .expect("params should serialize"),
-                        )
-                        .build(),
+                        ),
                 )
                 .await
                 .expect("tool call completion should succeed");
@@ -209,7 +199,7 @@ async fn tool_result_roundtrip() {
 
             let followup = model
                 .call(
-                    CompletionRequestBuilder::new(Message::from(UserContent::tool_result_for(
+                    CompletionRequest::new(Message::from(UserContent::tool_result_for(
                         tool_call.id.clone(),
                         tool_call.provider.clone(),
                         tool_call.function.name.clone(),
@@ -221,8 +211,7 @@ async fn tool_result_roundtrip() {
                             ..Default::default()
                         })
                         .expect("params should serialize"),
-                    )
-                    .build(),
+                    ),
                 )
                 .await
                 .expect("tool result followup should succeed");
@@ -239,10 +228,8 @@ async fn streaming_interaction() {
         "interactions_api/streaming_interaction",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
-            let request =
-                CompletionRequestBuilder::new("Write a 3-line poem about rust and rivers.")
-                    .temperature(0.4)
-                    .build();
+            let request = CompletionRequest::new("Write a 3-line poem about rust and rivers.")
+                .temperature(0.4);
             let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
@@ -276,10 +263,8 @@ async fn streaming_final_metadata_exposes_model_version() {
         "interactions_api/streaming_final_metadata_exposes_model_version",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
-            let request =
-                CompletionRequestBuilder::new("Reply with exactly: interaction metadata ok")
-                    .temperature(0.0)
-                    .build();
+            let request = CompletionRequest::new("Reply with exactly: interaction metadata ok")
+                .temperature(0.0);
             let mut stream = model.stream(request).expect("stream should start");
 
             let mut text = String::new();
@@ -342,13 +327,9 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
                 store: Some(true),
                 ..Default::default()
             };
-            let request =
-                CompletionRequestBuilder::new("Give me two fun facts about hummingbirds.")
-                    .preamble("Be concise.".to_string())
-                    .additional_params(
-                        serde_json::to_value(params).expect("params should serialize"),
-                    )
-                    .build();
+            let request = CompletionRequest::new("Give me two fun facts about hummingbirds.")
+                .preamble("Be concise.")
+                .additional_params(serde_json::to_value(params).expect("params should serialize"));
 
             let response = model
                 .call(request)

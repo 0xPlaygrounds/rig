@@ -15,7 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::super::support::with_gemini_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 struct EventLocation {
@@ -40,18 +40,17 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             // Thinking is disabled so the token budget is spent on visible
             // text and the truncated candidate still carries partial output.
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Write a story of at least 150 words about a lighthouse keeper.",
             )
-            .preamble("You are a storyteller.".to_string())
+            .preamble("You are a storyteller.")
             .temperature(0.0)
             .max_tokens(48)
             .additional_params(serde_json::json!({
                 "generationConfig": {
                     "thinkingConfig": { "thinkingBudget": 0 }
                 }
-            }))
-            .build();
+            }));
 
             let response = model
                 .call(request)

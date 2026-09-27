@@ -23,7 +23,7 @@ use serde::Deserialize;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{Adder, IdentityProbe, TOOLS_PREAMBLE, assert_transport_request_id};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// Anthropic's own usage for a turn, read off [`CompletionResponse::raw`]:
 /// the per-TTL cache-creation split is provider-native and rig's normalized
@@ -59,11 +59,10 @@ async fn caching_and_identity_share_the_wire_blocking() {
             let send = |model: Model<Messages>| async move {
                 model
                     .call(
-                        CompletionRequestBuilder::new("Reply with exactly: edge probe")
+                        CompletionRequest::new("Reply with exactly: edge probe")
                             .preamble(cache_padding("caching-blocking"))
                             .temperature(0.0)
-                            .max_tokens(16)
-                            .build(),
+                            .max_tokens(16),
                     )
                     .await
                     .expect("cached completion should succeed")
@@ -115,11 +114,10 @@ async fn caching_and_identity_share_the_wire_streaming() {
             let send = |model: Model<Messages>| async move {
                 let mut stream = model
                     .stream(
-                        CompletionRequestBuilder::new("Reply with exactly: stream edge probe")
+                        CompletionRequest::new("Reply with exactly: stream edge probe")
                             .preamble(cache_padding("caching-streaming"))
                             .temperature(0.0)
-                            .max_tokens(16)
-                            .build(),
+                            .max_tokens(16),
                     )
                     .expect("stream should open");
                 let mut terminal = None;
@@ -157,12 +155,11 @@ async fn strict_tools_and_identity() {
                 .map_wire(|wire| wire.with_strict_tools());
             let response = model
                 .call(
-                    CompletionRequestBuilder::new("Use the add tool: what is 2 + 3?")
+                    CompletionRequest::new("Use the add tool: what is 2 + 3?")
                         .preamble(TOOLS_PREAMBLE.to_string())
                         .max_tokens(1024)
                         .tool(rig::tool::tool_definition(&Adder))
-                        .tool_choice(rig::message::ToolChoice::Required)
-                        .build(),
+                        .tool_choice(rig::message::ToolChoice::Required),
                 )
                 .await
                 .expect("strict tool completion should succeed");
@@ -186,14 +183,11 @@ async fn extended_thinking_and_identity() {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(
-                        "Think briefly, then reply with exactly: thought probe",
-                    )
-                    .max_tokens(2048)
-                    .additional_params(serde_json::json!({
-                        "thinking": {"type": "enabled", "budget_tokens": 1024}
-                    }))
-                    .build(),
+                    CompletionRequest::new("Think briefly, then reply with exactly: thought probe")
+                        .max_tokens(2048)
+                        .additional_params(serde_json::json!({
+                            "thinking": {"type": "enabled", "budget_tokens": 1024}
+                        })),
                 )
                 .await
                 .expect("thinking completion should succeed");
@@ -215,16 +209,13 @@ async fn documents_and_identity() {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(
-                        "Per the document, reply with exactly the code word.",
-                    )
-                    .document(Document {
-                        id: "doc-1".to_string(),
-                        text: "The code word is: heliotrope.".to_string(),
-                        additional_props: Default::default(),
-                    })
-                    .max_tokens(32)
-                    .build(),
+                    CompletionRequest::new("Per the document, reply with exactly the code word.")
+                        .document(Document {
+                            id: "doc-1".to_string(),
+                            text: "The code word is: heliotrope.".to_string(),
+                            additional_props: Default::default(),
+                        })
+                        .max_tokens(32),
                 )
                 .await
                 .expect("document completion should succeed");
@@ -664,9 +655,7 @@ async fn stream_conversion_carries_live_identity() {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let mut stream = model
                 .stream(
-                    CompletionRequestBuilder::new("Reply with exactly: conversion probe")
-                        .max_tokens(32)
-                        .build(),
+                    CompletionRequest::new("Reply with exactly: conversion probe").max_tokens(32),
                 )
                 .expect("stream should open");
             let mut terminal_id = None;
@@ -701,9 +690,8 @@ async fn provider_error_response_surfaces_cleanly() {
             let model = client.completion("claude-nonexistent-model-for-identity-edge");
             let error = model
                 .call(
-                    CompletionRequestBuilder::new("Reply with exactly: never sent successfully")
-                        .max_tokens(16)
-                        .build(),
+                    CompletionRequest::new("Reply with exactly: never sent successfully")
+                        .max_tokens(16),
                 )
                 .await
                 .expect_err("a nonexistent model must fail");

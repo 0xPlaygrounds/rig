@@ -9,7 +9,7 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig::error::ProviderError;
 use rig::streaming::StreamEvent;
 use serde_json::Value;
@@ -79,7 +79,7 @@ pub async fn run<W, T, Wm, Tr>(
     model: rig::driver::Model<W, T>,
     rejected: rig::driver::Model<Wm, Tr>,
     params: Option<Value>,
-    reject: impl FnOnce(CompletionRequestBuilder) -> CompletionRequestBuilder,
+    reject: impl FnOnce(CompletionRequest) -> CompletionRequest,
 ) where
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
@@ -92,19 +92,17 @@ pub async fn run<W, T, Wm, Tr>(
 
     let unary = model
         .call(
-            CompletionRequestBuilder::new("Reply with exactly: identity probe")
+            CompletionRequest::new("Reply with exactly: identity probe")
                 .max_tokens(64)
-                .additional_params(params.clone())
-                .build(),
+                .additional_params(params.clone()),
         )
         .await
         .expect("unary call");
     let mut stream = model
         .stream(
-            CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
+            CompletionRequest::new("Reply with exactly: stream identity probe")
                 .max_tokens(64)
-                .additional_params(params.clone())
-                .build(),
+                .additional_params(params.clone()),
         )
         .expect("stream opens");
     let mut terminal = None;
@@ -115,14 +113,11 @@ pub async fn run<W, T, Wm, Tr>(
     }
     let terminal = terminal.expect("the stream ends with a final record");
     let error: ProviderError = rejected
-        .call(
-            reject(
-                CompletionRequestBuilder::new("Reply with exactly: rejected")
-                    .max_tokens(64)
-                    .additional_params(params.clone()),
-            )
-            .build(),
-        )
+        .call(reject(
+            CompletionRequest::new("Reply with exactly: rejected")
+                .max_tokens(64)
+                .additional_params(params.clone()),
+        ))
         .await
         .expect_err("the provider rejects the model");
 

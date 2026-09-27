@@ -16,7 +16,7 @@ use rig::providers::anthropic::completion::{
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PDF_URL: &str = "https://bitcoin.org/bitcoin.pdf";
 
@@ -57,7 +57,7 @@ async fn pdf_document_citations_decode_as_page_locations() {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(Message::User {
+                    CompletionRequest::new(Message::User {
                         content: vec![
                             UserContent::Document(cited_pdf()),
                             UserContent::text(
@@ -67,8 +67,7 @@ async fn pdf_document_citations_decode_as_page_locations() {
                         ],
                     })
                     .temperature(0.0)
-                    .max_tokens(512)
-                    .build(),
+                    .max_tokens(512),
                 )
                 .await
                 .expect("cited PDF completion should succeed");

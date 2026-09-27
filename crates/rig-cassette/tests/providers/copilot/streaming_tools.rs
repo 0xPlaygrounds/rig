@@ -12,7 +12,7 @@ use crate::support::{
     assert_two_tool_roundtrip_contract, collect_raw_stream_observation,
     collect_stream_final_response, collect_stream_observation, zero_arg_tool_definition,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn streaming_tools_smoke() {
@@ -67,10 +67,9 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
             let model = client.completion(LIVE_MODEL);
-            let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                .tool_choice(ToolChoice::Required);
             let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -85,11 +84,10 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
             let model = client.completion(LIVE_MODEL);
-            let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
+            let request = CompletionRequest::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .build();
+                .tool(rig::tool::tool_definition(&BetaSignal));
 
             let observation = collect_raw_stream_observation(
                 model.stream(request).expect("raw stream should start"),
@@ -133,9 +131,9 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_copilot_cassette("streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls", |client| async move {
         let model = client.completion(LIVE_MODEL);
-        let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
+        let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
             .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-            .tool(rig::tool::tool_definition(&AlphaSignal)).build();
+            .tool(rig::tool::tool_definition(&AlphaSignal));
 
         let first_turn = collect_raw_stream_observation(
             model
@@ -165,12 +163,12 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
         )],
     };
-        let followup_request = CompletionRequestBuilder::new(
+        let followup_request = CompletionRequest::new(
                 "Now reply in one short sentence using the provided tool result. Do not call any tools.",
             )
-            .preamble("Use the provided tool result and answer directly.".to_string())
+            .preamble("Use the provided tool result and answer directly.")
             .message(assistant_message)
-            .message(tool_result_message).build();
+            .message(tool_result_message);
 
         let second_turn = collect_raw_stream_observation(
             model

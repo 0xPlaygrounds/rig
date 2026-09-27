@@ -59,7 +59,6 @@ use serde_json::{Value, json};
 use super::super::support::{recorded_request_id_headers, with_openai_cassette_result};
 use crate::raw_capture::{assert_contracted_request_id, capture_completion_pair, chat};
 use crate::support::{Observed, assert_matches_recorded_token};
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
@@ -80,19 +79,17 @@ fn ping_tool() -> ToolDefinition {
 /// The text-turn request, identical for both routes: `temperature: 0` keeps
 /// the two live turns of a cell as alike as the provider allows.
 fn text_request() -> CompletionRequest {
-    CompletionRequestBuilder::new(TEXT_PROMPT)
+    CompletionRequest::new(TEXT_PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 fn tool_request() -> CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .tool(ping_tool())
         .tool_choice(ToolChoice::Required)
         .temperature(0.0)
         .max_tokens(64)
-        .build()
 }
 
 fn tool_call_names(response: &CompletionResponse) -> Vec<&str> {

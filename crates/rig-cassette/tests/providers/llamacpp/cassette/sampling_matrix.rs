@@ -43,7 +43,7 @@ use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 use crate::support::assistant_text_response;
 
 use super::super::cassette_support::*;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// Qwen3 emits a `<think>` trace before answering and the chat-completions
 /// route has no switch for it, so prompts that need a short literal answer
@@ -88,10 +88,9 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
         let model = client.completion(CASSETTE_MODEL);
         model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
+                CompletionRequest::new(format!("{NO_THINK}Say ok."))
                     .temperature(0.0)
-                    .max_tokens(32)
-                    .build(),
+                    .max_tokens(32),
             )
             .await
             .expect("temperature 0 should be accepted");
@@ -102,10 +101,9 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
         let model = client.completion(CASSETTE_MODEL);
         model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
+                CompletionRequest::new(format!("{NO_THINK}Say ok."))
                     .temperature(0.7)
-                    .max_tokens(32)
-                    .build(),
+                    .max_tokens(32),
             )
             .await
             .expect("a non-zero temperature should be accepted");
@@ -132,11 +130,7 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_one", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .call(
-                CompletionRequestBuilder::new("Count from one to ten.")
-                    .max_tokens(1)
-                    .build(),
-            )
+            .call(CompletionRequest::new("Count from one to ten.").max_tokens(1))
             .await
             .expect("a one-token cap is a normal request");
 
@@ -170,9 +164,8 @@ async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Reply with the single word: ok"))
-                    .max_tokens(512)
-                    .build(),
+                CompletionRequest::new(format!("{NO_THINK}Reply with the single word: ok"))
+                    .max_tokens(512),
             )
             .await
             .expect("a generous cap is a normal request");
@@ -216,12 +209,11 @@ async fn a_single_stop_sequence_truncates_the_answer() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!(
+                CompletionRequest::new(format!(
                     "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
                 ))
                 .max_tokens(64)
-                .additional_params(json!({ "stop": ["Charlie"] }))
-                .build(),
+                .additional_params(json!({ "stop": ["Charlie"] })),
             )
             .await
             .expect("a stop sequence is a normal request");
@@ -260,13 +252,12 @@ async fn several_stop_sequences_fire_on_whichever_comes_first() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!(
+                CompletionRequest::new(format!(
                     "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
                 ))
                 .max_tokens(64)
                 // `Zulu` never appears; `Bravo` appears before `Charlie`.
-                .additional_params(json!({ "stop": ["Zulu", "Charlie", "Bravo"] }))
-                .build(),
+                .additional_params(json!({ "stop": ["Zulu", "Charlie", "Bravo"] })),
             )
             .await
             .expect("several stop sequences are a normal request");
@@ -297,12 +288,11 @@ async fn a_stop_sequence_that_never_matches_changes_nothing() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!(
+                CompletionRequest::new(format!(
                     "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
                 ))
                 .max_tokens(64)
-                .additional_params(json!({ "stop": ["QQZZXX-never-emitted"] }))
-                .build(),
+                .additional_params(json!({ "stop": ["QQZZXX-never-emitted"] })),
             )
             .await
             .expect("an unmatched stop sequence is a normal request");
@@ -331,12 +321,11 @@ async fn stop_matching_is_case_sensitive() {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
             .call(
-                CompletionRequestBuilder::new(format!(
+                CompletionRequest::new(format!(
                     "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
                 ))
                 .max_tokens(64)
-                .additional_params(json!({ "stop": ["charlie"] }))
-                .build(),
+                .additional_params(json!({ "stop": ["charlie"] })),
             )
             .await
             .expect("a case-mismatched stop sequence is still a valid request");
@@ -375,10 +364,9 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
         let model = client.completion(CASSETTE_MODEL);
         model
             .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
+                CompletionRequest::new(format!("{NO_THINK}Say ok."))
                     .max_tokens(32)
-                    .additional_params(json!({ "seed": 7 }))
-                    .build(),
+                    .additional_params(json!({ "seed": 7 })),
             )
             .await
             .expect("an explicit seed should be accepted");
@@ -388,11 +376,7 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     with_llamacpp_cassette("sampling_matrix/seed_absent", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         model
-            .call(
-                CompletionRequestBuilder::new(format!("{NO_THINK}Say ok."))
-                    .max_tokens(32)
-                    .build(),
-            )
+            .call(CompletionRequest::new(format!("{NO_THINK}Say ok.")).max_tokens(32))
             .await
             .expect("no seed should be accepted");
     })

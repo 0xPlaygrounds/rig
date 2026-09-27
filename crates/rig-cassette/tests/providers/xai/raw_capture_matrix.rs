@@ -44,7 +44,6 @@ use crate::raw_capture::{
     assert_contracted_request_id, assert_normalized_lacks, capture_completion, responses,
 };
 use crate::support::{Observed, assert_matches_recorded_token, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
@@ -52,7 +51,7 @@ const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).build()
+    CompletionRequest::new(PROMPT)
 }
 
 /// The `x-request-id` the single recorded interaction carried.

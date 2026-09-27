@@ -64,7 +64,7 @@ use serde_json::{Value, json};
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig::operation::RerankRequest;
 
 /// A prompt long enough to overflow a 512-token context and short enough to
@@ -132,11 +132,7 @@ async fn context_overflow_preserves_the_token_counts() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
-                .call(
-                    CompletionRequestBuilder::new(overflowing_prompt())
-                        .max_tokens(8)
-                        .build(),
-                )
+                .call(CompletionRequest::new(overflowing_prompt()).max_tokens(8))
                 .await
                 .expect_err("a prompt past the context window must fail");
 
@@ -186,9 +182,7 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
         "error_matrix/context_overflow_streaming",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = CompletionRequestBuilder::new(overflowing_prompt())
-                .max_tokens(8)
-                .build();
+            let request = CompletionRequest::new(overflowing_prompt()).max_tokens(8);
 
             // A status failure may surface either when the stream is opened or
             // as its first in-band item; both are the same contract as far as
@@ -259,11 +253,7 @@ async fn an_unknown_model_is_ignored_rather_than_rejected() {
         |client| async move {
             let model = client.completion("rig/definitely-not-a-llamacpp-model");
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with the single word: ok")
-                        .max_tokens(256)
-                        .build(),
-                )
+                .call(CompletionRequest::new("Reply with the single word: ok").max_tokens(256))
                 .await
                 .expect("llama.cpp ignores the model field rather than rejecting it");
             assert!(!response.choice.is_empty());
@@ -305,7 +295,7 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
-                .call(CompletionRequestBuilder::new("hi").max_tokens(8).build())
+                .call(CompletionRequest::new("hi").max_tokens(8))
                 .await
                 .expect_err("a server started with --api-key must reject an unkeyed request");
 
@@ -339,11 +329,7 @@ async fn the_api_key_the_provider_sends_is_accepted() {
     with_llamacpp_api_key_cassette("error_matrix/api_key_is_accepted", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .call(
-                CompletionRequestBuilder::new("Reply with the single word: ok")
-                    .max_tokens(256)
-                    .build(),
-            )
+            .call(CompletionRequest::new("Reply with the single word: ok").max_tokens(256))
             .await
             .expect("the bearer token the provider sends must be accepted");
         assert!(!response.choice.is_empty());
@@ -580,10 +566,9 @@ async fn tools_without_jinja_are_a_500() {
         let model = client.completion(CASSETTE_MODEL);
         let error = model
             .call(
-                CompletionRequestBuilder::new("Add 2 and 3 using the tool.")
+                CompletionRequest::new("Add 2 and 3 using the tool.")
                     .tool(rig::tool::tool_definition(&crate::support::Adder))
-                    .max_tokens(64)
-                    .build(),
+                    .max_tokens(64),
             )
             .await
             .expect_err("a --no-jinja server cannot render a tool list");
@@ -625,12 +610,11 @@ async fn a_malformed_body_keeps_its_parse_error() {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
                 .call(
-                    CompletionRequestBuilder::new("hi")
+                    CompletionRequest::new("hi")
                         .max_tokens(8)
                         // `temperature` is a number on this wire; a string is a
                         // type error the server reports before generating.
-                        .additional_params(json!({ "temperature": "hot" }))
-                        .build(),
+                        .additional_params(json!({ "temperature": "hot" })),
                 )
                 .await
                 .expect_err("a mistyped parameter must fail");
@@ -672,10 +656,9 @@ async fn an_oversized_output_cap_is_clamped_not_rejected() {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new("Say ok.")
+                    CompletionRequest::new("Say ok.")
                         // Two orders of magnitude past the server's -c 512.
-                        .max_tokens(100_000)
-                        .build(),
+                        .max_tokens(100_000),
                 )
                 .await
                 .expect("llama.cpp clamps an oversized cap rather than refusing");

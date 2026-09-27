@@ -14,9 +14,7 @@ use super::runner::AgentRunner;
 use super::typed::TypedRun;
 use crate::bus::{BusDriver, Dispatcher, ModelHandle};
 use crate::{
-    completion::{
-        CompletionRequest, CompletionRequestBuilder, Document, Message, PromptError, ToolDefinition,
-    },
+    completion::{CompletionRequest, Document, Message, PromptError, ToolDefinition},
     run::response::PromptResponse,
     tool::{
         ToolCatalog,
@@ -129,19 +127,16 @@ pub(crate) async fn build_prepared_completion_request(
     let allowed_tool_names = prepared.allowed_tool_names.clone();
     let output_tool_name = prepared.output_tool_name.clone();
     let max_tokens = prepared.max_tokens;
-    let builder = prepared
-        .apply(CompletionRequestBuilder::new(prompt))
-        .record_content_telemetry(record_telemetry_content);
+    // The agent records the input itself, so the request the provider sees
+    // carries the telemetry flag off: one span, no double recording.
+    let request = prepared.apply(CompletionRequest::new(prompt));
     let telemetry_messages = if record_telemetry_content {
-        builder.messages_for_telemetry()
+        request.messages_for_telemetry()
     } else {
         Vec::new()
     };
-    // The agent records the input itself, so the request the provider sees
-    // carries the flag off: one span, no double recording.
-    let request = builder.record_content_telemetry(false).build();
-    // The same guard the builder's own `send`/`stream` apply: an empty
-    // history or content block is a local, named error, not a remote 400.
+    // An empty history or content block is a local, named error, not a
+    // remote 400.
     request.validate_message_content()?;
 
     Ok(PreparedCompletionRequest {

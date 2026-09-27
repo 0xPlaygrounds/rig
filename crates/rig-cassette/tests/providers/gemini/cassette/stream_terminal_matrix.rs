@@ -88,7 +88,7 @@ use super::super::support::{
     assert_recorded_stream_finishes_early, last_frame_total_tokens,
     with_gemini_stream_terminal_cassette,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// The prompt that reliably makes Gemini take two code-execution rounds, and
 /// therefore emit an intermediate `finishReason`.
@@ -200,11 +200,10 @@ async fn two_terminal_stream_keeps_the_text_after_the_first_finish() {
         "stream_terminal_matrix/two_terminal_stream_keeps_the_text_after_the_first_finish",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -244,11 +243,10 @@ async fn two_terminal_stream_blocking_twin_has_the_same_answer() {
         "stream_terminal_matrix/two_terminal_stream_blocking_twin_has_the_same_answer",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
             let response = model
                 .call(request)
@@ -314,11 +312,10 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
         "stream_terminal_matrix/two_terminal_stream_terminal_carries_the_last_usage",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -369,7 +366,7 @@ async fn two_terminal_stream_with_visible_thoughts() {
         "stream_terminal_matrix/two_terminal_stream_with_visible_thoughts",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(3000)
                 .additional_params(json!({
@@ -377,8 +374,7 @@ async fn two_terminal_stream_with_visible_thoughts() {
                     "generationConfig": {
                         "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
                     }
-                }))
-                .build();
+                }));
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -410,11 +406,10 @@ async fn gemini_3_flash_does_not_emit_the_intermediate_finish() {
         "stream_terminal_matrix/gemini_3_flash_does_not_emit_the_intermediate_finish",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(3000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -444,11 +439,10 @@ async fn two_terminal_stream_through_raw_stream() {
         "stream_terminal_matrix/two_terminal_stream_through_raw_stream",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
             // The terminal record carries Gemini's own terminal type on
             // `raw`, so this pins the fix on the provider-native record as
@@ -502,7 +496,7 @@ async fn two_terminal_stream_unicode_answer_after_the_first_finish() {
         "stream_terminal_matrix/two_terminal_stream_unicode_answer_after_the_first_finish",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "You must call the code execution tool twice as two separate executions. \
                  Execution 1: run only print(6 * 7). Then, after seeing that number, \
                  Execution 2: run only print(6 * 7 + 100). Never combine them. \
@@ -510,8 +504,7 @@ async fn two_terminal_stream_unicode_answer_after_the_first_finish() {
             )
             .temperature(0.0)
             .max_tokens(2000)
-            .additional_params(code_execution_params())
-            .build();
+            .additional_params(code_execution_params());
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -540,13 +533,12 @@ async fn single_terminal_text_stream_is_unchanged() {
         "stream_terminal_matrix/single_terminal_text_stream_is_unchanged",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new("Reply with exactly the word PONG.")
+            let request = CompletionRequest::new("Reply with exactly the word PONG.")
                 .temperature(0.0)
                 .max_tokens(400)
                 .additional_params(json!({
                     "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                }))
-                .build();
+                }));
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -571,7 +563,7 @@ async fn single_terminal_tool_call_stream_is_unchanged() {
         "stream_terminal_matrix/single_terminal_tool_call_stream_is_unchanged",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new("What is 41 plus 1? Use the add tool.")
+            let request = CompletionRequest::new("What is 41 plus 1? Use the add tool.")
                 .temperature(0.0)
                 .max_tokens(1000)
                 .tools(vec![rig::completion::ToolDefinition {
@@ -585,8 +577,7 @@ async fn single_terminal_tool_call_stream_is_unchanged() {
                         },
                         "required": ["x", "y"]
                     }),
-                }])
-                .build();
+                }]);
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -610,13 +601,12 @@ async fn max_tokens_truncated_stream_still_reports_length() {
         "stream_terminal_matrix/max_tokens_truncated_stream_still_reports_length",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new("Write 300 words about lighthouses.")
+            let request = CompletionRequest::new("Write 300 words about lighthouses.")
                 .temperature(0.0)
                 .max_tokens(32)
                 .additional_params(json!({
                     "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                }))
-                .build();
+                }));
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -640,17 +630,15 @@ async fn thinking_stream_terminal_is_unchanged() {
         "stream_terminal_matrix/thinking_stream_terminal_is_unchanged",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(
-                "How many minutes are in two days? Answer with the number.",
-            )
-            .temperature(0.0)
-            .max_tokens(2000)
-            .additional_params(json!({
-                "generationConfig": {
-                    "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true }
-                }
-            }))
-            .build();
+            let request =
+                CompletionRequest::new("How many minutes are in two days? Answer with the number.")
+                    .temperature(0.0)
+                    .max_tokens(2000)
+                    .additional_params(json!({
+                        "generationConfig": {
+                            "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true }
+                        }
+                    }));
 
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
@@ -729,7 +717,7 @@ mod unit {
         let model = GeminiConfig::new("test-key")
             .connect(http_client)
             .completion(gemini::completion::GEMINI_2_5_FLASH);
-        let request = rig::completion::CompletionRequestBuilder::new("hello").build();
+        let request = rig::completion::CompletionRequest::new("hello");
         let mut stream = model.stream(request).expect("stream should open");
 
         let mut run = Run {

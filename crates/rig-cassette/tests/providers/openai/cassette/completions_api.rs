@@ -14,7 +14,7 @@ use crate::support::{
     assistant_text_response, collect_raw_stream_observation, collect_stream_observation,
     zero_arg_tool_definition,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn completions_api_agent_prompt() {
@@ -43,9 +43,8 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = CompletionRequestBuilder::new(RAW_TEXT_RESPONSE_PROMPT)
-                .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-                .build();
+            let request = CompletionRequest::new(RAW_TEXT_RESPONSE_PROMPT)
+                .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string());
 
             // The cassette records exactly one interaction, and one is all this
             // needs: the provider's own reply rides serialized on
@@ -115,10 +114,9 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
         "completions_api/completions_api_raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                .tool_choice(ToolChoice::Required);
             let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -133,9 +131,7 @@ async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
         "completions_api/completions_api_raw_stream_accepts_null_tool_calls_delta",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request =
-                CompletionRequestBuilder::new("Reply with exactly: cassette null tool calls ok")
-                    .build();
+            let request = CompletionRequest::new("Reply with exactly: cassette null tool calls ok");
 
             let observation = collect_raw_stream_observation(
                 model
@@ -161,11 +157,10 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
         "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = CompletionRequestBuilder::new(TWO_TOOL_STREAM_PROMPT)
+            let request = CompletionRequest::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .build();
+                .tool(rig::tool::tool_definition(&BetaSignal));
 
             let observation = collect_raw_stream_observation(
                 model
@@ -215,9 +210,9 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
         "completions_api/completions_api_raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
             let model = client.chat(openai::GPT_4O);
-            let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
+            let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal)).build();
+                .tool(rig::tool::tool_definition(&AlphaSignal));
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -247,12 +242,12 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
         )],
     };
-            let followup_request = CompletionRequestBuilder::new(
+            let followup_request = CompletionRequest::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
                 )
-                .preamble("Use the provided tool result and answer directly.".to_string())
+                .preamble("Use the provided tool result and answer directly.")
                 .message(assistant_message)
-                .message(tool_result_message).build();
+                .message(tool_result_message);
 
             let second_turn = collect_raw_stream_observation(
                 model
@@ -272,6 +267,81 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             );
             let alpha_signal_markers = ALPHA_SIGNAL_OUTPUT.split('-').collect::<Vec<_>>();
             assert_raw_stream_text_contains(&second_turn, &alpha_signal_markers);
+        },
+    )
+    .await;
+}
+
+/// `updates()` over two parallel tool calls on Chat Completions: the stream
+/// keeps the index contract, and each call's argument JSON and name are the
+/// ones its recorded fragments assemble, read from the cassette's frames.
+#[tokio::test]
+async fn completions_api_updates_keep_parallel_tool_calls_in_place() {
+    with_openai_completions_cassette(
+        "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",
+        |client| async move {
+            let model = client.chat(openai::GPT_4O);
+            let request = CompletionRequest::new(TWO_TOOL_STREAM_PROMPT)
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&BetaSignal));
+            let mut stream = model.stream(request).expect("the stream should start");
+            let updates = rig_test_support::updates::collect_updates(&mut stream).await;
+            let (_, parts) = rig_test_support::updates::assert_update_contract(&updates);
+
+            let frames = crate::cassettes::recorded_sse_json_frames(
+                "openai",
+                "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",
+            );
+            let mut recorded: std::collections::BTreeMap<u64, (String, String)> =
+                std::collections::BTreeMap::new();
+            let mut recorded_text = String::new();
+            for frame in &frames {
+                let delta = &frame["choices"][0]["delta"];
+                if let Some(text) = delta["content"].as_str() {
+                    recorded_text.push_str(text);
+                }
+                for call in delta["tool_calls"].as_array().into_iter().flatten() {
+                    let entry = recorded
+                        .entry(call["index"].as_u64().unwrap_or_default())
+                        .or_default();
+                    if let Some(name) = call["function"]["name"].as_str() {
+                        entry.0.push_str(name);
+                    }
+                    if let Some(arguments) = call["function"]["arguments"].as_str() {
+                        entry.1.push_str(arguments);
+                    }
+                }
+            }
+            assert!(recorded.len() >= 2, "the cassette records parallel calls");
+
+            let delivered: Vec<(String, serde_json::Value)> = parts
+                .iter()
+                .filter_map(|part| match &part.kind {
+                    rig::streaming::PartKind::ToolCall { name } => Some((
+                        name.clone(),
+                        serde_json::from_str(&part.text).expect("argument JSON"),
+                    )),
+                    _ => None,
+                })
+                .collect();
+            let mut expected: Vec<(String, serde_json::Value)> = recorded
+                .into_values()
+                .map(|(name, arguments)| {
+                    (name, serde_json::from_str(&arguments).expect("recorded argument JSON"))
+                })
+                .collect();
+            let mut delivered_sorted = delivered.clone();
+            delivered_sorted.sort_by(|a, b| a.0.cmp(&b.0));
+            expected.sort_by(|a, b| a.0.cmp(&b.0));
+            assert_eq!(delivered_sorted, expected);
+
+            let text: String = parts
+                .iter()
+                .filter(|part| part.kind == rig::streaming::PartKind::Text)
+                .map(|part| part.text.as_str())
+                .collect();
+            assert_eq!(text, recorded_text);
         },
     )
     .await;

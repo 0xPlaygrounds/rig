@@ -44,7 +44,6 @@ use super::super::support::with_perplexity_cassette;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
 use crate::support::{Observed, assert_matches_recorded_document, assert_matches_recorded_token};
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;
@@ -53,7 +52,7 @@ const PROMPT: &str = "Reply with the single word: pong";
 const DIALECT: &str = "Perplexity";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
+    CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
 // ================================================================

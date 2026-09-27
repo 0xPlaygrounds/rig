@@ -48,7 +48,6 @@ use serde_json::json;
 use super::support::with_deepseek_cassette_result;
 use crate::raw_capture::{assert_no_request_id, capture_terminal, capture_text_and_terminal, chat};
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -61,18 +60,16 @@ const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the
 const REASONING_BUDGET: u64 = 640;
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .additional_params(json!({ "thinking": { "type": "disabled" } }))
         .max_tokens(16)
-        .build()
 }
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
 fn reasoning_request() -> CompletionRequest {
-    CompletionRequestBuilder::new(REASONING_PROMPT)
+    CompletionRequest::new(REASONING_PROMPT)
         .additional_params(json!({ "thinking": { "type": "enabled" } }))
         .max_tokens(REASONING_BUDGET)
-        .build()
 }
 
 /// What a thinking-mode stream yields: the reasoning text (deltas, superseded

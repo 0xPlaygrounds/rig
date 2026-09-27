@@ -47,7 +47,6 @@ use super::support::with_deepseek_cassette_result;
 use crate::cassettes::recorded_json_turn;
 use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
 use crate::support::{Observed, assert_matches_recorded_token, assistant_text, json_contains_key};
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -60,18 +59,16 @@ const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the
 const REASONING_BUDGET: u64 = 640;
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .additional_params(json!({ "thinking": { "type": "disabled" } }))
         .max_tokens(16)
-        .build()
 }
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
 fn reasoning_request() -> CompletionRequest {
-    CompletionRequestBuilder::new(REASONING_PROMPT)
+    CompletionRequest::new(REASONING_PROMPT)
         .additional_params(json!({ "thinking": { "type": "enabled" } }))
         .max_tokens(REASONING_BUDGET)
-        .build()
 }
 
 fn reasoning_text_of(choice: &[AssistantContent]) -> String {

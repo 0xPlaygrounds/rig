@@ -47,14 +47,14 @@ use crate::raw_capture::{
     assert_no_request_id, assert_normalized_lacks, capture_completion, responses,
 };
 use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
+    CompletionRequest::new(PROMPT).max_tokens(64)
 }
 
 /// The premise every cell rests on: the scenario recorded exactly one

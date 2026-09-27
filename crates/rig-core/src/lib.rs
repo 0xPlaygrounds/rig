@@ -17,12 +17,12 @@
 //!
 //! ```no_run
 //! use rig_core::DynModel;
-//! use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
+//! use rig_core::completion::{CompletionRequest, CompletionResponse};
 //! use rig_core::error::ProviderError;
 //! use rig_core::operation::Completion;
 //!
 //! async fn ask(model: &DynModel<Completion>) -> Result<CompletionResponse, ProviderError> {
-//!     let request = CompletionRequestBuilder::new("Who are you?").build();
+//!     let request = CompletionRequest::new("Who are you?");
 //!     model.call(request).await
 //! }
 //! ```

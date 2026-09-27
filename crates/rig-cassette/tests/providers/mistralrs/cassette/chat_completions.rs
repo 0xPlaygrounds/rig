@@ -3,7 +3,7 @@
 use serde_json::Value;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn raw_chat_completion_surfaces_reasoning_or_text() {
@@ -11,12 +11,11 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
         "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
         |client| async move {
             let model = client.chat(model_name());
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Think briefly, then answer in one sentence why token usage should be reported.",
             )
             .preamble(SYSTEM_PROMPT.to_string())
-            .max_tokens(256)
-            .build();
+            .max_tokens(256);
             // A single cassette interaction: `raw` is mistral.rs's own reply
             // document, captured by the driver on the very response the
             // completion path folded.

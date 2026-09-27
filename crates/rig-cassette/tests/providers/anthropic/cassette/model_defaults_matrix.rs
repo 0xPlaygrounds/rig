@@ -44,7 +44,7 @@ use serde_json::Value;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{assert_contains_any_case_insensitive, assistant_text_response};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Reply with the single word OK.";
 const SYSTEM_ROLE_INSTRUCTION: &str = "For the rest of this conversation, answer in Spanish only.";
@@ -130,9 +130,8 @@ fn assert_recorded_system_role_hoisted(scenario: &str) {
 
 async fn assert_uncapped_turn(client: AnthropicModels, model_id: &str) {
     let model = client.completion(model_id);
-    let request = CompletionRequestBuilder::new(PROMPT).build();
     let response = model
-        .call(request)
+        .call(PROMPT)
         .await
         .expect("an uncapped request must be accepted with the derived max_tokens");
     let text = assistant_text_response(&response.choice).expect("assistant text");
@@ -141,13 +140,11 @@ async fn assert_uncapped_turn(client: AnthropicModels, model_id: &str) {
 
 async fn assert_mid_conversation_system_turn(client: AnthropicModels, model_id: &str) {
     let model = client.completion(model_id);
-    let request = CompletionRequestBuilder::new(SKY_PROMPT)
-        .messages([
-            Message::user("Start a short language compliance check."),
-            Message::system(SYSTEM_ROLE_INSTRUCTION),
-            Message::assistant("Entendido."),
-        ])
-        .build();
+    let request = CompletionRequest::new(SKY_PROMPT).messages([
+        Message::user("Start a short language compliance check."),
+        Message::system(SYSTEM_ROLE_INSTRUCTION),
+        Message::assistant("Entendido."),
+    ]);
     let response = model
         .call(request)
         .await
@@ -236,4 +233,32 @@ async fn sonnet_5_hoists_mid_conversation_system_role() {
     assert_recorded_system_role_hoisted(
         "model_defaults_matrix/sonnet_5_hoists_mid_conversation_system_role",
     );
+}
+
+/// A model built from the string `"anthropic:<model>"` with a key and a
+/// client replays the configured client's recording: the Messages wire
+/// family, from data.
+#[tokio::test]
+async fn a_model_from_a_provider_reference_replays_the_recording() {
+    with_anthropic_cassette(
+        "model_defaults_matrix/sonnet_4_6_defaults_to_128k",
+        |client| async move {
+            let reference = rig::providers::registry::ProviderRef::parse(&format!(
+                "anthropic:{CLAUDE_SONNET_4_6}"
+            ))
+            .expect("a registered reference");
+            let http = rig_test_support::rebased::Rebased::new(
+                rig::providers::anthropic::ANTHROPIC.base_url,
+                client.config.base_url.clone(),
+                client.http.clone(),
+            );
+            let model = reference.completion_model_with(client.config.api_key.clone(), http);
+            let response = model
+                .call(PROMPT)
+                .await
+                .expect("the recorded completion replays");
+            assert!(!response.text().is_empty());
+        },
+    )
+    .await;
 }

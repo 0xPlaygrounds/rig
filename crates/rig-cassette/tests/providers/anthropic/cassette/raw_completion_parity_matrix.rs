@@ -57,27 +57,24 @@ use super::super::support::{
 };
 use crate::raw_capture::capture_completion_pair;
 use crate::support::{Adder, Observed, TOOLS_PREAMBLE, collect_required_terminal};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const ANTHROPIC_PROVIDER: &str = "anthropic";
 const TEXT_PROMPT: &str = "Reply with exactly: parity probe";
 const TOOL_PROMPT: &str = "What is 2 + 3? Use the tool.";
 
 fn text_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(TEXT_PROMPT)
-        .max_tokens(32)
-        .build()
+    CompletionRequest::new(TEXT_PROMPT).max_tokens(32)
 }
 
 /// `tool_choice: required` (Anthropic `any`) so the turn is a `tool_use`
 /// terminal by construction, not by the model's mood.
 fn tool_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .preamble(TOOLS_PREAMBLE.to_string())
         .max_tokens(256)
         .tool(rig::tool::tool_definition(&Adder))
         .tool_choice(ToolChoice::Required)
-        .build()
 }
 
 /// The comparable part of one exchange's result: what both must agree on.

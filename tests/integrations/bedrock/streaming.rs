@@ -12,7 +12,7 @@ use super::{
         collect_raw_stream_observation, collect_stream_final_response,
     },
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
@@ -37,13 +37,12 @@ async fn streaming_tools_smoke() {
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn raw_streaming_tool_call_smoke() {
     let model = client().completion(BEDROCK_COMPLETION_MODEL);
-    let request = CompletionRequestBuilder::new(ORDERED_TOOL_STREAM_PROMPT)
+    let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
         .tool(rig::tool::tool_definition(&AlphaSignal))
         .tool_choice(ToolChoice::Specific {
             function_names: vec![AlphaSignal::NAME.to_string()],
-        })
-        .build();
+        });
 
     let observation = collect_raw_stream_observation(
         model

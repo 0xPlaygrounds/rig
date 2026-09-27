@@ -19,13 +19,13 @@ http_client!(
     /// model it builds sends through that transport.
     ///
     /// ```no_run
-    /// use rig_core::completion::CompletionRequestBuilder;
+    /// use rig_core::completion::CompletionRequest;
     /// use rig_core::providers::openai::{self, OpenAIConfig};
     ///
     /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
     /// let openai = OpenAIConfig::from_env()?.connect(http);
     /// let model = openai.completion(openai::GPT_5_2);
-    /// let response = model.call(CompletionRequestBuilder::new("Capital of France?").build()).await?;
+    /// let response = model.call(CompletionRequest::new("Capital of France?")).await?;
     /// # let _ = response;
     /// # Ok(())
     /// # }

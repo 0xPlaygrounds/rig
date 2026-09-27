@@ -35,7 +35,6 @@ use serde_json::Value;
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
-use rig::wire::Wire;
 
 /// The width `Qwen/Qwen3-Embedding-0.6B-GGUF` returns, measured.
 const NATIVE_WIDTH: usize = 1024;
@@ -90,7 +89,7 @@ async fn a_declared_width_that_matches_is_accepted() {
         "embedding_matrix/declared_width_matches",
         |client| async move {
             let model = client.embedding(CASSETTE_EMBEDDING_MODEL, Some(NATIVE_WIDTH));
-            assert_eq!(model.wire.capabilities().ndims, NATIVE_WIDTH);
+            assert_eq!(model.capabilities().ndims, NATIVE_WIDTH);
 
             let embeddings = model
                 .call(vec!["hello".to_string()])

@@ -56,17 +56,16 @@ use crate::raw_capture::{
     assert_normalized_lacks, capture_sole_terminal, stream_normalized_without_raw,
 };
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 /// The recorded event-stream bytes of the scenario's single interaction,

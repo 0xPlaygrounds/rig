@@ -15,7 +15,7 @@ use crate::support::{
     assert_two_tool_roundtrip_contract, collect_stream_final_response, collect_stream_observation,
     zero_arg_tool_definition,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn streaming_tool_params() -> serde_json::Value {
     serde_json::to_value(AdditionalParameters::default().with_config(GenerationConfig::default()))
@@ -52,11 +52,10 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
-                .additional_params(streaming_tool_params())
-                .build();
+                .additional_params(streaming_tool_params());
             let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;

@@ -49,7 +49,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
@@ -355,11 +355,10 @@ async fn run_scenario(
     let model = Gemini::from_env()?.completion(MODEL);
 
     let stream = model.stream(
-        CompletionRequestBuilder::new(prompt)
+        CompletionRequest::new(prompt)
             .temperature(0.7)
             .max_tokens(2000)
-            .additional_params(no_thinking_params()?)
-            .build(),
+            .additional_params(no_thinking_params()?),
     )?;
 
     let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);

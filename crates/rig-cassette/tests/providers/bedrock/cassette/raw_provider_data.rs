@@ -19,7 +19,7 @@ use rig::error::ProviderError;
 use rig::wire::Mode;
 
 use super::super::support::with_bedrock_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// Keeps every unary Converse output the runtime returns.
 #[derive(Clone)]
@@ -97,11 +97,9 @@ async fn guardrail_trace_survives_into_the_converse_frame() {
                 keep.clone(),
             );
 
-            let request = CompletionRequestBuilder::new(
-                "Explain a gravitational singularity in one sentence.",
-            )
-            .max_tokens(64)
-            .build();
+            let request =
+                CompletionRequest::new("Explain a gravitational singularity in one sentence.")
+                    .max_tokens(64);
 
             model
                 .call(request)
@@ -155,9 +153,8 @@ async fn request_id_survives_into_streamed_terminal() {
         "raw_provider_data/request_id_survives_into_streamed_terminal",
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = CompletionRequestBuilder::new("Reply with the single word: ready.")
-                .max_tokens(16)
-                .build();
+            let request =
+                CompletionRequest::new("Reply with the single word: ready.").max_tokens(16);
 
             let mut stream = model.stream(request).expect("stream should start");
             let mut terminal = None;
@@ -193,9 +190,8 @@ async fn request_id_survives_into_the_converse_frame() {
                 Converse::new(bedrock::completion::AMAZON_NOVA_LITE),
                 keep.clone(),
             );
-            let request = CompletionRequestBuilder::new("Reply with the single word: ready.")
-                .max_tokens(16)
-                .build();
+            let request =
+                CompletionRequest::new("Reply with the single word: ready.").max_tokens(16);
 
             let response = model
                 .call(request)

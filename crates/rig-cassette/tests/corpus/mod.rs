@@ -79,7 +79,7 @@ use rig_cassette::effect_log::{
     Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
 };
 use rig_core::{
-    completion::{CompletionRequestBuilder, Document},
+    completion::{CompletionRequest, Document},
     effect::{EffectFamily, EffectRecord, HandlerKey, MemoryOutcome},
     error::ErrorKind,
     id::ConversationId,
@@ -1584,12 +1584,10 @@ impl Lookup {
         match self.nesting.child {
             NestedChild::Completion => {
                 let model: ModelHandle = dispatcher.handle(&self.model_key).expect("the model");
-                let mut request = CompletionRequestBuilder::new(args.q.as_str())
-                    .preamble(NESTED_PREAMBLE.to_owned());
+                let mut request = CompletionRequest::new(args.q.as_str()).preamble(NESTED_PREAMBLE);
                 if !self.nesting.no_temperature {
                     request = request.temperature(0.0);
                 }
-                let request = request.build();
                 let response = model.call(request).await.expect("the nested completion");
                 response
                     .choice
@@ -3707,9 +3705,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                     run.advertise_tools(turn, prepared.tools.clone());
                     let executable = prepared.executable_tool_names.clone();
                     let allowed = prepared.allowed_tool_names.clone();
-                    let request = prepared
-                        .apply(CompletionRequestBuilder::new(prompt))
-                        .build();
+                    let request = prepared.apply(CompletionRequest::new(prompt));
                     // The completion-call hook's dispatch, before the completion.
                     if program.hooks.contains(&Hook::NoteAtCompletionCall) {
                         note("completion_call").await;

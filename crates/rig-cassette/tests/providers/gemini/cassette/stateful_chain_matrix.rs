@@ -28,7 +28,6 @@ use super::super::support::{
     always_deleting_cached_contents, with_gemini_interactions_cassette,
     with_gemini_prompt_caching_cassette,
 };
-use rig::completion::CompletionRequestBuilder;
 
 const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
@@ -355,12 +354,11 @@ async fn interactions_chain_with_tool_call() {
 
                 let first = model
                     .call(
-                        CompletionRequestBuilder::new(
+                        CompletionRequest::new(
                             "Use lookup_code to get the code of record alpha. Do not guess.",
                         )
                         .tool(lookup_tool())
-                        .additional_params(params(None))
-                        .build(),
+                        .additional_params(params(None)),
                     )
                     .await
                     .expect("turn one");
@@ -370,7 +368,7 @@ async fn interactions_chain_with_tool_call() {
 
                 let second = model
                     .call(
-                        CompletionRequestBuilder::new(Message::from(UserContent::tool_result_for(
+                        CompletionRequest::new(Message::from(UserContent::tool_result_for(
                             call.id.clone(),
                             call.provider.clone(),
                             call.function.name.clone(),
@@ -378,8 +376,7 @@ async fn interactions_chain_with_tool_call() {
                                 "record alpha: code {CODE}"
                             ))],
                         )))
-                        .additional_params(params(Some(first_id)))
-                        .build(),
+                        .additional_params(params(Some(first_id))),
                     )
                     .await
                     .expect("turn two answers the call");
@@ -388,11 +385,10 @@ async fn interactions_chain_with_tool_call() {
 
                 let third = model
                     .call(
-                        CompletionRequestBuilder::new(
+                        CompletionRequest::new(
                             "Repeat the code you reported, exactly, and nothing else.",
                         )
-                        .additional_params(params(Some(second_id)))
-                        .build(),
+                        .additional_params(params(Some(second_id))),
                     )
                     .await
                     .expect("turn three continues");

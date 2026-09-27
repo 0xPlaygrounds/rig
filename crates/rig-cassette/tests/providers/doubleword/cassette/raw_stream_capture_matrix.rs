@@ -44,7 +44,6 @@ use crate::raw_capture::{
     chat, stream_normalized_without_raw,
 };
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -58,9 +57,7 @@ const UNMODELLED_USAGE: [&str; 3] = [
 ];
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .max_tokens(256)
-        .build()
+    CompletionRequest::new(PROMPT).max_tokens(256)
 }
 
 // ================================================================

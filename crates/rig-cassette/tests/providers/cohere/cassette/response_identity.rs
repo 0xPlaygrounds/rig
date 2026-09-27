@@ -5,7 +5,7 @@
 //! proof of that absence.
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn nonstreaming_request_id_is_none_by_design() {
@@ -14,11 +14,7 @@ async fn nonstreaming_request_id_is_none_by_design() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe")
-                        .max_tokens(32)
-                        .build(),
-                )
+                .call(CompletionRequest::new("Reply with exactly: identity probe").max_tokens(32))
                 .await
                 .expect("completion should succeed");
 
@@ -44,9 +40,8 @@ async fn streaming_request_id_is_none_by_design() {
             let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
                 .stream(
-                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
-                        .max_tokens(32)
-                        .build(),
+                    CompletionRequest::new("Reply with exactly: stream identity probe")
+                        .max_tokens(32),
                 )
                 .expect("stream should open");
 

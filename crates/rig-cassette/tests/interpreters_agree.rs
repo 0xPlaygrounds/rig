@@ -25,7 +25,7 @@ use rig_agent::{
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::serve::ServingPolicy;
 use rig_core::{
-    completion::CompletionRequestBuilder,
+    completion::CompletionRequest,
     effect::{EffectKind, EffectRecord},
     test_utils::{MockCompletionModel, MockTurn},
     transcript,
@@ -236,9 +236,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                 run.advertise_tools(turn, prepared.tools.clone());
                 let executable = prepared.executable_tool_names.clone();
                 let allowed = prepared.allowed_tool_names.clone();
-                let request = prepared
-                    .apply(CompletionRequestBuilder::new(prompt))
-                    .build();
+                let request = prepared.apply(CompletionRequest::new(prompt));
                 let response = tokio::time::timeout(Duration::from_secs(5), model.call(request))
                     .await
                     .expect("never hangs")

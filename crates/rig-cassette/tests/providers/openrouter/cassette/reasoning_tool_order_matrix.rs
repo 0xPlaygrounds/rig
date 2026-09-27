@@ -48,7 +48,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::with_openrouter_reasoning_tool_order_cassette_result;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const MODEL: &str = "anthropic/claude-haiku-4.5";
 
@@ -143,8 +143,8 @@ fn prompt(shape: Shape) -> &'static str {
 }
 
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
-    let mut builder = CompletionRequestBuilder::new(prompt(cell.shape))
-        .preamble("Reason first, then obey the requested tool calls exactly.".to_owned())
+    let mut builder = CompletionRequest::new(prompt(cell.shape))
+        .preamble("Reason first, then obey the requested tool calls exactly.")
         .additional_params(json!({
             "reasoning": { "max_tokens": 1024 },
             "parallel_tool_calls": cell.shape == Shape::Parallel,
@@ -154,7 +154,7 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
     for name in expected_names(cell.shape) {
         builder = builder.tool(tool(name));
     }
-    builder.build()
+    builder
 }
 
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedChoice) -> Result<()> {

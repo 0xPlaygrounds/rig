@@ -1,6 +1,6 @@
 use super::*;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
+use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::driver::{Model, Observation, Opened, Transport};
 
 /// Answers every request with one scripted SDK reply.
@@ -41,7 +41,7 @@ impl Complete for vertexai::model::GenerateContentResponse {
             crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH),
             Reply(self),
         );
-        futures::executor::block_on(model.call(CompletionRequestBuilder::new("hello").build()))
+        futures::executor::block_on(model.call(CompletionRequest::new("hello")))
     }
 }
 

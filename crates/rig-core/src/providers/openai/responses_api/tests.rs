@@ -1,5 +1,4 @@
 use super::*;
-use crate::completion::CompletionRequestBuilder;
 use crate::error::ProviderError;
 use crate::message;
 use crate::test_utils::MockCompletionModel;
@@ -267,7 +266,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
         MockStreamEvent::text("answer"),
         MockStreamEvent::final_response_with_default_usage(),
     ]]);
-    let request = CompletionRequestBuilder::new("hi").build();
+    let request = crate::completion::CompletionRequest::new("hi");
     let mut stream = model.stream(request).expect("mock stream");
     while stream.next().await.is_some() {}
     let choice = stream.folded().snapshot();
@@ -803,10 +802,9 @@ fn responses_request_drops_whitespace_only_preamble() {
 
 #[test]
 fn responses_request_lifts_system_messages_to_top_level_instructions_by_default() {
-    let request = CompletionRequestBuilder::new("Hello")
-        .preamble("System one".to_string())
-        .message(completion::Message::system("System two"))
-        .build();
+    let request = crate::completion::CompletionRequest::new("Hello")
+        .preamble("System one")
+        .message(completion::Message::system("System two"));
 
     let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
         .expect("request should convert");
@@ -866,11 +864,10 @@ fn responses_wire_can_lift_all_system_messages_via_placement() {
     let wire = openai_wire("gpt-4o-mini")
         .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
-    let request = CompletionRequestBuilder::new("again")
-        .preamble("System one".to_string())
+    let request = crate::completion::CompletionRequest::new("again")
+        .preamble("System one")
         .message(completion::Message::user("hi"))
-        .message(completion::Message::system("Mid-conversation instruction"))
-        .build();
+        .message(completion::Message::system("Mid-conversation instruction"));
 
     let req = wire_request(&wire, request);
     let serialized = serde_json::to_value(&req).expect("request should serialize");
@@ -1166,12 +1163,11 @@ fn completion_response_round_trips_echoed_metadata() {
 
 #[test]
 fn responses_request_keeps_documents_after_lifted_system_messages() {
-    let request = CompletionRequestBuilder::new("Prompt")
+    let request = crate::completion::CompletionRequest::new("Prompt")
         .message(completion::Message::system("System prompt"))
         .message(completion::Message::user("Earlier user turn"))
         .message(completion::Message::assistant("Earlier assistant turn"))
-        .document(test_document("doc1", "Document text."))
-        .build();
+        .document(test_document("doc1", "Document text."));
 
     let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
         .expect("request conversion should succeed");
@@ -2271,7 +2267,7 @@ async fn responses_completion_http_non_success_preserves_status_and_body() {
     let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
     let http_client = RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
     let model = crate::driver::Model::new(openai_wire("gpt-4o-mini"), http_client);
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = crate::completion::CompletionRequest::new("hello");
 
     let error = model
         .call(request)
@@ -2762,7 +2758,7 @@ mod raw_capture {
         );
 
         let response = model
-            .call(CompletionRequestBuilder::new("hello").build())
+            .call(crate::completion::CompletionRequest::new("hello"))
             .await
             .expect("completion");
 

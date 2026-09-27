@@ -1,5 +1,5 @@
 use anyhow::Context;
-use rig_core::completion::CompletionRequestBuilder;
+use rig_core::completion::CompletionRequest;
 use rig_vertexai::{VertexAi, completion::GEMINI_2_5_FLASH_LITE};
 
 #[tokio::main]
@@ -10,9 +10,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // `rig_vertexai::VertexAiBuilder` for more granular control.
     let model = VertexAi::from_env()?.completion(GEMINI_2_5_FLASH_LITE);
 
-    let request = CompletionRequestBuilder::new("What is the capital of France?")
-        .max_tokens(1024)
-        .build();
+    let request = CompletionRequest::new("What is the capital of France?").max_tokens(1024);
 
     let response = model
         .call(request)

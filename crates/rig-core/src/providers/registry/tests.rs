@@ -512,14 +512,10 @@ fn equivalent_reference_and_configuration_describe_themselves_alike() {
 /// request body, in both directions.
 #[test]
 fn the_configured_instruction_placement_reaches_the_request_body() {
-    use crate::completion::CompletionRequestBuilder;
+    use crate::completion::CompletionRequest;
     use crate::wire::{Mode, Wire};
 
-    let request = || {
-        CompletionRequestBuilder::new("hello")
-            .preamble("be brief".to_owned())
-            .build()
-    };
+    let request = || CompletionRequest::new("hello").preamble("be brief");
     let encode = |config: ProviderConfig| {
         let ProviderConfig::OpenAi(provider) = config else {
             panic!("an OpenAI configuration");
@@ -578,7 +574,7 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
 /// request headers.
 #[test]
 fn the_configured_version_and_betas_reach_the_request_headers() {
-    use crate::completion::CompletionRequestBuilder;
+    use crate::completion::CompletionRequest;
     use crate::wire::{Mode, Wire};
 
     let json = r#"{"config":{"anthropic":{"api_key":"[redacted]","base_url":"https://api.anthropic.com","version":"2023-01-01","betas":["beta-one","beta-two"],"dialect":"anthropic"}},"model":"claude-haiku-4-5"}"#;
@@ -588,7 +584,7 @@ fn the_configured_version_and_betas_reach_the_request_headers() {
     };
     let mut encoded = config
         .completion(reference.model())
-        .encode(CompletionRequestBuilder::new("hello").build(), Mode::Unary)
+        .encode(CompletionRequest::new("hello"), Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.pop().expect("one request");
     let header = |name: &str| {

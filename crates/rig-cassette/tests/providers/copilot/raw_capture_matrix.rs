@@ -58,7 +58,7 @@ use crate::cassettes::recorded_json_turn;
 use crate::copilot::with_copilot_cassette_result;
 use crate::raw_capture::{assert_normalized_lacks, capture_completion, chat, responses};
 use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
@@ -66,7 +66,7 @@ const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
+    CompletionRequest::new(PROMPT).max_tokens(64)
 }
 
 /// Chat-route premise: the recorded body is a chat-completions response with

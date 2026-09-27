@@ -23,7 +23,7 @@ use rig::streaming::{BlockKind, StreamEvent};
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const WEB_SEARCH_PROMPT: &str = "Use web search to check the color of a clear daytime sky. Keep the final answer under five words.";
 
@@ -69,9 +69,9 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
         "streamed_server_tools/streamed_web_search_preserves_server_tool_blocks",
         |client| async move {
             let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = CompletionRequestBuilder::new(WEB_SEARCH_PROMPT)
+            let request = CompletionRequest::new(WEB_SEARCH_PROMPT)
                 .provider_tool(web_search_tool())
-                .max_tokens(1024).build();
+                .max_tokens(1024);
 
             let mut stream = model
                 .stream(request)
@@ -131,9 +131,9 @@ async fn blocking_web_search_preserves_server_tool_blocks() {
         "streamed_server_tools/blocking_web_search_preserves_server_tool_blocks",
         |client| async move {
             let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = CompletionRequestBuilder::new(WEB_SEARCH_PROMPT)
+            let request = CompletionRequest::new(WEB_SEARCH_PROMPT)
                 .provider_tool(web_search_tool())
-                .max_tokens(1024).build();
+                .max_tokens(1024);
 
             let response = model
                 .call(request)

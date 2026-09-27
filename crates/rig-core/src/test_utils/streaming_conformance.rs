@@ -25,7 +25,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use futures::future::BoxFuture;
 
-use crate::completion::CompletionRequestBuilder;
+use crate::completion::CompletionRequest;
 use crate::error::ProviderError;
 use crate::streaming::BlockId;
 use crate::{
@@ -1756,7 +1756,7 @@ pub mod fixtures {
         WireDriver::new(provider, move |chunks| {
             Box::pin(async move {
                 let model = bind(SequencedStreamingHttpClient::new(byte_chunks(chunks)?));
-                let request = CompletionRequestBuilder::new("hello").build();
+                let request = CompletionRequest::new("hello");
                 drain_observed(&model, request).await
             })
         })
@@ -2155,7 +2155,7 @@ pub mod fixtures {
                         .responses("gpt-5.4"),
                         crate::test_utils::RecordingHttpClient::new(body),
                     );
-                    let request = CompletionRequestBuilder::new("hello").build();
+                    let request = CompletionRequest::new("hello");
                     let response = model.call(request).await?;
                     Ok(response.choice)
                 })

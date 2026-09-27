@@ -46,7 +46,6 @@ use crate::raw_capture::{
     chat, stream_normalized_without_raw,
 };
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;
@@ -55,7 +54,7 @@ const PROMPT: &str = "Reply with the single word: pong";
 const DIALECT: &str = "Perplexity";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
+    CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
 /// The recorded stream's last data frame: it carries the finish reason and

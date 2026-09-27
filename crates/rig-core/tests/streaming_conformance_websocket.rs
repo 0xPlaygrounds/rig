@@ -22,7 +22,7 @@
 
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
-use rig_core::completion::CompletionRequestBuilder;
+use rig_core::completion::CompletionRequest;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
@@ -194,9 +194,7 @@ fn driver() -> conformance::WireDriver {
                 .connect(RecordingHttpClient::new("{}"))
                 .responses("gpt-5.4");
             let mut session = bound.responses_websocket().connect().await?;
-            session
-                .send(CompletionRequestBuilder::new("hello").build())
-                .await?;
+            session.send(CompletionRequest::new("hello")).await?;
 
             // Collect the turn exactly as the production session loop does:
             // stop at the first terminal event or session error.

@@ -12,7 +12,7 @@ use crate::{
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
 };
-use rig_core::completion::CompletionRequestBuilder;
+use rig_core::completion::CompletionRequest;
 use rig_core::message::ToolChoice;
 
 struct MetadataFailingTool;
@@ -315,7 +315,7 @@ async fn direct_completion_model_requests_are_intentionally_hook_free() {
         .build();
 
     model
-        .call(CompletionRequestBuilder::new("raw request").build())
+        .call(CompletionRequest::new("raw request"))
         .await
         .expect("direct model request should succeed");
 

@@ -5,7 +5,7 @@
 
 use bevy_app::App;
 use rig_core::{
-    completion::CompletionRequestBuilder,
+    completion::CompletionRequest,
     effect::{EffectKind, HandlerDescriptor, family},
     serve::{Dispatch, ErasedHandler, Reply, Serve, adapters::ModelAdapter},
 };
@@ -61,7 +61,7 @@ fn main() -> anyhow::Result<()> {
         .spawn(PendingEffect::new(
             "model",
             EffectKind::Completion {
-                request: CompletionRequestBuilder::new("Say hello briefly.").build(),
+                request: CompletionRequest::new("Say hello briefly."),
                 stream: false, // Vertex streaming is explicitly unsupported.
             },
         ))

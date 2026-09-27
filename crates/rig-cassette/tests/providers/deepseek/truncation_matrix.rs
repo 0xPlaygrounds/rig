@@ -44,7 +44,7 @@ use super::support::{
     collect_raw_stream_outcome, recorded_response, recorded_stream_chunks,
     with_deepseek_truncation_cassette_result,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 pub(super) const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -114,14 +114,14 @@ fn request_for(
     params: Value,
     max_tokens: u64,
 ) -> rig::completion::CompletionRequest {
-    let mut builder = CompletionRequestBuilder::new(prompt)
+    let mut builder = CompletionRequest::new(prompt)
         .preamble(preamble.to_owned())
         .additional_params(params)
         .max_tokens(max_tokens);
     for tool in tools {
         builder = builder.tool(tool);
     }
-    builder.build()
+    builder
 }
 
 fn tool_calls(choice: &[AssistantContent]) -> Vec<&rig::message::ToolCall> {

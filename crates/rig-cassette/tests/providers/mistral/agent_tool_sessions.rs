@@ -24,7 +24,7 @@ use crate::support::{
 };
 
 use super::support::with_mistral_cassette_result;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const SESSION_MODEL: &str = mistral::MISTRAL_SMALL;
 const SESSION_MAX_TOKENS: Option<u64> = None;
@@ -523,14 +523,14 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let log = Arc::new(Mutex::new(Vec::new()));
             let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Call inspect_manifest exactly once for project rig-mistral with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
                 )
-                .preamble("Use the requested tool call and no prose before it.".to_string())
+                .preamble("Use the requested tool call and no prose before it.")
                 .tool(rig::tool::tool_definition(&tool))
-                .tool_choice(ToolChoice::Required).build();
+                .tool_choice(ToolChoice::Required);
 
             let observation = collect_raw_stream_observation(model.stream(request)?).await;
 
@@ -558,9 +558,9 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             let model = client.completion(SESSION_MODEL);
 
             let auto = model
-                .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object.")
+                .call(CompletionRequest::new("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Auto).build())
+                        .tool_choice(ToolChoice::Auto))
                 .await?;
             anyhow::ensure!(
                 auto.choice.iter().any(|content| matches!(
@@ -573,9 +573,9 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let any = model
-                .call(CompletionRequestBuilder::new("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
+                .call(CompletionRequest::new("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Required).build())
+                        .tool_choice(ToolChoice::Required))
                 .await?;
             anyhow::ensure!(
                 any.choice.iter().any(|content| matches!(
@@ -588,12 +588,12 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .call(CompletionRequestBuilder::new("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
+                .call(CompletionRequest::new("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool(rig::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
-                        }).build())
+                        }))
                 .await?;
             let specific_calls = specific
                 .choice
@@ -609,9 +609,9 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .call(CompletionRequestBuilder::new("Do not call tools. Reply with exactly this phrase: no-tool-answer")
+                .call(CompletionRequest::new("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::None).build())
+                        .tool_choice(ToolChoice::None))
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -635,11 +635,11 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
             let model = client.completion(STRUCTURED_MODEL);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
-                .preamble("Return only valid JSON. No markdown.".to_string())
-                .additional_params(json!({"response_format": { "type": "json_object" }})).build();
+                .preamble("Return only valid JSON. No markdown.")
+                .additional_params(json!({"response_format": { "type": "json_object" }}));
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -675,12 +675,11 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
             let model = client.completion(STRUCTURED_MODEL);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
             )
-            .preamble("Return only the requested structured object.".to_string())
-            .output_schema(schemars::schema_for!(StructuredReleasePlan))
-            .build();
+            .preamble("Return only the requested structured object.")
+            .output_schema(schemars::schema_for!(StructuredReleasePlan));
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)

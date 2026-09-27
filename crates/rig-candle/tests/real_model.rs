@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use futures::StreamExt;
 use rig_candle::{CandleCompletionResponse, CandleModel, Generation, ModelData};
 use rig_core::Model;
-use rig_core::completion::CompletionRequestBuilder;
+use rig_core::completion::CompletionRequest;
 use rig_core::streaming::{Delta, StreamEvent};
 
 #[tokio::test(flavor = "current_thread")]
@@ -37,7 +37,7 @@ async fn loads_and_generates_with_a_real_local_model()
     } else {
         "Reply with one short greeting."
     };
-    let request = CompletionRequestBuilder::new(prompt).build();
+    let request = CompletionRequest::new(prompt);
     // The raw path carries Candle's own generated text and counters; the
     // normalized `completion()`/`stream()` surfaces are exercised further
     // below against the same request.

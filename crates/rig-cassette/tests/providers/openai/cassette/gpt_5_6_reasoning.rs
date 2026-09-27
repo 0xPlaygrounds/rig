@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Reply with exactly: OK";
 const FIVE_TURN_PROMPTS: [(&str, &str); 5] = [
@@ -70,9 +70,8 @@ async fn prompt_with_reasoning(
     CompletionResponse,
     openai::responses_api::CompletionResponse,
 ) {
-    let request = CompletionRequestBuilder::new(PROMPT)
-        .additional_params(json!({ "reasoning": reasoning }))
-        .build();
+    let request =
+        CompletionRequest::new(PROMPT).additional_params(json!({ "reasoning": reasoning }));
 
     let response = model
         .call(request)
@@ -213,7 +212,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     .iter()
                     .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
                 let user_message = Message::user(prompt);
-                let request = CompletionRequestBuilder::new(user_message.clone())
+                let request = CompletionRequest::new(user_message.clone())
                     .messages(history)
                     .additional_params(json!({
                         "reasoning": {
@@ -221,8 +220,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                             "effort": "low",
                             "mode": "pro"
                         }
-                    }))
-                    .build();
+                    }));
                 // One request per turn: one call yields both views of it — the
                 // normalized response, and the provider's own wire response
                 // read back out of `raw`, which carries the reasoning
@@ -324,7 +322,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     .iter()
                     .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
                 let user_message = Message::user(prompt);
-                let request = CompletionRequestBuilder::new(user_message.clone())
+                let request = CompletionRequest::new(user_message.clone())
                     .messages(history)
                     .additional_params(json!({
                         "reasoning": {
@@ -332,8 +330,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                             "effort": "low",
                             "mode": "pro"
                         }
-                    }))
-                    .build();
+                    }));
                 // The terminal record under test is the Responses API's own
                 // streaming response, which rides on `StreamFinal::raw`; the
                 // normalized `StreamFinal` does not carry the reasoning
@@ -471,15 +468,13 @@ async fn streaming_reasoning_metadata() {
         "gpt_5_6_reasoning/streaming_metadata",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6_SOL);
-            let request = CompletionRequestBuilder::new(PROMPT)
-                .additional_params(json!({
-                    "reasoning": {
-                        "effort": "low",
-                        "mode": "pro",
-                        "context": "current_turn"
-                    }
-                }))
-                .build();
+            let request = CompletionRequest::new(PROMPT).additional_params(json!({
+                "reasoning": {
+                    "effort": "low",
+                    "mode": "pro",
+                    "context": "current_turn"
+                }
+            }));
             // The terminal record's `raw` keeps the provider-native response;
             // the normalized `StreamFinal` carries no reasoning metadata.
             let mut stream = model

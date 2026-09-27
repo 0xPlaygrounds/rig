@@ -23,7 +23,7 @@ async fn embeddings_smoke() {
                     EMBEDDING_INPUTS
                         .iter()
                         .map(|input| (*input).to_string())
-                        .collect(),
+                        .collect::<Vec<_>>(),
                 )
                 .await
                 .expect("embedding request should succeed");

@@ -74,7 +74,6 @@ use super::super::cassette_support::*;
 use crate::cassettes::{CassetteMode, recorded_json_turn};
 use crate::raw_capture::{assert_no_request_id, assert_normalized_lacks, capture_completion, chat};
 use crate::support::{Observed, assert_wire_value_matches, assistant_text, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
@@ -83,9 +82,7 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 /// chat-completions route has no `think` switch, so the cap is generous
 /// enough that the turn stops on its own (`finish_reason: "stop"`).
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .max_tokens(1024)
-        .build()
+    CompletionRequest::new(PROMPT).max_tokens(1024)
 }
 
 /// The premise every envelope cell rests on: the recorded body is a

@@ -9,7 +9,7 @@ use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::{
     assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn aggregated_text(choice: &[AssistantContent]) -> String {
     choice
@@ -47,10 +47,8 @@ async fn default_instructions_fill_required_instructions() {
 async fn system_messages_are_lifted_into_instructions() {
     let model = live_client().await.completion(LIVE_MODEL);
 
-    let request =
-        CompletionRequestBuilder::new("Reply with the exact word from the system message.")
-            .message(Message::system("Always answer with the single word maple."))
-            .build();
+    let request = CompletionRequest::new("Reply with the exact word from the system message.")
+        .message(Message::system("Always answer with the single word maple."));
     let mut stream = model
         .stream(request)
         .expect("system-message stream should succeed");

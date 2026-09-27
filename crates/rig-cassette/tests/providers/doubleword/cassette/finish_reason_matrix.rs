@@ -23,7 +23,7 @@ use serde_json::json;
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::{collect_text_and_terminal, zero_arg_tool_definition};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const STOP_PROMPT: &str = "Reply with exactly: done";
 const LENGTH_PROMPT: &str = "Explain every step of how a compiler optimizes a large program.";
@@ -54,10 +54,9 @@ async fn blocking_stop(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let response = model
         .call(
-            CompletionRequestBuilder::new(STOP_PROMPT)
+            CompletionRequest::new(STOP_PROMPT)
                 .additional_params(json!({ "reasoning_effort": "none" }))
-                .max_tokens(64)
-                .build(),
+                .max_tokens(64),
         )
         .await
         .expect("blocking stop probe");
@@ -67,11 +66,7 @@ async fn blocking_stop(client: OpenAiModels) {
 async fn blocking_length(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let response = model
-        .call(
-            CompletionRequestBuilder::new(LENGTH_PROMPT)
-                .max_tokens(1)
-                .build(),
-        )
+        .call(CompletionRequest::new(LENGTH_PROMPT).max_tokens(1))
         .await
         .expect("a contentless truncated turn is still a completion");
     assert_eq!(response.finish_reason(), Some(FinishReason::Length));
@@ -81,11 +76,10 @@ async fn blocking_tool_calls_body(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_397B_A17B);
     let response = model
         .call(
-            CompletionRequestBuilder::new(TOOL_PROMPT)
+            CompletionRequest::new(TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
-                .max_tokens(256)
-                .build(),
+                .max_tokens(256),
         )
         .await
         .expect("blocking tool-call probe");
@@ -105,11 +99,11 @@ async fn streaming_reason(
     stop_probe: bool,
 ) -> FinishReason {
     let model = client.completion(doubleword::QWEN3_5_9B);
-    let mut builder = CompletionRequestBuilder::new(prompt).max_tokens(max_tokens);
+    let mut builder = CompletionRequest::new(prompt).max_tokens(max_tokens);
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
     }
-    let stream = model.stream(builder.build()).expect("stream probe");
+    let stream = model.stream(builder).expect("stream probe");
     let (_, terminal) = collect_text_and_terminal(stream).await;
     terminal
         .expect("stream should carry a terminal record")
@@ -183,11 +177,10 @@ async fn streaming_tool_calls() {
             let model = client.completion(doubleword::QWEN3_5_397B_A17B);
             let stream = model
                 .stream(
-                    CompletionRequestBuilder::new(TOOL_PROMPT)
+                    CompletionRequest::new(TOOL_PROMPT)
                         .tool(zero_arg_tool_definition("ping"))
                         .tool_choice(ToolChoice::Required)
-                        .max_tokens(256)
-                        .build(),
+                        .max_tokens(256),
                 )
                 .expect("tool stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;

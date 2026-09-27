@@ -11,7 +11,7 @@ use serde_json::Value;
 use serde_json::json;
 
 use crate::support::{assert_contains_any_case_insensitive, assistant_text_response};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// The text Anthropic's own reply carried, read back out of
 /// [`RigCompletionResponse::raw`] — the value the deleted `raw_completion`
@@ -42,14 +42,14 @@ async fn web_search_with_dynamic_filtering_succeeds() {
         "opus_4_8/web_search_with_dynamic_filtering_succeeds",
         |client| async move {
             let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Search for the current prices of AAPL and GOOGL, then calculate which has a better P/E ratio.",
                 )
                 .provider_tool(
                     ProviderToolDefinition::new("web_search_20260209")
                         .with_config("name", json!("web_search")),
                 )
-                .max_tokens(1024).build();
+                .max_tokens(1024);
             // One request, two views: the normalized response is what the
             // model returns, and `raw` carries Anthropic's own reply, so the
             // provider-text fallback below still costs a single interaction.
@@ -82,7 +82,7 @@ async fn messages_preserve_mid_conversation_system_role() {
         "opus_4_8/messages_preserve_mid_conversation_system_role",
         |client| async move {
             let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
             )
             .messages([
@@ -90,8 +90,7 @@ async fn messages_preserve_mid_conversation_system_role() {
                 Message::system(SYSTEM_ROLE_INSTRUCTION),
                 Message::assistant("Entendido."),
             ])
-            .max_tokens(64)
-            .build();
+            .max_tokens(64);
             let response: RigCompletionResponse = model
                 .call(request)
                 .await
@@ -119,20 +118,20 @@ async fn messages_preserve_system_role_after_server_tool_result() {
         |client| async move {
             let model = client.completion(CLAUDE_OPUS_4_8);
             let first_response = model
-                .call(CompletionRequestBuilder::new(
+                .call(CompletionRequest::new(
                     "Use web search to check the color of a clear daytime sky. Keep the final answer under five words.",
                 )
                 .provider_tool(
                     ProviderToolDefinition::new("web_search_20250305")
                         .with_config("name", json!("web_search")),
                 )
-                .max_tokens(128).build())
+                .max_tokens(128))
                 .await
                 .expect("Opus 4.8 web-search request should produce a server-tool transcript");
             let server_tool_assistant_message =
                 server_tool_assistant_message_from_response(first_response.choice);
 
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
                 )
                 .messages([
@@ -140,7 +139,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                     Message::system(SERVER_TOOL_USE_SYSTEM_INSTRUCTION),
                     Message::assistant("Entendido."),
                 ])
-                .max_tokens(64).build();
+                .max_tokens(64);
             let response: RigCompletionResponse = model.call(request).await.expect(
                 "Opus 4.8 request with system role after server tool result should succeed",
             );
@@ -166,7 +165,7 @@ async fn documents_keep_leading_system_message_top_level() {
         "opus_4_8/documents_keep_leading_system_message_top_level",
         |client| async move {
             let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "According to the document, what color is the clear daytime sky?",
             )
             .messages([
@@ -178,8 +177,7 @@ async fn documents_keep_leading_system_message_top_level() {
                 text: "A clear daytime sky is blue.".to_string(),
                 additional_props: Default::default(),
             })
-            .max_tokens(64)
-            .build();
+            .max_tokens(64);
             let response: RigCompletionResponse = model.call(request).await.expect(
                 "Opus 4.8 request with documents and a leading system message should succeed",
             );

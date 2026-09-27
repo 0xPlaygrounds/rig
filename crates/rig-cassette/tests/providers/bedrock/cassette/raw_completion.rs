@@ -9,7 +9,7 @@ use crate::support::{
     RAW_TEXT_RESPONSE_PREAMBLE, RAW_TEXT_RESPONSE_PROMPT, assert_contains_all_case_insensitive,
     assert_nonempty_response, assistant_text_response,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn raw_response_text_matches_normalized_choice_text() {
@@ -17,10 +17,9 @@ async fn raw_response_text_matches_normalized_choice_text() {
         "raw_completion/raw_response_text_matches_normalized_choice_text",
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = CompletionRequestBuilder::new(RAW_TEXT_RESPONSE_PROMPT)
+            let request = CompletionRequest::new(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-                .temperature(0.0)
-                .build();
+                .temperature(0.0);
 
             // `raw` is the unary Converse frame the response was normalized
             // from, so raw-vs-normalized parity is checked against one

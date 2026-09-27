@@ -44,7 +44,7 @@ use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_chat_stream_logprobs_cassette_result};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -130,10 +130,9 @@ fn model_name(model: ModelVariant) -> &'static str {
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.openai.chat(model_name(cell.model));
-    let request = CompletionRequestBuilder::new(prompt(cell))
+    let request = CompletionRequest::new(prompt(cell))
         .additional_params(params(cell))
-        .max_tokens(max_tokens(cell))
-        .build();
+        .max_tokens(max_tokens(cell));
 
     let observation = match cell.transport {
         Transport::Blocking => {

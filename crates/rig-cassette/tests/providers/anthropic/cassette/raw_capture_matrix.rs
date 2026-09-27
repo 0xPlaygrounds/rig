@@ -62,7 +62,7 @@ use super::super::support::{
 
 use crate::raw_capture::capture_completion;
 use crate::support::{Observed, assistant_text, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Reply with exactly: raw capture probe";
 /// From `empty_stop_sequence_matrix.rs`: one word, so the `alpha` sequence
@@ -82,16 +82,15 @@ const THINKING_SCENARIO: &str = "raw_capture_matrix/raw_exposes_thinking_block_a
 const TOOL_USE_SCENARIO: &str = "raw_capture_matrix/raw_exposes_tool_use_block";
 
 fn probe_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(32).build()
+    CompletionRequest::new(PROMPT).max_tokens(32)
 }
 
 /// From `reasoning_usage_matrix.rs`: extended thinking on, minimum budget,
 /// `max_tokens` above it as Anthropic requires.
 fn thinking_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(THINKING_PROMPT)
+    CompletionRequest::new(THINKING_PROMPT)
         .max_tokens(2048)
         .additional_params(json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }))
-        .build()
 }
 
 /// From `empty_stop_sequence_matrix.rs`.
@@ -110,11 +109,10 @@ fn weather_tool() -> ToolDefinition {
 /// `tool_choice: required` (Anthropic `any`) so the turn is a `tool_use`
 /// terminal by construction, not by the model's mood.
 fn tool_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .max_tokens(256)
         .tool(weather_tool())
         .tool_choice(ToolChoice::Required)
-        .build()
 }
 
 /// Every string a JSON value contains — object keys and string leaves — so a
@@ -293,10 +291,9 @@ async fn raw_exposes_stop_sequence() {
         move |client| async move {
             capture_completion(
                 client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
+                CompletionRequest::new(IMMEDIATE_PROMPT)
                     .max_tokens(32)
-                    .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                    .build(),
+                    .additional_params(json!({ "stop_sequences": ["alpha"] })),
                 sink,
             )
             .await

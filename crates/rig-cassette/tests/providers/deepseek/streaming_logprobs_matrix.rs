@@ -34,7 +34,7 @@ use super::support::{
     recorded_request, recorded_response, recorded_stream_chunks,
     with_deepseek_stream_logprobs_cassette_result,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -123,10 +123,9 @@ fn max_tokens(cell: Cell) -> u64 {
 
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.completion(MODEL);
-    let request = CompletionRequestBuilder::new(prompt(cell))
+    let request = CompletionRequest::new(prompt(cell))
         .additional_params(params(cell))
-        .max_tokens(max_tokens(cell))
-        .build();
+        .max_tokens(max_tokens(cell));
 
     let observation = match cell.transport {
         Transport::Blocking => {

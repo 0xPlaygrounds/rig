@@ -8,7 +8,7 @@
 //! Run the suite with:
 //! `cargo test -p rig --test core core::streaming_conformance`
 
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance,
     fixtures::{
@@ -54,7 +54,7 @@ mod xai {
                 let model = rig_core::providers::xai::new("test-key")
                     .with_http(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                     .completion(rig_core::providers::xai::GROK_4);
-                let request = CompletionRequestBuilder::new("hello").build();
+                let request = CompletionRequest::new("hello");
                 let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
@@ -87,7 +87,7 @@ mod copilot {
                 let model = rig_core::providers::copilot::Copilot::new("copilot-token")
                     .with_http(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                     .completion(model_name);
-                let request = CompletionRequestBuilder::new("hello").build();
+                let request = CompletionRequest::new("hello");
                 let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
@@ -131,7 +131,7 @@ mod chatgpt {
                 .client()
                 .with_http(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                 .completion("gpt-5.4");
-                let request = CompletionRequestBuilder::new("hello").build();
+                let request = CompletionRequest::new("hello");
                 let stream = model.stream(request)?;
                 Ok(conformance::fixtures::drain(stream).await)
             })

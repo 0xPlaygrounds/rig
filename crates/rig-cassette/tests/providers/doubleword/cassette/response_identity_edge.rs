@@ -23,7 +23,7 @@
 //! fixtures below carry only `content-type`.
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn blocking_identity_contract_vs_reality() {
@@ -32,11 +32,7 @@ async fn blocking_identity_contract_vs_reality() {
         |client| async move {
             let model = client.completion(DEFAULT_MODEL);
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with exactly: identity probe")
-                        .max_tokens(128)
-                        .build(),
-                )
+                .call(CompletionRequest::new("Reply with exactly: identity probe").max_tokens(128))
                 .await
                 .expect("completion should succeed");
             // Derived from this recording's own response headers, which carry
@@ -60,9 +56,8 @@ async fn streaming_identity_contract_vs_reality() {
             let model = client.completion(DEFAULT_MODEL);
             let mut stream = model
                 .stream(
-                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
-                        .max_tokens(128)
-                        .build(),
+                    CompletionRequest::new("Reply with exactly: stream identity probe")
+                        .max_tokens(128),
                 )
                 .expect("stream should open");
             let mut terminal = None;

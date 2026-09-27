@@ -5,15 +5,14 @@
 //! [`CompletionResponse`] reads provider-specific fields from `raw`.
 //!
 //! ```no_run
-//! use rig_core::completion::CompletionRequestBuilder;
+//! use rig_core::completion::CompletionRequest;
 //! use rig_core::providers::openrouter::{self, ProviderPreferences};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let sonar = openrouter::from_env()?.chat(openrouter::PERPLEXITY_SONAR_PRO);
 //!
-//! let request = CompletionRequestBuilder::new("What is Rig?")
-//!     .additional_params(ProviderPreferences::new().cheapest().to_json())
-//!     .build();
+//! let request = CompletionRequest::new("What is Rig?")
+//!     .additional_params(ProviderPreferences::new().cheapest().to_json());
 //! # let _ = (sonar, request);
 //! # Ok(())
 //! # }

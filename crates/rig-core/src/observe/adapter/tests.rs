@@ -1,5 +1,5 @@
 use super::*;
-use crate::completion::CompletionRequestBuilder;
+use crate::completion::CompletionRequest;
 use crate::observe::ObservationLog;
 
 #[test]
@@ -55,7 +55,7 @@ async fn streamed_body_failure_preserves_boundary_through_provider_error_convers
             http,
         );
         let log = Arc::new(ObservationLog::default());
-        let request = CompletionRequestBuilder::new("hello").build();
+        let request = CompletionRequest::new("hello");
         let mut stream = if enabled {
             let context = AdapterContext::new(log.clone(), Subject::default(), "call");
             model.stream_observed(request, context).unwrap()
@@ -203,7 +203,7 @@ fn cloned_context_numbers_attempts_and_closes_once_without_payloads() {
 
 #[test]
 fn context_is_not_part_of_serialized_completion_requests() {
-    let request = crate::completion::CompletionRequestBuilder::new("hello").build();
+    let request = crate::completion::CompletionRequest::new("hello");
     let encoded = serde_json::to_string(&request).unwrap();
     assert!(!encoded.contains("local-only-secret"));
     assert!(!encoded.contains("observation"));
@@ -224,7 +224,7 @@ async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_reques
             .completion("gemini-test"),
         http.clone(),
     );
-    let plain = CompletionRequestBuilder::new("hello").build();
+    let plain = CompletionRequest::new("hello");
     model.call(plain.clone()).await.unwrap();
     let log = Arc::new(ObservationLog::default());
     let observed = plain;
@@ -313,10 +313,7 @@ async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies(
     let context = AdapterContext::new(log.clone(), Subject::default(), "retry-operation");
     for _ in 0..2 {
         let error = model
-            .call_observed(
-                CompletionRequestBuilder::new("hello").build(),
-                context.clone(),
-            )
+            .call_observed(CompletionRequest::new("hello"), context.clone())
             .await
             .unwrap_err();
         assert!(error.is_retryable());
@@ -442,7 +439,7 @@ async fn dropping_pending_transport_or_body_closes_the_attempt_once() {
             PendingHttp { body_pending },
         );
         let log = Arc::new(ObservationLog::default());
-        let request = CompletionRequestBuilder::new("hello").build();
+        let request = CompletionRequest::new("hello");
         let context = AdapterContext::new(log.clone(), Subject::default(), "cancelled-call");
         let mut future = Box::pin(model.call_observed(request, context));
         assert!(futures::poll!(future.as_mut()).is_pending());
@@ -464,7 +461,7 @@ async fn shared_arc_model_keeps_mixed_invocations_distinct_after_context_scope_e
         PendingHttp { body_pending: true },
     ));
     let sink = Arc::new(ObservationLog::default());
-    let request = CompletionRequestBuilder::new("same request").build();
+    let request = CompletionRequest::new("same request");
     let mut stream = {
         let context = AdapterContext::new(sink.clone(), Subject::default(), "stream");
         model.stream_observed(request.clone(), context).unwrap()
@@ -516,7 +513,7 @@ async fn dropping_stream_pending_on_connection_or_body_closes_once() {
             PendingHttp { body_pending },
         );
         let log = Arc::new(ObservationLog::default());
-        let request = CompletionRequestBuilder::new("hello").build();
+        let request = CompletionRequest::new("hello");
         let context = AdapterContext::new(log.clone(), Subject::default(), "pending-stream");
         let mut stream = model.stream_observed(request, context).unwrap();
         assert!(log.is_empty());
@@ -540,7 +537,7 @@ async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe:
         },
     );
     let log = Arc::new(ObservationLog::default());
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
     let mut plain_stream = model.stream(request.clone()).unwrap();
     let mut plain_items = Vec::new();
     while let Some(item) = plain_stream.next().await {
@@ -735,7 +732,7 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
             crate::providers::gemini::GeminiConfig::new("test-key").completion("gemini-test"),
             http.clone(),
         );
-        let request = CompletionRequestBuilder::new("hello").build();
+        let request = CompletionRequest::new("hello");
         let plain_error = model.call(request.clone()).await.unwrap_err();
         let log = Arc::new(ObservationLog::default());
         let context = AdapterContext::new(log.clone(), Subject::default(), "empty-call");
@@ -817,7 +814,7 @@ async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
             r#"{"error":{"message":"synthetic-sensitive-body"},"usageMetadata":{"promptTokenCount":3}}"#,
         ),
     );
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
     let mut plain = model.stream(request.clone()).unwrap();
     let plain_error = plain.next().await.unwrap().unwrap_err();
     assert!(plain.next().await.is_none());
@@ -882,7 +879,7 @@ async fn provider_metadata_and_headers_are_scrubbed_before_observation() {
             http,
         );
         let log = Arc::new(ObservationLog::default());
-        let request = CompletionRequestBuilder::new("hello").build();
+        let request = CompletionRequest::new("hello");
         let context = AdapterContext::new(log.clone(), Subject::default(), "metadata-call");
         assert!(
             model
@@ -1131,7 +1128,7 @@ async fn a_transport_that_records_nothing_writes_no_facts() {
 
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "ordinary-call");
-    let request = CompletionRequestBuilder::new("hello").build();
+    let request = CompletionRequest::new("hello");
     let response = MockCompletionModel::from_turns([MockTurn::text("ordinary")])
         .call_observed(request.clone(), context.clone())
         .await

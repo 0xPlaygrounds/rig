@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::collect_raw_stream_observation;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 async fn assert_streaming_strict_tool_call(
     client: AnthropicModels,
@@ -45,8 +45,8 @@ async fn assert_model_streaming_tool_call(
     expected_arguments: Value,
     output_schema: Option<schemars::Schema>,
 ) {
-    let request = CompletionRequestBuilder::new(prompt)
-        .preamble("Call the requested tool exactly once with the requested values.".to_string())
+    let request = CompletionRequest::new(prompt)
+        .preamble("Call the requested tool exactly once with the requested values.")
         .max_tokens(1024)
         .tool_choice(tool_choice)
         .tool(ToolDefinition {
@@ -54,8 +54,7 @@ async fn assert_model_streaming_tool_call(
             description: "Record the requested values in a streaming strict tool call.".to_string(),
             parameters,
         })
-        .output_schema(output_schema)
-        .build();
+        .output_schema(output_schema);
 
     let observation = collect_raw_stream_observation(
         model

@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
 use rig::agent::run::{ModelTurn, PendingToolCall};
-use rig::completion::{CompletionRequestBuilder, ToolDefinition, Usage};
+use rig::completion::{CompletionRequest, ToolDefinition, Usage};
 use rig::driver::Model;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
@@ -52,12 +52,8 @@ impl GeminiAgent {
         }
     }
 
-    pub(crate) fn request(
-        &self,
-        prompt: Message,
-        history: Vec<Message>,
-    ) -> CompletionRequestBuilder {
-        let mut request = CompletionRequestBuilder::new(prompt)
+    pub(crate) fn request(&self, prompt: Message, history: Vec<Message>) -> CompletionRequest {
+        let mut request = CompletionRequest::new(prompt)
             .messages(history)
             .preamble(self.preamble.clone())
             .tools(self.tools.clone());
@@ -228,7 +224,7 @@ pub(crate) async fn call_model(
 ) -> ModelTurn {
     let response = agent
         .model
-        .call(agent.request(prompt, history).build())
+        .call(agent.request(prompt, history))
         .await
         .expect("gemini completion should succeed");
     ModelTurn::new(

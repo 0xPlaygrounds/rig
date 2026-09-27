@@ -88,7 +88,7 @@ use crate::support::{
     collect_stream_final_response_and_provider_final, collect_text_and_terminal,
     zero_arg_tool_definition,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// Small enough to be cheap, hard enough that a reasoning route actually
 /// spends tokens thinking about it.
@@ -131,10 +131,9 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
         "reasoning_usage_matrix/blocking_reasoning_tokens_reach_normalized_usage",
         |client| async move {
             let model = client.completion(O4_MINI);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
+                .additional_params(openai_reasoning("medium"));
 
             let response = model.call(request).await.expect("reasoning turn");
 
@@ -169,10 +168,9 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
         "reasoning_usage_matrix/streaming_reasoning_tokens_reach_the_terminal_record",
         |client| async move {
             let model = client.completion(O4_MINI);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
+                .additional_params(openai_reasoning("medium"));
 
             let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
@@ -281,10 +279,9 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
         "reasoning_usage_matrix/blocking_high_effort_reports_reasoning_tokens",
         |client| async move {
             let model = client.completion(O4_MINI);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(openai_reasoning("high"))
-                .build();
+                .additional_params(openai_reasoning("high"));
 
             let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
@@ -313,10 +310,9 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
         "reasoning_usage_matrix/blocking_gpt_5_reports_reasoning_tokens",
         |client| async move {
             let model = client.completion(GPT_5);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
+                .additional_params(openai_reasoning("medium"));
 
             let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
@@ -345,10 +341,9 @@ async fn streaming_gpt_5_reports_reasoning_tokens() {
         "reasoning_usage_matrix/streaming_gpt_5_reports_reasoning_tokens",
         |client| async move {
             let model = client.completion(GPT_5);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
+                .additional_params(openai_reasoning("medium"));
 
             let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
@@ -385,13 +380,12 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
         "reasoning_usage_matrix/blocking_anthropic_routed_reports_reasoning_tokens",
         |client| async move {
             let model = client.completion(CLAUDE_HAIKU);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(json!({
                     "reasoning": { "max_tokens": 1024 },
                     "provider": { "order": ["Anthropic"], "allow_fallbacks": false }
-                }))
-                .build();
+                }));
 
             let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
@@ -421,13 +415,12 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
         "reasoning_usage_matrix/streaming_anthropic_routed_reports_reasoning_tokens",
         |client| async move {
             let model = client.completion(CLAUDE_HAIKU);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(json!({
                     "reasoning": { "max_tokens": 1024 },
                     "provider": { "order": ["Anthropic"], "allow_fallbacks": false }
-                }))
-                .build();
+                }));
 
             let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
@@ -460,10 +453,9 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
         "reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens",
         |client| async move {
             let model = client.completion(DEEPSEEK_R1);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(pinned("DeepInfra"))
-                .build();
+                .additional_params(pinned("DeepInfra"));
 
             let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
@@ -502,13 +494,12 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
         "reasoning_usage_matrix/blocking_excluded_reasoning_still_counts_tokens",
         |client| async move {
             let model = client.completion(O4_MINI);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(json!({
                     "reasoning": { "effort": "medium", "exclude": true },
                     "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-                }))
-                .build();
+                }));
 
             let response = model.call(request).await.expect("reasoning turn");
 
@@ -542,10 +533,9 @@ async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
         "reasoning_usage_matrix/blocking_reasoning_tokens_stay_within_completion_tokens",
         |client| async move {
             let model = client.completion(O4_MINI);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
+                .additional_params(openai_reasoning("medium"));
 
             let response = model.call(request).await.expect("reasoning turn");
             let usage = &response.usage;
@@ -578,11 +568,10 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
         "reasoning_usage_matrix/blocking_reasoning_tokens_with_tools_in_request",
         |client| async move {
             let model = client.completion(O4_MINI);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
-                .additional_params(openai_reasoning("medium"))
-                .build();
+                .additional_params(openai_reasoning("medium"));
 
             let response = model.call(request).await.expect("reasoning turn");
             assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
@@ -617,20 +606,18 @@ async fn transports_agree_on_reasoning_tokens() {
 
             let blocking = model
                 .call(
-                    CompletionRequestBuilder::new(REASONING_PROMPT)
+                    CompletionRequest::new(REASONING_PROMPT)
                         .max_tokens(CAP)
-                        .additional_params(openai_reasoning("medium"))
-                        .build(),
+                        .additional_params(openai_reasoning("medium")),
                 )
                 .await
                 .expect("blocking reasoning turn");
 
             let stream = model
                 .stream(
-                    CompletionRequestBuilder::new(REASONING_PROMPT)
+                    CompletionRequest::new(REASONING_PROMPT)
                         .max_tokens(CAP)
-                        .additional_params(openai_reasoning("medium"))
-                        .build(),
+                        .additional_params(openai_reasoning("medium")),
                 )
                 .expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
@@ -678,10 +665,9 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
         "reasoning_usage_matrix/blocking_raw_usage_and_normalized_usage_agree",
         |client| async move {
             let model = client.completion(O4_MINI);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
+                .additional_params(openai_reasoning("medium"));
 
             let normalized = model.call(request).await.expect("the turn");
             let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
@@ -720,10 +706,9 @@ async fn blocking_cost_and_cache_details_still_map() {
         "reasoning_usage_matrix/blocking_cost_and_cache_details_still_map",
         |client| async move {
             let model = client.completion(O4_MINI);
-            let request = CompletionRequestBuilder::new(REASONING_PROMPT)
+            let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
+                .additional_params(openai_reasoning("medium"));
 
             let normalized = model.call(request).await.expect("the turn");
             let usage = openrouter::CompletionResponse::deserialize(&normalized.raw)
@@ -775,10 +760,9 @@ async fn control_non_reasoning_model_reports_zero_blocking() {
         "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_blocking",
         |client| async move {
             let model = client.completion(PLAIN_MODEL);
-            let request = CompletionRequestBuilder::new(PLAIN_PROMPT)
+            let request = CompletionRequest::new(PLAIN_PROMPT)
                 .max_tokens(32)
-                .additional_params(pinned("OpenAI"))
-                .build();
+                .additional_params(pinned("OpenAI"));
 
             let response = model.call(request).await.expect("plain turn");
             assert_eq!(response.usage.reasoning_tokens, Some(0));
@@ -800,10 +784,9 @@ async fn control_non_reasoning_model_reports_zero_streaming() {
         "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_streaming",
         |client| async move {
             let model = client.completion(PLAIN_MODEL);
-            let request = CompletionRequestBuilder::new(PLAIN_PROMPT)
+            let request = CompletionRequest::new(PLAIN_PROMPT)
                 .max_tokens(32)
-                .additional_params(pinned("OpenAI"))
-                .build();
+                .additional_params(pinned("OpenAI"));
 
             let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;

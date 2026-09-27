@@ -169,7 +169,7 @@ fn a_rerank_wire_declares_the_batch_limit() {
         RecordingHttpClient::new(RERANK_BODY),
     );
     assert_eq!(voyage().rerank("rerank-2.5").capabilities(), 1000);
-    assert_eq!(bound.wire.capabilities(), 1000);
+    assert_eq!(bound.capabilities(), 1000);
 }
 
 #[test]

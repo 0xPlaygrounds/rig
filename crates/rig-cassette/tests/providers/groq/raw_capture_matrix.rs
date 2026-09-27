@@ -46,14 +46,13 @@ use super::support::with_groq_cassette_result;
 use crate::cassettes::{recorded_json_turn, recorded_response_header};
 use crate::raw_capture::{assert_contracted_request_id, capture_completion, chat};
 use crate::support::{Observed, assert_matches_recorded_document, assert_matches_recorded_token};
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(16).build()
+    CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
 /// The `x-request-id` the single recorded interaction carried.

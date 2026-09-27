@@ -54,7 +54,7 @@ use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
 use crate::raw_capture::{assert_no_request_id, capture_completion, responses};
 use crate::support::{Observed, assert_matches_recorded_token};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
@@ -74,14 +74,13 @@ fn weather_tool() -> ToolDefinition {
 }
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).max_tokens(64).build()
+    CompletionRequest::new(PROMPT).max_tokens(64)
 }
 
 fn tool_request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(TOOL_PROMPT)
+    CompletionRequest::new(TOOL_PROMPT)
         .tool(weather_tool())
         .max_tokens(128)
-        .build()
 }
 
 /// The `msg_…` id of the envelope's output message, when it issued one.

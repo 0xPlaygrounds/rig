@@ -10,7 +10,7 @@ use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{IdentityProbe, assert_transport_request_id};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// Family A: `output_schema` reshapes the request (structured output);
 /// identity still rides it.
@@ -28,9 +28,8 @@ async fn structured_output_and_identity() {
             let schema = schemars::schema_for!(Sum);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new("What is 2 + 3? Respond with the JSON object.")
-                        .output_schema(schema)
-                        .build(),
+                    CompletionRequest::new("What is 2 + 3? Respond with the JSON object.")
+                        .output_schema(schema),
                 )
                 .await
                 .expect("structured completion should succeed");
@@ -53,12 +52,9 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
             let first = model
-                .call(
-                    CompletionRequestBuilder::new(
-                        "Remember the code word 'heliotrope'. Reply with exactly: noted",
-                    )
-                    .build(),
-                )
+                .call(CompletionRequest::new(
+                    "Remember the code word 'heliotrope'. Reply with exactly: noted",
+                ))
                 .await
                 .expect("first chained call should succeed");
             let first_response_id = first
@@ -69,13 +65,10 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
 
             let second = model
                 .call(
-                    CompletionRequestBuilder::new(
-                        "What was the code word? Reply with just the word.",
-                    )
-                    .additional_params(serde_json::json!({
-                        "previous_response_id": first_response_id.clone(),
-                    }))
-                    .build(),
+                    CompletionRequest::new("What was the code word? Reply with just the word.")
+                        .additional_params(serde_json::json!({
+                            "previous_response_id": first_response_id.clone(),
+                        })),
                 )
                 .await
                 .expect("chained call should succeed");
@@ -164,7 +157,7 @@ async fn provider_error_response_carries_request_id() {
                 .openai
                 .completion("gpt-nonexistent-model-for-identity-edge");
             let error = model
-                .call(CompletionRequestBuilder::new("Never answered").build())
+                .call(CompletionRequest::new("Never answered"))
                 .await
                 .expect_err("a nonexistent model must fail");
             assert_transport_request_id(error.provider_request_id(), "4xx error");
@@ -192,8 +185,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
         "response_identity_edge/raw_and_normalized_views_agree_on_identity",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
-            let request =
-                CompletionRequestBuilder::new("Reply with exactly: two views probe").build();
+            let request = CompletionRequest::new("Reply with exactly: two views probe");
             let response = model
                 .call(request)
                 .await

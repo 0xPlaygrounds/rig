@@ -14,7 +14,7 @@ use rig::message::{AssistantContent, ToolChoice};
 
 use super::super::support::with_openai_completions_cassette;
 use crate::support::zero_arg_tool_definition;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn builder_tools_survive_additional_params_tools() {
@@ -22,7 +22,7 @@ async fn builder_tools_survive_additional_params_tools() {
         "additional_params_tools/builder_tools_survive_additional_params_tools",
         |client| async move {
             let model = client.chat("gpt-4o-mini");
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Call the lookup_alpha tool now. Do not call any other tool.",
                 )
                 .tool(zero_arg_tool_definition("lookup_alpha"))
@@ -40,7 +40,7 @@ async fn builder_tools_survive_additional_params_tools() {
                             }
                         }
                     }]
-                })).build();
+                }));
 
             let response = model
                 .call(request)

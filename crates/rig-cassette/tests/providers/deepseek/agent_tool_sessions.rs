@@ -23,7 +23,7 @@ use crate::support::{
 };
 
 use super::support::with_deepseek_cassette_result;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 pub(super) const SESSION_MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 const CHAT_ALIAS_MODEL: &str = "deepseek-chat";
@@ -639,15 +639,15 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let log = Arc::new(Mutex::new(Vec::new()));
             let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Call inspect_manifest exactly once for project rig-deepseek with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
                 )
-                .preamble("Use the requested tool call and no prose before it.".to_string())
+                .preamble("Use the requested tool call and no prose before it.")
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
-                .additional_params(non_thinking_params()).build();
+                .additional_params(non_thinking_params());
 
             let observation = collect_raw_stream_observation(model.stream(request)?).await;
 
@@ -678,11 +678,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
             let model = client.completion(SESSION_MODEL);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
                      and which release lane did I choose? Do not call any tools.",
                 )
-                .preamble("You are concise and should rely on the provided chat history.".to_string())
+                .preamble("You are concise and should rely on the provided chat history.")
                 .message(Message::user("My favorite color is teal. Please remember it."))
                 .message(Message::assistant("Noted: your favorite color is teal."))
                 .message(Message::user("For this release, use the canary lane."))
@@ -704,7 +704,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
-                .additional_params(non_thinking_params()).build();
+                .additional_params(non_thinking_params());
 
             let response = model.call(request).await?;
             let text = assistant_text_response(&response.choice)
@@ -727,12 +727,12 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             let model = client.completion(SESSION_MODEL);
 
             let required = model
-                .call(CompletionRequestBuilder::new(
+                .call(CompletionRequest::new(
                             "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(non_thinking_params()).build())
+                        .additional_params(non_thinking_params()))
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -745,7 +745,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .call(CompletionRequestBuilder::new(
+                .call(CompletionRequest::new(
                             "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -753,7 +753,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .additional_params(non_thinking_params()).build())
+                        .additional_params(non_thinking_params()))
                 .await?;
             let specific_calls = specific
                 .choice
@@ -769,12 +769,12 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .call(CompletionRequestBuilder::new(
+                .call(CompletionRequest::new(
                             "Do not call tools. Reply with exactly this phrase: no-tool-answer",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .additional_params(non_thinking_params()).build())
+                        .additional_params(non_thinking_params()))
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -798,11 +798,11 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
         "agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
         |client| async move {
             let model = client.completion(SESSION_MODEL);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
                 )
-                .preamble("You are a concise reliability engineer.".to_string())
-                .additional_params(thinking_params()).build();
+                .preamble("You are a concise reliability engineer.")
+                .additional_params(thinking_params());
 
             let response = model.call(request).await?;
 
@@ -828,8 +828,8 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
             );
             assert_response_metadata(&response);
 
-            let stream_request = CompletionRequestBuilder::new("Briefly solve 2 + 2, then answer with the number.")
-                .additional_params(thinking_params()).build();
+            let stream_request = CompletionRequest::new("Briefly solve 2 + 2, then answer with the number.")
+                .additional_params(thinking_params());
             let observation = collect_raw_stream_observation(model.stream(stream_request)?).await;
             anyhow::ensure!(
                 observation.events.contains(&"reasoning_delta"),
@@ -865,7 +865,7 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
         |client| async move {
             let chat_model = client.completion(CHAT_ALIAS_MODEL);
             let chat = chat_model
-                .call(CompletionRequestBuilder::new("Reply with exactly: chat-mode-ok").build())
+                .call(CompletionRequest::new("Reply with exactly: chat-mode-ok"))
                 .await?;
             let chat_text = assistant_text_response(&chat.choice)
                 .ok_or_else(|| anyhow::anyhow!("deepseek-chat should return text"))?;
@@ -879,7 +879,9 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
 
             let reasoner_model = client.completion(REASONER_ALIAS_MODEL);
             let reasoner = reasoner_model
-                .call(CompletionRequestBuilder::new("Reply with exactly: reasoner-mode-ok").build())
+                .call(CompletionRequest::new(
+                    "Reply with exactly: reasoner-mode-ok",
+                ))
                 .await?;
             let reasoner_text = assistant_text_response(&reasoner.choice)
                 .ok_or_else(|| anyhow::anyhow!("deepseek-reasoner should return text"))?;
@@ -908,13 +910,13 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
             let model = client.completion(SESSION_MODEL);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
-                .preamble("Return only valid JSON. No markdown.".to_string())
+                .preamble("Return only valid JSON. No markdown.")
                 .additional_params(json_utils_merge(non_thinking_params(), json!({
                     "response_format": { "type": "json_object" }
-                }))).build();
+                })));
 
             let response = model.call(request).await?;
             let text = assistant_text_response(&response.choice)

@@ -37,20 +37,18 @@ use super::super::DEFAULT_MODEL;
 use super::super::support::with_venice_cassette_result;
 use crate::raw_capture::{assert_no_request_id, capture_text_and_terminal, chat};
 use crate::support::Observed;
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "venice";
 const PROMPT: &str = "Reply with the single word: pong";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .max_tokens(16)
         .additional_params(
             VeniceParameters::new()
                 .disable_thinking(true)
                 .into_additional_params(),
         )
-        .build()
 }
 
 // ================================================================

@@ -39,7 +39,7 @@ use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
 use crate::support::{Adder, collect_raw_stream_observation};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const RECORD_FACT: &str = "record_fact";
 const PREAMBLE: &str = "You are a note-taking assistant. Record facts with the record_fact tool.";
@@ -126,10 +126,9 @@ async fn non_strict_tool_omits_optional_argument_blocking() {
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_blocking",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O_MINI);
-            let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
+            let request = CompletionRequest::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
-                .tool(record_fact_tool())
-                .build();
+                .tool(record_fact_tool());
 
             let response = model
                 .call(request)
@@ -153,10 +152,9 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_streaming",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O_MINI);
-            let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
+            let request = CompletionRequest::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
-                .tool(record_fact_tool())
-                .build();
+                .tool(record_fact_tool());
 
             let stream = model
                 .stream(request)
@@ -193,10 +191,9 @@ async fn strict_tools_opt_in_sends_strict_true() {
                 .openai
                 .completion(openai::GPT_4O_MINI)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
+            let request = CompletionRequest::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
-                .tool(record_fact_tool())
-                .build();
+                .tool(record_fact_tool());
 
             let response = model
                 .call(request)

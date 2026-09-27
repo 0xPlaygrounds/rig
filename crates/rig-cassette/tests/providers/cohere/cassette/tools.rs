@@ -7,7 +7,7 @@ use super::super::{
     support::{IntegerAdder, IntegerSubtract, with_cohere_cassette},
 };
 use crate::support::{TOOLS_PREAMBLE, TOOLS_PROMPT, assert_mentions_expected_number};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn tool_call_roundtrip() {
@@ -38,7 +38,7 @@ async fn required_tool_choice_is_accepted() {
         "tools/required_tool_choice_is_accepted",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = CompletionRequestBuilder::new(TOOLS_PROMPT)
+            let request = CompletionRequest::new(TOOLS_PROMPT)
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(ToolDefinition {
                     name: "subtract".to_string(),
@@ -52,8 +52,7 @@ async fn required_tool_choice_is_accepted() {
                         "required": ["x", "y"]
                     }),
                 })
-                .tool_choice(ToolChoice::Required)
-                .build();
+                .tool_choice(ToolChoice::Required);
 
             let response = model
                 .call(request)
@@ -90,12 +89,11 @@ async fn required_tool_choice_selects_from_multiple_tools() {
         "tools/required_tool_choice_selects_from_multiple_tools",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = CompletionRequestBuilder::new("Use the correct tool to calculate 9 - 4.")
+            let request = CompletionRequest::new("Use the correct tool to calculate 9 - 4.")
                 .tool(rig::tool::tool_definition(&IntegerAdder))
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::Required)
-                .max_tokens(128)
-                .build();
+                .max_tokens(128);
 
             let response = model
                 .call(request)
@@ -128,10 +126,10 @@ async fn none_tool_choice_with_tools_returns_text() {
         "tools/none_tool_choice_with_tools_returns_text",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = CompletionRequestBuilder::new("Calculate 9 - 4. Answer directly without calling a tool.")
+            let request = CompletionRequest::new("Calculate 9 - 4. Answer directly without calling a tool.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::None)
-                .max_tokens(32).build();
+                .max_tokens(32);
 
             let response = model
                 .call(request)
@@ -164,9 +162,9 @@ async fn none_tool_choice_without_tools_returns_text() {
         "tools/none_tool_choice_without_tools_returns_text",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = CompletionRequestBuilder::new("Reply with the single word ready.")
+            let request = CompletionRequest::new("Reply with the single word ready.")
                 .tool_choice(ToolChoice::None)
-                .max_tokens(16).build();
+                .max_tokens(16);
 
             let response = model
                 .call(request)
@@ -192,13 +190,11 @@ async fn strict_required_tool_choice_is_accepted() {
         "tools/strict_required_tool_choice_is_accepted",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request =
-                CompletionRequestBuilder::new("Use the subtract tool to calculate 11 - 6.")
-                    .tool(rig::tool::tool_definition(&IntegerSubtract))
-                    .tool_choice(ToolChoice::Required)
-                    .additional_params(serde_json::json!({"strict_tools": true}))
-                    .max_tokens(128)
-                    .build();
+            let request = CompletionRequest::new("Use the subtract tool to calculate 11 - 6.")
+                .tool(rig::tool::tool_definition(&IntegerSubtract))
+                .tool_choice(ToolChoice::Required)
+                .additional_params(serde_json::json!({"strict_tools": true}))
+                .max_tokens(128);
 
             let response = model
                 .call(request)

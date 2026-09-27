@@ -75,7 +75,7 @@ use serde_json::{Value, json};
 use super::super::support::{
     assert_recorded_response_contains, with_gemini_code_execution_cassette,
 };
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// Wire markers of the two code-execution part kinds, as Gemini spells them.
 pub(super) const CODE_PART_MARKERS: &[&str] = &["executableCode", "codeExecutionResult"];
@@ -185,7 +185,7 @@ async fn blocking_body(
     expected_substring: &'static str,
 ) {
     let model = client.completion(model_id);
-    let mut request = CompletionRequestBuilder::new(prompt)
+    let mut request = CompletionRequest::new(prompt)
         .temperature(0.0)
         .additional_params(params);
     if let Some(max_tokens) = max_tokens {
@@ -193,7 +193,7 @@ async fn blocking_body(
     }
 
     let response = model
-        .call(request.build())
+        .call(request)
         .await
         .expect("a turn carrying code-execution parts must still convert");
 
@@ -216,14 +216,14 @@ async fn streaming_body(
     expected_substring: &'static str,
 ) {
     let model = client.completion(model_id);
-    let mut request = CompletionRequestBuilder::new(prompt)
+    let mut request = CompletionRequest::new(prompt)
         .temperature(0.0)
         .additional_params(params);
     if let Some(max_tokens) = max_tokens {
         request = request.max_tokens(max_tokens);
     }
 
-    let stream = model.stream(request.build()).expect("stream should open");
+    let stream = model.stream(request).expect("stream should open");
     let (streamed, choice, saw_terminal) = drain(stream).await;
 
     assert!(
@@ -372,14 +372,13 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
             use rig::providers::gemini::completion::gemini_api_types::PartKind;
 
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(
+            let request = CompletionRequest::new(
                 "Use the code execution tool to sum the integers from 1 to 100. \
                  State the number in your answer.",
             )
             .temperature(0.0)
             .max_tokens(2000)
-            .additional_params(code_execution_params())
-            .build();
+            .additional_params(code_execution_params());
 
             let response = model
                 .call(request)
@@ -543,11 +542,10 @@ async fn blocking_code_execution_with_visible_thoughts() {
         "code_execution_matrix/blocking_code_execution_with_visible_thoughts",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
+            let request = CompletionRequest::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2500)
-                .additional_params(code_execution_params_with_thoughts())
-                .build();
+                .additional_params(code_execution_params_with_thoughts());
 
             let response = model
                 .call(request)
@@ -583,11 +581,10 @@ async fn streaming_code_execution_with_visible_thoughts() {
         "code_execution_matrix/streaming_code_execution_with_visible_thoughts",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(THINKING_PROMPT)
+            let request = CompletionRequest::new(THINKING_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2500)
-                .additional_params(code_execution_params_with_thoughts())
-                .build();
+                .additional_params(code_execution_params_with_thoughts());
 
             let stream = model.stream(request).expect("stream should open");
             let (streamed, choice, saw_terminal) = drain(stream).await;
@@ -625,12 +622,11 @@ async fn blocking_code_execution_with_preamble() {
         "code_execution_matrix/blocking_code_execution_with_preamble",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(PREAMBLE_PROMPT)
+            let request = CompletionRequest::new(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
             let response = model
                 .call(request)
@@ -656,12 +652,11 @@ async fn streaming_code_execution_with_preamble() {
         "code_execution_matrix/streaming_code_execution_with_preamble",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequestBuilder::new(PREAMBLE_PROMPT)
+            let request = CompletionRequest::new(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
             let stream = model.stream(request).expect("stream should open");
             let (streamed, _, saw_terminal) = drain(stream).await;
@@ -1007,7 +1002,7 @@ mod unit {
         let model = GeminiConfig::new("unit-key")
             .connect(RecordingHttpClient::new(reply_with(parts)))
             .completion("gemini-2.5-flash");
-        let request = rig::completion::CompletionRequestBuilder::new("unit").build();
+        let request = rig::completion::CompletionRequest::new("unit");
         model.call(request).await
     }
 

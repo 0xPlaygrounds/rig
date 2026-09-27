@@ -31,7 +31,7 @@ use serde_json::{Value, json};
 use super::support::{collect_raw_stream_outcome, with_deepseek_block_order_cassette_result};
 use crate::reasoning::{self, WeatherTool};
 use crate::support::collect_stream_observation;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 /// A reasoner turn spends most of its budget on thinking tokens before it can
@@ -118,12 +118,11 @@ async fn blocking_reasoner_tool_turn_leads_with_reasoning() {
             let model = client.completion(MODEL);
             let normalized = model
                 .call(
-                    CompletionRequestBuilder::new(reasoning::TOOL_USER_PROMPT)
+                    CompletionRequest::new(reasoning::TOOL_USER_PROMPT)
                         .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
                         .tool(weather_tool_definition())
                         .additional_params(thinking_params())
-                        .max_tokens(REASONER_BUDGET)
-                        .build(),
+                        .max_tokens(REASONER_BUDGET),
                 )
                 .await?;
 
@@ -148,12 +147,11 @@ async fn streaming_reasoner_tool_turn_leads_with_reasoning() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model.stream(
-                    CompletionRequestBuilder::new(reasoning::TOOL_USER_PROMPT)
+                    CompletionRequest::new(reasoning::TOOL_USER_PROMPT)
                         .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
                         .tool(weather_tool_definition())
                         .additional_params(thinking_params())
-                        .max_tokens(REASONER_BUDGET)
-                        .build(),
+                        .max_tokens(REASONER_BUDGET),
                 )?,
             )
             .await;
@@ -182,7 +180,7 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .call(CompletionRequestBuilder::new(
+                .call(CompletionRequest::new(
                             "What is the weather AND the air quality in Tokyo? Call both tools in one turn before answering.",
                         )
                         .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
@@ -192,7 +190,7 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
                             "thinking": { "type": "enabled" },
                             "parallel_tool_calls": true,
                         }))
-                        .max_tokens(REASONER_BUDGET).build())
+                        .max_tokens(REASONER_BUDGET))
                 .await?;
 
             let kinds = block_kinds(&normalized.choice);
@@ -225,7 +223,7 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
-                    .stream(CompletionRequestBuilder::new(
+                    .stream(CompletionRequest::new(
                                 "What is the weather AND the air quality in Tokyo? Call both tools in one turn before answering.",
                             )
                             .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
@@ -235,7 +233,7 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
                                 "thinking": { "type": "enabled" },
                                 "parallel_tool_calls": true,
                             }))
-                            .max_tokens(REASONER_BUDGET).build())
+                            .max_tokens(REASONER_BUDGET))
                     ?,
             )
             .await;
@@ -265,10 +263,9 @@ async fn blocking_reasoner_text_turn_leads_with_reasoning() {
             let model = client.completion(MODEL);
             let normalized = model
                 .call(
-                    CompletionRequestBuilder::new("Is 91 prime? Answer in one short sentence.")
+                    CompletionRequest::new("Is 91 prime? Answer in one short sentence.")
                         .additional_params(thinking_params())
-                        .max_tokens(REASONER_BUDGET)
-                        .build(),
+                        .max_tokens(REASONER_BUDGET),
                 )
                 .await?;
 
@@ -293,10 +290,9 @@ async fn streaming_reasoner_text_turn_leads_with_reasoning() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model.stream(
-                    CompletionRequestBuilder::new("Is 91 prime? Answer in one short sentence.")
+                    CompletionRequest::new("Is 91 prime? Answer in one short sentence.")
                         .additional_params(thinking_params())
-                        .max_tokens(REASONER_BUDGET)
-                        .build(),
+                        .max_tokens(REASONER_BUDGET),
                 )?,
             )
             .await;
@@ -326,12 +322,11 @@ async fn blocking_non_thinking_tool_turn_has_no_reasoning_block() {
             let model = client.completion(MODEL);
             let normalized = model
                 .call(
-                    CompletionRequestBuilder::new(reasoning::TOOL_USER_PROMPT)
+                    CompletionRequest::new(reasoning::TOOL_USER_PROMPT)
                         .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
                         .tool(weather_tool_definition())
                         .additional_params(non_thinking_params())
-                        .max_tokens(256)
-                        .build(),
+                        .max_tokens(256),
                 )
                 .await?;
 
@@ -358,12 +353,11 @@ async fn streaming_non_thinking_tool_turn_has_no_reasoning_block() {
             let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model.stream(
-                    CompletionRequestBuilder::new(reasoning::TOOL_USER_PROMPT)
+                    CompletionRequest::new(reasoning::TOOL_USER_PROMPT)
                         .preamble(reasoning::TOOL_SYSTEM_PROMPT.to_owned())
                         .tool(weather_tool_definition())
                         .additional_params(non_thinking_params())
-                        .max_tokens(256)
-                        .build(),
+                        .max_tokens(256),
                 )?,
             )
             .await;

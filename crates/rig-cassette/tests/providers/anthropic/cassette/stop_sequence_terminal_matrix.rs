@@ -78,7 +78,6 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::with_anthropic_stop_sequence_cassette;
-use rig::completion::CompletionRequestBuilder;
 
 type AnthropicModel = Model<Messages>;
 
@@ -96,10 +95,9 @@ const IMMEDIATE_PROMPT: &str = "Reply with exactly this one word and nothing els
 const TOOL_PROMPT: &str = "What is the weather in Paris? Use the get_weather tool.";
 
 fn request(prompt: &str, stop_sequences: &[&str], max_tokens: u64) -> CompletionRequest {
-    CompletionRequestBuilder::new(prompt)
+    CompletionRequest::new(prompt)
         .max_tokens(max_tokens)
         .additional_params(json!({ "stop_sequences": stop_sequences }))
-        .build()
 }
 
 fn weather_tool() -> ToolDefinition {
@@ -523,11 +521,10 @@ async fn raw_tool_use_control() {
         "stop_sequence_terminal_matrix/raw_tool_use_control",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = CompletionRequestBuilder::new(TOOL_PROMPT)
+            let request = CompletionRequest::new(TOOL_PROMPT)
                 .max_tokens(256)
                 .tool(weather_tool())
-                .additional_params(json!({ "stop_sequences": ["zulu"] }))
-                .build();
+                .additional_params(json!({ "stop_sequences": ["zulu"] }));
             let terminal = raw_terminal(&model, request).await;
             assert_terminal(&terminal, None, "tool_use");
         },
@@ -570,11 +567,10 @@ async fn raw_with_tools_sequence_fires() {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             // Tools advertised but unused: the streaming body's `tool_choice`
             // reconciliation runs, and the terminal must be unaffected.
-            let request = CompletionRequestBuilder::new(LIST_PROMPT)
+            let request = CompletionRequest::new(LIST_PROMPT)
                 .max_tokens(64)
                 .tool(weather_tool())
-                .additional_params(json!({ "stop_sequences": ["charlie"] }))
-                .build();
+                .additional_params(json!({ "stop_sequences": ["charlie"] }));
             let terminal = raw_terminal(&model, request).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
@@ -620,11 +616,10 @@ async fn raw_with_preamble_sequence_fires() {
         "stop_sequence_terminal_matrix/raw_with_preamble_sequence_fires",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = CompletionRequestBuilder::new(LIST_PROMPT)
-                .preamble("You follow formatting instructions exactly.".to_string())
+            let request = CompletionRequest::new(LIST_PROMPT)
+                .preamble("You follow formatting instructions exactly.")
                 .max_tokens(64)
-                .additional_params(json!({ "stop_sequences": ["charlie"] }))
-                .build();
+                .additional_params(json!({ "stop_sequences": ["charlie"] }));
             let terminal = raw_terminal(&model, request).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },

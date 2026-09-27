@@ -41,7 +41,7 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 use super::super::support::with_gemini_interactions_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig::providers::gemini::interactions_api::Interactions;
 
 const PROVIDER: &str = "gemini";
@@ -49,9 +49,7 @@ const MODEL: &str = "gemini-3-flash-preview";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
-        .temperature(0.0)
-        .build()
+    CompletionRequest::new(PROMPT).temperature(0.0)
 }
 
 /// Drain a model stream and return its single terminal record.

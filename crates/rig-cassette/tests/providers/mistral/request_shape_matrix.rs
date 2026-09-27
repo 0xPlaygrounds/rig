@@ -41,7 +41,7 @@ use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::support::with_mistral_request_shape_cassette_result;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -122,11 +122,10 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
         params["response_format"] = json!({ "type": "json_object" });
     }
 
-    CompletionRequestBuilder::new(prompt(cell))
+    CompletionRequest::new(prompt(cell))
         .tool(tool_definition())
         .additional_params(params)
         .max_tokens(64)
-        .build()
 }
 
 fn normalized_text(choice: &[AssistantContent]) -> String {

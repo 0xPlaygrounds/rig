@@ -9,7 +9,7 @@ use crate::support::{
 };
 
 use super::super::support::with_perplexity_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn text_only_content_parts_are_flattened() {
@@ -26,11 +26,10 @@ async fn text_only_content_parts_are_flattened() {
 
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(prompt)
-                        .preamble("Reply with the two words joined by a hyphen.".to_string())
+                    CompletionRequest::new(prompt)
+                        .preamble("Reply with the two words joined by a hyphen.")
                         .max_tokens(32)
-                        .additional_params(json!({"search_context_size": "low"}))
-                        .build(),
+                        .additional_params(json!({"search_context_size": "low"})),
                 )
                 .await
                 .expect("Perplexity should accept flattened text-only content parts");
@@ -56,10 +55,10 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
 
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(
+                    CompletionRequest::new(
                         "What code word appears in the surviving conversation history?",
                     )
-                    .preamble("Answer in one short sentence.".to_string())
+                    .preamble("Answer in one short sentence.")
                     .message(Message::user("Remember this code word: amber-rig."))
                     .message(Message::Assistant {
                         id: None,
@@ -74,8 +73,7 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                         "Use the history, not web search, if possible.",
                     ))
                     .max_tokens(32)
-                    .additional_params(json!({"search_context_size": "low"}))
-                    .build(),
+                    .additional_params(json!({"search_context_size": "low"})),
                 )
                 .await
                 .expect("Perplexity should accept sanitized tool-exchange history");
@@ -95,15 +93,15 @@ async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
         |client| async move {
             let model = client.completion(perplexity::SONAR);
             let response = model
-                .call(CompletionRequestBuilder::new("Reply with exactly: tools dropped ok")
-                .preamble("Follow the user's requested exact reply.".to_string())
+                .call(CompletionRequest::new("Reply with exactly: tools dropped ok")
+                .preamble("Follow the user's requested exact reply.")
                 .tool(zero_arg_tool_definition("lookup_alpha"))
                 .tool(zero_arg_tool_definition("lookup_beta"))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["lookup_alpha".to_string(), "lookup_beta".to_string()],
                 })
                 .max_tokens(32)
-                .additional_params(json!({"search_context_size": "low"})).build())
+                .additional_params(json!({"search_context_size": "low"})))
                 .await
                 .expect(
                     "unsupported tools and multi-name tool choice should be dropped before validation",
@@ -125,14 +123,13 @@ async fn output_schema_is_dropped_instead_of_sent_as_response_format() {
             let model = client.completion(perplexity::SONAR);
             let response = model
                 .call(
-                    CompletionRequestBuilder::new(
+                    CompletionRequest::new(
                         "Name one Rust programming language benefit in a short sentence.",
                     )
-                    .preamble("Answer briefly.".to_string())
+                    .preamble("Answer briefly.")
                     .output_schema(schemars::schema_for!(SmokeStructuredOutput))
                     .max_tokens(48)
-                    .additional_params(json!({"search_context_size": "low"}))
-                    .build(),
+                    .additional_params(json!({"search_context_size": "low"})),
                 )
                 .await
                 .expect("Perplexity should ignore unsupported response_format mapping");

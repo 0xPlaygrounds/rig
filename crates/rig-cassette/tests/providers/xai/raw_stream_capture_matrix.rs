@@ -40,7 +40,6 @@ use crate::raw_capture::{
     capture_text_and_terminal, responses, stream_normalized_without_raw,
 };
 use crate::support::{Observed, assert_matches_recorded_token};
-use rig::completion::CompletionRequestBuilder;
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
@@ -48,7 +47,7 @@ const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT).build()
+    CompletionRequest::new(PROMPT)
 }
 
 /// The `response` object of the single recorded `response.completed` event.

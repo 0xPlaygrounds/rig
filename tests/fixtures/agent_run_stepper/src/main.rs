@@ -24,7 +24,7 @@ use std::{
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
-use rig_core::completion::{AssistantContent, CompletionRequest, CompletionRequestBuilder, ModelRef, Usage};
+use rig_core::completion::{AssistantContent, CompletionRequest, ModelRef, Usage};
 use rig_core::driver::{Local, Model, Observation, Opened, Transport};
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
@@ -185,8 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let executable = prepared.executable_tool_names.clone();
                 let allowed = prepared.allowed_tool_names.clone();
                 let request = prepared
-                    .apply(CompletionRequestBuilder::new(prompt))
-                    .build();
+                    .apply(CompletionRequest::new(prompt));
                 let response = drive(model.call(request), &mut driver)?;
                 model_calls += 1;
                 run.model_response(ModelTurn::new(

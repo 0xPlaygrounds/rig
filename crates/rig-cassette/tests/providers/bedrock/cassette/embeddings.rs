@@ -35,7 +35,12 @@ async fn embeddings_batch_smoke() {
         let model = client.embedding(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
 
         let embeddings = model
-            .call(EMBEDDING_INPUTS.into_iter().map(str::to_string).collect())
+            .call(
+                EMBEDDING_INPUTS
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>(),
+            )
             .await
             .map(|response| response.embeddings)
             .expect("batch embedding request should succeed");

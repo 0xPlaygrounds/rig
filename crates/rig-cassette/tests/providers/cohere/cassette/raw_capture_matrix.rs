@@ -45,16 +45,15 @@ use serde_json::Value;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::raw_capture::capture_completion;
 use crate::support::{Observed, json_contains_key, normalized_without_raw};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: captured";
 
 fn request() -> rig::completion::CompletionRequest {
-    CompletionRequestBuilder::new(PROMPT)
+    CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 /// The premise every cell rests on: the recorded body is a `/v2/chat` answer

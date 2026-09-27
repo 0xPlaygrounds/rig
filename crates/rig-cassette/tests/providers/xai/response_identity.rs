@@ -8,7 +8,7 @@ use rig::streaming::StreamEvent;
 use serde::Deserialize;
 
 use super::support::with_xai_cassette;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 fn assert_request_id(id: Option<&str>, context: &str) {
     assert!(
@@ -25,7 +25,7 @@ async fn nonstreaming_response_carries_identity() {
         |client| async move {
             let model = client.completion(xai::GROK_3_MINI);
             let response = model
-                .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
+                .call(CompletionRequest::new("Reply with exactly: identity probe"))
                 .await
                 .expect("completion should succeed");
 
@@ -50,10 +50,9 @@ async fn streaming_terminal_carries_identity() {
         |client| async move {
             let model = client.completion(xai::GROK_3_MINI);
             let mut stream = model
-                .stream(
-                    CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
-                        .build(),
-                )
+                .stream(CompletionRequest::new(
+                    "Reply with exactly: stream identity probe",
+                ))
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -119,8 +118,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
         "response_identity/raw_and_normalized_views_agree_on_identity",
         |client| async move {
             let model = client.completion(xai::GROK_3_MINI);
-            let request =
-                CompletionRequestBuilder::new("Reply with exactly: two views probe").build();
+            let request = CompletionRequest::new("Reply with exactly: two views probe");
             let response = model
                 .call(request)
                 .await
@@ -155,7 +153,7 @@ async fn provider_error_classifies_with_contract_but_reports_no_id() {
         |client| async move {
             let model = client.completion("grok-nonexistent-model-for-identity-edge");
             let error = model
-                .call(CompletionRequestBuilder::new("Never answered").build())
+                .call(CompletionRequest::new("Never answered"))
                 .await
                 .expect_err("a nonexistent model must fail");
             assert!(
@@ -185,7 +183,7 @@ async fn auth_rejection_classifies_with_contract() {
         |client| async move {
             let model = client.completion(xai::GROK_3_MINI);
             let error = model
-                .call(CompletionRequestBuilder::new("Never authenticated").build())
+                .call(CompletionRequest::new("Never authenticated"))
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(

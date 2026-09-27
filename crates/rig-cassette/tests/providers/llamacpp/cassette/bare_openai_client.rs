@@ -35,7 +35,7 @@ use crate::support::{
 };
 
 use super::super::cassette_support::*;
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 
 /// The caller carries the `/v1` the `LLAMACPP` dialect's default base URL
 /// carries for them.
@@ -147,11 +147,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
         |client| async move {
             let model = client.chat(CASSETTE_MODEL);
             let response = model
-                .call(
-                    CompletionRequestBuilder::new("Reply with the single word: ok")
-                        .max_tokens(256)
-                        .build(),
-                )
+                .call(CompletionRequest::new("Reply with the single word: ok").max_tokens(256))
                 .await
                 .expect("an unauthenticated local server accepts any bearer token");
             assert!(!response.choice.is_empty());
@@ -283,9 +279,8 @@ async fn raw_response_text_matches_normalized_choice_text() {
         "bare_openai_client/raw_response_text_matches_normalized_choice_text",
         |client| async move {
             let model = client.chat(CASSETTE_MODEL);
-            let request = CompletionRequestBuilder::new(RAW_TEXT_RESPONSE_PROMPT)
-                .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-                .build();
+            let request = CompletionRequest::new(RAW_TEXT_RESPONSE_PROMPT)
+                .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string());
             // One request, two views of the one reply: `raw` holds the
             // server's own chat-completions JSON verbatim, and `choice` holds
             // what the decoder folded it into. The assistant text must be the

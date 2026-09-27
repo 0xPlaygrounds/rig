@@ -1775,7 +1775,7 @@ mod terminal_emission {
             AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
             MockStreamingClient { sse_bytes },
         );
-        let request = crate::completion::CompletionRequestBuilder::new("hello").build();
+        let request = crate::completion::CompletionRequest::new("hello");
         let mut stream = bound.stream(request).expect("stream should open");
 
         let mut texts = Vec::new();
@@ -1827,7 +1827,7 @@ mod terminal_emission {
                 )),
             ]),
         );
-        let request = crate::completion::CompletionRequestBuilder::new("hello").build();
+        let request = crate::completion::CompletionRequest::new("hello");
         let mut stream = bound.stream(request).expect("stream should open");
 
         let mut texts = Vec::new();
@@ -1902,7 +1902,7 @@ mod terminal_emission {
                 sse_bytes: sse(&[MESSAGE_START, ENVELOPE]),
             },
         );
-        let request = crate::completion::CompletionRequestBuilder::new("hello").build();
+        let request = crate::completion::CompletionRequest::new("hello");
         let mut stream = bound.stream(request).expect("stream should open");
 
         let error = loop {
@@ -2050,7 +2050,7 @@ mod terminal_emission {
                 sse_bytes: sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA]),
             },
         );
-        let request = crate::completion::CompletionRequestBuilder::new("hello").build();
+        let request = crate::completion::CompletionRequest::new("hello");
         let mut stream = bound.stream(request).expect("stream should open");
         while let Some(item) = stream.next().await {
             item.expect("stream item");

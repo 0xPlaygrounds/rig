@@ -162,38 +162,38 @@ impl<Op: Operation> DynModel<Op> {
 
     /// Send `request` and fold the whole reply into the operation's
     /// response; [`Model::call`] with the model erased. The call shares the
-    /// model, so it can be spawned.
-    pub fn call(
+    /// model, so it can be spawned when `request` owns its data.
+    pub fn call<R: Into<Op::Request>>(
         &self,
-        request: Op::Request,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static + use<Op>
+        request: R,
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static + use<Op, R>
     {
-        Arc::clone(&self.inner).call(request, None)
+        Arc::clone(&self.inner).call(request.into(), None)
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
-    pub fn call_observed(
+    pub fn call_observed<R: Into<Op::Request>>(
         &self,
-        request: Op::Request,
+        request: R,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static + use<Op>
+    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static + use<Op, R>
     {
-        Arc::clone(&self.inner).call(request, Some(observation))
+        Arc::clone(&self.inner).call(request.into(), Some(observation))
     }
 
     /// Open a streamed reply; [`Model::stream`] with the model erased.
-    pub fn stream(&self, request: Op::Request) -> Result<Streamed<Op>, ProviderError> {
-        self.inner.streamed(request, Mode::Streaming, None)
+    pub fn stream(&self, request: impl Into<Op::Request>) -> Result<Streamed<Op>, ProviderError> {
+        self.inner.streamed(request.into(), Mode::Streaming, None)
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
     pub fn stream_observed(
         &self,
-        request: Op::Request,
+        request: impl Into<Op::Request>,
         observation: AdapterContext,
     ) -> Result<Streamed<Op>, ProviderError> {
         self.inner
-            .streamed(request, Mode::Streaming, Some(observation))
+            .streamed(request.into(), Mode::Streaming, Some(observation))
     }
 }
 
