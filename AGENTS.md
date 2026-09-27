@@ -18,15 +18,9 @@ signatures, module paths, and feature flags.
 
 ## Fast Loop
 
-- After an edit, run `cargo xtask verify --quick`. It checks and tests only
-  what the edit owns and lists what it leaves to CI.
-- Keep incremental compilation on locally. `CARGO_INCREMENTAL=0` is a CI
-  setting for fresh runners; locally it makes every rebuild start over.
-- Keep each worktree's own target directory (Cargo's default). A
-  `CARGO_TARGET_DIR` shared by parallel builds makes them wait on one lock.
-- Do not run workspace-wide builds or tests, or the facade with
-  `--all-features`, locally unless you are debugging a CI failure.
-- Run anything that takes over a minute in the background with a log.
+- After an edit, run `cargo xtask verify --quick`; leave workspace-wide and
+  facade `--all-features` runs to CI.
+- Keep incremental compilation and each worktree's own target directory.
 
 ## Efficient Investigation
 

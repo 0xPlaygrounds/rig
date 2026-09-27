@@ -25,10 +25,10 @@ filter = 'test(telemetry::) + test(span_safety_net::)'
 retries = 0
 
 # The inner loop: skips the service suites (`rig-service-tests`, mostly
-# Docker-backed) and nested-Cargo guards, including trybuild cases. Ordinary
-# tests in the same binaries still run. CI still runs all of them. Each guard
-# is named by binary and exact test name, because `test()` alone matches any
-# name containing it; xtask's `NESTED_CARGO_GUARDS` pins this list.
+# Docker-backed) and tests that launch a nested Cargo build or trybuild. CI
+# runs all of them. Each guard is named by binary and exact name, so ordinary
+# tests in the same binaries still run. A new guard belongs here; one missing
+# only slows the local loop.
 [profile.local]
 retries = 0
 fail-fast = true

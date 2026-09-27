@@ -1,8 +1,7 @@
 //! Verification: one list of check definitions (`checks.rs`) that CI runs one
 //! per job and that the local planner selects from by what changed. Every
 //! selected check executes; nothing is reused or certified across runs.
-//! `--quick` is the inner loop: it builds and tests only the packages and
-//! targets the change set owns, and names what it leaves to CI.
+//! `--quick` is the inner loop: only what the change set owns, never escalated.
 mod checks;
 mod execute;
 mod preflight;
@@ -10,11 +9,7 @@ mod selection;
 #[cfg(test)]
 mod tests;
 use serde_json::Value;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::Path,
-    process::Command,
-};
+use std::{collections::BTreeMap, path::Path, process::Command};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
@@ -32,7 +27,7 @@ fn invalid(message: impl Into<String>) -> Error {
 use checks::{Check, Step};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
-    /// Check and test only what the change set owns; never escalate.
+    /// Test only the packages and targets the change set owns.
     Quick,
     Changed,
     Pr,
@@ -127,10 +122,14 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
     )?)?;
     let changes = selection::changes(root, &opts)?;
     let all = checks::all();
-    if opts.mode == Mode::Quick {
-        return quick(root, &metadata, &opts, &changes, &all);
-    }
-    let plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
+    let (plan, deferred) = if opts.mode == Mode::Quick {
+        selection::quick(root, &metadata, &changes)?
+    } else {
+        (
+            selection::plan(root, &metadata, &opts, &changes, &all)?,
+            Vec::new(),
+        )
+    };
     if opts.mode == Mode::Lanes {
         let has = |id: &str| plan.iter().any(|c| c.id == id);
         println!(
@@ -140,63 +139,41 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
         );
         return Ok(());
     }
-    print_plan(opts.mode, changes.len(), &plan);
-    for check in &all {
-        if !plan.iter().any(|c| c.id == check.id) {
-            println!("SKIP {}: outside {:?} selection", check.id, opts.mode);
-        }
-    }
-    if opts.dry_run {
-        println!("Dry run only; nothing executed.");
-        return Ok(());
-    }
-    execute::run(root, &metadata, &plan)
-}
-fn print_plan(mode: Mode, changes: usize, plan: &[Check]) {
     println!(
-        "Verification {mode:?}: {changes} changed paths; {} checks. Replay only; no live recording.",
+        "Verification {:?}: {} changed paths; {} checks. Replay only; no live recording.",
+        opts.mode,
+        changes.len(),
         plan.len()
     );
-    for check in plan {
+    for check in &plan {
         println!("SELECT {}: {}", check.id, check.reason);
         for step in &check.steps {
             println!("  {} {} {:?}", step.program, step.args.join(" "), step.env);
         }
     }
-}
-/// Runs the quick plan, then lists what it did not build, whether or not the
-/// plan passed. The `--pr` preview comes last, so a PR policy error (such as
-/// a frozen release document) is reported without blocking the local run.
-fn quick(
-    root: &Path,
-    metadata: &Value,
-    opts: &Options,
-    changes: &BTreeSet<String>,
-    all: &[Check],
-) -> Result<()> {
-    let quick = selection::quick(root, metadata, changes)?;
-    print_plan(opts.mode, changes.len(), &quick.plan);
+    // A quick run never selects from `all`; listing every check as skipped
+    // would bury what it does run.
+    if opts.mode != Mode::Quick {
+        for check in &all {
+            if !plan.iter().any(|c| c.id == check.id) {
+                println!("SKIP {}: outside {:?} selection", check.id, opts.mode);
+            }
+        }
+    }
     let result = if opts.dry_run {
         println!("Dry run only; nothing executed.");
         Ok(())
     } else {
-        execute::run(root, metadata, &quick.plan)
+        execute::run(root, &metadata, &plan)
     };
-    if !quick.deferred.is_empty() {
-        println!("Not checked locally; CI covers this:");
-        for line in &quick.deferred {
-            println!("  {line}");
+    // Printed after the run, where it is read, whether or not the run passed.
+    if opts.mode == Mode::Quick {
+        for path in &deferred {
+            println!("NOT CHECKED {path}: shared input, documentation or unowned; CI covers it");
         }
-        match &opts.base {
-            Some(base) => match selection::pr_ids(root, metadata, base, changes, all) {
-                Ok(ids) => println!(
-                    "CI checks --pr selects for this change set: {}",
-                    ids.join(" ")
-                ),
-                Err(error) => println!("--pr would reject this change set: {error}"),
-            },
-            None => println!("Pass --base REF to list the CI checks --pr selects for them."),
-        }
+        println!(
+            "Also left to CI: reverse dependencies, fmt, Clippy, doctests, WASM, the service suites and nested-Cargo guards. `verify --pr --base REF --dry-run` lists the CI checks."
+        );
     }
     result
 }

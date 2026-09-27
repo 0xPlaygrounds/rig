@@ -11,10 +11,9 @@ fn metadata() -> Value {
     // are targets of `rig-cassette`.
     serde_json::json!({"packages":[
         {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
-        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"features":{"default":[],"agent":[],"ecs":[],"http":[],"bedrock":["http"]},"targets":[{"name":"anthropic","kind":["test"],"required-features":["http","agent","ecs"]},{"name":"openai","kind":["test"],"required-features":["http","agent","ecs"]},{"name":"verify","kind":["test"],"required-features":["agent","ecs"]},{"name":"world_replay","kind":["test"],"required-features":["agent","ecs"]},{"name":"world_replay_world","kind":["test"],"required-features":["ecs"]}]},
+        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]}]},
         {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
-        {"name":"rig-core","manifest_path":"/repo/crates/rig-core/Cargo.toml","dependencies":[],"features":{"default":["derive"],"derive":[],"pdf":[]},"targets":[{"name":"rig_core","kind":["lib"]}]},
-        {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[{"name":"rig-core"}],"features":{"assets":[]},"targets":[{"name":"rig_ecs","kind":["lib"]},{"name":"run_wasm","kind":["test"],"required-features":["assets"]}]},
+        {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},
         {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
         {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
     ]})
@@ -515,150 +514,6 @@ fn prioritized_tests_exist() {
     );
 }
 
-/// Every test source that launches a nested Cargo build or trybuild, with the
-/// `local` profile's selector for it: its whole binary, or one test in it by
-/// exact name, so ordinary sibling tests still run.
-const NESTED_CARGO_GUARDS: [(&str, &str, Option<&str>); 12] = [
-    (
-        "crates/rig-core/tests/macro_hygiene.rs",
-        "rig-core::macro_hygiene",
-        None,
-    ),
-    (
-        "tests/tool_facade_features.rs",
-        "rig::tool_facade_features",
-        Some("portable_tool_facade_is_feature_additive"),
-    ),
-    (
-        "crates/rig-reqwest/tests/middleware_features.rs",
-        "rig-reqwest::middleware_features",
-        Some("middleware_clients_are_available_for_each_tls_selector"),
-    ),
-    (
-        "tests/core/agent_run_stepper.rs",
-        "rig::core",
-        Some("core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver"),
-    ),
-    (
-        "crates/rig-derive/tests/dependency_rename.rs",
-        "rig-derive::dependency_rename",
-        Some("generated_paths_follow_cargo_dependency_renames"),
-    ),
-    (
-        "crates/rig-derive/tests/dependency_rename.rs",
-        "rig-derive::dependency_rename",
-        Some("contextual_tool_compiles_with_rig_core_only"),
-    ),
-    (
-        "crates/rig-derive/tests/tool_args.rs",
-        "rig-derive::tool_args",
-        Some("invalid_tool_arguments_are_rejected"),
-    ),
-    (
-        "crates/rig-derive/tests/custom_name.rs",
-        "rig-derive::custom_name",
-        Some("test_custom_name_trybuild_cases"),
-    ),
-    (
-        "crates/rig-derive/tests/serve.rs",
-        "rig-derive::serve",
-        Some("a_type_that_is_not_a_serve_is_told_to_implement_serve"),
-    ),
-    (
-        "crates/rig-derive/tests/embed_attrs.rs",
-        "rig-derive::embed_attrs",
-        Some("conflicting_embed_attributes_are_rejected"),
-    ),
-    (
-        "crates/rig-derive/tests/context_value.rs",
-        "rig-derive::context_value",
-        Some("a_bare_value_is_rejected_with_the_fix_named"),
-    ),
-    (
-        "crates/rig-derive/tests/tool_context.rs",
-        "rig-derive::tool_context",
-        Some("invalid_context_parameters_are_rejected"),
-    ),
-];
-
-#[test]
-fn local_profile_excludes_nested_builds_without_excluding_their_sibling_tests() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let config = std::fs::read_to_string(root.join(".config/nextest.toml")).unwrap();
-    let local = config.split("[profile.local]").nth(1).unwrap();
-    let filter = local
-        .split("default-filter = '''")
-        .nth(1)
-        .unwrap()
-        .split("'''")
-        .next()
-        .unwrap();
-    let mut selectors = vec!["package(rig-service-tests)".to_owned()];
-    for (path, binary, test) in NESTED_CARGO_GUARDS {
-        selectors.push(match test {
-            Some(name) => {
-                let source = std::fs::read_to_string(root.join(path)).unwrap();
-                let function = name.rsplit("::").next().unwrap();
-                assert!(
-                    source.contains(&format!("fn {function}(")),
-                    "{path}: {name}"
-                );
-                format!("(binary_id({binary}) & test(={name}))")
-            }
-            None => format!("binary_id({binary})"),
-        });
-    }
-    // Pin the entire exclusion, not just the presence of names: excluding a
-    // whole derive package or binary would also hide its ordinary unit tests,
-    // and `test()` without `=` matches any test containing the name.
-    let compact = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-    assert_eq!(
-        compact(filter),
-        compact(&format!("not({})", selectors.join("|")))
-    );
-}
-
-#[test]
-fn every_nested_cargo_test_source_is_in_the_local_filter() {
-    // A new trybuild case or nested `cargo build|check|run|test` would
-    // otherwise slow the inner loop unnoticed. Resolver-only probes (`cargo
-    // tree`, `cargo metadata`) are cheap and stay in the loop.
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let listed: BTreeSet<&str> = NESTED_CARGO_GUARDS.iter().map(|(p, _, _)| *p).collect();
-    let launching: BTreeSet<String> = execute::tracked_inputs(root)
-        .unwrap()
-        .into_iter()
-        .filter(|p| p.ends_with(".rs") && !p.starts_with("xtask/"))
-        .filter(|p| {
-            let Ok(source) = std::fs::read_to_string(root.join(p)) else {
-                return false;
-            };
-            let cargo = [
-                "env!(\"CARGO\")",
-                "var_os(\"CARGO\")",
-                "Command::new(\"cargo\")",
-            ]
-            .iter()
-            .any(|s| source.contains(s));
-            let builds = ["\"build\"", "\"check\"", "\"run\"", "\"test\""]
-                .iter()
-                .any(|s| source.contains(s));
-            source.contains("trybuild::TestCases") || (cargo && builds)
-        })
-        .collect();
-    let unlisted: Vec<_> = launching
-        .iter()
-        .filter(|p| !listed.contains(p.as_str()))
-        .collect();
-    assert!(
-        unlisted.is_empty(),
-        "add these to the local profile's filter and NESTED_CARGO_GUARDS: {unlisted:?}"
-    );
-    // A stale entry means a guard moved and the filter no longer names it.
-    let stale: Vec<_> = listed.iter().filter(|p| !launching.contains(**p)).collect();
-    assert!(stale.is_empty(), "no longer launches Cargo: {stale:?}");
-}
-
 #[test]
 fn pr_broad_reason_names_verification_inputs() {
     let plan = selection::plan(
@@ -1039,263 +894,102 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     }
 }
 
-fn quick(paths: &[&str]) -> selection::Quick {
-    let paths: BTreeSet<String> = paths.iter().map(|s| (*s).into()).collect();
-    let quick = selection::quick(Path::new("/repo"), &metadata(), &paths).unwrap();
-    // Whatever the change set, --quick runs cargo build and the local
-    // nextest profile on named packages, never a workspace or all-features
-    // build.
-    for step in quick.plan.iter().flat_map(|c| &c.steps) {
-        assert_eq!(step.program, "cargo");
-        assert!(step.args.contains(&"-p".into()), "{step:?}");
-        for flag in ["--workspace", "--all-features", "--retries"] {
-            assert!(!step.args.contains(&flag.into()), "{step:?}");
-        }
-        match step.args[0].as_str() {
-            "build" => {}
-            "nextest" => assert!(step.args.windows(2).any(|w| w == ["--profile", "local"])),
-            other => panic!("unexpected quick step {other}"),
-        }
-    }
-    quick
-}
-
-fn pr_ids(paths: &[&str]) -> BTreeSet<String> {
-    selection::pr_ids(
-        Path::new("/repo"),
-        &metadata(),
-        "HEAD",
-        &paths.iter().map(|s| (*s).into()).collect(),
-        &checks::all(),
-    )
-    .unwrap()
-    .into_iter()
-    .collect()
-}
-
-fn quick_ids(quick: &selection::Quick) -> BTreeSet<String> {
-    quick.plan.iter().map(|c| c.id.clone()).collect()
-}
-
-fn listed(quick: &selection::Quick, needle: &str) -> bool {
-    quick.deferred.iter().any(|line| line.contains(needle))
+/// The quick plan's `(id, args)` and deferred paths. Every step is the local
+/// nextest profile on named packages, never a workspace run.
+fn quick(paths: &[&str]) -> (Vec<(String, Vec<String>)>, Vec<String>) {
+    let paths = paths.iter().map(|s| (*s).into()).collect();
+    let (plan, deferred) = selection::quick(Path::new("/repo"), &metadata(), &paths).unwrap();
+    let plan = plan
+        .into_iter()
+        .map(|mut c| {
+            assert_eq!(c.steps.len(), 1, "{}", c.id);
+            let args = c.steps.remove(0).args;
+            assert_eq!(
+                args[..6],
+                [
+                    "nextest",
+                    "run",
+                    "--locked",
+                    "--profile",
+                    "local",
+                    "--no-tests=warn"
+                ]
+            );
+            assert!(args.contains(&"-p".into()) && !args.contains(&"--workspace".into()));
+            (c.id, args[6..].to_vec())
+        })
+        .collect();
+    (plan, deferred)
 }
 
 #[test]
-fn quick_checks_a_core_edit_and_lists_its_consumers_for_ci() {
-    let q = quick(&["crates/rig-core/src/agent/mod.rs"]);
-    assert_eq!(quick_ids(&q), BTreeSet::from(["package-rig-core".into()]));
-    let steps = &q.plan[0].steps;
-    // nextest reuses this build's artifacts; a `cargo check` would not.
+fn quick_tests_the_owning_package_with_all_features() {
+    let (plan, deferred) = quick(&["crates/rig-ecs/src/lib.rs", "crates/rig-sqlite/src/lib.rs"]);
     assert_eq!(
-        steps[0].args,
-        ["build", "--locked", "-p", "rig-core", "--all-targets"]
-    );
-    assert_eq!(
-        steps[1].args,
+        plan,
         [
-            "nextest",
-            "run",
-            "--locked",
-            "--profile",
-            "local",
-            "--no-tests=warn",
-            "-p",
-            "rig-core"
+            (
+                "package-rig-ecs".into(),
+                vec!["-p".into(), "rig-ecs".into(), "--all-features".into()]
+            ),
+            (
+                "package-rig-sqlite".into(),
+                vec!["-p".into(), "rig-sqlite".into(), "--all-features".into()]
+            ),
         ]
     );
-    assert!(listed(
-        &q,
-        "reverse dependencies of rig-core (2): example, rig-ecs"
-    ));
-    assert!(listed(
-        &q,
-        "rig-core: features this run does not request: pdf"
-    ));
+    // Nothing is deferred by path; the consumer `example` is not built.
+    assert!(deferred.is_empty());
 }
 
 #[test]
 fn quick_runs_only_the_edited_provider_target() {
-    let q = quick(&["crates/rig-cassette/tests/providers/openai/cassette/x.rs"]);
-    assert_eq!(quick_ids(&q), BTreeSet::from(["provider-openai".into()]));
-    // nextest builds exactly this target, so there is no separate build.
-    assert_eq!(q.plan[0].steps.len(), 1);
-    for step in &q.plan[0].steps {
-        assert!(step.args.windows(2).any(|w| w == ["-p", "rig-cassette"]));
-        assert!(step.args.windows(2).any(|w| w == ["--test", "openai"]));
-        // The target's required features, not the package's `bedrock`.
-        assert!(
-            step.args
-                .windows(2)
-                .any(|w| w == ["--features", "agent,ecs,http"]),
-            "{step:?}"
-        );
-        assert!(!step.args.contains(&"--all-targets".into()));
-    }
-}
-
-#[test]
-fn quick_replays_an_edited_cassette_through_its_provider_target() {
-    let q = quick(&["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"]);
-    assert_eq!(quick_ids(&q), BTreeSet::from(["provider-anthropic".into()]));
-    assert!(
-        q.deferred
-            .iter()
-            .all(|line| !line.contains("reverse dependencies"))
-    );
-}
-
-#[test]
-fn quick_never_escalates_on_shared_inputs() {
-    for path in ["xtask/src/verify/selection.rs", "Cargo.toml"] {
-        let q = quick(&[path]);
-        assert!(q.plan.is_empty(), "{path}");
-        assert_eq!(
-            q.deferred,
-            [format!("{path}: shared build or verification input")]
-        );
-        // --pr runs every lane for these; --quick names them instead.
-        assert!(pr_ids(&[path]).contains("full-tests"), "{path}");
-    }
-}
-
-#[test]
-fn quick_builds_nothing_for_a_docs_edit() {
-    let q = quick(&["README.md", "crates/rig-ecs/README.md", "docs/guide.md"]);
-    assert!(q.plan.is_empty());
-    assert_eq!(q.deferred.len(), 3);
-    assert!(
-        q.deferred
-            .iter()
-            .all(|line| line.ends_with(": documentation"))
-    );
-}
-
-#[test]
-fn quick_checks_two_unrelated_packages_separately() {
-    let q = quick(&["crates/rig-ecs/src/lib.rs", "crates/rig-sqlite/src/lib.rs"]);
+    let (plan, _) = quick(&[
+        "crates/rig-cassette/fixtures/cassettes/openai/a.yaml",
+        "crates/rig-cassette/tests/providers/openai/mod.rs",
+    ]);
+    let args = ["-p", "rig-cassette", "--test", "openai", "--all-features"];
     assert_eq!(
-        quick_ids(&q),
-        BTreeSet::from(["package-rig-ecs".into(), "package-rig-sqlite".into()])
-    );
-    let ecs = q.plan.iter().find(|c| c.id == "package-rig-ecs").unwrap();
-    // A target's required feature is enabled so --all-targets builds it.
-    assert!(
-        ecs.steps[0]
-            .args
-            .windows(2)
-            .any(|w| w == ["--features", "assets"])
-    );
-    let sqlite = q
-        .plan
-        .iter()
-        .find(|c| c.id == "package-rig-sqlite")
-        .unwrap();
-    assert!(!sqlite.steps[0].args.contains(&"--features".into()));
-    // The example consumes rig-ecs; it is listed, not built.
-    assert!(listed(&q, "reverse dependencies of rig-ecs (1): example"));
-    assert!(
-        q.plan
-            .iter()
-            .flat_map(|c| &c.steps)
-            .all(|s| !s.args.contains(&"example".into()))
+        plan,
+        [("provider-openai".into(), args.map(String::from).to_vec())]
     );
 }
 
 #[test]
-fn quick_lists_the_ci_checks_pr_selects() {
-    for paths in [
-        &["crates/rig-core/src/agent/mod.rs"][..],
-        &["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"],
-        &["Cargo.toml", "README.md"],
-    ] {
-        assert_eq!(pr_ids(paths), ids("--pr", paths), "{paths:?}");
-    }
-}
-
-#[test]
-fn quick_names_a_golden_edits_ci_lanes() {
-    let q = quick(&["crates/rig-cassette/fixtures/effects/agent/a.json"]);
+fn quick_runs_a_facade_target_under_default_features() {
+    // `--all-features` on the facade would build every companion crate.
+    let (plan, _) = quick(&["tests/azure.rs"]);
+    let args = ["-p", "rig", "--test", "azure"];
     assert_eq!(
-        quick_ids(&q),
-        BTreeSet::from(["package-rig-cassette".into()])
-    );
-    for lane in ["bus-verification", "ecs-parity", "default-tests"] {
-        assert!(listed(&q, lane), "{lane}");
-    }
-}
-
-#[test]
-fn quick_builds_a_proc_macro_only_as_its_tests_do() {
-    // As a build root it would get the dev profile, and nextest, which builds
-    // it under `build-override`, would compile it and its users again.
-    let mut metadata = metadata();
-    metadata["packages"]
-        .as_array_mut()
-        .unwrap()
-        .push(serde_json::json!({
-            "name": "rig-derive",
-            "manifest_path": "/repo/crates/rig-derive/Cargo.toml",
-            "dependencies": [],
-            "targets": [{"name": "rig_derive", "kind": ["proc-macro"]}]
-        }));
-    let q = selection::quick(
-        Path::new("/repo"),
-        &metadata,
-        &BTreeSet::from(["crates/rig-derive/src/lib.rs".into()]),
-    )
-    .unwrap();
-    assert_eq!(
-        q.plan[0].steps[0].args,
-        [
-            "build",
-            "--locked",
-            "-p",
-            "rig-derive",
-            "--tests",
-            "--examples",
-            "--benches"
-        ]
+        plan,
+        [("provider-azure".into(), args.map(String::from).to_vec())]
     );
 }
 
 #[test]
-fn quick_names_a_few_reverse_dependencies_and_counts_the_rest() {
-    let mut metadata = metadata();
-    let packages = metadata["packages"].as_array_mut().unwrap();
-    for i in 0..10 {
-        packages.push(serde_json::json!({
-            "name": format!("dependent-{i:02}"),
-            "manifest_path": format!("/repo/crates/dependent-{i:02}/Cargo.toml"),
-            "dependencies": [{"name": "rig-sqlite"}]
-        }));
-    }
-    let q = selection::quick(
-        Path::new("/repo"),
-        &metadata,
-        &BTreeSet::from(["crates/rig-sqlite/src/lib.rs".into()]),
-    )
-    .unwrap();
-    assert!(listed(
-        &q,
-        "reverse dependencies of rig-sqlite (10): dependent-00, dependent-01, dependent-02, dependent-03, dependent-04, dependent-05, dependent-06, dependent-07 and 2 more"
-    ));
+fn quick_leaves_a_package_target_to_the_package_run() {
+    let (plan, _) = quick(&[
+        "crates/rig-cassette/src/lib.rs",
+        "crates/rig-cassette/fixtures/cassettes/openai/a.yaml",
+    ]);
+    assert_eq!(plan.len(), 1);
+    assert_eq!(plan[0].0, "package-rig-cassette");
 }
 
 #[test]
-fn quick_lists_path_shared_and_facade_inputs_instead_of_building_them() {
-    // The minimal runner compiles cassette's verification sources by path.
-    let q = quick(&["crates/rig-cassette/tests/world_replay.rs"]);
-    assert_eq!(
-        quick_ids(&q),
-        BTreeSet::from(["provider-world_replay".into()])
-    );
-    assert!(listed(&q, "rig-cassette-minimal"));
-    // A facade test module that is not a target has no owner to build.
-    let q = quick(&["tests/core/mod.rs"]);
-    assert!(q.plan.is_empty());
-    assert_eq!(
-        q.deferred,
-        ["tests/core/mod.rs: no owning package or test target"]
-    );
+fn quick_never_escalates() {
+    // Sorted, as the change set iterates: a shared input, documentation, and
+    // a facade test module no target owns.
+    let paths = [
+        "Cargo.toml",
+        "README.md",
+        "crates/rig-ecs/README.md",
+        "tests/core/mod.rs",
+        "xtask/src/main.rs",
+    ];
+    let (plan, deferred) = quick(&paths);
+    assert!(plan.is_empty());
+    assert_eq!(deferred, paths);
+    // `--changed` broadens to the full plan on the same inputs.
+    assert!(ids("--changed", &paths).contains("full-tests"));
 }

@@ -22,8 +22,7 @@ prerequisites the small local checks you choose need. After an edit, run
 deliberate debugging:
 
 ```sh
-cargo xtask verify --quick                         # inner loop: check and test what the edit owns
-cargo xtask verify --quick --base origin/main      # same over a branch; also lists the CI checks
+cargo xtask verify --quick                         # inner loop: test what the edit owns
 cargo xtask verify --changed --dry-run             # optional selection preview
 cargo xtask verify --changed                       # optional; only if selection is suitably small
 cargo xtask verify --pr --base origin/feat/effect-bus   # optional broad plan; use actual base
@@ -70,19 +69,12 @@ failed job's ID. A truncated log is not evidence that later errors are absent.
 
 ## What each mode selects
 
-`--quick` takes the same change set as `--changed` and supports `--dry-run`. It
-maps each changed file to its owning package, or a provider source or cassette
-to that provider's test target. For those alone it runs
-`cargo nextest run --profile local`, after a `cargo build` of a package's
-targets so its examples and benches compile too; nextest reuses that build
-rather than compiling the package again. A package gets its default features plus
-every feature its targets require, so no target is skipped; a provider target
-gets its required features. It never escalates. Shared inputs (the same list as
-`--changed` below), documentation, files no package or test target owns
-(including the facade's own files), reverse dependencies, doctests and other
-feature sets are not built. The run ends by listing them as not checked
-locally, and with `--base REF` it also prints the check ids `--pr` selects for
-the same change set.
+`--quick` takes the same change set as `--changed` and runs the `local` nextest
+profile for each owning package, or a provider source or cassette's test
+target, with all features (default features for facade targets). It never
+escalates: shared inputs, documentation and files no package owns are listed
+as not checked, and reverse dependencies, doctests, fmt and Clippy are left to
+CI.
 
 `--changed` compares the working tree (staged, unstaged and untracked files)
 to `HEAD`, or to the merge base of `--base REF`. Provider source or cassette
@@ -119,33 +111,25 @@ than on its own PR; that tradeoff is deliberate.
 
 ## Local builds
 
-- The `local` nextest profile (`cargo nextest run --profile local`) is the
-  inner loop: no retries, and it stops at the first failure. Its default
-  filter skips the service suites (`rig-service-tests`, mostly Docker-backed)
-  and tests that launch nested Cargo builds: facade feature forwarding,
-  macro hygiene, reqwest middleware TLS selectors, the agent-run stepper,
-  and rig-derive's dependency-rename and trybuild cases. Ordinary tests in
-  the same binaries still run. CI runs all of them. Add
-  `--ignore-default-filter` to run a skipped test by hand.
-- The dev profile keeps line tables for workspace code, so backtraces still
-  show file and line, and emits no debuginfo for dependencies. For a debugger
-  session, add
-  `--config 'profile.dev.debug=true' --config 'profile.dev.package."*".debug=true'`
-  to the Cargo command. `CARGO_PROFILE_DEV_DEBUG=true` alone does not reach
-  dependencies: the manifest's package override wins over it.
-- Keep incremental compilation on. CI's setup action sets
-  `CARGO_INCREMENTAL=0` because its runners start fresh.
+- The `local` nextest profile (`--profile local`) has no retries, stops at the
+  first failure, and skips the service suites and tests that launch a nested
+  Cargo build or trybuild. Add `--ignore-default-filter` to run them.
+- The dev profile keeps line tables for workspace code and no debuginfo for
+  dependencies. For a debugger, add `--config 'profile.dev.debug=true' --config
+  'profile.dev.package."*".debug=true'`; `CARGO_PROFILE_DEV_DEBUG` alone does
+  not reach dependencies.
+- Keep incremental compilation on; CI sets `CARGO_INCREMENTAL=0` because its
+  runners start fresh.
 
 ## Prerequisites
 
-The repository toolchain (`rust-toolchain.toml`), nextest (0.9.77 or newer is
-required by `.config/nextest.toml`; 0.9.91 or newer honours its test
-priorities, which versions before it ignore with a warning, running every test
-in default order), Clippy, rustfmt, protoc, Docker for the storage suites,
-Node, wasm-bindgen-test-runner at the lock file's `wasm-bindgen` version, and
-Python 3.12+ for the floor checker and its isolation tests. The planner probes
-for what the selected checks need before compiling anything; a missing tool is
-a failed run.
+The repository toolchain (`rust-toolchain.toml`), nextest (0.9.77 or newer; from 0.9.91
+it honours the test priorities in `.config/nextest.toml`, which earlier
+versions ignore with a warning), Clippy, rustfmt, protoc, Docker for the
+storage suites, Node, wasm-bindgen-test-runner at the lock file's
+`wasm-bindgen` version, and Python 3.12+ for the floor checker and its
+isolation tests. The planner probes for what the selected checks need before
+compiling anything; a missing tool is a failed run.
 
 ## Hosted CI
 
@@ -217,12 +201,10 @@ cassettes replay with a dummy key and live tests are `#[ignore]`.
 Add it to `checks::all()` with a stable id, decide which selection rule owns
 it in `selection.rs` (or leave it in the fast set every `--pr` runs), add a
 `cargo xtask verify --check <id>` step to the matching ci.yaml job, and update
-the tests in `xtask/src/verify/tests.rs` that pin ids and lanes. A test that
-shells out to a nested Cargo build or uses trybuild belongs in the `local`
-profile's filter and in `NESTED_CARGO_GUARDS` in `xtask/src/verify/tests.rs`,
-which fails on a source it does not list. The slowest guards (facade feature
-forwarding and macro hygiene) also get a nextest priority so they start first
-in CI.
+the tests in `xtask/src/verify/tests.rs` that pin ids and lanes. Checks that
+shell out to a nested Cargo build (the facade guard, macro hygiene) get a
+nextest priority so they start first, and every nested-Cargo or trybuild test
+belongs in the `local` profile's filter in `.config/nextest.toml`.
 
 ## PR completion
 
