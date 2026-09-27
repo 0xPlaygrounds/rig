@@ -35,7 +35,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     const INDEX_NAME: &str = "moviePlotsEmbedding";
 
-    // Bind the OpenAI embeddings endpoint
+    // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_api_key = env::var("OPENAI_API_KEY")?;
     let openai_client = OpenAI::new(&openai_api_key);
 

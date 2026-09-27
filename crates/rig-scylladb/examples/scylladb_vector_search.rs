@@ -23,7 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // In production, you would use your ScyllaDB cluster endpoints
     let session = create_session("127.0.0.1:9042").await?;
 
-    // Bind the OpenAI embeddings endpoint and select an embedding model
+    // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     let model = openai_client
         .embedding(openai::TEXT_EMBEDDING_ADA_002, None)

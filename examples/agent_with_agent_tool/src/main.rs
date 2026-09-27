@@ -103,7 +103,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Bind the OpenAI Responses API to the default transport
+    // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
 
     // One model serves both agents: erase it once, clone the handle.

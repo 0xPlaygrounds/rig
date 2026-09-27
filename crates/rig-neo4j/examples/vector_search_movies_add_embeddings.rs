@@ -34,7 +34,7 @@ const INDEX_NAME: &str = "moviePlots";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Bind the OpenAI embeddings endpoint
+    // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_api_key = env::var("OPENAI_API_KEY")?;
     let openai_client = OpenAI::new(&openai_api_key);
 

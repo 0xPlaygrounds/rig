@@ -45,7 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .await?;
     }
 
-    // Bind the OpenAI embeddings endpoint.
+    // The OpenAI client, from `OPENAI_API_KEY`.
     // Get your API key from https://platform.openai.com/api-keys
     let openai_client = OpenAI::from_env()?;
 

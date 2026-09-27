@@ -58,7 +58,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .init();
 
-    // Bind the OpenAI embeddings endpoint
+    // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
 
     // Initialize the `sqlite-vec`extension

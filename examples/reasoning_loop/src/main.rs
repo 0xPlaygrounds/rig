@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create the Anthropic provider, on the default transport
+    // The Anthropic client, from `ANTHROPIC_API_KEY`.
     let anthropic_client = Anthropic::from_env()?;
     // One model serves the extractor and the executor: erase it once, clone the handle.
     let model = anthropic_client

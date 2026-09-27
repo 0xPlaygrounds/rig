@@ -100,8 +100,8 @@ pub struct Product {
 Example usage
 
 ```rust
-    // OpenAI's embeddings wire on the default transport, erased once: the
-    // builder and the store each take a clone of the handle.
+    // OpenAI's embedding model, erased once: the builder and the store each
+    // take a clone of the handle.
     let model = rig::providers::openai::OpenAI::from_env()?
             .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None)
         .erase();

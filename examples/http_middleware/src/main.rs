@@ -76,8 +76,8 @@ impl HttpMiddleware for WireLogger {
 async fn main() -> Result<()> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set")?;
 
-    // Erase the default transport, then attach the middleware — no provider
-    // code involved; the same handle could back every provider a host builds.
+    // Wrap the bundled client with the middleware; any client can take the
+    // same handle with `with_http`.
     let http_client = DynHttpClient::new(ReqwestClient::default()).with_middleware(WireLogger);
 
     let agent = AgentBuilder::new(

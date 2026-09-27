@@ -23,7 +23,7 @@ All operations should be O(1).
 ";
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Bind the OpenAI Responses API to the default transport
+    // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     // One model serves both agents: erase it once, clone the handle.
     let model = openai_client.completion(openai::GPT_4).erase();

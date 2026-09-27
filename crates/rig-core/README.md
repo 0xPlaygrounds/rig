@@ -39,27 +39,20 @@ Node.js 19 or later do. WASI targets are not supported.
 ## Simple example
 ```rust
 use rig_core::{
-    Model,
-    completion::{AssistantContent, CompletionRequest},
+    completion::CompletionRequest,
     providers::openai::{self, OpenAI},
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Read `OPENAI_API_KEY` into the provider's configuration and pick a
-    // model's wire; a model is a wire on a transport. rig-core ships no
-    // transport, so this uses rig-reqwest's shared one.
-    // OpenAI's default completion route is the Responses API;
-    // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
+    // The client reads `OPENAI_API_KEY` and sends through the bundled reqwest
+    // client (rig-core's `reqwest` feature). `with_http` swaps the client.
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 
-    let request = CompletionRequest::new("Who are you?");
-    let response = model.call(request).await?;
-    for item in response.choice {
-        if let AssistantContent::Text(text) = item {
-            println!("{}", text.text);
-        }
-    }
+    let response = model
+        .call(CompletionRequest::new("Who are you?").temperature(0.2))
+        .await?;
+    println!("{}", response.text());
 
     Ok(())
 }
@@ -154,9 +147,10 @@ Registry-qualified names do not replace the provider names used in telemetry.
 
 ## Provider implementation
 
-Provider configuration and endpoint wires are separate from transports. A
-configuration's inherent methods return one wire per capability, and `Model`
-pairs a wire with the `Transport` that sends it; one driver runs every model.
+A provider has a serializable configuration (`OpenAIConfig`) and a client
+(`OpenAI`), the configuration on a transport. The client builds one `Model`
+per capability: the capability's wire, which says what to send and how to
+read the reply, on the client's transport. One driver runs every model.
 Chat-compatible dialects use the shared `Chat` wire and decoder with
 `Dialect` data and `BodyRewrite` hooks rather than duplicating request conversion.
 This keeps normalization, retry classification, and telemetry consistent.
