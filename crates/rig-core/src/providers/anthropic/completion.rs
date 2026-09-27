@@ -16,10 +16,24 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
 
-/// `claude-fable-5-1` completion model
+/// `claude-fable-5-1` completion model.
+///
+/// Adaptive thinking is always on: `thinking` `disabled` or `enabled` is
+/// rejected by the API, so control depth with [`Effort`] (default `high`).
+/// Forced tool choice is rejected, text between tool calls arrives as
+/// `thinking` blocks, and replayed thinking blocks are bound to the prompt
+/// prefix before them.
 pub const CLAUDE_FABLE_5_1: &str = "claude-fable-5-1";
 /// `claude-fable-5` completion model
 pub const CLAUDE_FABLE_5: &str = "claude-fable-5";
+/// `claude-opus-5-5` completion model.
+///
+/// Adaptive thinking is always on: `thinking` `disabled` or `enabled` is
+/// rejected by the API, so control depth with [`Effort`] (default `medium`).
+/// Forced tool choice is rejected, text between tool calls arrives as
+/// `thinking` blocks, and replayed thinking blocks are bound to the prompt
+/// prefix before them.
+pub const CLAUDE_OPUS_5_5: &str = "claude-opus-5-5";
 /// `claude-opus-5` completion model
 pub const CLAUDE_OPUS_5: &str = "claude-opus-5";
 /// `claude-sonnet-5` completion model
@@ -1028,6 +1042,8 @@ impl TryFrom<message::Message> for Message {
 }
 
 /// Return the published synchronous output limit for a recognized model prefix.
+/// The `claude-fable-5` and `claude-opus-5` prefixes deliberately cover
+/// `claude-fable-5-1` and `claude-opus-5-5`, which share the 128K limit.
 /// Unknown models require an explicit `max_tokens` value.
 pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-fable-5")
@@ -1049,12 +1065,32 @@ pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     }
 }
 
-/// Per Anthropic's mid-conversation system messages docs: Fable 5.x, Opus 4.8 and
-/// Opus 5 accept `role: "system"` inside `messages`; Sonnet 5 does not.
+/// Per Anthropic's mid-conversation system messages docs: Fable 5.x, Opus 4.8,
+/// Opus 5 and Opus 5.5 accept `role: "system"` inside `messages`; Sonnet 5 does
+/// not. The `claude-opus-5` prefix deliberately covers `claude-opus-5-5`.
 pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
     model.starts_with(CLAUDE_FABLE_5)
         || model.starts_with(CLAUDE_OPUS_5)
         || model.starts_with(CLAUDE_OPUS_4_8)
+}
+
+/// Models that reject `tool_choice` `any` and `tool` on every request, by exact
+/// ID. Source: <https://platform.claude.com/docs/en/build-with-claude/thinking#response-prefill-and-forced-tool-use>
+const REJECTS_FORCED_TOOL_CHOICE: &[&str] =
+    &[CLAUDE_OPUS_5_5, CLAUDE_FABLE_5_1, "claude-mythos-5-1"];
+
+/// Whether `model` accepts a forced tool choice. Unknown models are assumed to.
+pub(crate) fn accepts_forced_tool_choice(model: &str) -> bool {
+    !REJECTS_FORCED_TOOL_CHOICE.contains(&model)
+}
+
+/// The error for a forced tool choice sent to a model that rejects one.
+pub(crate) fn forced_tool_choice_error(model: &str) -> EncodeError {
+    EncodeError::request(format!(
+        "`{model}` rejects a forced tool choice (`ToolChoice::Required` or \
+         `ToolChoice::Specific`); use `ToolChoice::Auto` and say in the prompt when the tool \
+         applies, or set an output schema for structured output"
+    ))
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -1532,6 +1568,111 @@ fn schema_has_type(schema_type: Option<&serde_json::Value>, expected: &str) -> b
     }
 }
 
+/// How much work Claude puts into a response, thinking included. Sent as
+/// `output_config.effort`; omitting it runs the model's default (`medium` on
+/// Claude Opus 5.5, `high` elsewhere). Not every model supports every level.
+/// Source: <https://platform.claude.com/docs/en/build-with-claude/effort>
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Effort {
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
+/// How thinking text is returned, sent as `thinking.display`.
+/// Source: <https://platform.claude.com/docs/en/build-with-claude/thinking#controlling-thinking-display>
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThinkingDisplay {
+    /// Thinking blocks carry a summary of the reasoning.
+    Summarized,
+    /// Thinking blocks carry an empty `thinking` field and their signature.
+    Omitted,
+    /// Reasoning blocks are empty and progress updates between tool calls
+    /// carry text. Beta: Rig adds [`THINKING_DISPLAY_UPDATES_BETA`] to the
+    /// `anthropic-beta` header.
+    Updates,
+}
+
+/// The beta flag `display: "updates"` requires.
+pub const THINKING_DISPLAY_UPDATES_BETA: &str = "thinking-display-updates-2026-08-18";
+
+/// Thinking configuration, sent as `thinking`. Which types a model accepts is
+/// the API's to enforce: models whose thinking is always on (Claude Opus 5.5,
+/// Claude Fable 5.1) reject `enabled` and `disabled`.
+/// Source: <https://platform.claude.com/docs/en/build-with-claude/thinking>
+///
+/// ```
+/// use rig_core::providers::anthropic::completion::{Thinking, ThinkingDisplay};
+///
+/// let thinking = Thinking::adaptive().with_display(ThinkingDisplay::Summarized);
+/// assert_eq!(thinking.display(), Some(ThinkingDisplay::Summarized));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Thinking {
+    /// The model decides when and how much to think, steered by [`Effort`].
+    Adaptive {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display: Option<ThinkingDisplay>,
+    },
+    /// Manual extended thinking with a token budget, on models that accept it.
+    Enabled {
+        budget_tokens: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display: Option<ThinkingDisplay>,
+    },
+    /// Thinking off, on models that allow it.
+    Disabled,
+}
+
+impl Thinking {
+    /// Adaptive thinking at the model's default display.
+    pub fn adaptive() -> Self {
+        Self::Adaptive { display: None }
+    }
+
+    /// Manual extended thinking with `budget_tokens`.
+    pub fn enabled(budget_tokens: u64) -> Self {
+        Self::Enabled {
+            budget_tokens,
+            display: None,
+        }
+    }
+
+    /// Set how thinking text is returned. [`Thinking::Disabled`] has nothing
+    /// to display and is returned unchanged.
+    pub fn with_display(mut self, value: ThinkingDisplay) -> Self {
+        match &mut self {
+            Self::Adaptive { display } | Self::Enabled { display, .. } => *display = Some(value),
+            Self::Disabled => {}
+        }
+        self
+    }
+
+    /// The configured display, when one is set.
+    pub fn display(&self) -> Option<ThinkingDisplay> {
+        match self {
+            Self::Adaptive { display } | Self::Enabled { display, .. } => *display,
+            Self::Disabled => None,
+        }
+    }
+}
+
+/// The wire's `thinking` and `effort` defaults, and whether request values
+/// are checked against the types Anthropic documents. Gateways speaking the
+/// Messages format may accept other values, so only Anthropic's own dialect
+/// checks.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct ReasoningSettings<'a> {
+    pub(super) thinking: Option<&'a Thinking>,
+    pub(super) effort: Option<Effort>,
+    pub(super) validate: bool,
+}
+
 /// Output format specifier for Anthropic's structured output.
 /// Source: <https://docs.anthropic.com/en/api/messages>
 #[derive(Debug, Deserialize, Serialize)]
@@ -1541,10 +1682,105 @@ enum OutputFormat {
     JsonSchema { schema: serde_json::Value },
 }
 
-/// Configuration for the model's output format.
-#[derive(Debug, Deserialize, Serialize)]
-struct OutputConfig {
-    format: OutputFormat,
+/// Take `key` out of `additional_params` as a JSON object, when present.
+fn take_object_param(
+    additional_params: &mut serde_json::Value,
+    key: &str,
+) -> Result<Option<serde_json::Map<String, serde_json::Value>>, EncodeError> {
+    let Some(value) = additional_params
+        .as_object_mut()
+        .and_then(|params| params.remove(key))
+    else {
+        return Ok(None);
+    };
+    match value {
+        serde_json::Value::Object(map) => Ok(Some(map)),
+        serde_json::Value::Null => Ok(None),
+        other => Err(EncodeError::request(format!(
+            "Anthropic `additional_params.{key}` must be an object, got {other}"
+        ))),
+    }
+}
+
+/// Merge the wire's `thinking` default with `additional_params.thinking`.
+/// Request keys override the default's; a request `type` different from the
+/// default's replaces the default whole. When `validate`, the result must
+/// parse as [`Thinking`]; unknown keys pass through either way.
+fn merge_thinking(
+    default: Option<&Thinking>,
+    additional_params: &mut serde_json::Value,
+    validate: bool,
+) -> Result<Option<serde_json::Map<String, serde_json::Value>>, EncodeError> {
+    let default = match default {
+        Some(thinking) => match serde_json::to_value(thinking)? {
+            serde_json::Value::Object(map) => Some(map),
+            _ => None,
+        },
+        None => None,
+    };
+    let merged = match (default, take_object_param(additional_params, "thinking")?) {
+        (None, None) => return Ok(None),
+        (Some(map), None) | (None, Some(map)) => map,
+        (Some(mut default), Some(request)) => {
+            if request
+                .get("type")
+                .is_some_and(|kind| Some(kind) != default.get("type"))
+            {
+                request
+            } else {
+                default.extend(request);
+                default
+            }
+        }
+    };
+    if validate {
+        serde_json::from_value::<Thinking>(serde_json::Value::Object(merged.clone())).map_err(
+            |err| {
+                EncodeError::request(format!("Invalid Anthropic `thinking` configuration: {err}"))
+            },
+        )?;
+    }
+    Ok(Some(merged))
+}
+
+/// Merge the wire's `effort` default with `additional_params.output_config`,
+/// then add the `format` Rig derives from `output_schema`. Request keys
+/// override the default's and unknown keys pass through. When `validate`, the
+/// effort must be an [`Effort`]. A request `format` that differs from Rig's
+/// is an error rather than a silent override.
+fn merge_output_config(
+    effort: Option<Effort>,
+    additional_params: &mut serde_json::Value,
+    format: Option<OutputFormat>,
+    validate: bool,
+) -> Result<Option<serde_json::Map<String, serde_json::Value>>, EncodeError> {
+    let mut merged = serde_json::Map::new();
+    if let Some(effort) = effort {
+        merged.insert("effort".to_owned(), serde_json::to_value(effort)?);
+    }
+    if let Some(request) = take_object_param(additional_params, "output_config")? {
+        merged.extend(request);
+    }
+    if validate && let Some(effort) = merged.get("effort") {
+        serde_json::from_value::<Effort>(effort.clone()).map_err(|err| {
+            EncodeError::request(format!("Invalid Anthropic `output_config.effort`: {err}"))
+        })?;
+    }
+    if let Some(format) = format {
+        let format = serde_json::to_value(format)?;
+        match merged.get("format") {
+            Some(existing) if *existing != format => {
+                return Err(EncodeError::request(
+                    "Anthropic `additional_params.output_config.format` conflicts with the \
+                     request's `output_schema`; set one of them",
+                ));
+            }
+            _ => {
+                merged.insert("format".to_owned(), format);
+            }
+        }
+    }
+    Ok((!merged.is_empty()).then_some(merged))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1562,7 +1798,9 @@ pub(super) struct AnthropicCompletionRequest {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    output_config: Option<OutputConfig>,
+    thinking: Option<serde_json::Map<String, serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_config: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     additional_params: Option<serde_json::Value>,
     /// Top-level cache_control for Anthropic's automatic caching mode. When set, the API
@@ -2007,10 +2245,14 @@ pub struct AnthropicRequestParams<'a> {
 
 impl AnthropicCompletionRequest {
     /// Build the typed request, optionally transforming generated tools with `strict`.
-    /// Reject missing token limits, invalid message conversions, and cache conflicts.
+    /// `reasoning` holds the wire's `thinking` and `effort` defaults, which the
+    /// request's `additional_params` override key by key. Reject missing token limits,
+    /// invalid message conversions, cache conflicts, forced tool choices the
+    /// model rejects, and conflicting `output_config.format`.
     pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
         strict: Option<fn(&mut ToolDefinition)>,
+        reasoning: ReasoningSettings<'_>,
     ) -> Result<Self, EncodeError> {
         let AnthropicRequestParams {
             model,
@@ -2078,6 +2320,14 @@ impl AnthropicCompletionRequest {
             automatic_caching_ttl.as_ref(),
             &mut additional_params_payload,
         )?;
+        let raw_tool_choice_forces = additional_params_payload
+            .get("tool_choice")
+            .and_then(|choice| choice.get("type"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|kind| matches!(kind, "any" | "tool"));
+        if raw_tool_choice_forces && !accepts_forced_tool_choice(model) {
+            return Err(forced_tool_choice_error(model));
+        }
         let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload, strict)?;
 
         let mut system = history_system;
@@ -2091,17 +2341,33 @@ impl AnthropicCompletionRequest {
             top_level_cache_control.as_ref(),
         )?;
 
-        let output_config = if let Some(schema) = req.output_schema {
+        if matches!(
+            req.tool_choice,
+            Some(message::ToolChoice::Required | message::ToolChoice::Specific { .. })
+        ) && !accepts_forced_tool_choice(model)
+        {
+            return Err(forced_tool_choice_error(model));
+        }
+        let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
+
+        let format = req.output_schema.map(|schema| {
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
-            Some(OutputConfig {
-                format: OutputFormat::JsonSchema {
-                    schema: schema_value,
-                },
-            })
-        } else {
-            None
-        };
+            OutputFormat::JsonSchema {
+                schema: schema_value,
+            }
+        });
+        let thinking = merge_thinking(
+            reasoning.thinking,
+            &mut additional_params_payload,
+            reasoning.validate,
+        )?;
+        let output_config = merge_output_config(
+            reasoning.effort,
+            &mut additional_params_payload,
+            format,
+            reasoning.validate,
+        )?;
 
         Ok(Self {
             model: model.to_string(),
@@ -2109,8 +2375,9 @@ impl AnthropicCompletionRequest {
             max_tokens,
             system,
             temperature: req.temperature,
-            tool_choice: req.tool_choice.map(ToolChoice::try_from).transpose()?,
+            tool_choice,
             tools,
+            thinking,
             output_config,
             cache_control: top_level_cache_control,
             additional_params: if additional_params_payload.is_null() {
@@ -2126,7 +2393,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = EncodeError;
 
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
-        Self::try_from_params(params, None)
+        Self::try_from_params(params, None, ReasoningSettings::default())
     }
 }
 

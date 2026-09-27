@@ -59,6 +59,7 @@ mod cassette {
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;
+    mod gpt_6;
     mod history_survival_matrix_chat;
     mod history_survival_matrix_responses;
     mod image_input_matrix;

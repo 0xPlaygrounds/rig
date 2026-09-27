@@ -104,6 +104,7 @@ pub(crate) async fn build_prepared_completion_request(
     let mut tool_snapshot = tool_server_handle.snapshot_with_dynamic(&dynamic_tool_ids);
 
     let mut spec = runner.config.run_spec();
+    spec.output_tool_name.clone_from(&runner.output_tool_name);
     spec.output_tool_description
         .clone_from(&runner.output_tool_description);
     spec.augment_output_preamble = runner.augment_output_preamble;

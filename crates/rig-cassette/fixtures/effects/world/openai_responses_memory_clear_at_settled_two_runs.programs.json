@@ -182,6 +182,7 @@
             "output_tokens": 50,
             "total_tokens": 77,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "rig_ecs::agent::UsesModel": 1,
@@ -273,6 +274,7 @@
                 "output_tokens": 50,
                 "total_tokens": 77,
                 "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
               "message_id": "msg_0a9a51d99450d3ed006ab2b342261487d0ae035d364b21b8d4",

@@ -440,25 +440,50 @@ impl AddAssign for Usage {
 }
 
 /// Model capabilities used by runtimes when preparing requests.
-/// Defaults are conservative; construct through [`Self::new`] and setters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+/// Defaults describe the common case; construct through [`Self::new`] and setters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     /// Whether native structured output can remain enabled with tool calls
-    /// without suppressing them. Defaults to `false`.
+    /// without suppressing them. Defaults to `false`. When a forced tool
+    /// choice is unavailable, `rig-agent` takes `true` as the signal to ask
+    /// for native output instead.
     pub composes_native_output_with_tools: bool,
+    /// Whether the model accepts a forced tool choice
+    /// ([`ToolChoice::Required`] or [`ToolChoice::Specific`]). A wire whose
+    /// model rejects one fails to encode such a request. The `rig-agent`
+    /// extractor, which forces its own output tool, falls back to native
+    /// output or `auto`. Defaults to `true`.
+    #[serde(
+        default = "crate::json_utils::default_true",
+        skip_serializing_if = "crate::json_utils::is_true"
+    )]
+    pub accepts_forced_tool_choice: bool,
+}
+
+impl Default for ProviderCapabilities {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ProviderCapabilities {
-    /// Create the conservative capability set used by default.
+    /// Create the default capability set.
     pub const fn new() -> Self {
         Self {
             composes_native_output_with_tools: false,
+            accepts_forced_tool_choice: true,
         }
     }
 
     /// Declare whether native structured output composes with tool calls.
     pub const fn with_native_output_tool_composition(mut self, supported: bool) -> Self {
         self.composes_native_output_with_tools = supported;
+        self
+    }
+
+    /// Declare whether the model accepts a forced tool choice.
+    pub const fn with_forced_tool_choice(mut self, accepted: bool) -> Self {
+        self.accepts_forced_tool_choice = accepted;
         self
     }
 }

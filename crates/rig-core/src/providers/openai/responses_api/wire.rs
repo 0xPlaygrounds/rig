@@ -198,6 +198,10 @@ impl Responses {
             }
         }
         request.stream = streaming.then_some(true);
+        crate::providers::openai::completion::check_gpt_6_request(
+            &serde_json::to_value(&request)?,
+            crate::providers::openai::completion::OpenAiEndpoint::Responses,
+        )?;
         Ok(request)
     }
 }

@@ -261,6 +261,7 @@
             "output_tokens": 67,
             "total_tokens": 171,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -273,7 +274,8 @@
             "usage": {
               "input_tokens": 104,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 67,
               "output_tokens_details": {
@@ -459,6 +461,7 @@
             "output_tokens": 67,
             "total_tokens": 171,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
@@ -471,7 +474,8 @@
             "usage": {
               "input_tokens": 104,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 67,
               "output_tokens_details": {
@@ -648,6 +652,7 @@
             "output_tokens": 5,
             "total_tokens": 187,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": "msg_0831eba541b42c3d006ab2b2e9564887d09739b69beaeeaf8d",
@@ -660,7 +665,8 @@
             "usage": {
               "input_tokens": 182,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 5,
               "output_tokens_details": {
@@ -723,6 +729,7 @@
             "output_tokens": 5,
             "total_tokens": 187,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
@@ -735,7 +742,8 @@
             "usage": {
               "input_tokens": 182,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 5,
               "output_tokens_details": {

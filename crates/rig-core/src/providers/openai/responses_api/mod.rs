@@ -897,6 +897,10 @@ impl From<&ResponsesUsage> for crate::completion::Usage {
                 .input_tokens_details
                 .as_ref()
                 .map(|details| details.cached_tokens),
+            cache_creation_input_tokens: usage
+                .input_tokens_details
+                .as_ref()
+                .and_then(|details| details.cache_write_tokens),
             reasoning_tokens: usage
                 .output_tokens_details
                 .as_ref()
@@ -945,6 +949,10 @@ impl Add for ResponsesUsage {
 pub struct InputTokensDetails {
     /// Cached tokens from OpenAI
     pub cached_tokens: u64,
+    /// Tokens written to the prompt cache, reported from GPT-5.6 on. `None`
+    /// means unreported, not zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u64>,
 }
 
 impl Add for InputTokensDetails {
@@ -952,6 +960,10 @@ impl Add for InputTokensDetails {
     fn add(self, rhs: Self) -> Self::Output {
         Self {
             cached_tokens: self.cached_tokens + rhs.cached_tokens,
+            cache_write_tokens: add_optional_details(
+                self.cache_write_tokens,
+                rhs.cache_write_tokens,
+            ),
         }
     }
 }
@@ -1505,9 +1517,16 @@ pub struct AdditionalParameters {
     /// A stable cache routing key for prompt caching.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<String>,
-    /// Prompt cache retention policy.
+    /// Prompt cache retention policy for models before GPT-5.6: `in_memory`
+    /// or `24h`, depending on the model. GPT-5.6 and later, GPT-6 included, take
+    /// [`Self::prompt_cache_options`] instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_retention: Option<String>,
+    /// Prompt caching options (lifetime, breakpoint mode, prewarming) for
+    /// GPT-5.6 and later models, GPT-6 included. Earlier models take
+    /// [`Self::prompt_cache_retention`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_options: Option<PromptCacheOptions>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
     #[serde(
         skip_serializing_if = "Map::is_empty",
@@ -1572,6 +1591,81 @@ impl AdditionalParameters {
     pub fn to_json(self) -> serde_json::Value {
         serde_json::to_value(self).unwrap_or_else(|_| serde_json::Value::Object(Map::new()))
     }
+}
+
+/// Prompt caching options for GPT-5.6 and later models, GPT-6 included,
+/// sent as `prompt_cache_options`. Earlier models take
+/// [`AdditionalParameters::prompt_cache_retention`] instead.
+/// Source: <https://developers.openai.com/api/docs/guides/prompt-caching>
+///
+/// ```
+/// use rig_core::providers::openai::responses_api::{PromptCacheMode, PromptCacheOptions};
+///
+/// let options = PromptCacheOptions::new().with_mode(PromptCacheMode::Explicit);
+/// assert_eq!(
+///     serde_json::to_value(&options)?,
+///     serde_json::json!({"mode": "explicit"})
+/// );
+/// # Ok::<(), serde_json::Error>(())
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptCacheOptions {
+    /// The minimum lifetime of a cached prefix after its latest write or
+    /// reuse. `30m`, the only value, is also the default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<PromptCacheTtl>,
+    /// Whether OpenAI places cache breakpoints or only explicit ones count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<PromptCacheMode>,
+    /// Prepare the cache without generating output. Tokens written are
+    /// billed at the cache-write rate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prewarm: Option<bool>,
+}
+
+impl PromptCacheOptions {
+    /// Options with every field at the API default.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the cache lifetime.
+    pub fn with_ttl(mut self, ttl: PromptCacheTtl) -> Self {
+        self.ttl = Some(ttl);
+        self
+    }
+
+    /// Set where cache breakpoints come from.
+    pub fn with_mode(mut self, mode: PromptCacheMode) -> Self {
+        self.mode = Some(mode);
+        self
+    }
+
+    /// Prepare the cache without generating output.
+    pub fn with_prewarm(mut self, prewarm: bool) -> Self {
+        self.prewarm = Some(prewarm);
+        self
+    }
+}
+
+/// The lifetime of a cached prefix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PromptCacheTtl {
+    /// Thirty minutes after the latest write or reuse.
+    #[serde(rename = "30m")]
+    ThirtyMinutes,
+}
+
+/// Where cache breakpoints come from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptCacheMode {
+    /// OpenAI places a breakpoint at the end of the latest eligible message;
+    /// explicit breakpoints still count.
+    Implicit,
+    /// Only `prompt_cache_breakpoint` markers in the input count. Without
+    /// any, the request neither reads nor writes the cache.
+    Explicit,
 }
 
 /// The truncation strategy.
@@ -1641,7 +1735,7 @@ pub struct StructuredOutputsInput {
 ///     Reasoning, ReasoningContext, ReasoningEffort, ReasoningMode,
 /// };
 ///
-/// // GPT-5.6 reasoning controls: effort, pro mode, and persisted-reasoning context.
+/// // GPT-5.6 and GPT-6 reasoning controls: effort, pro mode, and persisted-reasoning context.
 /// let reasoning = Reasoning::new()
 ///     .with_effort(ReasoningEffort::Max)
 ///     .with_mode(ReasoningMode::Pro)
@@ -1656,11 +1750,12 @@ pub struct Reasoning {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<ReasoningSummaryLevel>,
     /// The reasoning mode. Independent from `effort`; the standard mode is
-    /// represented by omitting the field. Supported by the GPT-5.6 model family.
+    /// represented by omitting the field. Supported by the GPT-5.6 and GPT-6
+    /// model families.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<ReasoningMode>,
     /// How persisted reasoning is carried across turns. Supported by the
-    /// GPT-5.6 model family.
+    /// GPT-5.6 and GPT-6 model families.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<ReasoningContext>,
 }
@@ -1685,14 +1780,15 @@ impl Reasoning {
         self
     }
 
-    /// Sets the reasoning mode (e.g. pro mode on GPT-5.6 models).
+    /// Sets the reasoning mode (e.g. pro mode on GPT-5.6 and GPT-6 models).
     pub fn with_mode(mut self, reasoning_mode: ReasoningMode) -> Self {
         self.mode = Some(reasoning_mode);
 
         self
     }
 
-    /// Sets how persisted reasoning is carried across turns (GPT-5.6 models).
+    /// Sets how persisted reasoning is carried across turns (GPT-5.6 and GPT-6
+    /// models).
     pub fn with_context(mut self, reasoning_context: ReasoningContext) -> Self {
         self.context = Some(reasoning_context);
 
@@ -1762,7 +1858,8 @@ pub enum ReasoningEffort {
     Medium,
     High,
     Xhigh,
-    /// The highest reasoning effort. Supported by the GPT-5.6 model family.
+    /// The highest reasoning effort. Supported by the GPT-5.6 and GPT-6 model
+    /// families.
     Max,
 }
 
@@ -1773,12 +1870,12 @@ pub enum ReasoningEffort {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningMode {
-    /// Pro mode. Supported by the GPT-5.6 model family.
+    /// Pro mode. Supported by the GPT-5.6 and GPT-6 model families.
     Pro,
 }
 
 /// How persisted reasoning is carried across turns. Supported by the GPT-5.6
-/// model family.
+/// and GPT-6 model families.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningContext {

@@ -66,6 +66,17 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
     assert_eq!(default_max_tokens_for_model(CLAUDE_HAIKU_4_5), Some(64_000));
 }
 
+/// Opus 5.5 reaches these values through the `claude-opus-5` prefix, so pin
+/// the documented answers: a 128K output limit and mid-conversation system
+/// message support.
+#[test]
+fn opus_5_5_gets_its_documented_prefix_helper_values() {
+    assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_5_5), Some(128_000));
+    assert!(supports_mid_conversation_system_messages(CLAUDE_OPUS_5_5));
+    assert!(supports_mid_conversation_system_messages(CLAUDE_FABLE_5_1));
+    assert!(!supports_mid_conversation_system_messages(CLAUDE_SONNET_5));
+}
+
 #[test]
 fn unknown_model_has_no_documented_default_max_tokens() {
     assert_eq!(default_max_tokens_for_model("claude-unknown"), None);
@@ -483,6 +494,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             crate::providers::anthropic::wire::strict_tool_transform
                 as fn(&mut crate::providers::anthropic::completion::ToolDefinition),
         ),
+        ReasoningSettings::default(),
     )
     .unwrap();
 

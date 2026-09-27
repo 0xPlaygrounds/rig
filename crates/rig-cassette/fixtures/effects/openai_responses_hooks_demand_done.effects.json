@@ -87,6 +87,7 @@
             "output_tokens": 164,
             "total_tokens": 201,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 64
           },
           "message_id": "msg_07a51eb892c47d16006ab2b2b7590c87d0bb66f9f64c41ca79",
@@ -286,6 +287,7 @@
             "output_tokens": 639,
             "total_tokens": 758,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 576
           },
           "message_id": "msg_07a51eb892c47d16006ab2b2c3aaac87d0b65a92a477920f07",

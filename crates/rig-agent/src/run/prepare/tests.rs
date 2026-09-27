@@ -393,3 +393,168 @@ fn pick_output_tool_name_avoids_collision_with_real_tools() {
     let executable = tool_names(&["final_result", "final_result_1"]);
     assert_eq!(pick_output_tool_name(&executable), "final_result_2");
 }
+
+/// The extractor's spec: a schema, Tool output mode, and a `Required` choice
+/// that only the synthetic `submit` tool can satisfy.
+fn extractor_spec() -> RunSpec {
+    RunSpec {
+        output_schema: Some(serde_json::json!({
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"]
+        })),
+        output_mode: OutputMode::Tool,
+        tool_choice: Some(ToolChoice::Required),
+        output_tool_name: Some("submit".to_string()),
+        ..RunSpec::default()
+    }
+}
+
+fn prepare_extraction(
+    spec: &RunSpec,
+    capabilities: ProviderCapabilities,
+    tools: Vec<ToolDefinition>,
+) -> PreparedRequest {
+    prepare_request(
+        spec,
+        &capabilities,
+        &[Message::user("John is 30.")],
+        tools,
+        spec.output_tool_name.as_deref(),
+        None,
+    )
+    .expect("prepare")
+}
+
+#[test]
+fn forced_output_tool_falls_back_to_native_output_when_the_model_rejects_forcing() {
+    let capabilities = ProviderCapabilities::new()
+        .with_native_output_tool_composition(true)
+        .with_forced_tool_choice(false);
+    let prepared = prepare_extraction(&extractor_spec(), capabilities, Vec::new());
+
+    assert_eq!(prepared.output_mode, OutputMode::Native);
+    assert_eq!(prepared.tool_choice, None);
+    assert!(prepared.tools.is_empty());
+    assert!(prepared.output_schema.is_some());
+    assert_eq!(prepared.output_tool_name, None);
+}
+
+#[test]
+fn forced_output_tool_falls_back_to_auto_when_the_wire_has_no_native_output() {
+    let capabilities = ProviderCapabilities::new().with_forced_tool_choice(false);
+    let prepared = prepare_extraction(&extractor_spec(), capabilities, Vec::new());
+
+    assert_eq!(prepared.output_mode, OutputMode::Tool);
+    assert_eq!(prepared.tool_choice, Some(ToolChoice::Auto));
+    assert_eq!(prepared.output_tool_name.as_deref(), Some("submit"));
+    assert_eq!(
+        prepared
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        ["submit"]
+    );
+    assert!(prepared.allowed_tool_names.contains("submit"));
+}
+
+#[test]
+fn a_specific_choice_naming_only_the_output_tool_falls_back_too() {
+    let spec = RunSpec {
+        tool_choice: Some(ToolChoice::Specific {
+            function_names: vec!["submit".to_string()],
+        }),
+        ..extractor_spec()
+    };
+    let capabilities = ProviderCapabilities::new()
+        .with_native_output_tool_composition(true)
+        .with_forced_tool_choice(false);
+    let prepared = prepare_extraction(&spec, capabilities, Vec::new());
+
+    assert_eq!(prepared.output_mode, OutputMode::Native);
+    assert_eq!(prepared.tool_choice, None);
+}
+
+#[test]
+fn forced_output_tool_is_kept_for_models_that_accept_forcing() {
+    let capabilities = ProviderCapabilities::new().with_native_output_tool_composition(true);
+    let prepared = prepare_extraction(&extractor_spec(), capabilities, Vec::new());
+
+    assert_eq!(prepared.output_mode, OutputMode::Tool);
+    assert_eq!(prepared.tool_choice, Some(ToolChoice::Required));
+}
+
+fn lookup_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "lookup".to_string(),
+        description: "looks up".to_string(),
+        parameters: serde_json::json!({"type": "object"}),
+    }
+}
+
+#[test]
+fn an_extractor_with_real_tools_falls_back_too() {
+    let native = ProviderCapabilities::new()
+        .with_native_output_tool_composition(true)
+        .with_forced_tool_choice(false);
+    let prepared = prepare_extraction(&extractor_spec(), native, vec![lookup_tool()]);
+    assert_eq!(prepared.output_mode, OutputMode::Native);
+    assert_eq!(prepared.tool_choice, None);
+    assert_eq!(
+        prepared
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        ["lookup"]
+    );
+
+    let tool_only = ProviderCapabilities::new().with_forced_tool_choice(false);
+    let prepared = prepare_extraction(&extractor_spec(), tool_only, vec![lookup_tool()]);
+    assert_eq!(prepared.output_mode, OutputMode::Tool);
+    assert_eq!(prepared.tool_choice, Some(ToolChoice::Auto));
+}
+
+#[test]
+fn the_native_fallback_tells_the_model_the_output_tool_is_gone() {
+    let spec = RunSpec {
+        preamble: Some("Always call the `submit` function.".to_string()),
+        ..extractor_spec()
+    };
+    let capabilities = ProviderCapabilities::new()
+        .with_native_output_tool_composition(true)
+        .with_forced_tool_choice(false);
+    let prepared = prepare_extraction(&spec, capabilities, Vec::new());
+    let Some(Message::System { content }) = prepared.chat_history.first() else {
+        panic!("the preamble leads the history");
+    };
+    assert!(content.starts_with("Always call the `submit` function."));
+    assert!(content.contains("The `submit` tool is not available."));
+}
+
+/// A caller's own forcing is not Rig's to relax: it reaches the wire, which
+/// rejects it for these models.
+#[test]
+fn a_callers_forced_choice_is_left_for_the_wire_to_reject() {
+    let capabilities = ProviderCapabilities::new()
+        .with_native_output_tool_composition(true)
+        .with_forced_tool_choice(false);
+    let caller_spec = RunSpec {
+        output_tool_name: None,
+        ..extractor_spec()
+    };
+    for tools in [Vec::new(), vec![lookup_tool()]] {
+        let prepared = prepare_request(
+            &caller_spec,
+            &capabilities,
+            &[Message::user("hi")],
+            tools,
+            None,
+            None,
+        )
+        .expect("prepare");
+        assert_eq!(prepared.output_mode, OutputMode::Tool);
+        assert_eq!(prepared.tool_choice, Some(ToolChoice::Required));
+    }
+}

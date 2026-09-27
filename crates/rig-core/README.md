@@ -210,10 +210,43 @@ Caching is skipped when the prefix through a marker is below the model's minimum
 
 | Model | Minimum tokens |
 | --- | ---: |
+| `claude-opus-5-5` | 512 |
 | `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5` | 4096 |
 | `claude-sonnet-4-6` | 2048 |
 | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1024 |
 | `claude-haiku-4-5` | 4096 |
+
+## Anthropic thinking and effort
+
+`Messages::with_effort` sends `output_config.effort` and
+`Messages::with_thinking` sends `thinking` on every request. A request's
+`additional_params.output_config` and `additional_params.thinking` override
+them key by key, and keys Rig does not model pass through. Rig adds the
+`output_config.format` an output schema needs to the same object; a different
+`format` in `additional_params` fails to encode. `display: "updates"` adds its
+beta flag to the `anthropic-beta` header.
+
+Claude Opus 5.5 and Claude Fable 5.1 always think: effort is the control, and
+the API rejects `thinking` `enabled` or `disabled`. They also reject a forced
+tool choice, so encoding `ToolChoice::Required` or `ToolChoice::Specific` for
+them fails, on Anthropic and on Bedrock, and `ProviderCapabilities` reports
+`accepts_forced_tool_choice: false` for them. Each thinking block they return
+is bound to the `system` prompt, the `tools` and every message before it, so
+keep a conversation append-only. Retrieved context documents and retrieved
+tools change with each new prompt and break that binding across runs.
+
+## OpenAI GPT-6 requests
+
+GPT-6 Astra, Sol and Luna reason unless the request sets effort `none`
+(Astra has no `none`). While they reason, Rig refuses to encode `temperature`,
+`top_p` or `top_logprobs`, and `logprobs` on Chat Completions. Chat
+Completions carries tools for Sol and Luna only at effort `none`, and never for
+Astra; use the Responses wire to reason with tools.
+
+From GPT-5.6 on, Responses prompt caching is configured with
+`prompt_cache_options` (`ttl`, `mode`, `prewarm`) rather than
+`prompt_cache_retention`, and usage reports cache writes, which Rig maps to
+`cache_creation_input_tokens`.
 
 ## Gemini explicit caching
 

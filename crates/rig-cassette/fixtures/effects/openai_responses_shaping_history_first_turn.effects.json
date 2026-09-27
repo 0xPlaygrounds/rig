@@ -106,6 +106,7 @@
             "output_tokens": 69,
             "total_tokens": 118,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": "msg_099e7f389731e793006ab2b3e2896887d092cbbb1143f533fe",

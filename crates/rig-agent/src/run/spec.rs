@@ -45,7 +45,9 @@ pub struct RunSpec {
     /// Description of that synthetic tool.
     pub output_tool_description: Option<String>,
     /// Whether the driver may augment the preamble with structured-output
-    /// instructions.
+    /// instructions. When the model rejects forcing the spec's own output
+    /// tool and the request falls back to native output, the driver still
+    /// adds one line saying that tool is unavailable.
     pub augment_output_preamble: bool,
     /// What the run does with a model tool call that cannot be dispatched as
     /// written when no hook resolves it.

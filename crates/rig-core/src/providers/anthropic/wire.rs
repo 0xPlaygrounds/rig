@@ -24,7 +24,8 @@ use crate::wire::{
 use serde::{Deserialize, Serialize};
 
 use super::completion::{
-    AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, ToolDefinition,
+    AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, Effort, ReasoningSettings,
+    THINKING_DISPLAY_UPDATES_BETA, Thinking, ToolDefinition, accepts_forced_tool_choice,
     default_max_tokens_for_model, sanitize_strict_tool_schema,
 };
 use super::streaming::MessagesDecoder;
@@ -274,6 +275,8 @@ impl AnthropicConfig {
             automatic_caching_ttl: None,
             static_prefix_cache_ttl: None,
             strict_tools: false,
+            thinking: None,
+            effort: None,
         }
     }
 
@@ -293,13 +296,28 @@ impl AnthropicConfig {
 
     /// The request headers every Messages-format endpoint takes.
     fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
+        self.headers_with_beta(builder, None)
+    }
+
+    /// [`Self::headers`], plus `beta` when the configured flags lack it.
+    fn headers_with_beta(
+        &self,
+        builder: http::request::Builder,
+        beta: Option<&str>,
+    ) -> http::request::Builder {
         let builder = builder
             .header("x-api-key", self.api_key.expose())
             .header("anthropic-version", &self.version);
-        if self.betas.is_empty() {
+        let mut betas: Vec<&str> = self.betas.iter().map(String::as_str).collect();
+        if let Some(beta) = beta
+            && !betas.contains(&beta)
+        {
+            betas.push(beta);
+        }
+        if betas.is_empty() {
             builder
         } else {
-            builder.header("anthropic-beta", self.betas.join(","))
+            builder.header("anthropic-beta", betas.join(","))
         }
     }
 }
@@ -341,6 +359,14 @@ pub struct Messages {
     pub static_prefix_cache_ttl: Option<CacheTtl>,
     /// Whether Rig-generated tools request the provider's strict validation.
     pub strict_tools: bool,
+    /// The `thinking` every request sends unless its `additional_params`
+    /// override it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<Thinking>,
+    /// The `output_config.effort` every request sends unless its
+    /// `additional_params` override it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<Effort>,
 }
 
 impl Messages {
@@ -374,6 +400,48 @@ impl Messages {
     /// ```
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
+        self
+    }
+
+    /// Send `effort` as `output_config.effort` on every request. A request's
+    /// `additional_params.output_config.effort` overrides it.
+    ///
+    /// ```no_run
+    /// use rig_core::providers::anthropic::completion::{CLAUDE_OPUS_5_5, Effort};
+    /// use rig_core::providers::anthropic::Anthropic;
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_OPUS_5_5);
+    /// messages.wire = messages.wire.with_effort(Effort::High);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_effort(mut self, effort: Effort) -> Self {
+        self.effort = Some(effort);
+        self
+    }
+
+    /// Send `thinking` on every request. A request's
+    /// `additional_params.thinking` overrides it key by key.
+    /// [`ThinkingDisplay::Updates`](super::completion::ThinkingDisplay::Updates)
+    /// adds its beta flag to the `anthropic-beta` header.
+    ///
+    /// ```no_run
+    /// use rig_core::providers::anthropic::completion::{
+    ///     CLAUDE_OPUS_5_5, Thinking, ThinkingDisplay,
+    /// };
+    /// use rig_core::providers::anthropic::Anthropic;
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_OPUS_5_5);
+    /// messages.wire = messages
+    ///     .wire
+    ///     .with_thinking(Thinking::adaptive().with_display(ThinkingDisplay::Updates));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_thinking(mut self, thinking: Thinking) -> Self {
+        self.thinking = Some(thinking);
         self
     }
 
@@ -467,6 +535,11 @@ impl Messages {
             },
             (self.strict_tools && self.provider.dialect.quirks.strict_tool_schemas)
                 .then_some(strict_tool_transform as fn(&mut ToolDefinition)),
+            ReasoningSettings {
+                thinking: self.thinking.as_ref(),
+                effort: self.effort,
+                validate: self.provider.dialect.name == ANTHROPIC.name,
+            },
         )?;
         let mut body = serde_json::to_value(&typed)?;
         if mode == Mode::Unary {
@@ -497,7 +570,9 @@ impl Wire for Messages {
         Descriptor::new(self.provider.dialect.name)
             .model(self.model.as_str())
             .capabilities(Capabilities::completion(
-                ProviderCapabilities::default().with_native_output_tool_composition(true),
+                ProviderCapabilities::default()
+                    .with_native_output_tool_composition(true)
+                    .with_forced_tool_choice(accepts_forced_tool_choice(&self.model)),
             ))
     }
 
@@ -513,12 +588,16 @@ impl Wire for Messages {
             "Anthropic completion request",
             &body,
         );
+        let updates_display = body
+            .pointer("/thinking/display")
+            .and_then(serde_json::Value::as_str)
+            == Some("updates");
         let request = self
             .provider
-            .headers(http::Request::post(format!(
-                "{}/v1/messages",
-                self.provider.base_url
-            )))
+            .headers_with_beta(
+                http::Request::post(format!("{}/v1/messages", self.provider.base_url)),
+                updates_display.then_some(THINKING_DISPLAY_UPDATES_BETA),
+            )
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(

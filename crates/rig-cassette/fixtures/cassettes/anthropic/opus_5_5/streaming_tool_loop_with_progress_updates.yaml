@@ -1,0 +1,301 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: thinking-display-updates-2026-08-18
+  body: '{"max_tokens":32768,"messages":[{"content":[{"text":"Compute (17 - 5) + (8 - 23). Use one tool call per step, and say in one short sentence what you found before each next call.","type":"text"}],"role":"user"}],"model":"claude-opus-5-5","output_config":{"effort":"high"},"stream":true,"system":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"thinking":{"display":"updates","type":"adaptive"},"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"name":"subtract"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfUkFpZ6LEsCy2PVhsxYj
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfUkFqf5XMbeT2q5gCY9Q","model":"claude-opus-5-5","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":579,"output_tokens":2,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"CAQSgwUKEAgSGAI4AUIIdGhpbmtpbmcSDHpK+mK5ge395SOS5BoMBcbiNSIk9JbpJvYeIjCbn7WVgkiG1e81F54jjbtIU7gtJHmDIenInEZnUUP+w2ldRphfxzB8sDnm3GLYGccqoASIZ8x/RB5FB19dGMV5y95aguW+HFmm98//IzBsN9OyxYFwe1fFVawpSFht6AvCA6tCHuFS05GMq7tfsGCQ4EnkKWCbHhQSy1YyP+gjkGOBsKaxnyWBcbh+4DbiDoRP4eg2QflKG6ayxVjW46mNgcttr+Pa8dC7KYDvbigWWE9jp2L6zcke9h7ma4XmnGdUBwwjkSa3anJJFJa49wBFH2yWrJil6NaYAV4h7OK/5hzANYLWajVceYtu3NiKYiXGjUUSwYDC9oXOjRUAkVo5xknMsuY7A5wBA8ae5fha3LtGy2qhA3nrNa8bJYD52haYk9STbX4thDry9+HUIbs6kV9l4F7PPV7iXs5GJC4PspUVVjEcTPC5q7WxSM81eFQ3uuA2TGUx2Q25dbaocihUYKbGDaAcRM9gxtYnc9cDgdeLa508E8lepgOfe6/greHYUjPMRp5GDQ8JaK+0C7gGfmKIp6jZciTTFG5ZX0jfGKlHT4e4gV8jz0IK7NyPioSDhzYS/D0BurGzh5KuIrwZrqrXHWxTXP64vGNlUxcRwg/2K/MoiS1pcS2kx7rTa4CGz49YY3wIxDJNLlc7nj/66A0UodKQxy5MvBW6+8DZpFbbdhuQkZOleuAKYsrkbcwI2Tj5IhqZyAR9k4GLg0NJn+jXLerIzinOwV7lvJzsld1UEvYj9HCULPbN+YHz2k9Dxd4UfDYamNX0JrUDirielct3GAE=","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"I'll start","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" with the first subtraction.","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_011nw62xanTp8Yw6MhqM7APM","input":{},"name":"subtract","type":"tool_use"},"index":2,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"x\": 1","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"7","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":", \"y\": ","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"5}","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":2,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":579,"output_tokens":109,"output_tokens_details":{"thinking_tokens":28}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: thinking-display-updates-2026-08-18
+  body: '{"max_tokens":32768,"messages":[{"content":[{"text":"Compute (17 - 5) + (8 - 23). Use one tool call per step, and say in one short sentence what you found before each next call.","type":"text"}],"role":"user"},{"content":[{"signature":"CAQSgwUKEAgSGAI4AUIIdGhpbmtpbmcSDHpK+mK5ge395SOS5BoMBcbiNSIk9JbpJvYeIjCbn7WVgkiG1e81F54jjbtIU7gtJHmDIenInEZnUUP+w2ldRphfxzB8sDnm3GLYGccqoASIZ8x/RB5FB19dGMV5y95aguW+HFmm98//IzBsN9OyxYFwe1fFVawpSFht6AvCA6tCHuFS05GMq7tfsGCQ4EnkKWCbHhQSy1YyP+gjkGOBsKaxnyWBcbh+4DbiDoRP4eg2QflKG6ayxVjW46mNgcttr+Pa8dC7KYDvbigWWE9jp2L6zcke9h7ma4XmnGdUBwwjkSa3anJJFJa49wBFH2yWrJil6NaYAV4h7OK/5hzANYLWajVceYtu3NiKYiXGjUUSwYDC9oXOjRUAkVo5xknMsuY7A5wBA8ae5fha3LtGy2qhA3nrNa8bJYD52haYk9STbX4thDry9+HUIbs6kV9l4F7PPV7iXs5GJC4PspUVVjEcTPC5q7WxSM81eFQ3uuA2TGUx2Q25dbaocihUYKbGDaAcRM9gxtYnc9cDgdeLa508E8lepgOfe6/greHYUjPMRp5GDQ8JaK+0C7gGfmKIp6jZciTTFG5ZX0jfGKlHT4e4gV8jz0IK7NyPioSDhzYS/D0BurGzh5KuIrwZrqrXHWxTXP64vGNlUxcRwg/2K/MoiS1pcS2kx7rTa4CGz49YY3wIxDJNLlc7nj/66A0UodKQxy5MvBW6+8DZpFbbdhuQkZOleuAKYsrkbcwI2Tj5IhqZyAR9k4GLg0NJn+jXLerIzinOwV7lvJzsld1UEvYj9HCULPbN+YHz2k9Dxd4UfDYamNX0JrUDirielct3GAE=","thinking":"","type":"thinking"},{"text":"I''ll start with the first subtraction.","type":"text"},{"id":"toolu_011nw62xanTp8Yw6MhqM7APM","input":{"x":17,"y":5},"name":"subtract","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"12","type":"text"}],"tool_use_id":"toolu_011nw62xanTp8Yw6MhqM7APM","type":"tool_result"}],"role":"user"}],"model":"claude-opus-5-5","output_config":{"effort":"high"},"stream":true,"system":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"thinking":{"display":"updates","type":"adaptive"},"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"name":"subtract"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfUkFy54dVmd4AAHWPCRW
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfUkFyZaNL3mVXB2cwKnA","model":"claude-opus-5-5","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":694,"output_tokens":42,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"17 - 5 = ","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"12.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Next, the second subtra","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ction.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01KHCPT3CxgpY2Jvqq2yRuT4","input":{},"name":"subtract","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"x\": 8","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":", \"y\": ","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"23}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":694,"output_tokens":89,"output_tokens_details":{"thinking_tokens":0}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: thinking-display-updates-2026-08-18
+  body: '{"max_tokens":32768,"messages":[{"content":[{"text":"Compute (17 - 5) + (8 - 23). Use one tool call per step, and say in one short sentence what you found before each next call.","type":"text"}],"role":"user"},{"content":[{"signature":"CAQSgwUKEAgSGAI4AUIIdGhpbmtpbmcSDHpK+mK5ge395SOS5BoMBcbiNSIk9JbpJvYeIjCbn7WVgkiG1e81F54jjbtIU7gtJHmDIenInEZnUUP+w2ldRphfxzB8sDnm3GLYGccqoASIZ8x/RB5FB19dGMV5y95aguW+HFmm98//IzBsN9OyxYFwe1fFVawpSFht6AvCA6tCHuFS05GMq7tfsGCQ4EnkKWCbHhQSy1YyP+gjkGOBsKaxnyWBcbh+4DbiDoRP4eg2QflKG6ayxVjW46mNgcttr+Pa8dC7KYDvbigWWE9jp2L6zcke9h7ma4XmnGdUBwwjkSa3anJJFJa49wBFH2yWrJil6NaYAV4h7OK/5hzANYLWajVceYtu3NiKYiXGjUUSwYDC9oXOjRUAkVo5xknMsuY7A5wBA8ae5fha3LtGy2qhA3nrNa8bJYD52haYk9STbX4thDry9+HUIbs6kV9l4F7PPV7iXs5GJC4PspUVVjEcTPC5q7WxSM81eFQ3uuA2TGUx2Q25dbaocihUYKbGDaAcRM9gxtYnc9cDgdeLa508E8lepgOfe6/greHYUjPMRp5GDQ8JaK+0C7gGfmKIp6jZciTTFG5ZX0jfGKlHT4e4gV8jz0IK7NyPioSDhzYS/D0BurGzh5KuIrwZrqrXHWxTXP64vGNlUxcRwg/2K/MoiS1pcS2kx7rTa4CGz49YY3wIxDJNLlc7nj/66A0UodKQxy5MvBW6+8DZpFbbdhuQkZOleuAKYsrkbcwI2Tj5IhqZyAR9k4GLg0NJn+jXLerIzinOwV7lvJzsld1UEvYj9HCULPbN+YHz2k9Dxd4UfDYamNX0JrUDirielct3GAE=","thinking":"","type":"thinking"},{"text":"I''ll start with the first subtraction.","type":"text"},{"id":"toolu_011nw62xanTp8Yw6MhqM7APM","input":{"x":17,"y":5},"name":"subtract","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"12","type":"text"}],"tool_use_id":"toolu_011nw62xanTp8Yw6MhqM7APM","type":"tool_result"}],"role":"user"},{"content":[{"text":"17 - 5 = 12. Next, the second subtraction.","type":"text"},{"id":"toolu_01KHCPT3CxgpY2Jvqq2yRuT4","input":{"x":8,"y":23},"name":"subtract","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"-15","type":"text"}],"tool_use_id":"toolu_01KHCPT3CxgpY2Jvqq2yRuT4","type":"tool_result"}],"role":"user"}],"model":"claude-opus-5-5","output_config":{"effort":"high"},"stream":true,"system":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"thinking":{"display":"updates","type":"adaptive"},"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"name":"subtract"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfUkG6CS6ZpP4mz8DurKi
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfUkG6eDvsG3hnhBbrbq8","model":"claude-opus-5-5","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":790,"output_tokens":36,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"8 - 23 = -","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"15. Last","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":", I'll add the two results","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":".","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_016tpnXnc8vy8PFq9miUcGVV","input":{},"name":"add","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"x\": 1","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"2","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":", \"y\": ","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"-15}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":790,"output_tokens":89,"output_tokens_details":{"thinking_tokens":0}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: thinking-display-updates-2026-08-18
+  body: '{"max_tokens":32768,"messages":[{"content":[{"text":"Compute (17 - 5) + (8 - 23). Use one tool call per step, and say in one short sentence what you found before each next call.","type":"text"}],"role":"user"},{"content":[{"signature":"CAQSgwUKEAgSGAI4AUIIdGhpbmtpbmcSDHpK+mK5ge395SOS5BoMBcbiNSIk9JbpJvYeIjCbn7WVgkiG1e81F54jjbtIU7gtJHmDIenInEZnUUP+w2ldRphfxzB8sDnm3GLYGccqoASIZ8x/RB5FB19dGMV5y95aguW+HFmm98//IzBsN9OyxYFwe1fFVawpSFht6AvCA6tCHuFS05GMq7tfsGCQ4EnkKWCbHhQSy1YyP+gjkGOBsKaxnyWBcbh+4DbiDoRP4eg2QflKG6ayxVjW46mNgcttr+Pa8dC7KYDvbigWWE9jp2L6zcke9h7ma4XmnGdUBwwjkSa3anJJFJa49wBFH2yWrJil6NaYAV4h7OK/5hzANYLWajVceYtu3NiKYiXGjUUSwYDC9oXOjRUAkVo5xknMsuY7A5wBA8ae5fha3LtGy2qhA3nrNa8bJYD52haYk9STbX4thDry9+HUIbs6kV9l4F7PPV7iXs5GJC4PspUVVjEcTPC5q7WxSM81eFQ3uuA2TGUx2Q25dbaocihUYKbGDaAcRM9gxtYnc9cDgdeLa508E8lepgOfe6/greHYUjPMRp5GDQ8JaK+0C7gGfmKIp6jZciTTFG5ZX0jfGKlHT4e4gV8jz0IK7NyPioSDhzYS/D0BurGzh5KuIrwZrqrXHWxTXP64vGNlUxcRwg/2K/MoiS1pcS2kx7rTa4CGz49YY3wIxDJNLlc7nj/66A0UodKQxy5MvBW6+8DZpFbbdhuQkZOleuAKYsrkbcwI2Tj5IhqZyAR9k4GLg0NJn+jXLerIzinOwV7lvJzsld1UEvYj9HCULPbN+YHz2k9Dxd4UfDYamNX0JrUDirielct3GAE=","thinking":"","type":"thinking"},{"text":"I''ll start with the first subtraction.","type":"text"},{"id":"toolu_011nw62xanTp8Yw6MhqM7APM","input":{"x":17,"y":5},"name":"subtract","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"12","type":"text"}],"tool_use_id":"toolu_011nw62xanTp8Yw6MhqM7APM","type":"tool_result"}],"role":"user"},{"content":[{"text":"17 - 5 = 12. Next, the second subtraction.","type":"text"},{"id":"toolu_01KHCPT3CxgpY2Jvqq2yRuT4","input":{"x":8,"y":23},"name":"subtract","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"-15","type":"text"}],"tool_use_id":"toolu_01KHCPT3CxgpY2Jvqq2yRuT4","type":"tool_result"}],"role":"user"},{"content":[{"text":"8 - 23 = -15. Last, I''ll add the two results.","type":"text"},{"id":"toolu_016tpnXnc8vy8PFq9miUcGVV","input":{"x":12,"y":-15},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"-3","type":"text"}],"tool_use_id":"toolu_016tpnXnc8vy8PFq9miUcGVV","type":"tool_result"}],"role":"user"}],"model":"claude-opus-5-5","output_config":{"effort":"high"},"stream":true,"system":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"thinking":{"display":"updates","type":"adaptive"},"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"name":"subtract"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_011CfUkGCvkJ17RRJ58yv7o5
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfUkGDMnzsNrZNMZdd2rN","model":"claude-opus-5-5","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":886,"output_tokens":2,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"CAQSnwUKEAgSGAI4AUIIdGhpbmtpbmcSDB0zvXi8V+figcUeiRoMg/Bl6KewbqPwcBTlIjCNHV4yT60eiDR5xHc3NIYJyI73g4UBuUkoFnGIlfvFDM/T5KOhZsBEn4Wff75uJe4qvATHYz2jvjZEBTaRjcmUpBdo/FXIjAGnIc8plhBWCTFzfJgBDpMOdWsLqc8lOeaA850wdIiq4FMtWdO1LOWl7BD/oTv4sweeGs2iqIgdsCr4xiE+bQAfuH24W6HqrMkWpql7l5JPgYtk1EvV2GyWQBAvtBh4+foctv2Hawx6FY2Sx1s344E7/1cpx7r71amtqIrviUxq5/JYM0clAAgX9fhjYb3V0gTzk8vwRsT+X6NPLOzfds9ONXSDdwLOacMWIa2E07nVqK/VnDM5tt2bDsZ/zK5cEjw2/TRXHNUyPpaXkk5ODpowSYqJi7SMYI5sx1wcGTTirb7Eg0GBUumP/EQcyc+Q4fq1gwDKL/qrIyMjbIhEMy+3Fjozl/+uPvo1czzkwxAIIy4Bc1SRTXBs53h0xDez3UE8xQX4qhQ2F/FhvPEz4DtSrblKtwCZfWIzgd0yvSq3y0yfz1u8LZfG9TkqpDCbuYnvAWvE7tAyBW1tOipAmNpB/IQh4I2DdHCtv5BWdChNNrekACZk/1Bp1g8MRfzL4ftrPOazuy3/9zpY6iPg7EO8OCzJ/1/62xH4OrSlHMaLimKLWy1sGslvjRyqjF9KENpSNsgFRixCgqnVxbq8oQVWCAGwoO2ie1mWBbsrXacIzsdAVhq47p6qoMLaVl9Bs2Ls8fqvCNG91TcD8jDjCXOfPbS68+aTXHGu2qdbmNwocHau8rQjdwL4sf3423HbROYhgKCJgY4vNkCzyXCp2/G1d6p1xXjXrxgB","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"(","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"17 - 5) + (","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"8 - 23) = **","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"-3**. The","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" first part is 12,","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the second is","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" -15, and 12 +","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" (-15) = -3.","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":886,"output_tokens":61,"output_tokens_details":{"thinking_tokens":12}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
