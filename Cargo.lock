@@ -2426,6 +2426,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "candle_pose"
+version = "0.42.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "image",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "candle_wasm_chat"
 version = "0.42.0"
 dependencies = [
@@ -10455,6 +10466,7 @@ dependencies = [
  "candle-nn",
  "candle-transformers",
  "futures",
+ "image",
  "rig-agent",
  "rig-core",
  "safetensors",

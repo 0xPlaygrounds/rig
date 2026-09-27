@@ -168,6 +168,13 @@ pub enum CandleError {
         /// Original portable value.
         value: u64,
     },
+    /// A pose frame's size or pixel buffer is invalid, or a request has no
+    /// frames.
+    #[error("invalid image: {0}")]
+    InvalidImage(String),
+    /// A pose model setting is out of range.
+    #[error("invalid pose setting: {0}")]
+    InvalidPoseSetting(String),
     /// The native inference concurrency limit is invalid.
     #[error("max_concurrent_requests must be greater than zero")]
     InvalidConcurrencyLimit,

@@ -165,6 +165,46 @@ pub(crate) fn check_cancellation(signal: &CancellationSignal) -> Result<(), Cand
     }
 }
 
+/// A bounded channel's receiver as a stream. Dropping it signals
+/// cancellation to the worker that feeds it.
+#[cfg(not(target_family = "wasm"))]
+pub(crate) struct ReceiverStream<T> {
+    receiver: tokio::sync::mpsc::Receiver<T>,
+    cancellation: CancellationSignal,
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl<T> ReceiverStream<T> {
+    pub(crate) fn new(
+        receiver: tokio::sync::mpsc::Receiver<T>,
+        cancellation: CancellationSignal,
+    ) -> Self {
+        Self {
+            receiver,
+            cancellation,
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl<T> futures::Stream for ReceiverStream<T> {
+    type Item = T;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<T>> {
+        self.get_mut().receiver.poll_recv(context)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl<T> Drop for ReceiverStream<T> {
+    fn drop(&mut self) {
+        self.cancellation.cancel();
+    }
+}
+
 #[cfg(not(target_family = "wasm"))]
 pub(crate) async fn acquire_concurrency(
     semaphore: Arc<tokio::sync::Semaphore>,

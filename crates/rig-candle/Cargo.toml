@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "Local Candle Llama, SmolLM2, and Qwen3 completion models for Rig"
+description = "Local Candle Llama, SmolLM2, and Qwen3 completion models and YOLOv8 pose estimation for Rig"
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
@@ -32,6 +32,7 @@ tokenizers = { workspace = true, features = ["onig"] }
 tokenizers = { workspace = true, default-features = false, features = ["unstable_wasm"] }
 
 [dev-dependencies]
+image = { workspace = true, features = ["jpeg"] }
 rig-agent = { workspace = true, features = ["test-utils"] }
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = ["test-utils"] }
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

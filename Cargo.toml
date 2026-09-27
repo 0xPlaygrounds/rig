@@ -242,6 +242,8 @@ httpdate = "1"
 httpmock = "0.8.2"
 # 0.1.2: the `service` feature.
 hyper-util = "0.1.2"
+# Decodes the JPEG frames of rig-candle's pose test and example.
+image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 indoc = "2"
 lancedb = { version = "0.30", default-features = false }

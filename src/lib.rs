@@ -240,7 +240,8 @@ companion_modules! {
     /// Typed TypeSafe Jev judgments for routing and rubric evaluation.
     typesafeai = rig_typesafeai ["typesafeai"];
     bedrock = rig_bedrock ["bedrock"];
-    /// Local CPU inference with validated Llama/SmolLM2 and native tool-capable Qwen3 models.
+    /// Local CPU inference with validated Llama/SmolLM2 and native tool-capable Qwen3 models,
+    /// and YOLOv8 pose estimation.
     candle = rig_candle ["candle"];
     fastembed = rig_fastembed [
         "fastembed",
