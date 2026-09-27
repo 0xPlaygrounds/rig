@@ -24,8 +24,7 @@ const SECOND_INPUT: &str = "Jane Smith is a data scientist.";
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?;
-    let extractor =
-        ExtractorBuilder::<Person>::new(rig::model(client.completion(openai::GPT_4))).build();
+    let extractor = ExtractorBuilder::<Person>::new(client.completion(openai::GPT_4)).build();
 
     let person = extractor.extract(FIRST_INPUT).await?.output;
     println!("{}", serde_json::to_string_pretty(&person)?);

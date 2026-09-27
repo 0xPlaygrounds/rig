@@ -19,10 +19,10 @@ use rig_core::driver::WireDriver;
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, ToolResult, ToolResultContent, UserContent};
 use rig_core::operation::Completion;
-use rig_core::providers::anthropic::wire::Anthropic;
-use rig_core::providers::gemini::Gemini;
+use rig_core::providers::anthropic::wire::AnthropicConfig;
+use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
-use rig_core::providers::openai::wire::{DEEPSEEK, OpenAI};
+use rig_core::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
 use rig_core::wire::{Fold, Mode, Operation, Reply, Wire, WireFrame};
 
 use super::{Dialect, response_tokens, string_values, unpaired_tool_calls};
@@ -111,18 +111,28 @@ impl Source {
         // Decoding needs no credential; the placeholder never reaches a socket.
         let decoded = match self {
             Self::Anthropic => decode_whole_reply(
-                &Anthropic::new("decode-only").completion("claude-sonnet-4-6"),
+                &AnthropicConfig::new("decode-only")
+                    .connect(rig_reqwest::shared())
+                    .completion("claude-sonnet-4-6")
+                    .wire,
                 &body,
             ),
-            Self::OpenAiResponses => {
-                decode_whole_reply(&OpenAI::new("decode-only").responses("gpt-5.2"), &body)
-            }
+            Self::OpenAiResponses => decode_whole_reply(
+                &OpenAIConfig::new("decode-only")
+                    .connect(rig_reqwest::shared())
+                    .responses("gpt-5.2")
+                    .wire,
+                &body,
+            ),
             Self::Gemini => decode_whole_reply(
-                &GenerateContent::new(Gemini::new("decode-only"), "gemini-2.5-flash"),
+                &GenerateContent::new(GeminiConfig::new("decode-only"), "gemini-2.5-flash"),
                 &body,
             ),
             Self::DeepSeek => decode_whole_reply(
-                &OpenAI::with_key(&DEEPSEEK, "decode-only").chat("deepseek-v4-flash"),
+                &OpenAIConfig::with_key(&DEEPSEEK, "decode-only")
+                    .connect(rig_reqwest::shared())
+                    .chat("deepseek-v4-flash")
+                    .wire,
                 &body,
             ),
         };

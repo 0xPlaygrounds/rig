@@ -10,7 +10,7 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn completion_smoke() {
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
     let agent = rig::AgentBuilder::new(client.completion(DEFAULT_MODEL))
         .preamble(BASIC_PREAMBLE)
         .build();

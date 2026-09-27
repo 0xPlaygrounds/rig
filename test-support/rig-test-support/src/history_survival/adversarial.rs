@@ -14,10 +14,10 @@ use rig_core::message::{
     AssistantContent, Message, ProviderCallId, ReasoningContent, ToolCallId, ToolResultContent,
     UserContent,
 };
-use rig_core::providers::anthropic::wire::Anthropic;
-use rig_core::providers::gemini::Gemini;
+use rig_core::providers::anthropic::wire::AnthropicConfig;
+use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
-use rig_core::providers::openai::wire::OpenAI;
+use rig_core::providers::openai::wire::OpenAIConfig;
 
 use super::portability::{FOLLOW_UP, Source, decode_whole_reply};
 use super::{Dialect, lost_tokens, response_tokens};
@@ -353,15 +353,22 @@ impl Hop {
             .map(|(_, response)| response)
             .unwrap_or_else(|| panic!("{} records its hop", self.provider()));
         let decoded = match self {
-            Self::OpenAiResponses => {
-                decode_whole_reply(&OpenAI::new("decode-only").responses("gpt-5-mini"), &body)
-            }
+            Self::OpenAiResponses => decode_whole_reply(
+                &OpenAIConfig::new("decode-only")
+                    .connect(rig_reqwest::shared())
+                    .responses("gpt-5-mini")
+                    .wire,
+                &body,
+            ),
             Self::Gemini => decode_whole_reply(
-                &GenerateContent::new(Gemini::new("decode-only"), "gemini-3-flash-preview"),
+                &GenerateContent::new(GeminiConfig::new("decode-only"), "gemini-3-flash-preview"),
                 &body,
             ),
             Self::Anthropic => decode_whole_reply(
-                &Anthropic::new("decode-only").completion("claude-sonnet-4-6"),
+                &AnthropicConfig::new("decode-only")
+                    .connect(rig_reqwest::shared())
+                    .completion("claude-sonnet-4-6")
+                    .wire,
                 &body,
             ),
         };

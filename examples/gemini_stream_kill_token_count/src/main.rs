@@ -352,7 +352,7 @@ async fn run_scenario(
     http: &reqwest::Client,
     api_key: &str,
 ) -> anyhow::Result<Report> {
-    let model = rig::model(Gemini::from_env()?.completion(MODEL));
+    let model = Gemini::from_env()?.completion(MODEL);
 
     let stream = model.stream(
         CompletionRequestBuilder::new(prompt)

@@ -9,7 +9,7 @@ use crate::completion::{self, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::observe::ObservedError;
 use crate::operation::Completion;
-use crate::providers::openai::wire::{OpenAI, ResponsesContract};
+use crate::providers::openai::wire::{OpenAIConfig, ResponsesContract};
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing, Mode, ObservationSink, Wire,
 };
@@ -25,7 +25,7 @@ use super::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Responses {
     /// The provider this wire speaks to.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
     /// The model to address.
     pub model: String,
     /// Tools added to every request from this wire.
@@ -43,7 +43,7 @@ impl Responses {
         request: completion::CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
-            &OpenAI,
+            &OpenAIConfig,
             &completion::CompletionRequest,
             http::request::Builder,
         ) -> http::request::Builder,
@@ -89,7 +89,7 @@ impl Responses {
 
     /// Create a wire with the provider's instruction placement and dialect's
     /// strict-tool default, without additional tools.
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             system_instructions: provider.system_instructions_placement(),
             strict_tools: provider.dialect.quirks.responses.strict_tools_by_default,
@@ -231,7 +231,7 @@ impl Wire for Responses {
         request: completion::CompletionRequest,
         mode: Mode,
     ) -> Result<Encoded, EncodeError> {
-        self.encode_with_headers(request, mode, OpenAI::completion_headers)
+        self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
     }
 
     fn decoder(&self, _mode: Mode) -> ResponsesDecoder {

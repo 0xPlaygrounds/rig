@@ -1,14 +1,13 @@
 //! Together AI's model identifiers.
 //!
-//! Configure requests with [`crate::providers::openai::wire::TOGETHER`],
+//! [`from_env`] and [`new`] build a client on the [`TOGETHER`](crate::providers::openai::wire::TOGETHER) dialect,
 //! using `TOGETHER_API_KEY`.
 //!
 //! ```no_run
-//! use rig_core::providers::openai::wire::{OpenAI, TOGETHER};
 //! use rig_core::providers::together;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let together = OpenAI::from_env_with(&TOGETHER)?;
+//! let together = together::from_env()?;
 //! let embedding = together.embedding(together::BGE_BASE_EN_V1_5, None);
 //! let chat = together.chat(together::MIXTRAL_8X7B_INSTRUCT_V0_1);
 //! # let _ = (embedding, chat);
@@ -21,3 +20,8 @@ pub mod embedding;
 
 pub use completion::*;
 pub use embedding::*;
+
+crate::providers::internal::client::openai_vendor!(
+    crate::providers::openai::wire::TOGETHER,
+    "Together AI"
+);

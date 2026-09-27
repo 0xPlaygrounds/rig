@@ -1,7 +1,6 @@
 //! Moonshot reasoning-history roundtrip smoke test.
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::providers::moonshot;
-use rig::providers::openai::wire::{self as openai_wire, OpenAI};
 
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
 use rig::completion::CompletionRequestBuilder;
@@ -19,11 +18,9 @@ fn response_text(choice: &[AssistantContent]) -> String {
 #[tokio::test]
 #[ignore = "requires MOONSHOT_API_KEY"]
 async fn assistant_reasoning_content_roundtrips_in_history() {
-    let model = rig::model(
-        OpenAI::from_env_with(&openai_wire::MOONSHOT)
-            .expect("MOONSHOT_API_KEY should be set")
-            .completion(moonshot::KIMI_K3),
-    );
+    let model = moonshot::from_env()
+        .expect("MOONSHOT_API_KEY should be set")
+        .completion(moonshot::KIMI_K3);
     let assistant = Message::Assistant {
         id: None,
         content: vec![

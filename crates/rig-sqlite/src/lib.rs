@@ -1449,7 +1449,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// ```no_run
 /// use rig_core::{
 ///     embeddings::EmbeddingsBuilder,
-///     providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI},
+///     providers::openai::{TEXT_EMBEDDING_ADA_002, OpenAI},
 ///     vector_store::{InsertDocuments, VectorStoreIndex},
 ///     Embed,
 /// };
@@ -1494,10 +1494,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 ///
 /// let conn = Connection::open("vector_store.db").await?;
 /// let openai = OpenAI::new("YOUR_API_KEY");
-/// let model = rig_core::Model::new(
-///     openai.embedding(TEXT_EMBEDDING_ADA_002, None),
-///     rig_reqwest::shared(),
-/// )
+/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None)
 /// .erase();
 ///
 /// // Initialize vector store

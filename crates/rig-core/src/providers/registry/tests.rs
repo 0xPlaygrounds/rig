@@ -129,7 +129,7 @@ fn model_validation_applies_to_constructors_and_structured_input() {
 fn configured_identity_never_mints_an_unregistered_or_custom_preset() {
     let custom =
         openai::wire::Dialect::gateway("private", "https://private.invalid", "PRIVATE_KEY");
-    let config = ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(&custom, ""));
+    let config = ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(&custom, ""));
     assert_eq!(config.id(), None);
     let reference = ProviderRef::configured(config, "model").unwrap();
     assert_eq!(reference.id(), None);
@@ -143,7 +143,7 @@ fn configured_identity_never_mints_an_unregistered_or_custom_preset() {
         base_url: "https://modified.invalid",
         ..openai::wire::OPENAI
     };
-    let config = ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(&modified, ""));
+    let config = ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(&modified, ""));
     assert!(
         serde_json::to_value(&config).is_err(),
         "custom dialect payload must not silently disappear"
@@ -166,7 +166,7 @@ fn anthropic_custom_dialects_are_executable_but_not_lossily_persisted() {
         },
     ] {
         let config =
-            ProviderConfig::Anthropic(anthropic::wire::Anthropic::with_dialect("", &dialect));
+            ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::with_dialect("", &dialect));
         assert!(serde_json::to_value(&config).is_err());
         let _handler = config.completion_handler("custom", "model", transport());
     }

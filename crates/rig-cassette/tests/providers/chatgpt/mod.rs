@@ -29,7 +29,7 @@ mod streaming_tools;
 
 use rig::http_client::DynHttpClient;
 use rig::providers::chatgpt;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -50,9 +50,9 @@ struct CachedAuthRecord {
 /// speaks over. The OAuth cache wins when there is a usable one, exactly as
 /// the deleted builder's default did; otherwise the variables the dialect
 /// names describe the provider outright.
-async fn live_provider(http: &DynHttpClient) -> OpenAI {
+async fn live_provider(http: &DynHttpClient) -> OpenAIConfig {
     if !has_usable_oauth_cache() && std::env::var_os("CHATGPT_ACCESS_TOKEN").is_some() {
-        return OpenAI::from_env_with(&chatgpt::DIALECT)
+        return OpenAIConfig::from_env_with(&chatgpt::DIALECT)
             .expect("the ChatGPT environment should describe a provider");
     }
 
@@ -66,7 +66,7 @@ async fn live_provider(http: &DynHttpClient) -> OpenAI {
     .await
     .expect("ChatGPT OAuth should resolve an access token");
 
-    let mut provider = OpenAI::with_key(&chatgpt::DIALECT, context.access_token);
+    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, context.access_token);
     if let Some(account_id) = context.account_id {
         provider = provider.with_account_id(account_id);
     }

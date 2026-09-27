@@ -98,7 +98,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let bound = OpenAiModels::from_env_with(&DEEPSEEK).expect("DEEPSEEK_API_KEY");
+    let bound = OpenAiModels::from_env_for(&DEEPSEEK).expect("DEEPSEEK_API_KEY");
     let model = bound.completion(CACHE_MODEL);
     let observation = run_cache_probe(model, &probe()).await;
     report_and_assert_live(

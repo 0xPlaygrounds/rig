@@ -1128,7 +1128,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 mod unit {
     use rig::completion::CompletionResponse;
     use rig::message::{AssistantContent, ReasoningContent};
-    use rig::providers::gemini::Gemini;
+    use rig::providers::gemini::GeminiConfig;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::test_utils::RecordingHttpClient;
     use rig::transcription::{NormalizeTranscriptionResponse, TranscriptionResponse};
@@ -1170,10 +1170,11 @@ mod unit {
     /// here and carried by the real wire, driver and decoder — the same path
     /// every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>, role: &str) -> CompletionResponse {
-        let model = rig::Model::new(
-            Gemini::new("unit-key").completion("gemini-2.5-flash"),
-            RecordingHttpClient::new(reply_with(parts, role).to_string()),
-        );
+        let model = GeminiConfig::new("unit-key")
+            .connect(RecordingHttpClient::new(
+                reply_with(parts, role).to_string(),
+            ))
+            .completion("gemini-2.5-flash");
         let request = rig::completion::CompletionRequestBuilder::new("unit").build();
         model
             .call(request)

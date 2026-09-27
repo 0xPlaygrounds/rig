@@ -106,7 +106,7 @@ async fn poll_until_terminal(
     interaction_id: &str,
     request: &CompletionRequest,
 ) -> Result<Interaction> {
-    let model = rig::model(gemini.interaction(interaction_id));
+    let model = gemini.interaction(interaction_id);
 
     loop {
         let response = model.call(request.clone()).await?;
@@ -195,7 +195,7 @@ async fn main() -> Result<()> {
 
     let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
     // The wire that opens an interaction, built once for either surface.
-    let interactions = rig::model(gemini.interactions(agent.as_str()));
+    let interactions = gemini.interactions(agent.as_str());
 
     if use_streaming {
         println!("== Deep Research (streaming) ==");
@@ -210,7 +210,9 @@ async fn main() -> Result<()> {
             let opened = if attempt == 0 {
                 interactions.stream(request.clone())
             } else if let Some(interaction_id) = state.interaction_id.as_deref() {
-                rig::model(gemini.interaction_resumed(interaction_id, None)).stream(request.clone())
+                gemini
+                    .interaction_resumed(interaction_id, None)
+                    .stream(request.clone())
             } else {
                 eprintln!("Stream closed before an interaction id was received.");
                 break;
@@ -248,7 +250,7 @@ async fn main() -> Result<()> {
 
             // Official Deep Research guidance recommends checking the background
             // interaction status before reconnecting a dropped/expired stream.
-            let probe = rig::model(gemini.interaction(interaction_id.as_str()));
+            let probe = gemini.interaction(interaction_id.as_str());
             let interaction: Interaction =
                 serde_json::from_value(probe.call(request.clone()).await?.raw)?;
             if interaction.is_terminal() {

@@ -6,7 +6,7 @@
 //! no cassette and no golden; the negative probe mutates the streamed
 //! recording's last tool result and proves the strict matcher refuses it.
 
-use rig::providers::anthropic::wire::Anthropic;
+use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::cassette_models::AnthropicModels;
 use rig_test_support::cassette_models::MapWire;
@@ -112,7 +112,7 @@ const SCRIPTED_KEY: &str = "sk-ant-scripted-fault-key-7f3a9c";
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
 ) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
-    let client = Anthropic::new(SCRIPTED_KEY);
+    let client = AnthropicConfig::new(SCRIPTED_KEY);
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,

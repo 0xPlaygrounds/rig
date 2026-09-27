@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::providers::ollama::wire::Ollama;
+use rig::providers::ollama::wire::OllamaConfig;
 use rig_test_support::cassette_models::OllamaModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -10,7 +10,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 ///
 /// Replays by default; set `RIG_PROVIDER_TEST_MODE=record` (with a local Ollama
 /// server on http://localhost:11434) to record. Ollama needs no API key.
-async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Ollama) {
+async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OllamaConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "ollama",
@@ -18,7 +18,7 @@ async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Ol
         "http://localhost:11434",
     )
     .await;
-    let ollama = Ollama::new().with_base_url(cassette.base_url());
+    let ollama = OllamaConfig::new().with_base_url(cassette.base_url());
 
     (cassette, ollama)
 }

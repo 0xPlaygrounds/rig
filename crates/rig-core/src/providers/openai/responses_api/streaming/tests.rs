@@ -13,7 +13,7 @@ use crate::operation::Completion;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
 };
-use crate::providers::openai::OpenAI;
+use crate::providers::openai::OpenAIConfig;
 use crate::providers::openai::responses_api::{
     AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
     ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
@@ -246,7 +246,7 @@ async fn responses_stream<H>(http: H) -> crate::streaming::CompletionStream
 where
     H: crate::driver::Transport<crate::providers::openai::responses_api::wire::Responses>,
 {
-    let model = crate::driver::Model::new(OpenAI::new("test-key").responses("gpt-5.4"), http);
+    let model = crate::driver::Model::new(OpenAIConfig::new("test-key").responses("gpt-5.4"), http);
     let request = CompletionRequestBuilder::new("hello").build();
     model.stream(request).expect("stream should start")
 }

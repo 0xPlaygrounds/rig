@@ -10,7 +10,7 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extractor_smoke() {
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
     let extractor =
         rig::extractor::ExtractorBuilder::<SmokePerson>::new(client.completion(DEFAULT_MODEL))
             .build();

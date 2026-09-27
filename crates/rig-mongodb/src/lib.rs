@@ -73,7 +73,7 @@ struct Field {
 /// # Example
 /// ```no_run
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-/// use rig_core::{providers::openai::{self, wire::OpenAI}, vector_store::{VectorStoreIndex, VectorSearchRequest}};
+/// use rig_core::{providers::openai::{self, OpenAI}, vector_store::{VectorStoreIndex, VectorSearchRequest}};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -90,10 +90,7 @@ struct Field {
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
 /// // <-- replace with your embedding model.
-/// let model = rig_core::Model::new(
-///     openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-///     rig_reqwest::shared(),
-/// );
+/// let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
 ///     model,

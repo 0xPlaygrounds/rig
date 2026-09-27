@@ -33,8 +33,7 @@ fn build_counter_extractor(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let extractor =
-        build_counter_extractor(rig::model(OpenAI::from_env()?.completion(openai::GPT_4)));
+    let extractor = build_counter_extractor(OpenAI::from_env()?.completion(openai::GPT_4));
     let mut current_number = 0;
     let mut step = 1;
     let mut interval = tokio::time::interval(STEP_DELAY);

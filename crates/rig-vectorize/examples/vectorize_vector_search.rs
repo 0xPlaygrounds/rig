@@ -11,11 +11,10 @@
 // 3. Run the example:
 //    cargo run --release --example vectorize_vector_search
 
-use rig_core::Model;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
-    providers::openai::{self, wire::OpenAI},
+    providers::openai::{self, OpenAI},
     vector_store::request::VectorSearchRequest,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
@@ -31,11 +30,9 @@ struct Word {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-        rig_reqwest::shared(),
-    )
-    .erase();
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+        .erase();
 
     let vector_store = VectorizeVectorStore::new(
         model.clone(),

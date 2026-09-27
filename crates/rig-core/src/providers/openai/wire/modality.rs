@@ -30,11 +30,11 @@ use crate::wire::{
 use super::ImageBody;
 #[cfg(feature = "audio")]
 use super::SpeechBody;
-use super::{AcceptedWidths, ModelWidth, OpenAI, TranscriptionBody};
+use super::{AcceptedWidths, ModelWidth, OpenAIConfig, TranscriptionBody};
 
 /// Encode an authenticated JSON POST with whole-response framing.
 fn json_post(
-    provider: &OpenAI,
+    provider: &OpenAIConfig,
     path: &str,
     deployment: Option<&str>,
     body: &serde_json::Value,
@@ -45,7 +45,7 @@ fn json_post(
 /// [`json_post`] against an already-resolved URL, for the endpoints whose
 /// URL is derived rather than a fixed path under the base.
 fn json_post_to(
-    provider: &OpenAI,
+    provider: &OpenAIConfig,
     uri: String,
     body: &serde_json::Value,
 ) -> Result<Encoded, EncodeError> {
@@ -56,7 +56,7 @@ fn json_post_to(
 
 /// The `GET` whose status is the answer, for the two endpoints that send no
 /// body: the model catalogue and the credential check.
-fn get(provider: &OpenAI, path: &str) -> Result<Encoded, EncodeError> {
+fn get(provider: &OpenAIConfig, path: &str) -> Result<Encoded, EncodeError> {
     encoded(
         provider,
         http::Request::get(provider.uri(path, None)),
@@ -68,7 +68,7 @@ fn get(provider: &OpenAI, path: &str) -> Result<Encoded, EncodeError> {
 /// Return construction or hook errors. Use whole-response framing and the
 /// dialect's request-ID header.
 fn encoded(
-    provider: &OpenAI,
+    provider: &OpenAIConfig,
     builder: http::request::Builder,
     body: Body,
 ) -> Result<Encoded, EncodeError> {
@@ -96,7 +96,7 @@ fn unsupported_parameter(provider: &str, parameter: &str) -> EncodeError {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Embeddings {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
     /// The embedding model.
     pub model: String,
     /// The width the caller asked for, when they named one rather than
@@ -110,7 +110,7 @@ pub struct Embeddings {
 
 impl Embeddings {
     /// The embeddings wire for `model`.
-    pub fn new(provider: OpenAI, model: impl Into<String>, ndims: Option<usize>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>, ndims: Option<usize>) -> Self {
         Self {
             provider,
             model: model.into(),
@@ -365,14 +365,14 @@ impl Wire for Embeddings {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Transcriptions {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
     /// Transcription model or Azure deployment identifier.
     pub model: String,
 }
 
 impl Transcriptions {
     /// The transcription wire for `model`.
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
@@ -555,7 +555,7 @@ impl Wire for Transcriptions {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Images {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
     /// The image model.
     pub model: String,
 }
@@ -563,7 +563,7 @@ pub struct Images {
 #[cfg(feature = "image")]
 impl Images {
     /// The image-generation wire for `model`.
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
@@ -799,7 +799,7 @@ impl Wire for Images {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Speech {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
     /// The speech model.
     pub model: String,
 }
@@ -807,7 +807,7 @@ pub struct Speech {
 #[cfg(feature = "audio")]
 impl Speech {
     /// The speech wire for `model`.
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
@@ -949,12 +949,12 @@ impl Wire for Speech {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
 }
 
 impl Models {
     /// The model-listing wire.
-    pub fn new(provider: OpenAI) -> Self {
+    pub fn new(provider: OpenAIConfig) -> Self {
         Self { provider }
     }
 }
@@ -1065,7 +1065,7 @@ impl Wire for Models {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rerank {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
     /// The reranker model.
     pub model: String,
     /// Return only the `top_n` highest-scoring documents, when the caller
@@ -1075,7 +1075,7 @@ pub struct Rerank {
 
 impl Rerank {
     /// The rerank wire for `model`.
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
@@ -1236,12 +1236,12 @@ impl Wire for Rerank {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Verify {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
 }
 
 impl Verify {
     /// The credential-check wire.
-    pub fn new(provider: OpenAI) -> Self {
+    pub fn new(provider: OpenAIConfig) -> Self {
         Self { provider }
     }
 }

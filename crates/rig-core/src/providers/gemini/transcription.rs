@@ -86,7 +86,7 @@ fn transcription_body(
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Transcriptions {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
     /// The model transcribing, for example
     /// [`GEMINI_2_0_FLASH`](super::completion::GEMINI_2_0_FLASH).
     pub model: String,
@@ -94,7 +94,7 @@ pub struct Transcriptions {
 
 impl Transcriptions {
     /// The transcription wire for `model`.
-    pub fn new(provider: super::Gemini, model: impl Into<String>) -> Self {
+    pub fn new(provider: super::GeminiConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),

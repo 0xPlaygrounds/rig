@@ -1,6 +1,6 @@
 use super::*;
 use crate::driver::WireDriver;
-use crate::providers::gemini::{Gemini, PROVIDER_NAME};
+use crate::providers::gemini::{GeminiConfig, PROVIDER_NAME};
 use crate::wire::{Fold, Operation, Reply};
 
 #[test]
@@ -22,7 +22,7 @@ fn test_model_default_ndims_lookup() {
 /// batch body carries `output_dimensionality` unconditionally.
 #[test]
 fn ndims_defaults_from_the_model_identifier() {
-    let gemini = Gemini::new("test_key");
+    let gemini = GeminiConfig::new("test_key");
 
     assert_eq!(gemini.embedding(EMBEDDING_001, None).ndims, 3072);
     assert_eq!(gemini.embedding(EMBEDDING_004, None).ndims, 768);
@@ -32,7 +32,7 @@ fn ndims_defaults_from_the_model_identifier() {
 
 #[test]
 fn an_explicit_ndims_outranks_the_models_default() {
-    let gemini = Gemini::new("test_key");
+    let gemini = GeminiConfig::new("test_key");
 
     assert_eq!(gemini.embedding(EMBEDDING_001, Some(256)).ndims, 256);
 }
@@ -57,7 +57,7 @@ fn recorded_documents() -> Vec<String> {
 
 #[test]
 fn the_batch_request_is_the_recorded_one() {
-    let encoded = Gemini::new("test-key")
+    let encoded = GeminiConfig::new("test-key")
         .embedding(EMBEDDING_001, None)
         .encode(
             vec!["Hello, world!".to_owned(), "Goodbye, world!".to_owned()],
@@ -89,7 +89,7 @@ fn the_batch_request_is_the_recorded_one() {
 
 #[test]
 fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
-    let wire = Gemini::new("test-key").embedding(EMBEDDING_001, Some(256));
+    let wire = GeminiConfig::new("test-key").embedding(EMBEDDING_001, Some(256));
     let mut driver =
         WireDriver::<crate::operation::Embedding, _>::new(wire.decoder(crate::wire::Mode::Unary));
     driver.push(WireFrame::Text(RECORDED_REPLY.to_owned()));

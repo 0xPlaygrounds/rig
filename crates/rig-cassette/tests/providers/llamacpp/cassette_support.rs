@@ -44,7 +44,7 @@
 //! with this name and these arguments) rather than on prose.
 
 use futures::FutureExt;
-use rig::providers::openai::wire::{LLAMACPP, OpenAI, Route};
+use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig, Route};
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -98,7 +98,7 @@ fn versioned(base_url: &str) -> String {
 async fn llamacpp_cassette_on(
     spec: impl Into<CassetteSpec>,
     upstream: &str,
-) -> (ProviderCassette, OpenAI) {
+) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "llamacpp",
@@ -112,7 +112,8 @@ async fn llamacpp_cassette_on(
     // genuinely absent header rather than a placeholder one. The `--api-key`
     // half is pinned by `cassette/error_matrix.rs`, which launches a server
     // that requires it.
-    let llamacpp = OpenAI::with_key(&LLAMACPP, "").with_base_url(versioned(&cassette.base_url()));
+    let llamacpp =
+        OpenAIConfig::with_key(&LLAMACPP, "").with_base_url(versioned(&cassette.base_url()));
 
     (cassette, llamacpp)
 }
@@ -305,7 +306,7 @@ pub(super) async fn with_llamacpp_api_key_cassette<F, Fut>(
         &upstream("LLAMACPP_API_KEY_UPSTREAM", 8089),
     )
     .await;
-    let llamacpp = OpenAI::with_key(&LLAMACPP, CASSETTE_API_KEY)
+    let llamacpp = OpenAIConfig::with_key(&LLAMACPP, CASSETTE_API_KEY)
         .with_base_url(versioned(&cassette.base_url()));
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         llamacpp,
@@ -423,7 +424,7 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
     // base URL and its own default already carries the prefix, so a caller
     // aiming it at `llama-server` supplies that prefix themselves — and,
     // the dialect's flagship being `/responses`, routes it to Chat once.
-    let bare = OpenAI::new("llamacpp-local")
+    let bare = OpenAIConfig::new("llamacpp-local")
         .with_base_url(versioned(&cassette.base_url()))
         .with_route(Route::Chat);
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(

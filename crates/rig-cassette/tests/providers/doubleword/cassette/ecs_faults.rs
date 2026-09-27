@@ -10,7 +10,7 @@
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
 use rig::providers::doubleword::QWEN3_5_397B_A17B;
-use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
+use rig::providers::openai::wire::{DOUBLEWORD, OpenAIConfig};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::cassette_models::OpenAiModels;
 
@@ -97,7 +97,7 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 fn scripted_stream(
     frames: &[String],
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
-    let client = OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY);
+    let client = OpenAIConfig::with_key(&DOUBLEWORD, SCRIPTED_KEY);
     let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
@@ -113,7 +113,7 @@ fn scripted_stream(
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
-    let client = OpenAI::with_key(&DOUBLEWORD, SCRIPTED_KEY);
+    let client = OpenAIConfig::with_key(&DOUBLEWORD, SCRIPTED_KEY);
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,

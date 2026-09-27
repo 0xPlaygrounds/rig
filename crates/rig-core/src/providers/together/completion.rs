@@ -1,9 +1,8 @@
 //! Together AI's completion model identifiers.
 //!
 //! ```no_run
-//! use rig_core::providers::{together, openai::wire::{OpenAI, TOGETHER}};
-//! let wire = OpenAI::from_env_with(&TOGETHER)?
-//!     .chat(together::MIXTRAL_8X7B_INSTRUCT_V0_1);
+//! use rig_core::providers::together;
+//! let model = together::from_env()?.chat(together::MIXTRAL_8X7B_INSTRUCT_V0_1);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

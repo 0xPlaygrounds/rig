@@ -5,12 +5,11 @@
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
 
-use rig_core::Model;
 use rig_core::wire::Wire;
 use std::env;
 
 use rig_core::{
-    providers::openai::{self, wire::OpenAI},
+    providers::openai::{self, OpenAI},
     vector_store::{
         VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
@@ -102,10 +101,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Select the embedding model and generate our embeddings
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        rig_reqwest::shared(),
-    );
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client

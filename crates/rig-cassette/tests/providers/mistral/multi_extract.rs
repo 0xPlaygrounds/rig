@@ -74,7 +74,7 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
     let names_extractor =
         rig::extractor::ExtractorBuilder::<Names>::new(client.completion(DEFAULT_MODEL))
             .append_preamble("Extract names from the given text.")

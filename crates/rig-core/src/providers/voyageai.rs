@@ -16,9 +16,11 @@
 
 use serde::{Deserialize, Serialize};
 
+mod client;
 pub mod wire;
 
-pub use wire::{Embeddings, Rerank, VoyageAi};
+pub use client::VoyageAi;
+pub use wire::{Embeddings, Rerank, VoyageAiConfig};
 
 /// Voyage AI's API root.
 const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";

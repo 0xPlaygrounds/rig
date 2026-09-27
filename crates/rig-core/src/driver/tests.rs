@@ -1025,7 +1025,7 @@ fn a_streamed_listing_keeps_the_cursor_guards() {
 #[tokio::test]
 async fn a_streamed_embedding_yields_one_event_and_finishes_to_the_call() {
     const REPLY: &str = r#"{"object":"list","model":"text-embedding-3-small","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]},{"object":"embedding","index":1,"embedding":[0.3,0.4]}],"usage":{"prompt_tokens":4,"total_tokens":4}}"#;
-    let wire = crate::providers::openai::wire::OpenAI::new("sk-test")
+    let wire = crate::providers::openai::wire::OpenAIConfig::new("sk-test")
         .embedding("text-embedding-3-small", None);
     let texts = || vec!["a".to_owned(), "b".to_owned()];
     let reply = || SequencedHttpClient::new([MockHttpResponse::success(REPLY)]);
@@ -1239,7 +1239,7 @@ fn a_streamed_embedding_records_its_response_on_the_span() {
         recorded: recorded.clone(),
     };
     let subscriber = tracing_subscriber::registry().with(layer);
-    let wire = crate::providers::openai::wire::OpenAI::new("sk-test")
+    let wire = crate::providers::openai::wire::OpenAIConfig::new("sk-test")
         .embedding("text-embedding-3-small", None);
     let model = Model::new(
         wire,

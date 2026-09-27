@@ -2,9 +2,8 @@ use std::io::Write;
 
 use anyhow::Context;
 use futures::StreamExt;
-use rig::Model;
 use rig::candle::CandleCompletionResponse;
-use rig::candle::{CandleModel, Generation, ModelData};
+use rig::candle::{CandleModel, ModelData};
 use rig::completion::CompletionRequestBuilder;
 use rig::streaming::{Delta, StreamEvent};
 
@@ -27,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
         tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
         weights: std::fs::read(model_dir.join("model.gguf"))?,
     })?;
-    let model = Model::new(Generation, candle);
+    let model = candle.completion();
     let request = CompletionRequestBuilder::new(prompt)
         .preamble("You are a concise and helpful assistant.".to_string())
         .temperature(0.0)

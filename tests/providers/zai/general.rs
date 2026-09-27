@@ -8,7 +8,7 @@ use crate::zai::general_client;
 #[tokio::test]
 #[ignore = "requires ZAI_API_KEY"]
 async fn general_openai_compatible_completion_smoke() {
-    let response = rig::AgentBuilder::new(rig::model(general_client().completion(zai::GLM_4_6)))
+    let response = rig::AgentBuilder::new(general_client().completion(zai::GLM_4_6))
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

@@ -73,7 +73,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires GROQ_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let agent = rig::AgentBuilder::new(groq
         .completion(TYPED_PROMPT_TOOLS_MODEL))
         .preamble(

@@ -140,10 +140,12 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
+    let openai_client = openai::OpenAIConfig::new("TEST")
+        .with_base_url(server.base_url())
+        .client();
 
     // Select the embedding model and generate our embeddings
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let embeddings = create_embeddings(model.clone()).await;
 

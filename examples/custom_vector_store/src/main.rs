@@ -10,7 +10,7 @@ use redis::{
 use rig::{
     operation::Embedding,
     prelude::*,
-    providers::openai::{self, wire::OpenAI},
+    providers::openai::{self, OpenAI},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -184,7 +184,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize the OpenAI embeddings provider from the environment
     let openai_client = OpenAI::from_env()?;
     // Pair the embedding wire with the transport
-    let embedding_model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Create the Redis vector store
     let mut store =

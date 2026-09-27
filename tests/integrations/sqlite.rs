@@ -145,8 +145,12 @@ async fn vector_search_test() {
             ));
     });
 
-    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None)).erase();
+    let openai_client = openai::OpenAIConfig::new("TEST")
+        .with_base_url(server.base_url())
+        .client();
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .erase();
 
     let embeddings = create_embeddings(model.clone()).await;
 
@@ -226,8 +230,12 @@ async fn insert_documents_test() {
         ));
     });
 
-    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None)).erase();
+    let openai_client = openai::OpenAIConfig::new("TEST")
+        .with_base_url(server.base_url())
+        .client();
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .erase();
     let embeddings = create_embeddings(model.clone()).await;
 
     let vector_store: SqliteVectorStore<Word> =

@@ -1193,7 +1193,7 @@ const STREAMED_INTERACTION: &str = concat!(
 );
 
 fn interactions_wire() -> Interactions {
-    crate::providers::gemini::Gemini::new("test-key").interactions("gemini-3-flash-preview")
+    crate::providers::gemini::GeminiConfig::new("test-key").interactions("gemini-3-flash-preview")
 }
 
 fn probe() -> CompletionRequest {
@@ -1372,7 +1372,7 @@ fn the_interactions_wire_keeps_its_span_names() {
 /// onward \u2014 byte-for-byte the two requests the client layer sent.
 #[test]
 fn one_interaction_is_polled_unary_and_resumed_streamed() {
-    let gemini = crate::providers::gemini::Gemini::new("test-key");
+    let gemini = crate::providers::gemini::GeminiConfig::new("test-key");
 
     let poll = gemini
         .interaction("v1_REDACTED_1")
@@ -1423,7 +1423,7 @@ fn one_interaction_is_polled_unary_and_resumed_streamed() {
 #[tokio::test]
 async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
     let response = crate::driver::Model::new(
-        crate::providers::gemini::Gemini::new("test-key").interaction("v1_REDACTED_1"),
+        crate::providers::gemini::GeminiConfig::new("test-key").interaction("v1_REDACTED_1"),
         RecordingHttpClient::new(UNARY_INTERACTION),
     )
     .call(probe())

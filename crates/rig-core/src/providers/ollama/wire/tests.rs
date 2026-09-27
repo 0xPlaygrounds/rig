@@ -77,7 +77,7 @@ fn text_of(choice: &[AssistantContent]) -> String {
 #[tokio::test]
 async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
     let buffered = crate::driver::Model::new(
-        Ollama::new().completion("qwen3:4b"),
+        OllamaConfig::new().completion("qwen3:4b"),
         RecordingHttpClient::new(UNARY_BODY),
     )
     .call(recorded_request())
@@ -85,7 +85,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
     .expect("the recorded reply decodes");
 
     let streaming = crate::driver::Model::new(
-        Ollama::new().completion("qwen3:4b"),
+        OllamaConfig::new().completion("qwen3:4b"),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from_static(STREAM_BODY.as_bytes()),
         },
@@ -122,7 +122,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
 /// `streaming/streaming_smoke.yaml` true).
 #[test]
 fn the_mode_is_the_only_difference_between_the_two_requests() {
-    let wire = Ollama::new().completion("qwen3:4b");
+    let wire = OllamaConfig::new().completion("qwen3:4b");
     let unary = wire
         .encode(recorded_request(), Mode::Unary)
         .expect("the request encodes");
@@ -151,7 +151,7 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
 async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
     let body = r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"<think>weighing it up</think>the answer"},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#;
     let response = crate::driver::Model::new(
-        Ollama::new().completion("deepseek-r1"),
+        OllamaConfig::new().completion("deepseek-r1"),
         RecordingHttpClient::new(body),
     )
     .call(recorded_request())
@@ -183,7 +183,7 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
         "\n",
     );
     let bound = crate::driver::Model::new(
-        Ollama::new().completion("deepseek-r1"),
+        OllamaConfig::new().completion("deepseek-r1"),
         MockStreamingClient {
             sse_bytes: bytes::Bytes::from(stream),
         },
@@ -206,7 +206,7 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
 /// never from the file.
 #[test]
 fn a_serialized_config_round_trips_everything_but_the_credential() {
-    let wire = Ollama::new()
+    let wire = OllamaConfig::new()
         .with_base_url("http://ollama.internal:11434")
         .completion("qwen3:4b");
     let serialized = serde_json::to_string(&wire).expect("the wire serializes");
@@ -217,7 +217,7 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
 
     // A proxied daemon does take a credential, and that one never travels.
     a_config_reloads_without_its_credential(
-        &Ollama::new().with_api_key("ollama-proxy-key"),
+        &OllamaConfig::new().with_api_key("ollama-proxy-key"),
         "ollama-proxy-key",
         |ollama| &ollama.api_key,
     );
@@ -225,7 +225,7 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
 
 #[test]
 fn a_local_daemon_sends_no_authorization_header() {
-    let encoded = Ollama::new()
+    let encoded = OllamaConfig::new()
         .completion("qwen3:4b")
         .encode(recorded_request(), Mode::Unary)
         .expect("the request encodes");
@@ -235,7 +235,7 @@ fn a_local_daemon_sends_no_authorization_header() {
     assert_eq!(request.uri(), "http://localhost:11434/api/chat");
     assert!(!request.headers().contains_key(http::header::AUTHORIZATION));
 
-    let encoded = Ollama::new()
+    let encoded = OllamaConfig::new()
         .with_api_key("ollama-proxy-key")
         .completion("qwen3:4b")
         .encode(recorded_request(), Mode::Unary)
@@ -259,7 +259,7 @@ const MODELS_BODY: &str = r#"{"models":[{"name":"all-minilm:latest","model":"all
 #[tokio::test]
 async fn the_model_listing_reads_every_installed_model() {
     let models = crate::driver::Model::new(
-        Ollama::new().models(),
+        OllamaConfig::new().models(),
         RecordingHttpClient::new(MODELS_BODY),
     )
     .call(())
@@ -283,7 +283,7 @@ const EMBED_BODY: &str = r#"{"model":"all-minilm","embeddings":[[0.5,-0.25],[0.1
 #[tokio::test]
 async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     let response = crate::driver::Model::new(
-        Ollama::new().embedding("all-minilm", None),
+        OllamaConfig::new().embedding("all-minilm", None),
         RecordingHttpClient::new(EMBED_BODY),
     )
     .call(vec!["first".to_owned(), "second".to_owned()])
@@ -311,11 +311,13 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
 #[test]
 fn an_embedding_wire_reports_the_models_published_width() {
     assert_eq!(
-        Ollama::new().embedding("all-minilm", None).capabilities(),
+        OllamaConfig::new()
+            .embedding("all-minilm", None)
+            .capabilities(),
         EmbeddingCapabilities::new(1024, 384)
     );
     assert_eq!(
-        Ollama::new()
+        OllamaConfig::new()
             .embedding("qwen3-embedding", Some(2048))
             .capabilities(),
         EmbeddingCapabilities::new(1024, 2048),

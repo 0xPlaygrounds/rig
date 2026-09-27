@@ -91,7 +91,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let model = OpenAiModels::from_env_with(&rig::providers::openai::wire::OPENROUTER)
+    let model = OpenAiModels::from_env_for(&rig::providers::openai::wire::OPENROUTER)
         .expect("OPENROUTER_API_KEY")
         .completion(CACHE_MODEL);
     let observation = run_cache_probe(model, &probe()).await;

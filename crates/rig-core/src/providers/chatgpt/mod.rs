@@ -1,14 +1,15 @@
 //! ChatGPT subscription authentication and Responses-format dialect configuration.
 //!
-//! Use an exchanged access token from the environment, or sign in through [`auth`]
-//! and pass the resolved token to [`OpenAI::with_key`](crate::providers::openai::OpenAI::with_key).
+//! [`from_env`] reads an exchanged access token from the environment. To sign
+//! in through [`auth`], pass an [`auth::Authenticator`] to
+//! [`OpenAI::authenticate`](crate::providers::openai::OpenAI::authenticate) on a
+//! client of this dialect.
 //!
 //! ```no_run
 //! use rig_core::providers::chatgpt;
-//! use rig_core::providers::openai::OpenAI;
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = OpenAI::from_env_with(&chatgpt::DIALECT)?.completion(chatgpt::GPT_5_3_CODEX);
+//! let model = chatgpt::from_env()?.completion(chatgpt::GPT_5_3_CODEX);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -73,3 +74,5 @@ pub const DIALECT: Dialect = Dialect {
 pub(crate) fn session_id() -> String {
     crate::id::generate()
 }
+
+crate::providers::internal::client::openai_vendor!(DIALECT, "ChatGPT");

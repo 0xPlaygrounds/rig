@@ -2,7 +2,7 @@
 //! Requires a local Ollama server and the `derive` feature.
 //! Run it to compare semantic search results and matching document ids.
 
-use rig::providers::ollama::wire::Ollama;
+use rig::providers::ollama::OllamaConfig;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
@@ -69,9 +69,11 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let client = Ollama::new().with_base_url("http://localhost:11434");
+    let client = OllamaConfig::new()
+        .with_base_url("http://localhost:11434")
+        .client();
 
-    let embedding_model = rig::model(client.embedding("nomic-embed-text", None)).erase();
+    let embedding_model = client.embedding("nomic-embed-text", None).erase();
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(sample_documents())?

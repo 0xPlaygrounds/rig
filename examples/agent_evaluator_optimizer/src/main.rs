@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI Responses API to the default transport
     let openai_client = OpenAI::from_env()?;
     // One model serves both agents: erase it once, clone the handle.
-    let model = rig::model(openai_client.completion(openai::GPT_4)).erase();
+    let model = openai_client.completion(openai::GPT_4).erase();
 
     let generator_agent = AgentBuilder::new(model.clone())
         .preamble(

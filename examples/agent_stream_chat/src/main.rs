@@ -31,7 +31,7 @@ fn sample_history() -> Vec<Message> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = AgentBuilder::new(rig::model(OpenAI::from_env()?.completion(openai::GPT_4)))
+    let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4))
         .preamble(PREAMBLE)
         .build();
 

@@ -102,8 +102,8 @@ Example usage
 ```rust
     // OpenAI's embeddings wire on the default transport, erased once: the
     // builder and the store each take a clone of the handle.
-    let model = rig::model(rig::providers::openai::wire::OpenAI::from_env()?
-            .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None))
+    let model = rig::providers::openai::OpenAI::from_env()?
+            .embedding(rig::providers::openai::TEXT_EMBEDDING_3_SMALL, None)
         .erase();
 
     // connect to Postgres

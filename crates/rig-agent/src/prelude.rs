@@ -15,7 +15,7 @@ pub use crate::agent::{
 };
 pub use crate::completion::{Message, PromptError, StructuredOutputError};
 pub use crate::tool::{Tool, ToolSet};
-pub use rig_core::driver::{DynModel, Model, Transport};
+pub use rig_core::driver::{DynModel, Model};
 pub use rig_core::error::ProviderError;
 
 pub use rig_core::Embed;

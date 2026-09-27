@@ -1,6 +1,5 @@
 //! Together tools smoke test.
 
-use rig::providers::openai::wire::{OpenAI, TOGETHER};
 use rig::providers::together;
 
 use crate::support::{
@@ -10,14 +9,12 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn tools_smoke() {
-    let provider = OpenAI::from_env_with(&TOGETHER).expect("config should build from env");
-    let agent = rig::AgentBuilder::new(rig::model(
-        provider.completion(together::MIXTRAL_8X7B_INSTRUCT_V0_1),
-    ))
-    .preamble(TOOLS_PREAMBLE)
-    .tool(Adder)
-    .tool(Subtract)
-    .build();
+    let provider = together::from_env().expect("config should build from env");
+    let agent = rig::AgentBuilder::new(provider.completion(together::MIXTRAL_8X7B_INSTRUCT_V0_1))
+        .preamble(TOOLS_PREAMBLE)
+        .tool(Adder)
+        .tool(Subtract)
+        .build();
 
     let response = agent
         .prompt(TOOLS_PROMPT)

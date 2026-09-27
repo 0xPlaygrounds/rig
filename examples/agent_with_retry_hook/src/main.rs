@@ -100,7 +100,7 @@ impl AgentHook for RetryOnMarker {
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?;
     // One model serves both agents: erase it once, clone the handle.
-    let model = rig::model(client.completion(openai::GPT_4O_MINI)).erase();
+    let model = client.completion(openai::GPT_4O_MINI).erase();
     let agent = AgentBuilder::new(model.clone())
         .preamble(
             "Follow this protocol exactly. For the initial request, reply exactly \

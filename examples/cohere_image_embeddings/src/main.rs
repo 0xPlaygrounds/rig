@@ -5,6 +5,7 @@
 //! ```text
 //! cargo run -p cohere_image_embeddings -- path/to/image.png
 //! ```
+//!
 
 use anyhow::{Context, Result};
 use rig::providers::cohere::Cohere;
@@ -20,7 +21,7 @@ async fn main() -> Result<()> {
     let cohere = Cohere::from_env()?;
     // Embed v3 embeds images with one fixed model at one fixed width, so the
     // image-embedding wire takes neither a model name nor a dimension count.
-    let model = rig::model(cohere.image_embedding());
+    let model = cohere.image_embedding();
     let response = model.call(vec![image.clone()]).await?;
     let embedding = response
         .embeddings

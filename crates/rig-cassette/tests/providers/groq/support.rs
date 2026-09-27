@@ -3,11 +3,11 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig::providers::openai::wire::{GROQ, OpenAIConfig};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "groq",
@@ -15,7 +15,7 @@ async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Open
         GROQ.base_url,
     )
     .await;
-    let groq = OpenAI::with_key(&GROQ, cassette.api_key("GROQ_API_KEY"))
+    let groq = OpenAIConfig::with_key(&GROQ, cassette.api_key("GROQ_API_KEY"))
         .with_base_url(cassette.base_url());
 
     (cassette, groq)
@@ -59,8 +59,8 @@ where
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let groq =
-        OpenAI::with_key(&GROQ, "gsk-invalid-edge-matrix-key").with_base_url(cassette.base_url());
+    let groq = OpenAIConfig::with_key(&GROQ, "gsk-invalid-edge-matrix-key")
+        .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         groq,
         rig::rig_reqwest::shared(),

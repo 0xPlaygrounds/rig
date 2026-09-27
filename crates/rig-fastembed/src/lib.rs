@@ -10,10 +10,7 @@
 //! use rig_fastembed::{Fastembed, FastembedModel, text_embeddings};
 //!
 //! # fn run() -> Result<(), rig_fastembed::FastembedError> {
-//! let model = Model::new(
-//!     text_embeddings(&FastembedModel::AllMiniLML6V2Q, None)?,
-//!     Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?,
-//! );
+//! let model = Fastembed::load(&FastembedModel::AllMiniLML6V2Q)?.embedding(&FastembedModel::AllMiniLML6V2Q, None)?;
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -30,7 +27,7 @@ pub use fastembed::EmbeddingModel as FastembedModel;
 #[cfg(feature = "hf-hub")]
 use fastembed::InitOptions;
 use fastembed::{InitOptionsUserDefined, TextEmbedding, UserDefinedEmbeddingModel};
-use rig_core::driver::{Local, Observation, Opened, Transport};
+use rig_core::driver::{Local, Model, Observation, Opened, Transport};
 use rig_core::embeddings;
 use rig_core::error::ProviderError;
 use rig_core::operation::{Embedding, EmbeddingCapabilities};
@@ -105,6 +102,19 @@ impl Fastembed {
         Ok(Self {
             embedder: Arc::new(embedder),
         })
+    }
+
+    /// The embedding model of `model` at `ndims` dimensions, on this
+    /// runtime: the [`text_embeddings`] wire, which fails for a model
+    /// `fastembed` does not know when `ndims` is `None`. `model` names what
+    /// spans and capabilities report; this runtime embeds with whatever it
+    /// loaded.
+    pub fn embedding(
+        &self,
+        model: &FastembedModel,
+        ndims: Option<usize>,
+    ) -> Result<Model<Local<Embedding>, Self>, FastembedError> {
+        Ok(Model::new(text_embeddings(model, ndims)?, self.clone()))
     }
 
     /// Loads a caller-supplied ONNX model.

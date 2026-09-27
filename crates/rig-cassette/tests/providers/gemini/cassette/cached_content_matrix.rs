@@ -48,10 +48,11 @@
 //! RIG_PROVIDER_TEST_MODE=record cargo test -p rig --test gemini --all-features \
 //!     cached_content_matrix -- --test-threads=1
 //! ```
+//!
 
 use rig::error::ProviderError;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
-use rig::providers::gemini::{self, Gemini};
+use rig::providers::gemini::{self, GeminiConfig};
 use rig_test_support::cassette_models::GeminiModels;
 use rig_test_support::cassette_models::MapWire;
 use std::time::Duration;
@@ -340,7 +341,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
     use super::super::tools_support::CountingPing;
 
     let client = GeminiModels::new(
-        Gemini::new("not-a-real-key").with_base_url("http://127.0.0.1:1"),
+        GeminiConfig::new("not-a-real-key").with_base_url("http://127.0.0.1:1"),
         rig::rig_reqwest::shared(),
     );
 

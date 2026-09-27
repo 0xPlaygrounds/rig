@@ -8,12 +8,11 @@ use rig_cassette::{
     ecs::{EffectLogResource, Replay, ReplayPlugin},
     effect_log::EffectLog,
 };
-use rig_core::Model;
+use rig_core::providers::openai::OpenAIConfig;
 use rig_core::{
     completion::CompletionRequestBuilder,
     effect::EffectKind,
     error::{ErrorKind, ErrorReport},
-    providers::openai::wire::OpenAI,
     serve::{ErasedHandler, adapters::ModelAdapter},
     test_utils::RecordingHttpClient,
 };
@@ -34,12 +33,11 @@ fn app() -> App {
 }
 
 fn assemble() -> ErasedHandler {
-    let model = Model::new(
-        OpenAI::new("demonstration-only")
-            .with_base_url("http://offline.invalid/v1")
-            .chat("demo"),
-        RecordingHttpClient::new(BODY),
-    );
+    let model = OpenAIConfig::new("demonstration-only")
+        .with_base_url("http://offline.invalid/v1")
+        .client()
+        .with_http(RecordingHttpClient::new(BODY))
+        .chat("demo");
     ErasedHandler::new(ModelAdapter::new("demo", model))
 }
 

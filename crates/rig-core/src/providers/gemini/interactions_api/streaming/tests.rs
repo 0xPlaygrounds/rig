@@ -36,7 +36,7 @@ fn interactions_stream(
             .collect::<String>(),
     );
     crate::driver::Model::new(
-        crate::providers::gemini::Gemini::new("test-key").interactions("gemini-2.5-pro"),
+        crate::providers::gemini::GeminiConfig::new("test-key").interactions("gemini-2.5-pro"),
         crate::test_utils::MockStreamingClient { sse_bytes },
     )
 }

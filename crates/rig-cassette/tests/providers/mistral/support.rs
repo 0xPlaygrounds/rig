@@ -3,19 +3,19 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::providers::openai::wire::{MISTRAL, OpenAI};
+use rig::providers::openai::wire::{MISTRAL, OpenAIConfig};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 const MISTRAL_BASE_URL: &str = "https://api.mistral.ai";
 
 /// The Mistral config pointed at `cassette`.
-fn mistral_config(cassette: &ProviderCassette) -> OpenAI {
-    OpenAI::with_key(&MISTRAL, cassette.api_key("MISTRAL_API_KEY"))
+fn mistral_config(cassette: &ProviderCassette) -> OpenAIConfig {
+    OpenAIConfig::with_key(&MISTRAL, cassette.api_key("MISTRAL_API_KEY"))
         .with_base_url(cassette.base_url())
 }
 
-async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "mistral",
@@ -112,8 +112,8 @@ where
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let client =
-        OpenAI::with_key(&MISTRAL, "invalid-edge-matrix-key").with_base_url(cassette.base_url());
+    let client = OpenAIConfig::with_key(&MISTRAL, "invalid-edge-matrix-key")
+        .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
         rig::rig_reqwest::shared(),

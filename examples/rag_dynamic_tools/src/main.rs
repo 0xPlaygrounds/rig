@@ -136,8 +136,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // One OpenAI config serves both: completions go to the Responses API,
     // embeddings to the shared REST surface.
     let openai_client = OpenAI::from_env()?;
-    let embedding_model =
-        rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None)).erase();
+    let embedding_model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .erase();
     let mut toolset = ToolSet::default();
     toolset.add_retrieved_tool(Add)?;
     toolset.add_retrieved_tool(Subtract)?;
@@ -154,7 +155,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let index = vector_store.index(embedding_model);
 
     // Create RAG agent with a single context prompt and a dynamic tool source
-    let calculator_rag = AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4)))
+    let calculator_rag = AgentBuilder::new(openai_client.completion(openai::GPT_4))
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         // Add a dynamic tool source with a sample rate of 1 (i.e.: only
         // 1 additional tool will be added to prompts)

@@ -1,6 +1,6 @@
 //! vLLM OpenAI-compatible Responses API regression tests.
 
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use rig::providers::openai::responses_api::CompletionResponse as ProviderResponse;
 use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize;
@@ -25,7 +25,7 @@ where
         &base_url,
     )
     .await;
-    let client = OpenAI::new("dummy-vllm-key").with_base_url(cassette.base_url());
+    let client = OpenAIConfig::new("dummy-vllm-key").with_base_url(cassette.base_url());
 
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,

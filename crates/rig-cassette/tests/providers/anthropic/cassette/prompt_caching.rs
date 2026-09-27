@@ -8,7 +8,7 @@ use rig::driver::Model;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
-use rig::providers::anthropic::wire::Anthropic;
+use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::providers::anthropic::wire::Messages;
 use rig::streaming::{Delta, StreamEvent};
 use rig_test_support::cassette_models::AnthropicModels;
@@ -290,7 +290,7 @@ async fn run_matrix_body(
 /// regression that starts sending requests.
 fn unreachable_anthropic_client() -> AnthropicModels {
     AnthropicModels::new(
-        Anthropic::new("client-side-error-test-key").with_base_url("http://127.0.0.1:9"),
+        AnthropicConfig::new("client-side-error-test-key").with_base_url("http://127.0.0.1:9"),
         rig::rig_reqwest::shared(),
     )
 }

@@ -14,6 +14,7 @@
 //! export VECTORIZE_INDEX_NAME="rig-integration-test"
 //! cargo test --package rig-vectorize --test integration_tests
 //! ```
+//!
 
 use rig::Embed;
 use rig::embeddings::{EmbedError, Embedding, TextEmbedder};

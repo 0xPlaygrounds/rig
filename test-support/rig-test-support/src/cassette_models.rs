@@ -14,36 +14,41 @@ use rig_core::providers::{anthropic, cohere, copilot, gemini, ollama, openai};
 #[derive(Clone, Debug)]
 pub struct OpenAiModels {
     /// The provider configuration.
-    pub config: openai::OpenAI,
+    pub config: openai::OpenAIConfig,
     /// The transport every model sends through.
     pub http: DynHttpClient,
 }
 
 impl OpenAiModels {
     /// `config`'s models, sent through `http`.
-    pub fn new(config: openai::OpenAI, http: impl HttpClientExt + 'static) -> Self {
+    pub fn new(config: openai::OpenAIConfig, http: impl HttpClientExt + 'static) -> Self {
         Self {
             config,
             http: DynHttpClient::new(http),
         }
     }
 
+    /// The client these models are built from.
+    fn client(&self) -> openai::OpenAI {
+        self.config.clone().connect(self.http.clone())
+    }
+
     /// Official OpenAI from the environment, on the shared reqwest client:
     /// what a live cell calls.
     pub fn from_env() -> Result<Self, EnvError> {
-        Self::from_env_with(&openai::wire::OPENAI)
+        Self::from_env_for(&openai::wire::OPENAI)
     }
 
     /// `dialect` from the environment, on the shared reqwest client.
-    pub fn from_env_with(dialect: &openai::wire::Dialect) -> Result<Self, EnvError> {
+    pub fn from_env_for(dialect: &openai::wire::Dialect) -> Result<Self, EnvError> {
         Ok(Self::new(
-            openai::OpenAI::from_env_with(dialect)?,
+            openai::OpenAIConfig::from_env_with(dialect)?,
             rig_reqwest::shared(),
         ))
     }
 
     /// The same models with the configuration `f` returns.
-    pub fn map_config(self, f: impl FnOnce(openai::OpenAI) -> openai::OpenAI) -> Self {
+    pub fn map_config(self, f: impl FnOnce(openai::OpenAIConfig) -> openai::OpenAIConfig) -> Self {
         Self {
             config: f(self.config),
             http: self.http,
@@ -52,7 +57,7 @@ impl OpenAiModels {
 
     /// The completion model for `model`, on the configuration's route.
     pub fn completion(&self, model: impl Into<String>) -> Model<openai::wire::OpenAiWire> {
-        Model::new(self.config.completion(model), self.http.clone())
+        self.client().completion(model)
     }
 
     /// The Responses model for `model`.
@@ -60,12 +65,12 @@ impl OpenAiModels {
         &self,
         model: impl Into<String>,
     ) -> Model<openai::responses_api::wire::Responses> {
-        Model::new(self.config.responses(model), self.http.clone())
+        self.client().responses(model)
     }
 
     /// The Chat Completions model for `model`.
     pub fn chat(&self, model: impl Into<String>) -> Model<openai::wire::Chat> {
-        Model::new(self.config.chat(model), self.http.clone())
+        self.client().chat(model)
     }
 
     /// The embedding model for `model`.
@@ -74,41 +79,37 @@ impl OpenAiModels {
         model: impl Into<String>,
         ndims: Option<usize>,
     ) -> Model<openai::wire::Embeddings> {
-        Model::new(self.config.embedding(model, ndims), self.http.clone())
+        self.client().embedding(model, ndims)
     }
 
     /// The rerank model for `model`.
     pub fn rerank(&self, model: impl Into<String>) -> Model<openai::wire::Rerank> {
-        Model::new(self.config.rerank(model), self.http.clone())
+        self.client().rerank(model)
     }
 
     /// The transcription model for `model`.
     pub fn transcription(&self, model: impl Into<String>) -> Model<openai::wire::Transcriptions> {
-        Model::new(self.config.transcription(model), self.http.clone())
+        self.client().transcription(model)
     }
 
     /// The image-generation model for `model`.
     pub fn image_generation(&self, model: impl Into<String>) -> Model<openai::wire::Images> {
-        Model::new(self.config.image_generation(model), self.http.clone())
+        self.client().image_generation(model)
     }
 
     /// The speech model for `model`.
     pub fn audio_generation(&self, model: impl Into<String>) -> Model<openai::wire::Speech> {
-        Model::new(self.config.audio_generation(model), self.http.clone())
+        self.client().audio_generation(model)
     }
 
     /// The provider's model listing.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        Model::new(self.config.models(), self.http.clone())
-            .call(())
-            .await
+        self.client().list_models().await
     }
 
     /// The provider's credential check.
     pub async fn verify(&self) -> Result<(), ProviderError> {
-        Model::new(self.config.verify(), self.http.clone())
-            .verify()
-            .await
+        self.client().verify().await
     }
 }
 
@@ -116,25 +117,30 @@ impl OpenAiModels {
 #[derive(Clone, Debug)]
 pub struct AnthropicModels {
     /// The provider configuration.
-    pub config: anthropic::wire::Anthropic,
+    pub config: anthropic::AnthropicConfig,
     /// The transport every model sends through.
     pub http: DynHttpClient,
 }
 
 impl AnthropicModels {
     /// `config`'s models, sent through `http`.
-    pub fn new(config: anthropic::wire::Anthropic, http: impl HttpClientExt + 'static) -> Self {
+    pub fn new(config: anthropic::AnthropicConfig, http: impl HttpClientExt + 'static) -> Self {
         Self {
             config,
             http: DynHttpClient::new(http),
         }
     }
 
+    /// The client these models are built from.
+    fn client(&self) -> anthropic::Anthropic {
+        self.config.clone().connect(self.http.clone())
+    }
+
     /// The provider from the environment, on the shared reqwest client:
     /// what a live cell calls.
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
-            anthropic::wire::Anthropic::from_env()?,
+            anthropic::AnthropicConfig::from_env()?,
             rig_reqwest::shared(),
         ))
     }
@@ -142,7 +148,7 @@ impl AnthropicModels {
     /// The same models with the configuration `f` returns.
     pub fn map_config(
         self,
-        f: impl FnOnce(anthropic::wire::Anthropic) -> anthropic::wire::Anthropic,
+        f: impl FnOnce(anthropic::AnthropicConfig) -> anthropic::AnthropicConfig,
     ) -> Self {
         Self {
             config: f(self.config),
@@ -152,21 +158,17 @@ impl AnthropicModels {
 
     /// The Messages model for `model`.
     pub fn completion(&self, model: impl Into<String>) -> Model<anthropic::Messages> {
-        Model::new(self.config.completion(model), self.http.clone())
+        self.client().completion(model)
     }
 
     /// The provider's model listing.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        Model::new(self.config.models(), self.http.clone())
-            .call(())
-            .await
+        self.client().list_models().await
     }
 
     /// The provider's credential check.
     pub async fn verify(&self) -> Result<(), ProviderError> {
-        Model::new(self.config.verify(), self.http.clone())
-            .verify()
-            .await
+        self.client().verify().await
     }
 }
 
@@ -174,25 +176,30 @@ impl AnthropicModels {
 #[derive(Clone, Debug)]
 pub struct GeminiModels {
     /// The provider configuration.
-    pub config: gemini::Gemini,
+    pub config: gemini::GeminiConfig,
     /// The transport every model sends through.
     pub http: DynHttpClient,
 }
 
 impl GeminiModels {
     /// `config`'s models, sent through `http`.
-    pub fn new(config: gemini::Gemini, http: impl HttpClientExt + 'static) -> Self {
+    pub fn new(config: gemini::GeminiConfig, http: impl HttpClientExt + 'static) -> Self {
         Self {
             config,
             http: DynHttpClient::new(http),
         }
     }
 
+    /// The client these models are built from.
+    fn client(&self) -> gemini::Gemini {
+        self.config.clone().connect(self.http.clone())
+    }
+
     /// The provider from the environment, on the shared reqwest client:
     /// what a live cell calls.
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
-            gemini::Gemini::from_env()?,
+            gemini::GeminiConfig::from_env()?,
             rig_reqwest::shared(),
         ))
     }
@@ -202,7 +209,7 @@ impl GeminiModels {
         &self,
         model: impl Into<String>,
     ) -> Model<gemini::completion::GenerateContent> {
-        Model::new(self.config.completion(model), self.http.clone())
+        self.client().completion(model)
     }
 
     /// The Interactions model for `model`.
@@ -210,7 +217,7 @@ impl GeminiModels {
         &self,
         model: impl Into<String>,
     ) -> Model<gemini::interactions_api::Interactions> {
-        Model::new(self.config.interactions(model), self.http.clone())
+        self.client().interactions(model)
     }
 
     /// The model that reads the interaction `interaction_id`.
@@ -218,7 +225,7 @@ impl GeminiModels {
         &self,
         interaction_id: impl Into<String>,
     ) -> Model<gemini::interactions_api::InteractionResume> {
-        Model::new(self.config.interaction(interaction_id), self.http.clone())
+        self.client().interaction(interaction_id)
     }
 
     /// The model that resumes the interaction `interaction_id` after
@@ -228,11 +235,8 @@ impl GeminiModels {
         interaction_id: impl Into<String>,
         last_event_id: Option<&str>,
     ) -> Model<gemini::interactions_api::InteractionResume> {
-        Model::new(
-            self.config
-                .interaction_resumed(interaction_id, last_event_id),
-            self.http.clone(),
-        )
+        self.client()
+            .interaction_resumed(interaction_id, last_event_id)
     }
 
     /// The embedding model for `model`.
@@ -241,7 +245,7 @@ impl GeminiModels {
         model: impl Into<String>,
         ndims: Option<usize>,
     ) -> Model<gemini::embedding::Embeddings> {
-        Model::new(self.config.embedding(model, ndims), self.http.clone())
+        self.client().embedding(model, ndims)
     }
 
     /// The transcription model for `model`.
@@ -249,7 +253,7 @@ impl GeminiModels {
         &self,
         model: impl Into<String>,
     ) -> Model<gemini::transcription::Transcriptions> {
-        Model::new(self.config.transcription(model), self.http.clone())
+        self.client().transcription(model)
     }
 
     /// The image-generation model for `model`.
@@ -257,26 +261,22 @@ impl GeminiModels {
         &self,
         model: impl Into<String>,
     ) -> Model<gemini::image_generation::Images> {
-        Model::new(self.config.image_generation(model), self.http.clone())
+        self.client().image_generation(model)
     }
 
     /// The explicit context cache.
     pub fn cached_contents(&self) -> Model<gemini::CachedContents> {
-        Model::new(self.config.cached_contents(), self.http.clone())
+        self.client().cached_contents()
     }
 
     /// The provider's model listing.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        Model::new(self.config.models(), self.http.clone())
-            .call(())
-            .await
+        self.client().list_models().await
     }
 
     /// The provider's credential check.
     pub async fn verify(&self) -> Result<(), ProviderError> {
-        Model::new(self.config.verify(), self.http.clone())
-            .verify()
-            .await
+        self.client().verify().await
     }
 }
 
@@ -284,32 +284,37 @@ impl GeminiModels {
 #[derive(Clone, Debug)]
 pub struct CohereModels {
     /// The provider configuration.
-    pub config: cohere::Cohere,
+    pub config: cohere::CohereConfig,
     /// The transport every model sends through.
     pub http: DynHttpClient,
 }
 
 impl CohereModels {
     /// `config`'s models, sent through `http`.
-    pub fn new(config: cohere::Cohere, http: impl HttpClientExt + 'static) -> Self {
+    pub fn new(config: cohere::CohereConfig, http: impl HttpClientExt + 'static) -> Self {
         Self {
             config,
             http: DynHttpClient::new(http),
         }
     }
 
+    /// The client these models are built from.
+    fn client(&self) -> cohere::Cohere {
+        self.config.clone().connect(self.http.clone())
+    }
+
     /// The provider from the environment, on the shared reqwest client:
     /// what a live cell calls.
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
-            cohere::Cohere::from_env()?,
+            cohere::CohereConfig::from_env()?,
             rig_reqwest::shared(),
         ))
     }
 
     /// The chat model for `model`.
     pub fn completion(&self, model: impl Into<String>) -> Model<cohere::Chat> {
-        Model::new(self.config.completion(model), self.http.clone())
+        self.client().completion(model)
     }
 
     /// The text-embedding model for `model`.
@@ -318,12 +323,12 @@ impl CohereModels {
         model: impl Into<String>,
         ndims: Option<usize>,
     ) -> Model<cohere::Embeddings> {
-        Model::new(self.config.embedding(model, ndims), self.http.clone())
+        self.client().embedding(model, ndims)
     }
 
     /// The image-embedding model.
     pub fn image_embedding(&self) -> Model<cohere::ImageEmbeddings> {
-        Model::new(self.config.image_embedding(), self.http.clone())
+        self.client().image_embedding()
     }
 }
 
@@ -331,32 +336,37 @@ impl CohereModels {
 #[derive(Clone, Debug)]
 pub struct OllamaModels {
     /// The provider configuration.
-    pub config: ollama::Ollama,
+    pub config: ollama::OllamaConfig,
     /// The transport every model sends through.
     pub http: DynHttpClient,
 }
 
 impl OllamaModels {
     /// `config`'s models, sent through `http`.
-    pub fn new(config: ollama::Ollama, http: impl HttpClientExt + 'static) -> Self {
+    pub fn new(config: ollama::OllamaConfig, http: impl HttpClientExt + 'static) -> Self {
         Self {
             config,
             http: DynHttpClient::new(http),
         }
     }
 
+    /// The client these models are built from.
+    fn client(&self) -> ollama::Ollama {
+        self.config.clone().connect(self.http.clone())
+    }
+
     /// The provider from the environment, on the shared reqwest client:
     /// what a live cell calls.
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
-            ollama::Ollama::from_env()?,
+            ollama::OllamaConfig::from_env()?,
             rig_reqwest::shared(),
         ))
     }
 
     /// The chat model for `model`.
     pub fn completion(&self, model: impl Into<String>) -> Model<ollama::Chat> {
-        Model::new(self.config.completion(model), self.http.clone())
+        self.client().completion(model)
     }
 
     /// The embedding model for `model`.
@@ -365,14 +375,12 @@ impl OllamaModels {
         model: impl Into<String>,
         ndims: Option<usize>,
     ) -> Model<ollama::Embeddings> {
-        Model::new(self.config.embedding(model, ndims), self.http.clone())
+        self.client().embedding(model, ndims)
     }
 
     /// The daemon's model listing.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        Model::new(self.config.models(), self.http.clone())
-            .call(())
-            .await
+        self.client().list_models().await
     }
 }
 
@@ -380,32 +388,37 @@ impl OllamaModels {
 #[derive(Clone, Debug)]
 pub struct CopilotModels {
     /// The provider configuration.
-    pub config: copilot::wire::Copilot,
+    pub config: copilot::CopilotConfig,
     /// The transport every model sends through.
     pub http: DynHttpClient,
 }
 
 impl CopilotModels {
     /// `config`'s models, sent through `http`.
-    pub fn new(config: copilot::wire::Copilot, http: impl HttpClientExt + 'static) -> Self {
+    pub fn new(config: copilot::CopilotConfig, http: impl HttpClientExt + 'static) -> Self {
         Self {
             config,
             http: DynHttpClient::new(http),
         }
     }
 
+    /// The client these models are built from.
+    fn client(&self) -> copilot::Copilot {
+        self.config.clone().connect(self.http.clone())
+    }
+
     /// The provider from the environment, on the shared reqwest client:
     /// what a live cell calls.
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
-            copilot::wire::Copilot::from_env()?,
+            copilot::CopilotConfig::from_env()?,
             rig_reqwest::shared(),
         ))
     }
 
     /// The completion model for `model`.
     pub fn completion(&self, model: impl Into<String>) -> Model<copilot::wire::CopilotWire> {
-        Model::new(self.config.completion(model), self.http.clone())
+        self.client().completion(model)
     }
 
     /// The embedding model for `model`.
@@ -414,14 +427,12 @@ impl CopilotModels {
         model: impl Into<String>,
         ndims: Option<usize>,
     ) -> Model<copilot::wire::Embeddings> {
-        Model::new(self.config.embedding(model, ndims), self.http.clone())
+        self.client().embedding(model, ndims)
     }
 
     /// The session's model listing.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        Model::new(self.config.models(), self.http.clone())
-            .call(())
-            .await
+        self.client().list_models().await
     }
 }
 

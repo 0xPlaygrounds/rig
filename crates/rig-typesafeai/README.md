@@ -41,7 +41,7 @@ let query = Assessment {
 # Ok::<(), Error>(())
 ```
 
-With a Jev model (`Model::new(Jev::from_env()?, http)`), evaluate it directly:
+With a Jev model (`Jev::from_env()?.evaluation()`), evaluate it directly:
 
 ```rust,ignore
 let answers: Assessment<NoulAnswer, NoulAnswer> =
@@ -86,8 +86,9 @@ Its output is explicitly `BTreeMap<String, types::Answer>`; construction validat
 the definitions and evaluation validates the provider's answers.
 
 `Jev::from_env()` reads `JEV_TOKEN` without loading a secrets file. Its default
-model is `jev-latest`; `.model(...)` selects another provider model identifier.
-Configure timeouts and retry middleware on the Rig transport.
+model is `jev-latest`; `JevConfig::model(...)` selects another provider model
+identifier. Configure timeouts and retry middleware on the Rig transport and
+pass it with `Jev::with_http`.
 
 Questions share state but cannot consume each other's answers in one request.
 Confidence measures concentration, not correctness. Keep distributions and put

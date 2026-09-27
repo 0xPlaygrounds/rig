@@ -960,7 +960,7 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 mod unit {
     use rig::completion::CompletionResponse;
     use rig::error::ProviderError;
-    use rig::providers::gemini::Gemini;
+    use rig::providers::gemini::GeminiConfig;
     use rig::test_utils::RecordingHttpClient;
     use serde_json::{Value, json};
 
@@ -1004,10 +1004,9 @@ mod unit {
     /// stated here and carried by the real wire, driver and decoder — the
     /// same path every recorded cell above runs, with the reply substituted.
     async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, ProviderError> {
-        let model = rig::Model::new(
-            Gemini::new("unit-key").completion("gemini-2.5-flash"),
-            RecordingHttpClient::new(reply_with(parts)),
-        );
+        let model = GeminiConfig::new("unit-key")
+            .connect(RecordingHttpClient::new(reply_with(parts)))
+            .completion("gemini-2.5-flash");
         let request = rig::completion::CompletionRequestBuilder::new("unit").build();
         model.call(request).await
     }

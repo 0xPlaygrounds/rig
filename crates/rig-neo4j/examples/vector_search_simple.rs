@@ -6,14 +6,13 @@
 //! 3. Creates a vector index on the embeddings
 //! 4. Queries the vector index
 //! 5. Returns the results
-use rig_core::Model;
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai::wire::OpenAI,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai::OpenAI,
     vector_store::VectorStoreIndex as _,
 };
 use rig_neo4j::{Neo4jClient, ToBoltType};
@@ -38,11 +37,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
     // Select the embedding model and generate our embeddings
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        rig_reqwest::shared(),
-    )
-    .erase();
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .erase();
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .document(Word {

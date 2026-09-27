@@ -5,7 +5,7 @@ use crate::bus_support;
 use bevy_reflect::TypePath;
 use rig_core::{
     effect::HandlerKey,
-    providers::openai::wire::OpenAI,
+    providers::openai::OpenAIConfig,
     serve::{ErasedHandler, adapters::ModelAdapter},
     test_utils::RecordingHttpClient,
 };
@@ -19,10 +19,10 @@ const BODY: &str = r#"{"id":"c","object":"chat.completion","created":0,"model":"
 
 fn handler(label: &str, token: &str, endpoint: &str) -> (ErasedHandler, RecordingHttpClient) {
     let http = RecordingHttpClient::new(BODY);
-    let model = rig_core::Model::new(
-        OpenAI::new(token).with_base_url(endpoint).chat("model-x"),
-        http.clone(),
-    );
+    let model = OpenAIConfig::new(token)
+        .with_base_url(endpoint)
+        .connect(http.clone())
+        .chat("model-x");
     (ErasedHandler::new(ModelAdapter::new(label, model)), http)
 }
 
@@ -85,7 +85,7 @@ fn direct_and_declarative_host_assembly_send_identical_requests() {
     let endpoint = "https://explicit.invalid/v1";
     let (direct, direct_http) = handler("saved", "host-token", endpoint);
     let config = ProviderConfig::OpenAi(
-        OpenAI::new("discarded-credential")
+        OpenAIConfig::new("discarded-credential")
             .with_base_url(endpoint)
             .with_route(Route::Chat),
     );

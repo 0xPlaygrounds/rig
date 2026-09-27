@@ -8,7 +8,7 @@ fn cohere_model<H: Clone>(
     http_client: H,
 ) -> crate::driver::Model<crate::providers::cohere::Chat, H> {
     crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key")
+        crate::providers::cohere::CohereConfig::new("test-key")
             .completion(crate::providers::cohere::COMMAND_R_08_2024),
         http_client,
     )

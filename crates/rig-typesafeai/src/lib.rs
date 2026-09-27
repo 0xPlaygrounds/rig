@@ -1,6 +1,6 @@
 //! Experimental typed Jev evaluations alongside Rig agents.
 //!
-//! Pair [`Jev`] with any Rig HTTP transport in a [`Model`], then use [`Evaluate::evaluate`]
+//! Build a [`Jev`] client, take its [`evaluation`](Jev::evaluation) model, then use [`Evaluate::evaluate`]
 //! with serializable state and a named [`Query`]. Its associated output type
 //! fixes the answer structure at compile time. Decisions
 //! retain distributions; routing and threshold policy remain in application code.
@@ -23,7 +23,7 @@ use rig_core::driver::{Model, Transport};
 use rig_core::error::ProviderError;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::Serialize;
-pub use wire::{Evaluation, Jev};
+pub use wire::{Evaluation, Jev, JevConfig};
 
 /// Typed answers together with provider metadata.
 #[derive(Debug, Clone)]
@@ -61,7 +61,7 @@ pub trait Evaluate {
         S: Serialize + WasmCompatSync,
         Q: Query;
 }
-impl<T: Transport<Jev>> Evaluate for Model<Jev, T> {
+impl<T: Transport<JevConfig>> Evaluate for Model<JevConfig, T> {
     async fn evaluate<S, Q>(
         &self,
         state: &S,

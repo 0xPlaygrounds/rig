@@ -677,12 +677,12 @@ dependencies = [
  "bytes",
  "fastrand",
  "futures",
- "futures-timer",
  "glob",
  "http",
  "mime",
  "mime_guess",
  "ordered-float",
+ "rig-http",
  "schemars",
  "serde",
  "serde_json",
@@ -690,6 +690,19 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-futures",
+ "url",
+]
+
+[[package]]
+name = "rig-http"
+version = "0.42.0"
+dependencies = [
+ "bytes",
+ "futures",
+ "futures-timer",
+ "http",
+ "mime",
+ "thiserror",
  "url",
 ]
 

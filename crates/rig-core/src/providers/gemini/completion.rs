@@ -58,7 +58,7 @@ pub const PROVIDER_NAME: &str = "gcp.gemini";
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenerateContent {
     /// The key and the API root.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
     /// The model to address, e.g. [`GEMINI_2_5_FLASH`].
     pub model: String,
     /// Handle of a `cachedContents` resource every request reads its prefix
@@ -68,7 +68,7 @@ pub struct GenerateContent {
 
 impl GenerateContent {
     /// The wire for `model`.
-    pub fn new(provider: super::Gemini, model: impl Into<String>) -> Self {
+    pub fn new(provider: super::GeminiConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),

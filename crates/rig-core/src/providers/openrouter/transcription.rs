@@ -7,8 +7,8 @@
 //! [`TranscriptionResponse::raw`](crate::transcription::TranscriptionResponse::raw).
 //!
 //! ```no_run
-//! use rig_core::providers::{openrouter, openai::wire::{OPENROUTER, OpenAI}};
-//! let wire = OpenAI::from_env_with(&OPENROUTER)?.transcription(openrouter::WHISPER_1);
+//! use rig_core::providers::openrouter;
+//! let model = openrouter::from_env()?.transcription(openrouter::WHISPER_1);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

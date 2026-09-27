@@ -26,8 +26,7 @@ struct DocumentSentiment {
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?;
     let extractor =
-        ExtractorBuilder::<DocumentSentiment>::new(rig::model(client.completion(openai::GPT_4)))
-            .build();
+        ExtractorBuilder::<DocumentSentiment>::new(client.completion(openai::GPT_4)).build();
 
     let sentiment = extractor.extract("I am happy").await?.output;
 

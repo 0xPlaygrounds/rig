@@ -484,7 +484,7 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
     };
     let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
     let model = crate::driver::Model::new(
-        crate::providers::gemini::Gemini::new("key").completion("gemini-test"),
+        crate::providers::gemini::GeminiConfig::new("key").completion("gemini-test"),
         RecordingHttpClient::new(body),
     );
     let handler = crate::serve::adapters::ModelAdapter::new("gemini-test", model.clone());

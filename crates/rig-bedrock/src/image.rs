@@ -4,7 +4,7 @@
 //! use rig_bedrock::{client::BedrockRuntime, image::{AMAZON_NOVA_CANVAS, Images}};
 //! use rig_core::Model;
 //!
-//! let model = Model::new(Images::new(AMAZON_NOVA_CANVAS), BedrockRuntime::from_env());
+//! let model = BedrockRuntime::from_env().image_generation(AMAZON_NOVA_CANVAS);
 //! # let _ = model;
 //! ```
 

@@ -1,6 +1,6 @@
 use assert_fs::TempDir;
 use rig::providers::chatgpt;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -11,7 +11,7 @@ use futures::FutureExt;
 async fn chatgpt_cassette_with_default_instructions(
     spec: impl Into<CassetteSpec>,
     default_instructions: impl Into<String>,
-) -> (ProviderCassette, OpenAI) {
+) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "chatgpt",
@@ -19,21 +19,22 @@ async fn chatgpt_cassette_with_default_instructions(
         "https://chatgpt.com/backend-api/codex",
     )
     .await;
-    let client = OpenAI::with_key(&chatgpt::DIALECT, cassette.api_key("CHATGPT_ACCESS_TOKEN"))
-        .with_account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
-        .with_base_url(cassette.base_url())
-        .with_instructions(default_instructions);
+    let client =
+        OpenAIConfig::with_key(&chatgpt::DIALECT, cassette.api_key("CHATGPT_ACCESS_TOKEN"))
+            .with_account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
+            .with_base_url(cassette.base_url())
+            .with_instructions(default_instructions);
 
     (cassette, client)
 }
 
-async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     chatgpt_cassette_with_default_instructions(spec, "").await
 }
 
 async fn chatgpt_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, OpenAI, TempDir) {
+) -> (ProviderCassette, OpenAIConfig, TempDir) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "chatgpt",
@@ -71,7 +72,7 @@ async fn chatgpt_noninteractive_oauth_cassette(
     .await
     .expect("non-interactive ChatGPT OAuth cassette credential should resolve");
 
-    let mut provider = OpenAI::with_key(&chatgpt::DIALECT, context.access_token)
+    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, context.access_token)
         .with_base_url(cassette.base_url())
         .with_instructions("");
     if let Some(account_id) = context.account_id {

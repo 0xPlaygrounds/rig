@@ -1,7 +1,9 @@
 //! Typesafe's unary evaluation operation, using Rig's shared HTTP driver.
 
 use rig_core::client::{EnvError, env};
+use rig_core::driver::Model;
 use rig_core::error::EncodeError;
+use rig_core::http_client::{DynHttpClient, HttpClientExt};
 use rig_core::operation::{Events, Take};
 use rig_core::wire::{
     Body, Decoder, Encoded, Framing, Mode, Operation, Output, Reply, Secret, Sink, Wire, WireEvent,
@@ -38,17 +40,19 @@ impl Operation for Evaluation {
     }
 }
 
-/// Configuration for Jev's `POST /v1/systemone` endpoint.
+/// The settings of Jev's `POST /v1/systemone` endpoint, which are also its
+/// wire. [`connect`](Self::connect) puts them on a transport as a [`Jev`]
+/// client.
 ///
 /// Credentials are redacted when this configuration is printed or serialized.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Jev {
+pub struct JevConfig {
     token: Secret,
     model: String,
     endpoint: String,
 }
 
-impl Jev {
+impl JevConfig {
     /// Use `jev-latest` at the Typesafe API.
     pub fn new(token: impl Into<String>) -> Self {
         Self {
@@ -81,9 +85,66 @@ impl Jev {
         self.endpoint = endpoint.into();
         self
     }
+
+    /// A client that sends these settings' requests through `http`.
+    pub fn connect(self, http: impl HttpClientExt + 'static) -> Jev {
+        Jev {
+            config: self,
+            http: DynHttpClient::new(http),
+        }
+    }
+
+    /// A client that sends through the shared reqwest client, built once
+    /// per process.
+    #[cfg(feature = "reqwest")]
+    pub fn client(self) -> Jev {
+        self.connect(rig_reqwest::shared())
+    }
 }
 
-impl Wire for Jev {
+/// Jev: its [`JevConfig`] on a transport. The model it builds sends through
+/// that transport.
+#[derive(Debug, Clone)]
+pub struct Jev {
+    config: JevConfig,
+    http: DynHttpClient,
+}
+
+impl Jev {
+    /// `jev-latest` at the Typesafe API with `token`, on the shared reqwest
+    /// client.
+    #[cfg(feature = "reqwest")]
+    pub fn new(token: impl Into<String>) -> Self {
+        JevConfig::new(token).client()
+    }
+
+    /// The credential from `JEV_TOKEN`, on the shared reqwest client.
+    #[cfg(feature = "reqwest")]
+    pub fn from_env() -> Result<Self, EnvError> {
+        Ok(JevConfig::from_env()?.client())
+    }
+
+    /// The same settings, sending through `http`.
+    pub fn with_http(self, http: impl HttpClientExt + 'static) -> Self {
+        Self {
+            http: DynHttpClient::new(http),
+            ..self
+        }
+    }
+
+    /// The settings this client sends with.
+    pub fn config(&self) -> &JevConfig {
+        &self.config
+    }
+
+    /// The evaluation model: the configured Jev model on this client's
+    /// transport.
+    pub fn evaluation(&self) -> Model<JevConfig> {
+        Model::new(self.config.clone(), self.http.clone())
+    }
+}
+
+impl Wire for JevConfig {
     type Op = Evaluation;
     type Payload = Encoded;
     type Frame = rig_core::wire::WireFrame;

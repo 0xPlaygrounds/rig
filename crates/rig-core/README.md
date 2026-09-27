@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // transport, so this uses rig-reqwest's shared one.
     // OpenAI's default completion route is the Responses API;
     // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
-    let model = Model::new(OpenAI::from_env()?.completion(openai::GPT_5_2), rig_reqwest::shared());
+    let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 
     let request = CompletionRequestBuilder::new("Who are you?").build();
     let response = model.call(request).await?;

@@ -11,7 +11,7 @@ use super::LOADERS_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn loaders_smoke() {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let examples = FileLoader::with_glob(LOADERS_GLOB)
         .expect("examples glob should parse")
         .read_with_path()

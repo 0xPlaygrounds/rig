@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::providers::cohere::wire::Cohere;
+use rig::providers::cohere::wire::CohereConfig;
 use rig::tool::Tool;
 use rig_test_support::cassette_models::CohereModels;
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use crate::support::{MathError, OperationArgs};
 
 const COHERE_BASE_URL: &str = "https://api.cohere.ai";
 
-async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Cohere) {
+async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, CohereConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "cohere",
@@ -19,7 +19,8 @@ async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Co
         COHERE_BASE_URL,
     )
     .await;
-    let cohere = Cohere::new(cassette.api_key("COHERE_API_KEY")).with_base_url(cassette.base_url());
+    let cohere =
+        CohereConfig::new(cassette.api_key("COHERE_API_KEY")).with_base_url(cassette.base_url());
 
     (cassette, cohere)
 }

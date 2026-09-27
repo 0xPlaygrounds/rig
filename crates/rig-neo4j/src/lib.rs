@@ -9,7 +9,7 @@
 //!
 //! ```no_run
 //! use neo4rs::ConfigBuilder;
-//! use rig_core::providers::openai::{self, wire::OpenAI};
+//! use rig_core::providers::openai::{self, OpenAI};
 //! use rig_core::vector_store::VectorStoreIndex;
 //! use rig_core::vector_store::request::VectorSearchRequest;
 //! use rig_neo4j::Neo4jClient;
@@ -24,10 +24,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), anyhow::Error> {
 //!     let openai = OpenAI::from_env()?;
-//!     let model = rig_core::Model::new(
-//!         openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-//!         rig_reqwest::shared(),
-//!     );
+//!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 //!
 //!     let client = Neo4jClient::from_config(
 //!         ConfigBuilder::default()

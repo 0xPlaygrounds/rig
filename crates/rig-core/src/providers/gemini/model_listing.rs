@@ -138,7 +138,7 @@ enum Auth {
 
 /// One page's request, after `page_token` when a page named one.
 fn list_models_request(
-    provider: &super::Gemini,
+    provider: &super::GeminiConfig,
     auth: Auth,
     page_token: Option<&str>,
 ) -> Result<http::Request<Body>, EncodeError> {
@@ -162,12 +162,12 @@ fn list_models_request(
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
 }
 
 impl Models {
     /// Build the wire over `provider`.
-    pub fn new(provider: super::Gemini) -> Self {
+    pub fn new(provider: super::GeminiConfig) -> Self {
         Self { provider }
     }
 }
@@ -207,12 +207,12 @@ impl Wire for Models {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InteractionsModels {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
 }
 
 impl InteractionsModels {
     /// Build the wire over `provider`.
-    pub fn new(provider: super::Gemini) -> Self {
+    pub fn new(provider: super::GeminiConfig) -> Self {
         Self { provider }
     }
 }
@@ -286,12 +286,12 @@ impl Decoder<ModelListing> for ModelsDecoder {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VerifyKey {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
 }
 
 impl VerifyKey {
     /// Build the wire over `provider`.
-    pub fn new(provider: super::Gemini) -> Self {
+    pub fn new(provider: super::GeminiConfig) -> Self {
         Self { provider }
     }
 }

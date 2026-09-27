@@ -4,8 +4,8 @@
 //! [`crate::transcription::TranscriptionResponse::raw`].
 //!
 //! ```no_run
-//! use rig_core::providers::{mistral, openai::wire::{MISTRAL, OpenAI}};
-//! let wire = OpenAI::from_env_with(&MISTRAL)?.transcription(mistral::VOXTRAL_MINI);
+//! use rig_core::providers::mistral;
+//! let model = mistral::from_env()?.transcription(mistral::VOXTRAL_MINI);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

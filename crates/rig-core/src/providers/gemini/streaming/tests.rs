@@ -37,7 +37,7 @@ fn streamed(
             .collect::<String>(),
     );
     crate::driver::Model::new(
-        crate::providers::gemini::Gemini::new("test-key").completion(model),
+        crate::providers::gemini::GeminiConfig::new("test-key").completion(model),
         crate::test_utils::MockStreamingClient { sse_bytes },
     )
 }
@@ -627,7 +627,7 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod terminal_emission {
 
-    use crate::providers::gemini::Gemini;
+    use crate::providers::gemini::GeminiConfig;
     use crate::providers::gemini::completion::{GEMINI_2_5_PRO_PREVIEW_06_05, GenerateContent};
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -635,7 +635,7 @@ mod terminal_emission {
 
     /// The wire under test, unbound.
     fn wire() -> GenerateContent {
-        Gemini::new("test-key").completion(GEMINI_2_5_PRO_PREVIEW_06_05)
+        GeminiConfig::new("test-key").completion(GEMINI_2_5_PRO_PREVIEW_06_05)
     }
 
     const CONTENT_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"}}],"responseId":"resp-1","modelVersion":"gemini-2.5-pro"}"#;

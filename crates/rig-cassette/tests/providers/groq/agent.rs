@@ -10,7 +10,7 @@ use super::AGENT_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn completion_smoke() {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let agent = rig::AgentBuilder::new(groq.completion(AGENT_MODEL))
         .preamble(BASIC_PREAMBLE)
         .build();

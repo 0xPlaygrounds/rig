@@ -42,8 +42,8 @@ fn cassette_body(path: &str, section: &str) -> String {
 
 /// A Copilot addressed with a token that carries no `proxy-ep=` segment, so
 /// the base URL is the default one.
-fn copilot() -> Copilot {
-    Copilot::new("tid=copilot-session-token")
+fn copilot() -> CopilotConfig {
+    CopilotConfig::new("tid=copilot-session-token")
 }
 
 fn prompt() -> CompletionRequest {
@@ -85,7 +85,7 @@ fn dedicated_and_catalog_construction_encode_identical_requests() {
     use crate::providers::registry::{ProviderConfig, ProviderId};
     let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
-        let dedicated = Copilot::new(token).completion(model);
+        let dedicated = CopilotConfig::new(token).completion(model);
         let ProviderConfig::OpenAi(preset) = ProviderId::resolve("copilot").unwrap().config(token)
         else {
             panic!("Copilot is an OpenAI-family preset")
@@ -126,7 +126,7 @@ fn explicit_routes_keep_the_session_envelope_and_configuration() {
     use crate::providers::openai::Route;
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         for route in [Route::Chat, Route::Responses] {
-            let provider = OpenAI::with_key(&DIALECT, "session-token")
+            let provider = OpenAIConfig::with_key(&DIALECT, "session-token")
                 .with_base_url("https://gateway.invalid/copilot")
                 .with_route(route)
                 .with_system_instructions_placement(SystemInstructionsPlacement::Instructions);
@@ -145,7 +145,7 @@ fn explicit_routes_keep_the_session_envelope_and_configuration() {
 
 #[test]
 fn a_manual_copilot_wrapper_keeps_its_envelope_after_deserialization() {
-    let provider = OpenAI::new("manual-token");
+    let provider = OpenAIConfig::new("manual-token");
     for shared in [
         provider.chat("model").into(),
         provider.responses("model").into(),
@@ -382,7 +382,7 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
 
     let reference = ProviderRef::configured(
         ProviderConfig::OpenAi(
-            OpenAI::with_key(&DIALECT, "")
+            OpenAIConfig::with_key(&DIALECT, "")
                 .with_base_url("https://gateway.invalid/copilot")
                 .with_route(Route::Responses)
                 .with_system_instructions_placement(SystemInstructionsPlacement::Instructions),
@@ -614,7 +614,7 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
 #[test]
 fn a_serialized_config_carries_no_credential() {
     a_config_reloads_without_its_credential(
-        &Copilot::new("tid=super-secret-session-token"),
+        &CopilotConfig::new("tid=super-secret-session-token"),
         "super-secret",
         |copilot| &copilot.api_key,
     );
@@ -622,7 +622,7 @@ fn a_serialized_config_carries_no_credential() {
     // And the wires built from it, whichever route.
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         let json = serde_json::to_string(
-            &Copilot::new("tid=super-secret-session-token").completion(model),
+            &CopilotConfig::new("tid=super-secret-session-token").completion(model),
         )
         .expect("the wire serializes");
         assert!(!json.contains("super-secret"), "{model}: {json}");
@@ -635,22 +635,22 @@ fn a_serialized_config_carries_no_credential() {
 #[test]
 fn the_base_url_comes_from_the_token_unless_overridden() {
     assert_eq!(
-        Copilot::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;").base_url,
+        CopilotConfig::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;").base_url,
         "https://api.individual.githubcopilot.com"
     );
     assert_eq!(
-        Copilot::new("tid=abc").base_url,
+        CopilotConfig::new("tid=abc").base_url,
         "https://api.githubcopilot.com"
     );
     assert_eq!(
-        Copilot::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;")
+        CopilotConfig::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;")
             .with_base_url("https://gateway.invalid")
             .base_url,
         "https://gateway.invalid"
     );
     // A non-GitHub host in a credential is not a routing instruction.
     assert_eq!(
-        Copilot::new("tid=abc;proxy-ep=evil.invalid;").base_url,
+        CopilotConfig::new("tid=abc;proxy-ep=evil.invalid;").base_url,
         "https://api.githubcopilot.com"
     );
 }
@@ -671,7 +671,7 @@ fn wrapper_owns_the_envelope_even_when_the_shared_dialect_has_a_hook() {
         },
         ..Dialect::gateway("custom", "https://explicit.invalid", "UNUSED_KEY")
     };
-    let provider = OpenAI::with_key(&dialect, "manual-token");
+    let provider = OpenAIConfig::with_key(&dialect, "manual-token");
     for shared in [
         provider.chat("model").into(),
         provider.responses("model").into(),
@@ -741,7 +741,7 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
             for route in [Route::Chat, Route::Responses] {
                 let reference = ProviderRef::configured(
                     ProviderConfig::OpenAi(
-                        OpenAI::with_key(&DIALECT, keys[0])
+                        OpenAIConfig::with_key(&DIALECT, keys[0])
                             .with_base_url(base)
                             .with_route(route),
                     ),
@@ -767,7 +767,7 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
                     assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
                     assert_same_requests(
                         encoded(&CopilotWire {
-                            wire: Copilot::new(key)
+                            wire: CopilotConfig::new(key)
                                 .with_base_url(base)
                                 .openai()
                                 .with_route(route)
@@ -790,7 +790,7 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
             };
             let request = encoded(&provider.completion(model));
             assert_eq!(request.uri().host(), Some(host));
-            assert_same_requests(encoded(&Copilot::new(key).completion(model)), request);
+            assert_same_requests(encoded(&CopilotConfig::new(key).completion(model)), request);
         }
     }
 }

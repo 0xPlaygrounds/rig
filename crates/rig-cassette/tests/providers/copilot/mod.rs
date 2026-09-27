@@ -29,7 +29,7 @@ mod typed_prompt_tools;
 use assert_fs::TempDir;
 use rig::providers::copilot;
 use rig::providers::copilot::auth::{AuthError, AuthSource, Authenticator, DeviceCodeHandler};
-use rig::providers::copilot::wire::Copilot;
+use rig::providers::copilot::wire::CopilotConfig;
 use std::borrow::Cow;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -92,7 +92,7 @@ pub(crate) async fn authorize(
     source: AuthSource,
     token_dir: Option<&Path>,
     allow_device_flow: bool,
-) -> Result<Copilot, AuthError> {
+) -> Result<CopilotConfig, AuthError> {
     let (access_token_file, api_key_file) = match token_dir {
         Some(dir) => (
             Some(dir.join("access-token")),
@@ -109,7 +109,7 @@ pub(crate) async fn authorize(
     )
     .auth_context(&rig::rig_reqwest::shared())
     .await?;
-    let provider = Copilot::from_auth(&context);
+    let provider = CopilotConfig::from_auth(&context);
 
     Ok(match env_base_url() {
         Some(base_url) => provider.with_base_url(base_url),
@@ -138,7 +138,7 @@ pub(crate) async fn live_client() -> CopilotModels {
     )
 }
 
-async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Copilot) {
+async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, CopilotConfig) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -147,15 +147,15 @@ async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, C
         &cassette_base_url,
     )
     .await;
-    let bound =
-        Copilot::new(cassette.api_key("GITHUB_COPILOT_API_KEY")).with_base_url(cassette.base_url());
+    let bound = CopilotConfig::new(cassette.api_key("GITHUB_COPILOT_API_KEY"))
+        .with_base_url(cassette.base_url());
 
     (cassette, bound)
 }
 
 async fn copilot_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, Copilot, TempDir) {
+) -> (ProviderCassette, CopilotConfig, TempDir) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),

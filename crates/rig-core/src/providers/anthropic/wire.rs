@@ -192,10 +192,12 @@ pub const XIAOMIMIMO: Dialect = compatible(
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );
 
-/// The shared configuration of an Anthropic-format provider.
+/// The settings of a Messages-format provider: serializable, and the
+/// credential is never serialized. [`connect`](Self::connect) puts it on a
+/// transport as an [`Anthropic`](super::Anthropic) client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Anthropic {
+pub struct AnthropicConfig {
     /// The API key, sent as `x-api-key`.
     pub api_key: Secret,
     /// The API root, without a trailing `/v1`.
@@ -208,7 +210,7 @@ pub struct Anthropic {
     pub dialect: Dialect,
 }
 
-impl Anthropic {
+impl AnthropicConfig {
     /// Anthropic itself, with default settings.
     pub fn new(api_key: impl Into<Secret>) -> Self {
         Self::with_dialect(api_key, &ANTHROPIC)
@@ -260,7 +262,7 @@ impl Anthropic {
     }
 
     /// The Messages wire for `model`.
-    pub fn completion(&self, model: impl Into<String>) -> Messages {
+    pub(crate) fn completion(&self, model: impl Into<String>) -> Messages {
         let model = model.into();
         Messages {
             default_max_tokens: self.dialect.default_max_tokens(&model),
@@ -275,14 +277,14 @@ impl Anthropic {
     }
 
     /// The model-listing wire.
-    pub fn models(&self) -> Models {
+    pub(crate) fn models(&self) -> Models {
         Models {
             provider: self.clone(),
         }
     }
 
     /// The credential-check wire.
-    pub fn verify(&self) -> Verify {
+    pub(crate) fn verify(&self) -> Verify {
         Verify {
             provider: self.clone(),
         }
@@ -317,7 +319,7 @@ pub fn normalize_base_url(base_url: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Messages {
     /// The provider this wire speaks to.
-    pub provider: Anthropic,
+    pub provider: AnthropicConfig,
     /// The model to address.
     pub model: String,
     /// What `max_tokens` defaults to when the caller sets none. Anthropic
@@ -361,12 +363,11 @@ impl Messages {
     ///
     /// ```no_run
     /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-    /// use rig_core::providers::anthropic::wire::Anthropic;
+    /// use rig_core::providers::anthropic::Anthropic;
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let messages = Anthropic::from_env()?
-    ///     .completion(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching();
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
+    /// messages.wire = messages.wire.with_automatic_caching();
     /// # Ok(())
     /// # }
     /// ```
@@ -381,12 +382,11 @@ impl Messages {
     ///
     /// ```no_run
     /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-    /// use rig_core::providers::anthropic::wire::Anthropic;
+    /// use rig_core::providers::anthropic::Anthropic;
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let messages = Anthropic::from_env()?
-    ///     .completion(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching_1h();
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
+    /// messages.wire = messages.wire.with_automatic_caching_1h();
     /// # Ok(())
     /// # }
     /// ```
@@ -404,13 +404,11 @@ impl Messages {
     ///
     /// ```no_run
     /// use rig_core::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
-    /// use rig_core::providers::anthropic::wire::Anthropic;
+    /// use rig_core::providers::anthropic::Anthropic;
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let messages = Anthropic::from_env()?
-    ///     .completion(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching()
-    ///     .with_static_prefix_cache_ttl(CacheTtl::OneHour);
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
+    /// messages.wire = messages.wire.with_automatic_caching().with_static_prefix_cache_ttl(CacheTtl::OneHour);
     /// # Ok(())
     /// # }
     /// ```
@@ -540,7 +538,7 @@ impl Wire for Messages {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// The provider this wire speaks to.
-    pub provider: Anthropic,
+    pub provider: AnthropicConfig,
 }
 
 impl Wire for Models {
@@ -643,7 +641,7 @@ impl Decoder<ModelListing> for ModelsDecoder {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Verify {
     /// The provider this wire speaks to.
-    pub provider: Anthropic,
+    pub provider: AnthropicConfig,
 }
 
 impl Wire for Verify {

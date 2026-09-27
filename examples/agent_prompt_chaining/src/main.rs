@@ -24,7 +24,7 @@ fn build_adder_agent(model: impl Into<DynModel<Completion>>) -> rig::agent::Agen
 #[tokio::main]
 async fn main() -> Result<()> {
     // One model serves both agents: erase it once, clone the handle.
-    let gpt4 = rig::model(OpenAI::from_env()?.completion(openai::GPT_4)).erase();
+    let gpt4 = OpenAI::from_env()?.completion(openai::GPT_4).erase();
     let seed = build_rng_agent(gpt4.clone())
         .prompt(INPUT_PROMPT)
         .await?

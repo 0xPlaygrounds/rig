@@ -30,14 +30,14 @@ pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Interactions {
     /// The key and the API root.
-    pub provider: crate::providers::gemini::Gemini,
+    pub provider: crate::providers::gemini::GeminiConfig,
     /// The model to address.
     pub model: String,
 }
 
 impl Interactions {
     /// The wire for `model`.
-    pub fn new(provider: crate::providers::gemini::Gemini, model: impl Into<String>) -> Self {
+    pub fn new(provider: crate::providers::gemini::GeminiConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
@@ -98,7 +98,7 @@ impl crate::wire::Wire for Interactions {
         let request = http::Request::post(self.provider.interactions_uri(path))
             .header("Content-Type", "application/json")
             .header(
-                crate::providers::gemini::Gemini::INTERACTIONS_KEY_HEADER,
+                crate::providers::gemini::GeminiConfig::INTERACTIONS_KEY_HEADER,
                 self.provider.api_key.expose(),
             )
             .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))?;
@@ -117,7 +117,7 @@ impl crate::wire::Wire for Interactions {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InteractionResume {
     /// The key and the API root.
-    pub provider: crate::providers::gemini::Gemini,
+    pub provider: crate::providers::gemini::GeminiConfig,
     /// The interaction to read.
     pub interaction_id: String,
     /// The last event the consumer saw, so a resumed stream does not
@@ -128,7 +128,7 @@ pub struct InteractionResume {
 impl InteractionResume {
     /// The wire for the interaction `interaction_id`.
     pub fn new(
-        provider: crate::providers::gemini::Gemini,
+        provider: crate::providers::gemini::GeminiConfig,
         interaction_id: impl Into<String>,
     ) -> Self {
         Self {
@@ -193,7 +193,7 @@ impl crate::wire::Wire for InteractionResume {
         };
         let request = http::Request::get(self.provider.interactions_uri(&path))
             .header(
-                crate::providers::gemini::Gemini::INTERACTIONS_KEY_HEADER,
+                crate::providers::gemini::GeminiConfig::INTERACTIONS_KEY_HEADER,
                 self.provider.api_key.expose(),
             )
             .body(crate::wire::Body::empty())?;

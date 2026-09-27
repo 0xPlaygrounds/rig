@@ -22,7 +22,7 @@ use futures::StreamExt;
 use rig_core::Model;
 use rig_core::completion::CompletionRequestBuilder;
 use rig_core::error::{ErrorKind, ProviderError};
-use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::OpenAIConfig;
 
 fn empty_the_ca_store() {
     // SAFETY: this test binary has one test and no other threads read the
@@ -37,10 +37,9 @@ fn empty_the_ca_store() {
 async fn the_shared_transport_reports_a_missing_ca_store_on_send() {
     empty_the_ca_store();
 
-    let model = Model::new(
-        OpenAI::new("test-key").completion("gpt-5.2"),
-        rig_reqwest::shared(),
-    );
+    let model = OpenAIConfig::new("test-key")
+        .connect(rig_reqwest::shared())
+        .completion("gpt-5.2");
     let request = CompletionRequestBuilder::new("hello").build();
     let outcome = match model.call(request.clone()).await {
         Err(ProviderError::Http(error)) => error.to_string(),

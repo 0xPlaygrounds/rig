@@ -14,7 +14,8 @@ use rig::error::ProviderError;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, UserContent as RigUserContent,
 };
-use rig::providers::openai::wire::{OPENROUTER, OpenAI};
+use rig::providers::openai::wire::Chat;
+use rig::providers::openai::wire::{OPENROUTER, OpenAIConfig};
 use rig::wire::{Body, Encoded, Mode, Wire};
 use serde_json::Value;
 
@@ -26,8 +27,7 @@ const MODEL: &str = "openai/gpt-4o-mini";
 /// The key is a real credential-free config: `encode` never touches a socket,
 /// so the bytes are reachable with no cassette and no network.
 fn encoded_body(message: Message) -> Result<Value, ProviderError> {
-    let encoded = OpenAI::with_key(&OPENROUTER, "k")
-        .chat(MODEL)
+    let encoded = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), MODEL)
         .encode(CompletionRequestBuilder::new(message).build(), Mode::Unary)?;
     Ok(sole_body(encoded))
 }

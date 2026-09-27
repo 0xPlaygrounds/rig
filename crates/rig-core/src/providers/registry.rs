@@ -18,13 +18,15 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::driver::{Model, Transport};
-use crate::http_client::DynHttpClient;
+#[cfg(feature = "reqwest")]
+use crate::client::env::{self, EnvError};
+use crate::driver::DynModel;
+use crate::http_client::{DynHttpClient, HttpClientExt};
 use crate::operation::Completion;
 use crate::providers::{anthropic, gemini, openai};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::ModelAdapter;
-use crate::wire::{Secret, Wire};
+use crate::wire::Secret;
 
 /// Every dialect this build knows, for
 /// [`openai::wire::Dialect`]'s [`Deserialize`](serde::Deserialize) lookup.
@@ -58,7 +60,7 @@ pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
 
 /// A provider's request grammar and configuration type.
 /// The OpenAI family includes Chat Completions and Responses; select the endpoint
-/// through [`openai::wire::OpenAI::with_route`].
+/// through [`openai::OpenAIConfig::with_route`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Format {
     /// OpenAI's grammar: Chat Completions and the Responses endpoint.
@@ -255,13 +257,28 @@ impl ProviderId {
     pub fn config(&self, api_key: impl Into<Secret>) -> ProviderConfig {
         match &self.0 {
             Registered::OpenAi(dialect) => {
-                ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(dialect, api_key))
+                ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(dialect, api_key))
             }
             Registered::Anthropic(dialect) => ProviderConfig::Anthropic(
-                anthropic::wire::Anthropic::with_dialect(api_key, dialect),
+                anthropic::wire::AnthropicConfig::with_dialect(api_key, dialect),
             ),
-            Registered::Gemini => ProviderConfig::Gemini(gemini::Gemini::new(api_key)),
+            Registered::Gemini => ProviderConfig::Gemini(gemini::GeminiConfig::new(api_key)),
         }
+    }
+
+    /// This selection's preset, configured from the environment variables
+    /// its dialect names.
+    #[cfg(feature = "reqwest")]
+    fn config_from_env(&self) -> Result<ProviderConfig, EnvError> {
+        Ok(match &self.0 {
+            Registered::OpenAi(dialect) => {
+                ProviderConfig::OpenAi(openai::wire::OpenAIConfig::from_env_with(dialect)?)
+            }
+            Registered::Anthropic(dialect) => {
+                ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::from_env_with(dialect)?)
+            }
+            Registered::Gemini => ProviderConfig::Gemini(gemini::GeminiConfig::from_env()?),
+        })
     }
 
     /// Environment variable named by the registered credential configuration.
@@ -368,13 +385,13 @@ pub enum SelectionError {
 pub enum ProviderConfig {
     /// An OpenAI-shaped provider, on either of its two endpoints.
     #[serde(rename = "openai")]
-    OpenAi(openai::wire::OpenAI),
+    OpenAi(openai::wire::OpenAIConfig),
     /// A Messages-format provider.
     #[serde(rename = "anthropic")]
-    Anthropic(anthropic::wire::Anthropic),
+    Anthropic(anthropic::wire::AnthropicConfig),
     /// Gemini.
     #[serde(rename = "gemini")]
-    Gemini(gemini::Gemini),
+    Gemini(gemini::GeminiConfig),
 }
 
 impl ProviderConfig {
@@ -437,21 +454,37 @@ impl ProviderConfig {
         model: &str,
         http: DynHttpClient,
     ) -> ErasedHandler {
+        ErasedHandler::new(ModelAdapter::new(label, self.completion_model(model, http)))
+    }
+
+    /// The provider's completion model for `model` on `http`, erased.
+    fn completion_model(&self, model: &str, http: DynHttpClient) -> DynModel<Completion> {
         match self {
-            Self::OpenAi(provider) => erase(provider.completion(model), label, http),
-            Self::Anthropic(provider) => erase(provider.completion(model), label, http),
-            Self::Gemini(provider) => erase(provider.completion(model), label, http),
+            Self::OpenAi(provider) => provider.clone().connect(http).completion(model).erase(),
+            Self::Anthropic(provider) => provider.clone().connect(http).completion(model).erase(),
+            Self::Gemini(provider) => provider.clone().connect(http).completion(model).erase(),
         }
     }
-}
 
-/// Pair the provider's completion wire with `http` and erase it under `label`.
-fn erase<W>(wire: W, label: &str, http: DynHttpClient) -> ErasedHandler
-where
-    W: Wire<Op = Completion>,
-    DynHttpClient: Transport<W>,
-{
-    ErasedHandler::new(ModelAdapter::new(label, Model::new(wire, http)))
+    /// The credential this configuration's vendor reads from the
+    /// environment. A vendor whose credential is optional reads an unset
+    /// variable as no credential.
+    #[cfg(feature = "reqwest")]
+    fn credential_from_env(&self) -> Result<String, EnvError> {
+        let (name, required) = match self {
+            Self::OpenAi(provider) => (
+                provider.dialect.api_key_env,
+                !matches!(provider.auth, openai::wire::Auth::OptionalBearer),
+            ),
+            Self::Anthropic(provider) => (provider.dialect.api_key_env, true),
+            Self::Gemini(_) => (gemini::API_KEY_ENV, true),
+        };
+        if required {
+            env::required(name)
+        } else {
+            Ok(env::optional(name)?.unwrap_or_default())
+        }
+    }
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a
@@ -561,6 +594,36 @@ impl ProviderRef {
             Provider::Registered(id) => id.config(api_key),
             Provider::Configured(config) => config.clone().with_credential(api_key),
         }
+    }
+}
+
+impl ProviderRef {
+    /// A completion model for this reference, credentials from the
+    /// environment, on the shared reqwest client. A registered selection
+    /// reads every variable its dialect names; an explicit configuration
+    /// keeps its host and options and reads only its vendor's credential.
+    #[cfg(feature = "reqwest")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+    pub fn completion_model(&self) -> Result<DynModel<Completion>, EnvError> {
+        let config = match &self.provider {
+            Provider::Registered(id) => id.config_from_env()?,
+            Provider::Configured(config) => {
+                let credential = config.credential_from_env()?;
+                config.clone().with_credential(credential)
+            }
+        };
+        Ok(config.completion_model(&self.model, rig_reqwest::shared()))
+    }
+
+    /// A completion model for this reference, credentialed with `api_key`,
+    /// sending through `http`.
+    pub fn completion_model_with(
+        &self,
+        api_key: impl Into<Secret>,
+        http: impl HttpClientExt + 'static,
+    ) -> DynModel<Completion> {
+        self.config(api_key)
+            .completion_model(&self.model, DynHttpClient::new(http))
     }
 }
 

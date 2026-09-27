@@ -145,7 +145,7 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
     tracing::subscriber::with_default(subscriber, || {
         let model = crate::driver::Model::new(
-            crate::providers::openai::wire::OpenAI::with_key(
+            crate::providers::openai::wire::OpenAIConfig::with_key(
                 &crate::providers::openai::wire::OPENAI,
                 "test-key",
             )

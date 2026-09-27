@@ -36,7 +36,7 @@ pub(super) fn folded_choice(output: Vec<Output>) -> Vec<completion::AssistantCon
 
 /// The OpenAI Responses wire, for the request-shaping assertions.
 fn openai_wire(model: &str) -> wire::Responses {
-    crate::providers::openai::OpenAI::new("dummy-key").responses(model)
+    crate::providers::openai::OpenAIConfig::new("dummy-key").responses(model)
 }
 
 /// The Responses request a wire builds for a Rig request — the one

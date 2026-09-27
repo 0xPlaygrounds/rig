@@ -11,7 +11,7 @@ use rig::http_client::{
 };
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::providers::anthropic::wire::Anthropic;
+use rig::providers::anthropic::Anthropic;
 use rig::wasm_compat::WasmBoxedFuture;
 
 /// Adds a beta header to every outgoing request and prints the wire traffic
@@ -80,10 +80,11 @@ async fn main() -> Result<()> {
     // code involved; the same handle could back every provider a host builds.
     let http_client = DynHttpClient::new(ReqwestClient::default()).with_middleware(WireLogger);
 
-    let agent = AgentBuilder::new(Model::new(
-        Anthropic::new(api_key).completion(anthropic::completion::CLAUDE_SONNET_4_6),
-        http_client,
-    ))
+    let agent = AgentBuilder::new(
+        Anthropic::new(api_key)
+            .with_http(http_client)
+            .completion(anthropic::completion::CLAUDE_SONNET_4_6),
+    )
     .preamble("You are a helpful assistant.")
     .build();
 

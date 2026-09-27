@@ -12,7 +12,7 @@ use rig::audio_generation::AudioGenerationRequestBuilder;
 async fn audio_generation_smoke() {
     // xAI's text-to-speech route is OpenAI-shaped (`/v1/tts`, xAI's own body),
     // so the chat-side configuration is what serves it.
-    let client = OpenAiModels::from_env_with(&xai::DIALECT).expect("XAI_API_KEY");
+    let client = OpenAiModels::from_env_for(&xai::DIALECT).expect("XAI_API_KEY");
     let model = client.audio_generation(xai::TTS_1);
 
     let response = model

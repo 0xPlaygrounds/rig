@@ -155,7 +155,15 @@ where
         if let Some(bound) = model.downcast_ref::<Model<anthropic::Messages>>() {
             // ProviderConfig does not retain model-level cache and tool options.
             // Keep the original adapter when rebuilding would discard them.
-            if bound.wire != bound.wire.provider.completion(bound.wire.model.clone()) {
+            if bound.wire
+                != bound
+                    .wire
+                    .provider
+                    .clone()
+                    .connect(bound.transport.clone())
+                    .completion(bound.wire.model.clone())
+                    .wire
+            {
                 return None;
             }
             return describe(
@@ -166,7 +174,14 @@ where
             );
         }
         let chat = |wire: &openai::Chat, http: &DynHttpClient| {
-            if *wire != wire.provider.chat(wire.model.clone()) {
+            if *wire
+                != wire
+                    .provider
+                    .clone()
+                    .connect(http.clone())
+                    .chat(wire.model.clone())
+                    .wire
+            {
                 return None;
             }
             describe(
@@ -177,7 +192,14 @@ where
             )
         };
         let responses = |wire: &responses::Responses, http: &DynHttpClient| {
-            if *wire != wire.provider.responses(wire.model.clone()) {
+            if *wire
+                != wire
+                    .provider
+                    .clone()
+                    .connect(http.clone())
+                    .responses(wire.model.clone())
+                    .wire
+            {
                 return None;
             }
             describe(
@@ -200,7 +222,15 @@ where
             };
         }
         if let Some(bound) = model.downcast_ref::<Model<gemini::GenerateContent>>() {
-            if bound.wire != bound.wire.provider.completion(bound.wire.model.clone()) {
+            if bound.wire
+                != bound
+                    .wire
+                    .provider
+                    .clone()
+                    .connect(bound.transport.clone())
+                    .completion(bound.wire.model.clone())
+                    .wire
+            {
                 return None;
             }
             return describe(

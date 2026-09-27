@@ -32,10 +32,11 @@ fn main() -> Result<()> {
     // model is `Model<OpenAiWire>`, so no transport type
     // reaches this crate's signatures.
     let transport = DynHttpClient::new(ReqwestClient::default());
-    let agent = AgentBuilder::new(Model::new(
-        OpenAI::from_env()?.completion(openai::GPT_4O),
-        transport,
-    ))
+    let agent = AgentBuilder::new(
+        OpenAI::from_env()?
+            .with_http(transport)
+            .completion(openai::GPT_4O),
+    )
     .preamble(PREAMBLE)
     .build();
 

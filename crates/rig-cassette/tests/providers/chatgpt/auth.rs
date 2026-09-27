@@ -3,7 +3,7 @@
 use assert_fs::TempDir;
 use rig::http_client::DynHttpClient;
 use rig::providers::chatgpt;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::json;
 use std::fs;
@@ -21,7 +21,7 @@ use crate::support::{
 /// The exchange is not a wire: `OpenAI` stores an access token, so the
 /// conversation that produces one runs first, on the transport the completion
 /// then speaks over.
-async fn oauth_provider_with_auth_file(path: &Path, http: &DynHttpClient) -> OpenAI {
+async fn oauth_provider_with_auth_file(path: &Path, http: &DynHttpClient) -> OpenAIConfig {
     let context = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(path.to_path_buf()),
@@ -32,7 +32,7 @@ async fn oauth_provider_with_auth_file(path: &Path, http: &DynHttpClient) -> Ope
     .await
     .expect("ChatGPT OAuth should resolve an access token");
 
-    let mut provider = OpenAI::with_key(&chatgpt::DIALECT, context.access_token);
+    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, context.access_token);
     if let Some(account_id) = context.account_id {
         provider = provider.with_account_id(account_id);
     }

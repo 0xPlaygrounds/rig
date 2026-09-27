@@ -25,7 +25,7 @@
 //! Recorded against the default server (`--jinja --seed 42 --temp 0 -c 4096`,
 //! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M, `llama-server` b10964-b29c606e2).
 
-use rig::providers::openai::wire::{LLAMACPP, OpenAI};
+use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig};
 
 use crate::support::{
     Adder, RAW_TEXT_RESPONSE_PREAMBLE, RAW_TEXT_RESPONSE_PROMPT, STREAMING_TOOLS_PREAMBLE,
@@ -104,8 +104,10 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let bare = OpenAI::new("llamacpp-local");
-        let _ = rig::Model::new(bare.embedding("m", Some(1)), recorder.clone())
+        let bare = OpenAIConfig::new("llamacpp-local");
+        let _ = bare
+            .connect(recorder.clone())
+            .embedding("m", Some(1))
             .call(vec!["probe".to_string()])
             .await
             .map(|response| response.embeddings);
@@ -122,8 +124,10 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let provider = OpenAI::with_key(&LLAMACPP, "");
-        let _ = rig::Model::new(provider.embedding("m", Some(1)), recorder.clone())
+        let provider = OpenAIConfig::with_key(&LLAMACPP, "");
+        let _ = provider
+            .connect(recorder.clone())
+            .embedding("m", Some(1))
             .call(vec!["probe".to_string()])
             .await
             .map(|response| response.embeddings);

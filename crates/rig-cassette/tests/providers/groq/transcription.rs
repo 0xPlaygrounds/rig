@@ -10,7 +10,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn transcription_smoke() {
-    let bound = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let bound = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let model = bound.transcription(groq::WHISPER_LARGE_V3);
     let response = model
         .call(

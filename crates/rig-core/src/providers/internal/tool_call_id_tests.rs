@@ -87,7 +87,7 @@ fn chat_wire() -> Value {
 
 #[test]
 fn openai_chat_missing_ids_and_later_explicit_collision() {
-    let wire = crate::providers::openai::wire::OpenAI::with_key(
+    let wire = crate::providers::openai::wire::OpenAIConfig::with_key(
         &crate::providers::openai::wire::OPENAI,
         "test-key",
     )
@@ -97,7 +97,7 @@ fn openai_chat_missing_ids_and_later_explicit_collision() {
 
 #[test]
 fn openrouter_missing_ids_and_later_explicit_collision() {
-    let wire = crate::providers::openai::wire::OpenAI::with_key(
+    let wire = crate::providers::openai::wire::OpenAIConfig::with_key(
         &crate::providers::openai::wire::OPENROUTER,
         "test-key",
     )
@@ -110,7 +110,8 @@ fn anthropic_missing_ids_and_later_explicit_collision() {
     let wire = json!({"type":"message","id":"response","model":"test","role":"assistant","stop_reason":"tool_use",
         "usage":{"input_tokens":1,"output_tokens":1},
         "content":(0..3).map(|i|json!({"type":"tool_use","id":if i==1 {"tool-0"} else {""},"name":"same","input":{"n":i}})).collect::<Vec<_>>()});
-    let messages = crate::providers::anthropic::wire::Anthropic::new("test-key").completion("test");
+    let messages =
+        crate::providers::anthropic::wire::AnthropicConfig::new("test-key").completion("test");
     assert_normalization(|| fold_document(&messages, &wire));
 }
 
@@ -119,7 +120,7 @@ fn cohere_missing_ids_and_later_explicit_collision() {
     let mut message = chat_wire()["choices"][0]["message"].clone();
     message["content"] = json!([{"type":"text","text":"prefix"}]);
     let wire = json!({"id":"response","finish_reason":"TOOL_CALL","message":message});
-    let chat = crate::providers::cohere::Cohere::new("test-key").completion("test");
+    let chat = crate::providers::cohere::CohereConfig::new("test-key").completion("test");
     assert_normalization(|| fold_document(&chat, &wire));
 }
 
@@ -128,7 +129,7 @@ fn gemini_rest_missing_ids_and_later_explicit_collision() {
     let wire = json!({"candidates":[{"content":{"role":"model","parts":
         (0..3).map(|i|json!({"functionCall":{"id":if i==1 {"tool-0"} else {""},"name":"same","args":{"n":i}}})).collect::<Vec<_>>()
     },"finishReason":"STOP"}]});
-    let generate = crate::providers::gemini::Gemini::new("test-key").completion("test");
+    let generate = crate::providers::gemini::GeminiConfig::new("test-key").completion("test");
     assert_normalization(|| fold_document(&generate, &wire));
 }
 
@@ -137,7 +138,7 @@ fn gemini_interactions_missing_ids_and_later_explicit_collision() {
     let wire = json!({"id":"response","status":"completed","steps":
         (0..3).map(|i|json!({"type":"function_call","id":if i==1 {"tool-0"} else {""},"name":"same","arguments":{"n":i}})).collect::<Vec<_>>()
     });
-    let interactions = crate::providers::gemini::Gemini::new("test-key").interactions("test");
+    let interactions = crate::providers::gemini::GeminiConfig::new("test-key").interactions("test");
     assert_normalization(|| fold_document(&interactions, &wire));
 }
 

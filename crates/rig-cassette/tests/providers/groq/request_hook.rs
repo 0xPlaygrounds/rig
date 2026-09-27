@@ -75,7 +75,7 @@ impl AgentHook for SessionIdHook<'_> {
 #[ignore = "requires GROQ_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     let agent = rig::AgentBuilder::new(
-        OpenAiModels::from_env_with(&GROQ)
+        OpenAiModels::from_env_for(&GROQ)
             .expect("GROQ_API_KEY should be set")
             .completion(REQUEST_HOOK_MODEL),
     )

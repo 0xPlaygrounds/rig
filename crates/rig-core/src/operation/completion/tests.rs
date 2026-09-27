@@ -2,10 +2,10 @@ use bytes::Bytes;
 
 use crate::completion::{CompletionRequest, Message};
 use crate::message::{AssistantContent, Reasoning};
-use crate::providers::anthropic::wire::Anthropic;
-use crate::providers::gemini::Gemini;
+use crate::providers::anthropic::wire::AnthropicConfig;
+use crate::providers::gemini::GeminiConfig;
 use crate::providers::gemini::completion::GenerateContent;
-use crate::providers::openai::wire::{DEEPSEEK, OPENROUTER, OpenAI};
+use crate::providers::openai::wire::{DEEPSEEK, OPENROUTER, OpenAIConfig};
 use crate::test_utils::RecordingHttpClient;
 use crate::wire::Wire;
 
@@ -102,14 +102,14 @@ fn assert_scoped(body: &str, wire: &str, replays_opaque: bool) {
 
 #[tokio::test]
 async fn anthropic_replays_only_its_own_reasoning() {
-    let body = sent(Anthropic::new("test-key").completion("claude-sonnet-4-6")).await;
+    let body = sent(AnthropicConfig::new("test-key").completion("claude-sonnet-4-6")).await;
     assert_scoped(&body, "anthropic", true);
 }
 
 #[tokio::test]
 async fn gemini_replays_only_its_own_reasoning() {
     let body = sent(GenerateContent::new(
-        Gemini::new("test-key"),
+        GeminiConfig::new("test-key"),
         "gemini-2.5-flash",
     ))
     .await;
@@ -118,13 +118,13 @@ async fn gemini_replays_only_its_own_reasoning() {
 
 #[tokio::test]
 async fn openai_responses_replays_only_its_own_reasoning() {
-    let body = sent(OpenAI::new("test-key").responses("gpt-5.2")).await;
+    let body = sent(OpenAIConfig::new("test-key").responses("gpt-5.2")).await;
     assert_scoped(&body, "openai responses", true);
 }
 
 #[tokio::test]
 async fn openrouter_replays_only_its_own_reasoning() {
-    let body = sent(OpenAI::with_key(&OPENROUTER, "test-key").chat("openai/gpt-5.2")).await;
+    let body = sent(OpenAIConfig::with_key(&OPENROUTER, "test-key").chat("openai/gpt-5.2")).await;
     assert_scoped(&body, "openrouter", true);
 }
 
@@ -132,7 +132,7 @@ async fn openrouter_replays_only_its_own_reasoning() {
 async fn deepseek_replays_only_its_own_reasoning() {
     // DeepSeek replays reasoning as plain text, so only the foreign text is
     // checked.
-    let body = sent(OpenAI::with_key(&DEEPSEEK, "test-key").chat("deepseek-v4-flash")).await;
+    let body = sent(OpenAIConfig::with_key(&DEEPSEEK, "test-key").chat("deepseek-v4-flash")).await;
     assert!(
         !body.contains(FOREIGN),
         "deepseek must not replay foreign reasoning: {body}"
@@ -175,7 +175,10 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
         },
     );
     assert_eq!(request.chat_history.len(), 4);
-    super::Completion::scope_to_wire(&mut request, &Anthropic::new("key").completion("claude"));
+    super::Completion::scope_to_wire(
+        &mut request,
+        &AnthropicConfig::new("key").completion("claude"),
+    );
     assert_eq!(request.chat_history.len(), 3, "{:?}", request.chat_history);
     assert!(request.chat_history.iter().all(|message| match message {
         Message::Assistant { content, .. } => !content.is_empty(),
@@ -335,12 +338,12 @@ async fn openrouter_replays_only_the_requested_familys_reasoning() {
         let content: Vec<AssistantContent> = content.clone();
         async move {
             let chat = send(
-                OpenAI::with_key(&OPENROUTER, "test-key").chat(model),
+                OpenAIConfig::with_key(&OPENROUTER, "test-key").chat(model),
                 content.clone(),
             )
             .await;
             let routed = send(
-                OpenAI::with_key(&OPENROUTER, "test-key").completion(model),
+                OpenAIConfig::with_key(&OPENROUTER, "test-key").completion(model),
                 content,
             )
             .await;
@@ -412,7 +415,7 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
             let mut request = history("unused");
             request.chat_history[1] = Message::Assistant { id: None, content };
             let http = RecordingHttpClient::new(Bytes::from_static(b"{}"));
-            let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
+            let wire = OpenAIConfig::with_key(&OPENROUTER, "test-key").responses(model);
             let _ = crate::driver::Model::new(wire, http.clone())
                 .call(request)
                 .await;
@@ -445,7 +448,7 @@ async fn openrouter_responses_route_scopes_reasoning_by_family() {
         "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
     });
     let response = crate::driver::Model::new(
-        OpenAI::with_key(&OPENROUTER, "test-key").responses("openai/gpt-5-mini"),
+        OpenAIConfig::with_key(&OPENROUTER, "test-key").responses("openai/gpt-5-mini"),
         RecordingHttpClient::new(Bytes::from(reply.to_string())),
     )
     .call(history("unused"))
@@ -480,7 +483,7 @@ async fn openrouter_responses_route_round_trips_a_claude_signature() {
         ],
         "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 }
     });
-    let wire = OpenAI::with_key(&OPENROUTER, "test-key").responses(model);
+    let wire = OpenAIConfig::with_key(&OPENROUTER, "test-key").responses(model);
     let response = crate::driver::Model::new(
         wire.clone(),
         RecordingHttpClient::new(Bytes::from(reply.to_string())),
@@ -546,7 +549,7 @@ async fn openrouter_reasoning_records_its_upstream_family() {
         ("anthropic/claude-4.5-haiku-20251001", "anthropic"),
         ("openai/gpt-5-mini", "openrouter/openai"),
     ] {
-        let wire = OpenAI::with_key(&OPENROUTER, "test-key").chat(model);
+        let wire = OpenAIConfig::with_key(&OPENROUTER, "test-key").chat(model);
         let unary = crate::driver::Model::new(
             wire.clone(),
             RecordingHttpClient::new(Bytes::from(reply(model).to_string())),

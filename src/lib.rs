@@ -4,9 +4,8 @@
 //! Re-exports `rig_core` at `rig::...` paths and, under the default `agent`
 //! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
 //! carries the contextual tool API alongside the portable contracts, which are
-//! always available. `use rig::prelude::*;` brings in [`Model`], its
-//! [`Transport`](rig_core::driver::Transport), [`model()`](fn@model) and the
-//! common agent types.
+//! always available. `use rig::prelude::*;` brings in [`Model`], [`DynModel`]
+//! and the common agent types.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
 //! after their features wherever module naming allows:
@@ -20,35 +19,12 @@
 
 pub use rig_core::*;
 
-/// The bundled `reqwest` transport (`rig-reqwest`). A provider's wire and a
-/// transport make a [`Model`]; [`model()`](fn@model) pairs a wire with the process-wide
-/// default transport ([`rig_reqwest::shared`]). Without the feature, pair a
-/// wire with any `HttpClientExt` implementation through `Model::new`.
+/// The bundled `reqwest` transport (`rig-reqwest`). A provider client built
+/// with no transport named (`OpenAI::from_env()`) sends through its shared
+/// client; `with_http` puts a client on any other `HttpClientExt`.
 #[cfg(feature = "reqwest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
 pub use rig_reqwest;
-
-/// `wire` on the process-wide default transport: the bundled reqwest client,
-/// built once on first use and shared by every model made here.
-///
-/// Construction never fails. When the reqwest client cannot be built, every
-/// call on the model reports the build failure as
-/// [`ProviderError::Http`].
-///
-/// ```no_run
-/// use rig::providers::openai::{self, OpenAI};
-///
-/// # fn main() -> Result<(), rig::client::EnvError> {
-/// let model = rig::model(OpenAI::from_env()?.completion(openai::GPT_5_2));
-/// # let _ = model;
-/// # Ok(())
-/// # }
-/// ```
-#[cfg(feature = "reqwest")]
-#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-pub fn model<W: rig_core::wire::Wire>(wire: W) -> Model<W> {
-    Model::new(wire, rig_reqwest::shared())
-}
 
 /// The bundled `tokio-tungstenite` websocket backend (`rig-tungstenite`), on
 /// native targets. With the `websocket` feature,
@@ -60,8 +36,7 @@ pub fn model<W: rig_core::wire::Wire>(wire: W) -> Model<W> {
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
 
-/// Provider configurations and their wires. A wire says what to send and how
-/// to read the reply; pair it with a transport in a [`Model`] to call it.
+/// Provider clients, their configurations, and the models they build.
 pub mod providers {
     pub use rig_core::providers::*;
 }
@@ -148,8 +123,6 @@ pub mod integrations {
 /// Common portable imports plus additive classic-runtime conveniences.
 pub mod prelude {
     // The contextual `Tool` and its mutable `ToolContext`.
-    #[cfg(feature = "reqwest")]
-    pub use crate::model;
     #[cfg(feature = "agent")]
     pub use crate::tool::{Tool, ToolContext};
     #[cfg(feature = "agent")]

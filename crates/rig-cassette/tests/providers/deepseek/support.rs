@@ -4,11 +4,11 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
+use rig::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "deepseek",
@@ -16,7 +16,7 @@ async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, 
         "https://api.deepseek.com",
     )
     .await;
-    let bound = OpenAI::with_key(&DEEPSEEK, cassette.api_key("DEEPSEEK_API_KEY"))
+    let bound = OpenAIConfig::with_key(&DEEPSEEK, cassette.api_key("DEEPSEEK_API_KEY"))
         .with_base_url(cassette.base_url());
 
     (cassette, bound)
@@ -94,7 +94,7 @@ where
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let bound = OpenAI::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
+    let bound = OpenAIConfig::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,

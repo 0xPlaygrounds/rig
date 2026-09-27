@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         weights: std::fs::read("./model/model.safetensors")?,
     })
     .await?;
-    let agent = AgentBuilder::new(rig_core::Model::new(Generation, model))
+    let agent = AgentBuilder::new(model.completion())
         .preamble("You are a concise assistant.")
         .build();
     println!("{}", agent.prompt("Explain ownership briefly.").await?.output);

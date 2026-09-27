@@ -311,14 +311,14 @@ impl CachedContentReply {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CachedContents {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
     /// Requested entries per listing page. Defaults to Gemini's cap of 1,000.
     pub page_size: usize,
 }
 
 impl CachedContents {
     /// The wire over `provider`, listing a full page at a time.
-    pub fn new(provider: super::Gemini) -> Self {
+    pub fn new(provider: super::GeminiConfig) -> Self {
         Self {
             provider,
             page_size: MAX_PAGE_SIZE,
@@ -344,9 +344,9 @@ impl CachedContents {
     }
 }
 
-impl super::Gemini {
+impl super::GeminiConfig {
     /// Build a wire for Gemini's explicit context cache (`cachedContents`).
-    pub fn cached_contents(&self) -> CachedContents {
+    pub(crate) fn cached_contents(&self) -> CachedContents {
         CachedContents::new(self.clone())
     }
 }

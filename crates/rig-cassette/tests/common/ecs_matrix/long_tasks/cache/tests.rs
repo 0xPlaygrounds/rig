@@ -5,20 +5,27 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
     use rig_core::{
         completion::{CompletionRequest, ToolDefinition},
         message::Message,
-        providers::anthropic::{completion::CacheTtl, wire::Anthropic},
+        providers::anthropic::{completion::CacheTtl, wire::AnthropicConfig},
         wire::{Body, Mode, Wire as _},
     };
-    let provider = Anthropic::new("local-test-key");
+    let provider = AnthropicConfig::new("local-test-key").connect(rig::rig_reqwest::shared());
     let cases = [
-        ("repair", provider.completion("model").with_prompt_caching()),
+        (
+            "repair",
+            provider.completion("model").wire.with_prompt_caching(),
+        ),
         (
             "repair_streamed",
-            provider.completion("model").with_automatic_caching_1h(),
+            provider
+                .completion("model")
+                .wire
+                .with_automatic_caching_1h(),
         ),
         (
             "inventory",
             provider
                 .completion("model")
+                .wire
                 .with_automatic_caching()
                 .with_static_prefix_cache_ttl(CacheTtl::OneHour),
         ),

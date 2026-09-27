@@ -107,7 +107,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
 
     // One model serves both agents: erase it once, clone the handle.
-    let model = rig::model(openai_client.completion(providers::openai::GPT_4O)).erase();
+    let model = openai_client.completion(providers::openai::GPT_4O).erase();
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = AgentBuilder::new(model.clone())

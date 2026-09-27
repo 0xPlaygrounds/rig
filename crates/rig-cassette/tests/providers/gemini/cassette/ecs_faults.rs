@@ -10,7 +10,7 @@
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
 use rig::error::ErrorKind;
-use rig::providers::gemini::Gemini;
+use rig::providers::gemini::GeminiConfig;
 use rig::providers::gemini::completion::{GEMINI_2_5_FLASH, GEMINI_3_FLASH_PREVIEW};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::cassette_models::GeminiModels;
@@ -131,7 +131,7 @@ fn scripted_stream(
         rig::http_client::DynHttpClient,
     >,
 > {
-    let client = Gemini::new(SCRIPTED_KEY);
+    let client = GeminiConfig::new(SCRIPTED_KEY);
     let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
@@ -147,7 +147,7 @@ fn scripted_stream(
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
 ) -> Wire<rig::Model<rig::providers::gemini::completion::GenerateContent>> {
-    let client = Gemini::new(SCRIPTED_KEY);
+    let client = GeminiConfig::new(SCRIPTED_KEY);
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,

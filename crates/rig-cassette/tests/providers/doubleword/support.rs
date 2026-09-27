@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
+use rig::providers::openai::wire::{DOUBLEWORD, OpenAIConfig};
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -8,7 +8,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 const DOUBLEWORD_BASE_URL: &str = "https://api.doubleword.ai/v1";
 
-async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "doubleword",
@@ -16,7 +16,7 @@ async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
         DOUBLEWORD_BASE_URL,
     )
     .await;
-    let doubleword = OpenAI::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
+    let doubleword = OpenAIConfig::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
         .with_base_url(cassette.base_url());
 
     (cassette, doubleword)
@@ -55,7 +55,7 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let client = OpenAI::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
+    let client = OpenAIConfig::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,

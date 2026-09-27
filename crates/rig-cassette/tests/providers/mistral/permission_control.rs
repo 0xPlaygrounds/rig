@@ -157,7 +157,7 @@ async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = rig::AgentBuilder::new(
-        OpenAiModels::from_env_with(&MISTRAL)
+        OpenAiModels::from_env_for(&MISTRAL)
             .expect("MISTRAL_API_KEY should be set")
             .completion(TOOL_MODEL),
     )
@@ -195,7 +195,7 @@ async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = rig::AgentBuilder::new(
-        OpenAiModels::from_env_with(&MISTRAL)
+        OpenAiModels::from_env_for(&MISTRAL)
             .expect("MISTRAL_API_KEY should be set")
             .completion(TOOL_MODEL),
     )

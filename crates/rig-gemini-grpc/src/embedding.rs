@@ -5,7 +5,7 @@
 //! use rig_gemini_grpc::{GeminiGrpc, embedding::{EMBEDDING_004, Embeddings}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let model = Model::new(Embeddings::new(EMBEDDING_004, None), GeminiGrpc::new("API_KEY").await?);
+//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_004, None);
 //! # let _ = model;
 //! # Ok(())
 //! # }

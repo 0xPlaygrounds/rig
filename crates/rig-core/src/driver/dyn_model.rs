@@ -90,7 +90,7 @@ where
 /// use rig_core::{Model, providers::openai::{self, OpenAI}};
 ///
 /// # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-/// let model = Model::new(OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None), http).erase();
+/// let model = OpenAI::from_env()?.with_http(http).embedding(openai::TEXT_EMBEDDING_3_SMALL, None).erase();
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
 ///     .documents(["a document".to_owned()])?
 ///     .build()

@@ -1,4 +1,4 @@
-use crate::{ChoiceAnswer, Evaluate, Jev, NoulAnswer, Query, ScoreAnswer, types};
+use crate::{ChoiceAnswer, Evaluate, JevConfig, NoulAnswer, Query, ScoreAnswer, types};
 use anyhow::ensure;
 use rig_core::error::ProviderError;
 use serde::{Deserialize, Serialize};
@@ -92,10 +92,10 @@ async fn named_query_replays_and_assessment_roundtrips() -> anyhow::Result<()> {
                 .json_body(fixture.response.clone());
         })
         .await;
-    let client = rig_core::Model::new(
-        Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
-        rig_reqwest::ReqwestClient::default(),
-    );
+    let client = JevConfig::new("test-token")
+        .with_endpoint(server.url("/v1/systemone"))
+        .connect(rig_reqwest::ReqwestClient::default())
+        .evaluation();
     let state = fixture
         .request
         .get("state")

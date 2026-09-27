@@ -1,5 +1,5 @@
 use rig::http_client::{DynHttpClient, ReqwestClient};
-use rig::providers::openai::{OpenAI, Route};
+use rig::providers::openai::{OpenAIConfig, Route};
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -42,7 +42,7 @@ impl OpenAiCassette {
         http: impl rig::http_client::HttpClientExt + 'static,
     ) -> Self {
         let http = DynHttpClient::new(http);
-        let openai = OpenAI::new(api_key).with_base_url(base_url);
+        let openai = OpenAIConfig::new(api_key).with_base_url(base_url);
         let chat = openai.clone().with_route(Route::Chat);
         Self {
             openai: OpenAiModels::new(openai, http.clone()),

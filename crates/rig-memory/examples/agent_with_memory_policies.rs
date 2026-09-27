@@ -46,7 +46,7 @@ fn approx_token_count(message: &Message) -> usize {
 async fn main() -> Result<()> {
     let client = OpenAI::from_env()?;
     // One model serves both agents: erase it once, clone the handle.
-    let model = Model::new(client.completion(openai::GPT_4O), rig_reqwest::shared()).erase();
+    let model = client.completion(openai::GPT_4O).erase();
 
     let sliding_memory = InMemoryConversationMemory::new()
         .with_filter(SlidingWindowMemory::last_messages(20).into_filter());

@@ -5,7 +5,7 @@
 //! use rig_gemini_grpc::{GeminiGrpc, completion::{GEMINI_2_5_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let model = Model::new(GenerateContent::new(GEMINI_2_5_FLASH), GeminiGrpc::new("API_KEY").await?);
+//! let model = GeminiGrpc::new("API_KEY").await?.completion(GEMINI_2_5_FLASH);
 //! # let _ = model;
 //! # Ok(())
 //! # }

@@ -1,10 +1,10 @@
 //! Batch text embeddings through the [Gemini API](https://ai.google.dev/api/embeddings).
 //!
 //! ```no_run
-//! use rig_core::providers::gemini::{Gemini, embedding::{Embeddings, EMBEDDING_001}};
+//! use rig_core::providers::gemini::{Gemini, embedding::EMBEDDING_001};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let wire = Embeddings::new(Gemini::from_env()?, EMBEDDING_001, None);
+//! let model = Gemini::from_env()?.embedding(EMBEDDING_001, None);
 //! # Ok(())
 //! # }
 //! ```
@@ -42,7 +42,7 @@ fn model_default_ndims(model: &str) -> Option<usize> {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Embeddings {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
     /// The embedding model, as the path names it.
     pub model: String,
     /// The `output_dimensionality` every document in the batch asks for.
@@ -52,7 +52,11 @@ pub struct Embeddings {
 impl Embeddings {
     /// Build a wire for `model` with the requested output dimensions.
     /// If `ndims` is absent, use the model default or 768 for unknown models.
-    pub fn new(provider: super::Gemini, model: impl Into<String>, ndims: Option<usize>) -> Self {
+    pub fn new(
+        provider: super::GeminiConfig,
+        model: impl Into<String>,
+        ndims: Option<usize>,
+    ) -> Self {
         let model = model.into();
         let ndims = ndims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
         Self {

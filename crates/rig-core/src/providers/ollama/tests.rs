@@ -1127,7 +1127,7 @@ fn test_completion_request_without_output_schema() {
 
 /// The chat wire bound to `http_client`: the model every case below drives.
 fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Model<Chat, H> {
-    crate::driver::Model::new(Ollama::new().completion(LLAMA3_2), http_client)
+    crate::driver::Model::new(OllamaConfig::new().completion(LLAMA3_2), http_client)
 }
 
 // Proves a truncated NDJSON stream — content chunks then EOF without a
@@ -1311,7 +1311,8 @@ async fn embeddings_non_success_preserves_status_and_body() {
     let body = r#"{"error":"model not found"}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let model = crate::driver::Model::new(Ollama::new().embedding(ALL_MINILM, None), http_client);
+    let model =
+        crate::driver::Model::new(OllamaConfig::new().embedding(ALL_MINILM, None), http_client);
 
     let error = model
         .call(vec!["hello".to_string()])

@@ -46,7 +46,7 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
         groq.completion(EXTRACTOR_USAGE_BACKWARD_MODEL),
     )
@@ -67,7 +67,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
         groq.completion(EXTRACTOR_USAGE_WITH_USAGE_MODEL),
     )
@@ -90,7 +90,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let extractor = rig::extractor::ExtractorBuilder::<Address>::new(
         groq.completion(EXTRACTOR_USAGE_CHAT_HISTORY_MODEL),
     )
@@ -118,7 +118,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
         groq.completion(EXTRACTOR_USAGE_SAME_DATA_MODEL),
     )
@@ -145,7 +145,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
 
     let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(
         groq.completion(EXTRACTOR_USAGE_TRACKING_MODEL),

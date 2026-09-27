@@ -42,7 +42,7 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
     let extractor =
         rig::extractor::ExtractorBuilder::<Person>::new(client.completion(DEFAULT_MODEL)).build();
 
@@ -61,7 +61,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
     let extractor =
         rig::extractor::ExtractorBuilder::<Person>::new(client.completion(DEFAULT_MODEL)).build();
 
@@ -82,7 +82,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
     let extractor =
         rig::extractor::ExtractorBuilder::<Address>::new(client.completion(DEFAULT_MODEL)).build();
 
@@ -108,7 +108,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
     let extractor =
         rig::extractor::ExtractorBuilder::<Person>::new(client.completion(DEFAULT_MODEL)).build();
 
@@ -133,7 +133,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
 
     let person_extractor =
         rig::extractor::ExtractorBuilder::<Person>::new(client.completion(DEFAULT_MODEL)).build();

@@ -2,9 +2,9 @@
 //! Explicit configuration routes override model-specific hooks and dialect defaults.
 //!
 //! ```
-//! use rig_core::providers::openai::{OpenAI, Route};
-//! let provider = OpenAI::new("key").with_route(Route::Chat);
-//! let wire = provider.chat("gpt-5.2");
+//! use rig_core::providers::openai::{OpenAI, OpenAIConfig, Route};
+//! let provider: OpenAI = OpenAIConfig::new("key").with_route(Route::Chat).client();
+//! let model = provider.completion("gpt-5.2");
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ use crate::providers::openai::responses_api::{
 use crate::telemetry::GenAiOperation;
 use crate::wire::{Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame};
 
-use super::OpenAI;
+use super::OpenAIConfig;
 use super::chat::{Chat, ChatDecoder, ChatEvent};
 
 /// Dispatch a shared expression to the selected route.
@@ -55,7 +55,7 @@ pub enum OpenAiWire {
 impl OpenAiWire {
     /// The wire for `model` on `provider`'s
     /// [`completion_route`](OpenAI::completion_route).
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         let model = model.into();
         let route = provider.route.unwrap_or_else(|| {
             provider
@@ -78,7 +78,7 @@ impl OpenAiWire {
         request: CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
-            &OpenAI,
+            &OpenAIConfig,
             &CompletionRequest,
             http::request::Builder,
         ) -> http::request::Builder,
@@ -87,7 +87,7 @@ impl OpenAiWire {
     }
 
     /// The configuration this wire speaks to.
-    pub fn provider(&self) -> &OpenAI {
+    pub fn provider(&self) -> &OpenAIConfig {
         on_route!(self, wire => &wire.provider)
     }
 

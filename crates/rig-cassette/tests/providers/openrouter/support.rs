@@ -1,4 +1,4 @@
-use rig::providers::openai::wire::{OPENROUTER, OpenAI, Route};
+use rig::providers::openai::wire::{OPENROUTER, OpenAIConfig, Route};
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -8,7 +8,7 @@ use futures::FutureExt;
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
-async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "openrouter",
@@ -16,13 +16,15 @@ async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
         OPENROUTER_BASE_URL,
     )
     .await;
-    let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
+    let bound = OpenAIConfig::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
         .with_base_url(cassette.base_url());
 
     (cassette, bound)
 }
 
-async fn openrouter_openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn openrouter_openai_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "openrouter",
@@ -30,7 +32,7 @@ async fn openrouter_openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderC
         OPENROUTER_BASE_URL,
     )
     .await;
-    let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
+    let bound = OpenAIConfig::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
         .with_base_url(cassette.base_url())
         .with_route(Route::Responses);
 
@@ -109,7 +111,7 @@ where
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let bound = OpenAI::with_key(&OPENROUTER, "sk-invalid-edge-matrix-key")
+    let bound = OpenAIConfig::with_key(&OPENROUTER, "sk-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,

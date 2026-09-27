@@ -1,20 +1,21 @@
 //! GitHub Copilot authentication, endpoint wires, and model identifiers.
 //!
-//! [`wire::Copilot`] accepts an exchanged session token. Use [`auth`] for device
-//! login and refresh, then [`wire::Copilot::from_auth`] to build the configuration.
+//! A [`Copilot`] client sends with an exchanged session token. To log in with
+//! a device code or refresh a GitHub token, pass an [`auth::Authenticator`] to
+//! [`Copilot::authenticate`], which resolves the session through the client's
+//! own transport.
 //! Completion routes are selected by model; all routes include editor-identity headers.
 //!
 //! ```no_run
 //! use rig_core::providers::copilot;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let github = copilot::wire::Copilot::from_env()?;
+//! let github = copilot::Copilot::from_env()?;
 //!
 //! let chat = github.completion(copilot::GPT_4O);
 //! let codex = github.completion(copilot::GPT_5_3_CODEX);
 //! let embeddings = github.embedding(copilot::TEXT_EMBEDDING_3_SMALL, None);
-//! let catalogue = github.models();
-//! # let _ = (chat, codex, embeddings, catalogue);
+//! # let _ = (chat, codex, embeddings);
 //! # Ok(())
 //! # }
 //! ```
@@ -27,7 +28,11 @@
 /// let auth = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
 /// ```
 pub mod auth;
+mod client;
 pub mod wire;
+
+pub use client::Copilot;
+pub use wire::CopilotConfig;
 
 use crate::completion;
 use crate::providers::openai;

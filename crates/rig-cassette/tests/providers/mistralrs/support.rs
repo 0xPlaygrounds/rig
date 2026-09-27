@@ -3,7 +3,7 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::providers::openai::wire::{OpenAI, Route};
+use rig::providers::openai::wire::{OpenAIConfig, Route};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
@@ -26,7 +26,7 @@ fn server() -> (String, String) {
     )
 }
 
-async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let (real_base_url, api_key) = server();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -35,14 +35,14 @@ async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
         &real_base_url,
     )
     .await;
-    let responses = OpenAI::new(api_key).with_base_url(cassette.base_url());
+    let responses = OpenAIConfig::new(api_key).with_base_url(cassette.base_url());
 
     (cassette, responses)
 }
 
 async fn mistralrs_completions_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, OpenAI) {
+) -> (ProviderCassette, OpenAIConfig) {
     let (real_base_url, api_key) = server();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -51,7 +51,7 @@ async fn mistralrs_completions_cassette(
         &real_base_url,
     )
     .await;
-    let completions = OpenAI::new(api_key)
+    let completions = OpenAIConfig::new(api_key)
         .with_base_url(cassette.base_url())
         .with_route(Route::Chat);
 

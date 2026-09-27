@@ -1,15 +1,15 @@
 //! Hugging Face's model identifiers.
 //!
-//! Configure requests with [`crate::providers::openai::wire::HUGGINGFACE`].
-//! [`crate::providers::openai::wire::SubRoute`] selects a backend; transcription
+//! [`from_env`] and [`new`] build a client on the [`HUGGINGFACE`](crate::providers::openai::wire::HUGGINGFACE) dialect.
+//! [`OpenAIConfig::with_sub_route`](crate::providers::openai::OpenAIConfig::with_sub_route)
+//! selects a backend; transcription
 //! and image generation require `HFInference`.
 //!
 //! ```no_run
 //! use rig_core::providers::huggingface;
-//! use rig_core::providers::openai::wire::{HUGGINGFACE, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let router = OpenAI::from_env_with(&HUGGINGFACE)?;
+//! let router = huggingface::from_env()?;
 //! let chat = router.chat(huggingface::GEMMA_2);
 //! # let _ = chat;
 //! # Ok(())
@@ -48,3 +48,8 @@ pub mod image_generation_models {
 }
 #[cfg(feature = "image")]
 pub use image_generation_models::*;
+
+crate::providers::internal::client::openai_vendor!(
+    crate::providers::openai::wire::HUGGINGFACE,
+    "Hugging Face"
+);

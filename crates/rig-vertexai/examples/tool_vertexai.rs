@@ -1,10 +1,7 @@
 use anyhow::Result;
 use rig_agent::prelude::*;
 use rig_agent::tool::ToolContext;
-use rig_vertexai::{
-    VertexAi,
-    completion::{GEMINI_2_5_FLASH_LITE, GenerateContent},
-};
+use rig_vertexai::{VertexAi, completion::GEMINI_2_5_FLASH_LITE};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -52,10 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().with_target(false).init();
 
     // Create the Vertex AI model using implicit credentials
-    let model = Model::new(
-        GenerateContent::new(GEMINI_2_5_FLASH_LITE),
-        VertexAi::from_env()?,
-    );
+    let model = VertexAi::from_env()?.completion(GEMINI_2_5_FLASH_LITE);
 
     // Create agent with a calculator tool
     let calculator_agent = AgentBuilder::new(model)

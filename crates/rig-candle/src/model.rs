@@ -81,6 +81,12 @@ enum ModelSource<'a> {
 }
 
 impl CandleModel {
+    /// The completion model this runtime serves: the [`Generation`] wire on
+    /// this runtime.
+    pub fn completion(&self) -> rig_core::Model<Generation, Self> {
+        rig_core::Model::new(Generation, self.clone())
+    }
+
     /// Loads a model from config, tokenizer, and one unsharded safetensors buffer.
     pub fn from_safetensors(data: ModelData) -> Result<Self, CandleError> {
         Self::builder(data).build()
@@ -324,7 +330,7 @@ fn stream_infer(
 /// use rig_core::Model;
 ///
 /// fn model(candle: CandleModel) -> Model<Generation, CandleModel> {
-///     Model::new(Generation, candle)
+///     candle.completion()
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

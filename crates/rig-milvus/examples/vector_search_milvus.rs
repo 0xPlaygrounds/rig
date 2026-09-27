@@ -1,10 +1,9 @@
-use rig_core::Model;
 use rig_core::vector_store::InsertDocuments;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
-    providers::openai::{self, wire::OpenAI},
+    providers::openai::{self, OpenAI},
     vector_store::VectorStoreIndex,
 };
 use serde::{Deserialize, Serialize};
@@ -30,11 +29,9 @@ impl std::fmt::Display for WordDefinition {
 async fn main() -> Result<(), anyhow::Error> {
     // Bind the OpenAI embeddings endpoint
     let openai_client = OpenAI::from_env()?;
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
-        rig_reqwest::shared(),
-    )
-    .erase();
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
+        .erase();
 
     let base_url = std::env::var("MILVUS_BASE_URL")?;
     let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;

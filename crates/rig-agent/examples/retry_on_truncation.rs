@@ -13,6 +13,7 @@
 //! ```not_rust
 //! cargo run -p rig-agent --example retry_on_truncation
 //! ```
+//!
 
 use std::sync::atomic::{AtomicU64, Ordering};
 

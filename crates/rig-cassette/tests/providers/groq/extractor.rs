@@ -10,7 +10,7 @@ use super::EXTRACTOR_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extractor_smoke() {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let extractor =
         rig::extractor::ExtractorBuilder::<SmokePerson>::new(groq.completion(EXTRACTOR_MODEL))
             .build();

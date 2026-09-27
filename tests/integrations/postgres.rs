@@ -65,9 +65,11 @@ async fn vector_search_test() {
 
     // init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(openai_mock.base_url());
+    let openai_client = openai::OpenAIConfig::new("TEST")
+        .with_base_url(openai_mock.base_url())
+        .client();
 
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None));
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 
     // create test documents with mocked embeddings
     let words = vec![

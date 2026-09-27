@@ -6,7 +6,7 @@
 //! use rig_core::{Model, completion::CompletionRequestBuilder, providers::openai::OpenAI};
 //!
 //! # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
-//! let model = Model::new(OpenAI::from_env()?.completion("gpt-4o"), http);
+//! let model = OpenAI::from_env()?.with_http(http).completion("gpt-4o");
 //! let request = CompletionRequestBuilder::new("What is Rig?").build();
 //! let response = model.call(request).await?;
 //! println!("{:?}", response.choice);

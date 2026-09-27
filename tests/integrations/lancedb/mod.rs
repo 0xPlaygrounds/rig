@@ -101,10 +101,12 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST").with_base_url(server.base_url());
+    let openai_client = openai::OpenAIConfig::new("TEST")
+        .with_base_url(server.base_url())
+        .client();
 
     // Select an embedding model.
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Initialize LanceDB locally.
     let store = assert_fs::TempDir::new().unwrap();
@@ -310,13 +312,14 @@ async fn agent_with_dynamic_context_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST")
+    let openai_client = openai::OpenAIConfig::new("TEST")
         .with_base_url(server.base_url())
         // The mock answers Chat Completions, not the Responses default.
-        .with_route(openai::Route::Chat);
+        .with_route(openai::Route::Chat)
+        .client();
 
     // Select an embedding model.
-    let model = rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None));
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Initialize LanceDB locally.
     let store = assert_fs::TempDir::new().unwrap();
@@ -379,7 +382,7 @@ async fn agent_with_dynamic_context_test() {
         .unwrap();
 
     // Build RAG agent with dynamic context.
-    let agent = AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4O)))
+    let agent = AgentBuilder::new(openai_client.completion(openai::GPT_4O))
         .dynamic_context(top_k, vector_store_index)
         .build();
 

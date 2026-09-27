@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::providers::ollama::wire::Ollama;
+use rig::providers::ollama::Ollama;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
 };
@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create ollama client
     let ollama_client = Ollama::new();
-    let embedding_model = rig::model(ollama_client.embedding("nomic-embed-text", None)).erase();
+    let embedding_model = ollama_client.embedding("nomic-embed-text", None).erase();
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -64,7 +64,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create vector store index
     let index = vector_store.index(embedding_model);
-    let rag_agent = AgentBuilder::new(rig::model(ollama_client.completion("qwen2.5:14b")))
+    let rag_agent = AgentBuilder::new(ollama_client.completion("qwen2.5:14b"))
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

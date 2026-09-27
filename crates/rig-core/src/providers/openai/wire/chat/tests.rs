@@ -14,13 +14,13 @@ use futures::StreamExt;
 use super::*;
 use crate::completion::FinishReason;
 use crate::message::AssistantContent;
-use crate::providers::openai::wire::{Dialect, GROQ, OPENAI, OpenAI};
+use crate::providers::openai::wire::{Dialect, GROQ, OPENAI, OpenAIConfig};
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 
 use super::super::tests::{recorded, recorded_json};
 
 fn wire() -> Chat {
-    OpenAI::new("sk-test")
+    OpenAIConfig::new("sk-test")
         .with_dialect(&OPENAI)
         .chat("gpt-4.1-nano")
 }
@@ -322,7 +322,7 @@ async fn an_in_band_error_envelope_fails_the_turn() {
 #[test]
 fn the_output_cap_spelling_follows_the_model_family() {
     fn cap_key(model: &str) -> &'static str {
-        let encoded = OpenAI::new("sk-test")
+        let encoded = OpenAIConfig::new("sk-test")
             .chat(model)
             .encode(prompt("hi"), Mode::Unary)
             .expect("encodes");
@@ -348,7 +348,7 @@ fn the_output_cap_spelling_follows_the_model_family() {
 
     // A dialect whose endpoint was never observed to reject the legacy field
     // keeps sending it, whatever the model is called.
-    let groq = OpenAI::new("gsk-test")
+    let groq = OpenAIConfig::new("gsk-test")
         .with_dialect(&GROQ)
         .chat("gpt-5.2")
         .encode(prompt("hi"), Mode::Unary)
@@ -384,7 +384,7 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
         request
     };
 
-    let error = OpenAI::new("k")
+    let error = OpenAIConfig::new("k")
         .with_dialect(&OPENROUTER)
         .chat("openai/gpt-4o")
         .encode(with_file_id(), Mode::Unary)
@@ -399,7 +399,7 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
     // Every other dialect on this wire accepted them, so the refusal is
     // OpenRouter's and not the wire's.
     assert!(
-        OpenAI::new("k")
+        OpenAIConfig::new("k")
             .chat("gpt-4.1-nano")
             .encode(with_file_id(), Mode::Unary)
             .is_ok(),
@@ -603,7 +603,9 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
         "\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":1,\"total_tokens\":8}}\n\n",
     );
 
-    let wire = OpenAI::new("pplx").with_dialect(&PERPLEXITY).chat("sonar");
+    let wire = OpenAIConfig::new("pplx")
+        .with_dialect(&PERPLEXITY)
+        .chat("sonar");
     let mut response = crate::driver::Model::new(
         wire,
         MockStreamingClient {
@@ -778,7 +780,7 @@ async fn a_gateway_may_answer_with_a_bare_string() {
     use crate::providers::openai::wire::MIRA;
 
     let response = crate::driver::Model::new(
-        OpenAI::new("k").with_dialect(&MIRA).chat("gpt-4o"),
+        OpenAIConfig::new("k").with_dialect(&MIRA).chat("gpt-4o"),
         RecordingHttpClient::new(r#""the whole answer""#),
     )
     .call(prompt("ask"))
@@ -913,7 +915,7 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
     let encode = |content: Vec<UserContent>| {
         let mut request = prompt("look at this");
         request.chat_history = vec![Message::User { content }];
-        OpenAI::new("k")
+        OpenAIConfig::new("k")
             .with_dialect(&MISTRAL)
             .chat("mistral-small-latest")
             .encode(request, Mode::Unary)
@@ -1033,7 +1035,7 @@ fn groq_replays_reasoning_turns_without_reasoning_content() {
         request
     };
     let assistant = |dialect: &Dialect| {
-        let encoded = OpenAI::new("k")
+        let encoded = OpenAIConfig::new("k")
             .with_dialect(dialect)
             .chat("m")
             .encode(history(), Mode::Unary)

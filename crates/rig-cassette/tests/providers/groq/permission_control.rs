@@ -159,7 +159,7 @@ async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = rig::AgentBuilder::new(
-        OpenAiModels::from_env_with(&GROQ)
+        OpenAiModels::from_env_for(&GROQ)
             .expect("GROQ_API_KEY should be set")
             .completion(PERMISSION_CONTROL_PROMPT_MODEL),
     )
@@ -200,7 +200,7 @@ async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = rig::AgentBuilder::new(
-        OpenAiModels::from_env_with(&GROQ)
+        OpenAiModels::from_env_for(&GROQ)
             .expect("GROQ_API_KEY should be set")
             .completion(PERMISSION_CONTROL_STREAMING_MODEL),
     )

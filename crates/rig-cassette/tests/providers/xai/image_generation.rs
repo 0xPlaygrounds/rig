@@ -19,7 +19,7 @@ async fn image_generation_smoke() {
             // credential and base URL so the fixture still replays.
             let responses = client;
             let model = OpenAiModels::new(
-                openai::wire::OpenAI::with_key(&xai::DIALECT, responses.config.api_key)
+                openai::wire::OpenAIConfig::with_key(&xai::DIALECT, responses.config.api_key)
                     .with_base_url(responses.config.base_url),
                 responses.http,
             )

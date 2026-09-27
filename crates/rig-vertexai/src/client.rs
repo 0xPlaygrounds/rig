@@ -5,6 +5,9 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
 
+use crate::completion::GenerateContent;
+use rig_core::Model;
+
 // Env vars and terminology (location, project) chosen to match google genai client
 // https://googleapis.github.io/python-genai/genai.html#genai.client.Client
 
@@ -236,6 +239,11 @@ impl VertexAi {
     /// [`VertexAiBuilder::with_prediction_service`] bypasses credential resolution.
     pub fn from_env() -> Result<Self, VertexAiClientError> {
         VertexAi::new()
+    }
+
+    /// The `GenerateContent` model for `model`.
+    pub fn completion(&self, model: impl Into<String>) -> Model<GenerateContent, Self> {
+        Model::new(GenerateContent::new(model), self.clone())
     }
 
     pub fn project(&self) -> &str {

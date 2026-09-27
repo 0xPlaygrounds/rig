@@ -3,10 +3,11 @@
 //! Chat Completions otherwise. Credentials must be exchanged before encoding.
 //!
 //! ```no_run
-//! use rig_core::providers::copilot::{wire::Copilot, GPT_4O};
+//! use rig_core::providers::copilot::{Copilot, GPT_4O};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let wire = Copilot::from_env()?.completion(GPT_4O).with_edits_intent();
+//! let mut model = Copilot::from_env()?.completion(GPT_4O);
+//! model.wire = model.wire.with_edits_intent();
 //! # Ok(())
 //! # }
 //! ```
@@ -25,7 +26,7 @@ use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// hook.
 pub use crate::providers::openai::wire::Embeddings;
 use crate::providers::openai::wire::{
-    Dialect, DialectHooks, EmbeddingQuirks, OpenAI, OpenAiDecoder, OpenAiWire, Quirks,
+    Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, OpenAiDecoder, OpenAiWire, Quirks,
     ResponsesQuirks, Route,
 };
 use crate::telemetry::GenAiOperation;
@@ -102,7 +103,7 @@ static HOOKS: DialectHooks = DialectHooks {
 
 /// The same envelope calculation serves the dialect hook and the public wrapper.
 fn completion_envelope(
-    provider: &OpenAI,
+    provider: &OpenAIConfig,
     request: &CompletionRequest,
     mut builder: http::request::Builder,
     intent: CopilotIntent,
@@ -131,19 +132,19 @@ pub fn routes_through_responses(model: &str) -> bool {
 /// The credential is an *exchanged* Copilot session token, not a GitHub
 /// OAuth token: see the module docs and [`Self::from_auth`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Copilot {
+pub struct CopilotConfig {
     /// The exchanged session token. Never serialized (see [`Secret`]).
     pub api_key: Secret,
     /// The API root every path resolves against.
     pub base_url: String,
 }
 
-impl Copilot {
+impl CopilotConfig {
     /// Configure Copilot with an exchanged session token.
     /// Derive a permitted endpoint from `proxy-ep=` when present, otherwise use
     /// the default. Explicit base-URL settings override token-derived routing.
     pub fn new(api_key: impl Into<Secret>) -> Self {
-        credential_of(&OpenAI::with_key(&DIALECT, api_key))
+        credential_of(&OpenAIConfig::with_key(&DIALECT, api_key))
     }
 
     /// Configure Copilot from an exchanged auth context.
@@ -181,7 +182,7 @@ impl Copilot {
     }
 
     /// The completion wire for `model`, on whichever route answers it.
-    pub fn completion(&self, model: impl Into<String>) -> CopilotWire {
+    pub(crate) fn completion(&self, model: impl Into<String>) -> CopilotWire {
         self.wire_for(model)
     }
 
@@ -195,20 +196,20 @@ impl Copilot {
 
     /// Build an embedding wire with Copilot's editor headers and optional usage.
     /// Use `ndims` when supplied, otherwise the shared wire's model default.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         Embeddings::new(self.openai(), model, ndims)
     }
 
     /// The model-listing wire.
-    pub fn models(&self) -> Models {
+    pub(crate) fn models(&self) -> Models {
         Models {
             provider: self.clone(),
         }
     }
 
     /// Convert to shared configuration with Copilot's dialect and explicit endpoint.
-    fn openai(&self) -> OpenAI {
-        OpenAI::with_key(&DIALECT, self.api_key.clone()).with_base_url(self.base_url.clone())
+    fn openai(&self) -> OpenAIConfig {
+        OpenAIConfig::with_key(&DIALECT, self.api_key.clone()).with_base_url(self.base_url.clone())
     }
 
     /// Resolve `path` against the base URL.
@@ -306,8 +307,8 @@ impl CopilotWire {
 
 /// The Copilot credential behind the shared configuration
 /// [`Copilot::new`] resolves its endpoint through.
-fn credential_of(provider: &OpenAI) -> Copilot {
-    Copilot {
+fn credential_of(provider: &OpenAIConfig) -> CopilotConfig {
+    CopilotConfig {
         api_key: provider.api_key.clone(),
         base_url: provider.base_url.clone(),
     }
@@ -358,7 +359,7 @@ impl Wire for CopilotWire {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// Which Copilot, and how to reach it.
-    pub provider: Copilot,
+    pub provider: CopilotConfig,
 }
 
 /// Catalogue entry with model identity, vendor, and modality under `capabilities.type`.

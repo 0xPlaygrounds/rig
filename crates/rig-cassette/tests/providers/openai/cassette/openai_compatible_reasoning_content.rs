@@ -15,7 +15,7 @@ use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use futures::FutureExt;
 use rig::completion::Message;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -71,7 +71,8 @@ where
         &server.base_url(),
     )
     .await;
-    let client = OpenAI::new("dummy-openai-compatible-key").with_base_url(cassette.base_url());
+    let client =
+        OpenAIConfig::new("dummy-openai-compatible-key").with_base_url(cassette.base_url());
 
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,

@@ -1,20 +1,18 @@
 //! Hugging Face context smoke test.
 
-use rig::providers::openai::wire::{HUGGINGFACE, OpenAI};
+use rig::providers::huggingface;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn context_smoke() {
-    let provider = OpenAI::from_env_with(&HUGGINGFACE).expect("config should build from env");
+    let provider = huggingface::from_env().expect("config should build from env");
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
         .fold(
-            rig::AgentBuilder::new(rig::model(
-                provider.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
-            )),
+            rig::AgentBuilder::new(provider.completion("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")),
             rig::AgentBuilder::context,
         )
         .build();

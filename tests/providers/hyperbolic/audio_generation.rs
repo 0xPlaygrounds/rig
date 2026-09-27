@@ -1,6 +1,6 @@
 //! Hyperbolic audio generation smoke test.
 
-use rig::providers::openai::wire::{HYPERBOLIC, OpenAI};
+use rig::providers::hyperbolic;
 
 use crate::support::{AUDIO_TEXT, assert_nonempty_bytes};
 use rig::audio_generation::AudioGenerationRequestBuilder;
@@ -8,8 +8,8 @@ use rig::audio_generation::AudioGenerationRequestBuilder;
 #[tokio::test]
 #[ignore = "requires HYPERBOLIC_API_KEY"]
 async fn audio_generation_smoke() {
-    let provider = OpenAI::from_env_with(&HYPERBOLIC).expect("config should build from env");
-    let model = rig::model(provider.audio_generation("EN"));
+    let provider = hyperbolic::from_env().expect("config should build from env");
+    let model = provider.audio_generation("EN");
 
     let response = model
         .call(AudioGenerationRequestBuilder::new(AUDIO_TEXT, "EN-US").build())

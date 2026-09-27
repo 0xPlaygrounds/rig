@@ -12,8 +12,7 @@
 #![allow(clippy::expect_used, clippy::panic)]
 
 use rig_core::completion::CompletionRequestBuilder;
-use rig_core::driver::Model;
-use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::OpenAIConfig;
 
 use rig_core::test_utils::RecordingHttpClient;
 
@@ -149,10 +148,10 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
     );
 
     block_on(async move {
-        let wire = OpenAI::new("test-key")
+        let bound = OpenAIConfig::new("test-key")
             .with_base_url(&base_url)
+            .connect(RecordingHttpClient::new("{}"))
             .responses("gpt-5.4");
-        let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
         let mut session = match bound.responses_websocket().connect().await {
             Ok(session) => session,
@@ -199,10 +198,10 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
     );
 
     block_on(async move {
-        let wire = OpenAI::new("test-key")
+        let bound = OpenAIConfig::new("test-key")
             .with_base_url(&base_url)
+            .connect(RecordingHttpClient::new("{}"))
             .responses("gpt-5.4");
-        let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
         let mut session = match bound
             .responses_websocket()
@@ -263,10 +262,10 @@ fn a_cancelled_read_does_not_lose_the_frame_off_runtime() {
     let base_url = serve_one_turn_after(Some(released), vec![delta]);
 
     block_on(async move {
-        let wire = OpenAI::new("test-key")
+        let bound = OpenAIConfig::new("test-key")
             .with_base_url(&base_url)
+            .connect(RecordingHttpClient::new("{}"))
             .responses("gpt-5.4");
-        let bound = Model::new(wire, RecordingHttpClient::new("{}"));
 
         let mut session = match bound.responses_websocket().connect().await {
             Ok(session) => session,

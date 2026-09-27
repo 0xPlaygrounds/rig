@@ -19,7 +19,7 @@
 //! use rig_vertexai::{VertexAi, completion::{GEMINI_2_5_FLASH, GenerateContent}};
 //!
 //! # async fn example() -> Result<(), rig_vertexai::client::VertexAiClientError> {
-//! let model = Model::new(GenerateContent::new(GEMINI_2_5_FLASH), VertexAi::from_env()?);
+//! let model = VertexAi::from_env()?.completion(GEMINI_2_5_FLASH);
 //! # let _ = model;
 //! # Ok(())
 //! # }

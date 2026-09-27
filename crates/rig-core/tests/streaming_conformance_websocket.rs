@@ -23,9 +23,8 @@
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
 use rig_core::completion::CompletionRequestBuilder;
-use rig_core::driver::Model;
 use rig_core::error::ProviderError;
-use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_core::test_utils::streaming_conformance::{
@@ -190,10 +189,10 @@ fn driver() -> conformance::WireDriver {
 
             // The HTTP transport is never used: a websocket session only
             // borrows the wire for its request mapping.
-            let wire = OpenAI::new("test-key")
+            let bound = OpenAIConfig::new("test-key")
                 .with_base_url(format!("http://{address}/v1"))
+                .connect(RecordingHttpClient::new("{}"))
                 .responses("gpt-5.4");
-            let bound = Model::new(wire, RecordingHttpClient::new("{}"));
             let mut session = bound.responses_websocket().connect().await?;
             session
                 .send(CompletionRequestBuilder::new("hello").build())

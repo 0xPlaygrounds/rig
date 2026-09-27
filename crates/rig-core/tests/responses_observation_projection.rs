@@ -9,7 +9,6 @@
 //! usage, verdict and response-id telemetry silently, with every test green.
 #![allow(clippy::expect_used)]
 
-use rig_core::Model;
 use std::sync::Arc;
 
 use rig_core::completion::CompletionRequest;
@@ -17,7 +16,7 @@ use rig_core::completion::CompletionRequestBuilder;
 use rig_core::observe::{
     Action, AdapterContext, AdapterEvent, AdapterObservation, AdapterUsage, ObservationLog, Subject,
 };
-use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::OpenAIConfig;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 /// One completed unary Responses reply, carrying every count the projection
@@ -49,7 +48,9 @@ const BODY: &str = r#"{
 #[tokio::test]
 async fn a_unary_responses_reply_projects_usage_verdict_and_id() {
     let http = SequencedHttpClient::new(vec![MockHttpResponse::success(BODY)]);
-    let model = Model::new(OpenAI::new("test-key").responses("gpt-4o"), http);
+    let model = OpenAIConfig::new("test-key")
+        .connect(http)
+        .responses("gpt-4o");
 
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "projection");

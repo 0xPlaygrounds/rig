@@ -6,7 +6,7 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 //! let transport = GeminiGrpc::new("YOUR_API_KEY").await?;
-//! let model = Model::new(GenerateContent::new(GEMINI_2_0_FLASH), transport);
+//! let model = transport.completion(GEMINI_2_0_FLASH);
 //! # let _ = model;
 //! # Ok(())
 //! # }

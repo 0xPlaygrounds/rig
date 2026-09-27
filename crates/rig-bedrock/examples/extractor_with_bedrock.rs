@@ -1,7 +1,6 @@
 use rig_agent::extractor::ExtractorBuilder;
 use rig_bedrock::client::BedrockRuntime;
-use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
-use rig_core::Model;
+use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -20,7 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env());
+    let model = BedrockRuntime::from_env().completion(AMAZON_NOVA_LITE);
     let data_extractor = ExtractorBuilder::<Person>::new(model).build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")

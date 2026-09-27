@@ -31,16 +31,18 @@ const BASE_URL: &str = "https://api.cohere.ai";
 /// The environment variable carrying the API key.
 const API_KEY_ENV: &str = "COHERE_API_KEY";
 
-/// The shared configuration of a Cohere provider.
+/// The settings of a Cohere provider: serializable, and the credential is
+/// never serialized. [`connect`](Self::connect) puts it on a transport as a
+/// [`Cohere`](super::Cohere) client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Cohere {
+pub struct CohereConfig {
     /// The API key, sent as `Authorization: Bearer`.
     pub api_key: Secret,
     /// The API root, without a trailing slash.
     pub base_url: String,
 }
 
-impl Cohere {
+impl CohereConfig {
     /// Cohere with default settings.
     pub fn new(api_key: impl Into<Secret>) -> Self {
         Self {
@@ -61,7 +63,7 @@ impl Cohere {
     }
 
     /// The chat wire for `model`.
-    pub fn completion(&self, model: impl Into<String>) -> Chat {
+    pub(crate) fn completion(&self, model: impl Into<String>) -> Chat {
         Chat {
             provider: self.clone(),
             model: model.into(),
@@ -70,7 +72,7 @@ impl Cohere {
 
     /// Build a text-embedding wire reporting the supplied or known model width,
     /// or zero if unknown. This width is metadata, not a request parameter.
-    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         let model = model.into();
         let ndims = ndims
             .or_else(|| super::model_dimensions_from_identifier(&model))
@@ -87,7 +89,7 @@ impl Cohere {
     ///
     /// Cohere Embed v3 embeds images with one fixed model, so this wire
     /// names no model.
-    pub fn image_embedding(&self) -> ImageEmbeddings {
+    pub(crate) fn image_embedding(&self) -> ImageEmbeddings {
         ImageEmbeddings {
             provider: self.clone(),
         }
@@ -108,7 +110,7 @@ impl Cohere {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Chat {
     /// The provider this wire speaks to.
-    pub provider: Cohere,
+    pub provider: CohereConfig,
     /// The model to address.
     pub model: String,
 }
@@ -216,7 +218,7 @@ where
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Embeddings {
     /// The provider this wire speaks to.
-    pub provider: Cohere,
+    pub provider: CohereConfig,
     /// The model to address.
     pub model: String,
     /// The width this wire reports, from the caller or the model's published
@@ -332,7 +334,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageEmbeddings {
     /// The provider this wire speaks to.
-    pub provider: Cohere,
+    pub provider: CohereConfig,
 }
 
 impl Wire for ImageEmbeddings {

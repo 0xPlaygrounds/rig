@@ -74,10 +74,10 @@ async fn recorded_mixed_batch() -> anyhow::Result<()> {
         ["No deadline", "Within a week", "Today"],
     )?;
     let refund = Noul::new("Does the customer explicitly request a refund?")?;
-    let client = rig_core::Model::new(
-        Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
-        rig_reqwest::ReqwestClient::default(),
-    );
+    let client = JevConfig::new("test-token")
+        .with_endpoint(server.url("/v1/systemone"))
+        .connect(rig_reqwest::ReqwestClient::default())
+        .evaluation();
     let result = client
         .evaluate(
             &fixture
@@ -137,7 +137,7 @@ fn rejects_corrupt_answers() -> anyhow::Result<()> {
 /// Credentials must stay redacted even when users debug provider configuration.
 #[test]
 fn redacts_configuration() -> anyhow::Result<()> {
-    let wire = Jev::new("sensitive-test-value");
+    let wire = JevConfig::new("sensitive-test-value");
     ensure!(!format!("{wire:?}").contains("sensitive-test-value"));
     ensure!(!serde_json::to_string(&wire)?.contains("sensitive-test-value"));
     Ok(())
@@ -242,10 +242,10 @@ async fn recorded_structured_batch_into_named_answers() -> anyhow::Result<()> {
         urgency: answer.urgency,
         refund: answer.refund,
     });
-    let client = rig_core::Model::new(
-        Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
-        rig_reqwest::ReqwestClient::default(),
-    );
+    let client = JevConfig::new("test-token")
+        .with_endpoint(server.url("/v1/systemone"))
+        .connect(rig_reqwest::ReqwestClient::default())
+        .evaluation();
     let state = fixture
         .request
         .get("state")
@@ -307,10 +307,10 @@ async fn recorded_rounded_probability_matrix() -> anyhow::Result<()> {
                 .json_body(fixture.response.clone());
         })
         .await;
-    let client = rig_core::Model::new(
-        Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
-        rig_reqwest::ReqwestClient::default(),
-    );
+    let client = JevConfig::new("test-token")
+        .with_endpoint(server.url("/v1/systemone"))
+        .connect(rig_reqwest::ReqwestClient::default())
+        .evaluation();
     let state = fixture
         .request
         .get("state")
@@ -401,10 +401,10 @@ async fn preserves_http_error_metadata() -> anyhow::Result<()> {
                     .body(r#"{"error":"overloaded"}"#);
             })
             .await;
-        let client = rig_core::Model::new(
-            Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
-            rig_reqwest::ReqwestClient::default(),
-        );
+        let client = JevConfig::new("test-token")
+            .with_endpoint(server.url("/v1/systemone"))
+            .connect(rig_reqwest::ReqwestClient::default())
+            .evaluation();
         let error = client
             .evaluate(&"state", Noul::new("Ready?")?.named("ready")?)
             .await
@@ -437,10 +437,10 @@ async fn rejects_missing_and_extra_response_ids() -> anyhow::Result<()> {
                     .json_body(json!({"model":"test", "answers": answers}));
             })
             .await;
-        let client = rig_core::Model::new(
-            Jev::new("test-token").with_endpoint(server.url("/v1/systemone")),
-            rig_reqwest::ReqwestClient::default(),
-        );
+        let client = JevConfig::new("test-token")
+            .with_endpoint(server.url("/v1/systemone"))
+            .connect(rig_reqwest::ReqwestClient::default())
+            .evaluation();
         ensure!(
             matches!(client.evaluate(&"state", Noul::new("Ready?")?.named("ready")?).await,
             Err(ProviderError::Response(message)) if message == "response question IDs differ from request")
@@ -540,7 +540,7 @@ fn an_unbuildable_request_is_a_request_failure() -> anyhow::Result<()> {
     use rig_core::wire::{Mode, Wire};
 
     let request = serde_json::from_value(json!({"state": 1, "questions": {}}))?;
-    let Err(error) = Jev::new("token")
+    let Err(error) = JevConfig::new("token")
         .with_endpoint("http://bad host")
         .encode(request, Mode::Unary)
     else {

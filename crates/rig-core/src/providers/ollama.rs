@@ -29,9 +29,11 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+mod client;
 pub mod wire;
 
-pub use wire::{Chat, Embeddings, Models, Ollama};
+pub use client::Ollama;
+pub use wire::{Chat, Embeddings, Models, OllamaConfig};
 
 /// The address of a local daemon.
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";

@@ -1,6 +1,5 @@
 use rig_bedrock::client::BedrockRuntime;
-use rig_bedrock::embedding::{AMAZON_TITAN_EMBED_TEXT_V2_0, Embeddings};
-use rig_core::Model;
+use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
 use rig_core::embeddings::EmbeddingsBuilder;
 use tracing::info;
 
@@ -17,10 +16,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let model = Model::new(
-        Embeddings::new(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256)),
-        BedrockRuntime::from_env(),
-    );
+    let model = BedrockRuntime::from_env().embedding(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
     let embeddings = EmbeddingsBuilder::new(model)
         .document(Greetings {
             message: "aa".to_string(),

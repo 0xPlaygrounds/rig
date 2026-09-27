@@ -35,7 +35,7 @@ const STREAMED: &str = concat!(
 );
 
 fn wire() -> Messages {
-    Anthropic::new("sk-test").completion("claude-haiku-4-5")
+    AnthropicConfig::new("sk-test").completion("claude-haiku-4-5")
 }
 
 fn request() -> CompletionRequest {
@@ -178,7 +178,8 @@ fn body_of(encoded: &Encoded) -> serde_json::Value {
 
 #[test]
 fn a_serialized_provider_never_carries_its_key() {
-    let provider = Anthropic::new("sk-live-do-not-leak").with_beta("prompt-caching-2024-07-31");
+    let provider =
+        AnthropicConfig::new("sk-live-do-not-leak").with_beta("prompt-caching-2024-07-31");
     a_config_reloads_without_its_credential(&provider, "sk-live-do-not-leak", |provider| {
         &provider.api_key
     });

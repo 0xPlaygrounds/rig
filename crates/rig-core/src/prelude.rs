@@ -7,7 +7,7 @@
 //! ```
 
 pub use crate::completion::Message;
-pub use crate::driver::{DynModel, Model, Transport};
+pub use crate::driver::{DynModel, Model};
 pub use crate::error::ProviderError;
 
 // The root re-export includes the derive macro when enabled.

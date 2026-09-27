@@ -16,7 +16,7 @@
 
 use rig_core::driver::Model;
 use rig_core::http_client;
-use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSession;
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
@@ -30,7 +30,7 @@ use std::time::Duration;
 /// the tests build requests with. Its HTTP transport is never exercised (a
 /// websocket session borrows the wire only for its request mapping), so a
 /// recording stub stands in for it.
-pub type TestClient = Model<Responses, RecordingHttpClient>;
+pub type TestClient = Model<Responses>;
 pub type TestSession = ResponsesWebSocketSession;
 
 /// What a scripted connection does once its scripted frames run out.
@@ -153,10 +153,9 @@ impl WebSocketConnection for ScriptedConnection {
 
 /// A bound wire whose HTTP transport is a stub: these tests never send one.
 pub fn test_client() -> TestClient {
-    Model::new(
-        OpenAI::new("test-key").responses("gpt-4o"),
-        RecordingHttpClient::new("{}"),
-    )
+    OpenAIConfig::new("test-key")
+        .connect(RecordingHttpClient::new("{}"))
+        .responses("gpt-4o")
 }
 
 /// A session over `script`, with no event timeout.

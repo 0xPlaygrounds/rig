@@ -31,7 +31,7 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let names_extractor =
         rig::extractor::ExtractorBuilder::<Names>::new(groq.completion(MULTI_EXTRACT_NAMES_MODEL))
             .append_preamble("Extract names from the given text.")

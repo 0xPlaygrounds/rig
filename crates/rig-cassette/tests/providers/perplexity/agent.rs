@@ -9,8 +9,7 @@ use crate::support::assert_nonempty_response;
 #[tokio::test]
 #[ignore = "requires PERPLEXITY_API_KEY"]
 async fn completion_smoke() {
-    let perplexity =
-        OpenAiModels::from_env_with(&PERPLEXITY).expect("config should build from env");
+    let perplexity = OpenAiModels::from_env_for(&PERPLEXITY).expect("config should build from env");
     let agent = rig::AgentBuilder::new(perplexity.completion(SONAR))
         .preamble("Be precise and concise.")
         .temperature(0.5)

@@ -17,6 +17,9 @@ use tonic::transport::{Channel, Endpoint};
 use tonic::{Request, Status};
 
 use super::GenerativeServiceClient;
+use crate::completion::GenerateContent;
+use crate::embedding::Embeddings;
+use rig_core::Model;
 
 const GEMINI_GRPC_ENDPOINT: &str = "https://generativelanguage.googleapis.com";
 
@@ -97,6 +100,20 @@ impl GeminiGrpc {
 }
 
 impl GeminiGrpc {
+    /// The `GenerateContent` model for `model`.
+    pub fn completion(&self, model: impl Into<String>) -> Model<GenerateContent, Self> {
+        Model::new(GenerateContent::new(model), self.clone())
+    }
+
+    /// The embedding model for `model`, `dims` wide when set.
+    pub fn embedding(
+        &self,
+        model: impl Into<String>,
+        dims: Option<usize>,
+    ) -> Model<Embeddings, Self> {
+        Model::new(Embeddings::new(model, dims), self.clone())
+    }
+
     /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.
     ///
     /// Returns environment, TLS, or connection errors.

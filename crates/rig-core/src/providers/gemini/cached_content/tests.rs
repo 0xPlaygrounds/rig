@@ -284,7 +284,7 @@ fn bound_caches(
     http: SequencedHttpClient,
 ) -> crate::driver::Model<CachedContents, SequencedHttpClient> {
     crate::driver::Model::new(
-        crate::providers::gemini::Gemini::new("test-key").cached_contents(),
+        crate::providers::gemini::GeminiConfig::new("test-key").cached_contents(),
         http,
     )
 }
@@ -372,7 +372,7 @@ async fn the_bound_cache_follows_the_listing_cursor() {
 /// and what comes back must be the same wire.
 #[test]
 fn a_serialized_wire_carries_no_key_material_and_round_trips() {
-    let wire = crate::providers::gemini::Gemini::new("AIzaSyNOTAREALKEY-0123456789")
+    let wire = crate::providers::gemini::GeminiConfig::new("AIzaSyNOTAREALKEY-0123456789")
         .cached_contents()
         .with_page_size(7);
     let json = serde_json::to_string(&wire).expect("the wire serializes");
@@ -433,7 +433,7 @@ async fn a_malformed_resource_body_is_a_decode_error() {
 /// [`CachedContentReply::Acknowledged`], not a resource that is absent.
 #[tokio::test]
 async fn a_deletes_empty_object_is_the_acknowledgement() {
-    let wire = crate::providers::gemini::Gemini::new("test-key").cached_contents();
+    let wire = crate::providers::gemini::GeminiConfig::new("test-key").cached_contents();
     let http = SequencedHttpClient::new([MockHttpResponse::success("{}")]);
 
     let reply = crate::driver::Model::new(wire.clone(), http.clone())

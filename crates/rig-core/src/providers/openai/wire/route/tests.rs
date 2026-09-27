@@ -54,12 +54,15 @@ fn request() -> CompletionRequest {
 }
 
 /// What `provider`'s route sends after `option` rewrote its wire.
-fn body(provider: OpenAI, option: impl FnOnce(OpenAiWire) -> OpenAiWire) -> serde_json::Value {
+fn body(
+    provider: OpenAIConfig,
+    option: impl FnOnce(OpenAiWire) -> OpenAiWire,
+) -> serde_json::Value {
     body_with_request(provider, option, request())
 }
 
 fn body_with_request(
-    provider: OpenAI,
+    provider: OpenAIConfig,
     option: impl FnOnce(OpenAiWire) -> OpenAiWire,
     request: CompletionRequest,
 ) -> serde_json::Value {
@@ -82,7 +85,11 @@ fn untouched(wire: OpenAiWire) -> OpenAiWire {
 
 /// `option` changes what `changes` sends and leaves `unchanged` as it was —
 /// a route without the option is a no-op, not a panic and not a type error.
-fn only_on(changes: OpenAI, unchanged: OpenAI, option: impl Fn(OpenAiWire) -> OpenAiWire + Copy) {
+fn only_on(
+    changes: OpenAIConfig,
+    unchanged: OpenAIConfig,
+    option: impl Fn(OpenAiWire) -> OpenAiWire + Copy,
+) {
     assert_ne!(
         body(changes.clone(), option),
         body(changes, untouched),
@@ -95,12 +102,12 @@ fn only_on(changes: OpenAI, unchanged: OpenAI, option: impl Fn(OpenAiWire) -> Op
     );
 }
 
-fn chat() -> OpenAI {
-    OpenAI::new("sk-test").with_route(Route::Chat)
+fn chat() -> OpenAIConfig {
+    OpenAIConfig::new("sk-test").with_route(Route::Chat)
 }
 
-fn responses() -> OpenAI {
-    OpenAI::new("sk-test").with_route(Route::Responses)
+fn responses() -> OpenAIConfig {
+    OpenAIConfig::new("sk-test").with_route(Route::Responses)
 }
 
 fn tool() -> ResponsesToolDefinition {
@@ -141,8 +148,8 @@ fn map_wire_reaches_tool_result_array_content_on_the_chat_route_only() {
 #[test]
 fn map_wire_reaches_prompt_caching_on_the_chat_route_only() {
     only_on(
-        OpenAI::with_key(&OPENROUTER, "sk-test").with_route(Route::Chat),
-        OpenAI::with_key(&OPENROUTER, "sk-test").with_route(Route::Responses),
+        OpenAIConfig::with_key(&OPENROUTER, "sk-test").with_route(Route::Chat),
+        OpenAIConfig::with_key(&OPENROUTER, "sk-test").with_route(Route::Responses),
         OpenAiWire::with_prompt_caching,
     );
 }
@@ -265,10 +272,10 @@ fn dialect_hooks_apply_to_both_routes_without_provider_identity() {
         ..Dialect::gateway("custom", "https://default.invalid", "UNUSED_KEY")
     };
     assert_eq!(
-        OpenAI::with_key(&dialect, "other").base_url,
+        OpenAIConfig::with_key(&dialect, "other").base_url,
         "https://default.invalid"
     );
-    let provider = OpenAI::with_key(&dialect, "regional");
+    let provider = OpenAIConfig::with_key(&dialect, "regional");
     assert_eq!(provider.base_url, "https://region.invalid");
     assert!(matches!(
         provider.completion("responses-model"),
@@ -344,18 +351,18 @@ fn responses_strict_tools_default_is_an_independent_capability() {
         },
         ..OPENAI
     };
-    let provider = OpenAI::with_key(&dialect, "test");
+    let provider = OpenAIConfig::with_key(&dialect, "test");
     assert!(provider.responses("model").strict_tools);
     assert!(!provider.chat("model").strict_tools);
     let strict = body(provider, untouched);
-    let ordinary = body(OpenAI::new("test"), untouched);
+    let ordinary = body(OpenAIConfig::new("test"), untouched);
     assert_eq!(strict["tools"][0]["strict"], true);
     assert_eq!(
         strict["tools"][0]["parameters"]["additionalProperties"],
         false
     );
     assert_ne!(ordinary["tools"][0]["strict"], true);
-    assert!(!OpenAI::new("test").responses("model").strict_tools);
+    assert!(!OpenAIConfig::new("test").responses("model").strict_tools);
 }
 
 /// Invalid local headers fail before transport, so there is no cassette interaction.
@@ -368,7 +375,7 @@ fn completion_envelope_builder_errors_are_returned_on_both_routes() {
         completion_envelope: Some(|_, _, builder| builder.header("invalid\nname", "value")),
         modality_envelope: None,
     };
-    let provider = OpenAI::with_key(
+    let provider = OpenAIConfig::with_key(
         &Dialect {
             quirks: Quirks {
                 hooks: Some(&HOOKS),

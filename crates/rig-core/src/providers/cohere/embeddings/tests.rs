@@ -9,7 +9,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key")
+        crate::providers::cohere::CohereConfig::new("test-key")
             .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None),
         http_client,
     );
@@ -39,7 +39,7 @@ async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key")
+        crate::providers::cohere::CohereConfig::new("test-key")
             .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None),
         http_client,
     );
@@ -121,7 +121,7 @@ async fn image_batches_are_fully_validated_before_any_request() {
 
     let http_client = RecordingHttpClient::default();
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        crate::providers::cohere::CohereConfig::new("test-key").image_embedding(),
         http_client.clone(),
     );
 
@@ -146,7 +146,7 @@ async fn an_empty_image_batch_sends_nothing_and_is_a_response_failure() {
 
     let http_client = RecordingHttpClient::default();
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        crate::providers::cohere::CohereConfig::new("test-key").image_embedding(),
         http_client.clone(),
     );
 
@@ -171,7 +171,7 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        crate::providers::cohere::CohereConfig::new("test-key").image_embedding(),
         http_client,
     );
 
@@ -197,7 +197,7 @@ async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key").image_embedding(),
+        crate::providers::cohere::CohereConfig::new("test-key").image_embedding(),
         http_client,
     );
 

@@ -6,13 +6,18 @@
 //! use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
 //! use rig_core::Model;
 //!
-//! let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env());
+//! let model = BedrockRuntime::from_env().completion(AMAZON_NOVA_LITE);
 //! # let _ = model;
 //! ```
 
 use aws_config::{BehaviorVersion, Region};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
+
+use crate::completion::Converse;
+use crate::embedding::Embeddings;
+use crate::image::Images;
+use rig_core::Model;
 
 pub const DEFAULT_AWS_REGION: &str = "us-east-1";
 
@@ -87,6 +92,26 @@ impl BedrockRuntime {
             profile_name: Some(profile_name.into()),
             aws_client: Arc::new(OnceCell::new()),
         }
+    }
+
+    /// The Converse model for `model`. Wire options such as a guardrail go
+    /// on the wire: `Model::new(Converse::new(model).with_guardrail(..), runtime)`.
+    pub fn completion(&self, model: impl Into<String>) -> Model<Converse, Self> {
+        Model::new(Converse::new(model), self.clone())
+    }
+
+    /// The embedding model for `model`, `ndims` wide when set.
+    pub fn embedding(
+        &self,
+        model: impl Into<String>,
+        ndims: Option<usize>,
+    ) -> Model<Embeddings, Self> {
+        Model::new(Embeddings::new(model, ndims), self.clone())
+    }
+
+    /// The image-generation model for `model`.
+    pub fn image_generation(&self, model: impl Into<String>) -> Model<Images, Self> {
+        Model::new(Images::new(model), self.clone())
     }
 
     /// The AWS SDK client, loading its configuration on first use.

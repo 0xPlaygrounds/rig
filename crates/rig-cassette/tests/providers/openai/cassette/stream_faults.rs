@@ -13,7 +13,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::providers::openai::GPT_4O;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
 use rig_cassette::agent::AgentReplayExt;
@@ -70,8 +70,8 @@ pub(super) fn tool_call_prefix_frames() -> Vec<String> {
 
 /// A client over a transport that answers one streaming request with
 /// `chunks`, then EOF.
-pub(super) fn scripted_client(chunks: Vec<Bytes>) -> (OpenAI, SequencedStreamingHttpClient) {
-    (OpenAI::new(SCRIPTED_KEY), scripted(chunks))
+pub(super) fn scripted_client(chunks: Vec<Bytes>) -> (OpenAIConfig, SequencedStreamingHttpClient) {
+    (OpenAIConfig::new(SCRIPTED_KEY), scripted(chunks))
 }
 
 /// The model refuses the request before any frame: the run fails with the

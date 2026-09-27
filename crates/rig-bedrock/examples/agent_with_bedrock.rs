@@ -1,9 +1,9 @@
 use rig_agent::agent::AgentBuilder;
 use rig_bedrock::client::BedrockRuntime;
-use rig_bedrock::completion::{AMAZON_NOVA_LITE, Converse};
+use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_core::DynModel;
 use rig_core::loaders::FileLoader;
 use rig_core::operation::Completion;
-use rig_core::{DynModel, Model};
 use tracing::info;
 
 mod common;
@@ -17,7 +17,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // One model serves every demo: erase it once, clone the handle.
-    let model = Model::new(Converse::new(AMAZON_NOVA_LITE), BedrockRuntime::from_env()).erase();
+    let model = BedrockRuntime::from_env()
+        .completion(AMAZON_NOVA_LITE)
+        .erase();
 
     info!("Running basic agent");
     basic(model.clone()).await?;

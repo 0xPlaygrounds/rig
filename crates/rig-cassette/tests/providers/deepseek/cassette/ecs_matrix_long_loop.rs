@@ -8,7 +8,7 @@
 
 use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
-use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
+use rig::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_test_support::cassette_models::OpenAiModels;
 
@@ -51,7 +51,7 @@ const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
-    let client = OpenAI::with_key(&DEEPSEEK, SCRIPTED_KEY);
+    let client = OpenAIConfig::with_key(&DEEPSEEK, SCRIPTED_KEY);
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,

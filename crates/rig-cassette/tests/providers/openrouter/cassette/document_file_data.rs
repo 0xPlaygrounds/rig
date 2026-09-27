@@ -6,7 +6,8 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
-use rig::providers::openai::wire::{OPENROUTER, OpenAI};
+use rig::providers::openai::wire::Chat;
+use rig::providers::openai::wire::{OPENROUTER, OpenAIConfig};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::Value;
 
@@ -69,8 +70,7 @@ fn message_contains_base64_document(message: &RigMessage) -> bool {
 /// `encode` touches no socket, so the outbound bytes are inspectable beside
 /// the recorded turns without spending a cassette interaction.
 fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
-    let encoded = OpenAI::with_key(&OPENROUTER, "k")
-        .chat(DOCUMENT_MODEL)
+    let encoded = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), DOCUMENT_MODEL)
         .encode(CompletionRequestBuilder::new(message).build(), Mode::Unary)
         .expect("a history message should encode");
     let Body::Bytes(bytes) = encoded.requests[0].body() else {

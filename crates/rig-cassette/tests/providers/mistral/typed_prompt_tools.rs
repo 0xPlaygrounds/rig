@@ -73,7 +73,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = OpenAiModels::from_env_with(&MISTRAL).expect("MISTRAL_API_KEY should be set");
+    let client = OpenAiModels::from_env_for(&MISTRAL).expect("MISTRAL_API_KEY should be set");
     let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL))
         .preamble(
             "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \

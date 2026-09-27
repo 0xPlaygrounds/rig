@@ -21,7 +21,7 @@ fn transcription_request() -> transcription::TranscriptionRequest {
 #[test]
 fn the_wire_encodes_the_recorded_generate_content_request() {
     let wire = Transcriptions::new(
-        crate::providers::gemini::Gemini::new("test-key"),
+        crate::providers::gemini::GeminiConfig::new("test-key"),
         GEMINI_3_FLASH_PREVIEW,
     );
 

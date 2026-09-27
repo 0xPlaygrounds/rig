@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::providers::gemini::Gemini;
+use rig::providers::gemini::GeminiConfig;
 use rig_test_support::cassette_models::GeminiModels;
 use serde::Deserialize;
 use std::future::Future;
@@ -285,7 +285,7 @@ pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bo
     );
 }
 
-async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Gemini) {
+async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, GeminiConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "gemini",
@@ -293,7 +293,8 @@ async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Ge
         "https://generativelanguage.googleapis.com",
     )
     .await;
-    let gemini = Gemini::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url());
+    let gemini =
+        GeminiConfig::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url());
 
     (cassette, gemini)
 }
@@ -320,7 +321,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     )
     .await;
     let provider =
-        Gemini::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url());
+        GeminiConfig::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url());
     let http = rig::http_client::DynHttpClient::new(rig::http_client::ReqwestClient::default())
         .with_middleware(middleware);
     let result = AssertUnwindSafe(test_body(GeminiModels::new(provider, http)))
@@ -468,7 +469,7 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let client = Gemini::new(cassette.bogus_api_key()).with_base_url(cassette.base_url());
+    let client = GeminiConfig::new(cassette.bogus_api_key()).with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(GeminiModels::new(
         client,
         rig::rig_reqwest::shared(),
@@ -614,7 +615,7 @@ mod always_deleting_cached_contents_tests {
             axum::serve(listener, app).await.expect("stub should serve");
         });
         let client = GeminiModels::new(
-            Gemini::new("stub-key").with_base_url(format!("http://{addr}")),
+            GeminiConfig::new("stub-key").with_base_url(format!("http://{addr}")),
             rig::rig_reqwest::shared(),
         );
 

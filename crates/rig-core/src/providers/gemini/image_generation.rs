@@ -1,10 +1,10 @@
 //! Image generation through Gemini's `generateContent` endpoint.
 //!
 //! ```no_run
-//! use rig_core::providers::gemini::{Gemini, image_generation::{Images, GEMINI_2_5_FLASH_IMAGE}};
+//! use rig_core::providers::gemini::{Gemini, image_generation::GEMINI_2_5_FLASH_IMAGE};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let wire = Images::new(Gemini::from_env()?, GEMINI_2_5_FLASH_IMAGE);
+//! let model = Gemini::from_env()?.image_generation(GEMINI_2_5_FLASH_IMAGE);
 //! # Ok(())
 //! # }
 //! ```
@@ -154,14 +154,14 @@ fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, Prov
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Images {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
     /// Name of the model, for example [`GEMINI_2_5_FLASH_IMAGE`].
     pub model: String,
 }
 
 impl Images {
     /// The image generation wire for `model`.
-    pub fn new(provider: super::Gemini, model: impl Into<String>) -> Self {
+    pub fn new(provider: super::GeminiConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),

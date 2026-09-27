@@ -32,14 +32,14 @@ use crate::wire::{
 use super::dto::{
     ChatChoice, ChatFrame, ChatUsage, StreamingCompletionResponse, StreamingDelta, delta_text,
 };
-use super::{BodyRewrite, OpenAI, OutputCap};
+use super::{BodyRewrite, OpenAIConfig, OutputCap};
 
 /// The chat-completions wire: a provider configuration, a model, and the
 /// per-turn options the endpoint takes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Chat {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
     /// The model this wire addresses.
     pub model: String,
     /// Whether tool schemas are sanitized for OpenAI's strict mode:
@@ -59,7 +59,7 @@ impl Chat {
         request: CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
-            &OpenAI,
+            &OpenAIConfig,
             &CompletionRequest,
             http::request::Builder,
         ) -> http::request::Builder,
@@ -139,7 +139,7 @@ impl Chat {
     }
 
     /// The wire for `model` on `provider`, with every option off.
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
@@ -772,7 +772,7 @@ impl Wire for Chat {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        self.encode_with_headers(request, mode, OpenAI::completion_headers)
+        self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
     }
 
     fn decoder(&self, mode: Mode) -> ChatDecoder {

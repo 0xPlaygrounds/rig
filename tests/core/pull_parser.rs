@@ -5,10 +5,7 @@ use rig::completion::CompletionRequestBuilder;
 use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
     http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
-    providers::{
-        anthropic::wire::Anthropic,
-        openai::wire::{DEEPSEEK, OPENAI, OpenAI},
-    },
+    providers::{anthropic::Anthropic, deepseek, openai::OpenAI},
     streaming::{StreamEvent, StreamEvents},
     wasm_compat::WasmCompatSend,
 };
@@ -134,30 +131,25 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
     match provider {
         "openai" => {
             adapted(
-                rig::Model::new(
-                    OpenAI::with_key(&OPENAI, "test-not-a-key").chat("gpt-4o"),
-                    http,
-                ),
+                OpenAI::new("test-not-a-key").with_http(http).chat("gpt-4o"),
                 direct,
             )
             .await
         }
         "deepseek" => {
             adapted(
-                rig::Model::new(
-                    OpenAI::with_key(&DEEPSEEK, "test-not-a-key").completion("deepseek-reasoner"),
-                    http,
-                ),
+                deepseek::new("test-not-a-key")
+                    .with_http(http)
+                    .completion("deepseek-reasoner"),
                 direct,
             )
             .await
         }
         "anthropic" => {
             adapted(
-                rig::Model::new(
-                    Anthropic::new("test-not-a-key").completion("claude-sonnet-4-5"),
-                    http,
-                ),
+                Anthropic::new("test-not-a-key")
+                    .with_http(http)
+                    .completion("claude-sonnet-4-5"),
                 direct,
             )
             .await

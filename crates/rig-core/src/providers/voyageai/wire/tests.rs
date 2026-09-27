@@ -3,8 +3,8 @@ use crate::test_utils::RecordingHttpClient;
 use crate::wire::Wire;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
-fn voyage() -> VoyageAi {
-    VoyageAi::new("voyage-test-key")
+fn voyage() -> VoyageAiConfig {
+    VoyageAiConfig::new("voyage-test-key")
 }
 
 fn body_of(encoded: &Encoded) -> serde_json::Value {
@@ -175,7 +175,7 @@ fn a_rerank_wire_declares_the_batch_limit() {
 #[test]
 fn a_serialized_config_carries_no_key_material() {
     a_config_reloads_without_its_credential(
-        &VoyageAi::new("voyage-test-key"),
+        &VoyageAiConfig::new("voyage-test-key"),
         "voyage-test-key",
         |voyage| &voyage.api_key,
     );

@@ -680,7 +680,7 @@ mod unit {
     use rig::completion::FinishReason;
     use rig::message::AssistantContent;
 
-    use rig::providers::gemini::{self, Gemini};
+    use rig::providers::gemini::{self, GeminiConfig};
     use rig::streaming::{Delta, StreamEvent};
     use rig_core::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
 
@@ -726,10 +726,9 @@ mod unit {
     where
         T: rig::http_client::HttpClientExt + Clone + std::fmt::Debug + Send + Sync + 'static,
     {
-        let model = rig::Model::new(
-            Gemini::new("test-key").completion(gemini::completion::GEMINI_2_5_FLASH),
-            http_client,
-        );
+        let model = GeminiConfig::new("test-key")
+            .connect(http_client)
+            .completion(gemini::completion::GEMINI_2_5_FLASH);
         let request = rig::completion::CompletionRequestBuilder::new("hello").build();
         let mut stream = model.stream(request).expect("stream should open");
 

@@ -17,7 +17,7 @@ async fn generated_image_as_user_content() {
             // credential and base URL as the image smoke test does.
             let responses = client.clone();
             let generator = OpenAiModels::new(
-                openai::wire::OpenAI::with_key(&xai::DIALECT, responses.config.api_key)
+                openai::wire::OpenAIConfig::with_key(&xai::DIALECT, responses.config.api_key)
                     .with_base_url(responses.config.base_url),
                 responses.http,
             )
@@ -39,7 +39,7 @@ async fn generated_image_as_tool_result() {
         |client| async move {
             let responses = client.clone();
             let generator = OpenAiModels::new(
-                openai::wire::OpenAI::with_key(&xai::DIALECT, responses.config.api_key)
+                openai::wire::OpenAIConfig::with_key(&xai::DIALECT, responses.config.api_key)
                     .with_base_url(responses.config.base_url),
                 responses.http,
             )

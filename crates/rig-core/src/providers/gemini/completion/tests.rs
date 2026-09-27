@@ -1785,7 +1785,7 @@ fn wire_request(prompt: &str) -> CompletionRequest {
 }
 
 fn wire(model: &str) -> GenerateContent {
-    crate::providers::gemini::Gemini::new("test-key").completion(model)
+    crate::providers::gemini::GeminiConfig::new("test-key").completion(model)
 }
 
 /// What a folded response says, for comparing two transports.
@@ -2105,12 +2105,12 @@ fn a_text_signature_reaches_no_other_wire() {
         record_telemetry_content: false,
     };
 
-    let openai = crate::providers::openai::wire::OpenAI::new("sk-test");
+    let openai = crate::providers::openai::wire::OpenAIConfig::new("sk-test");
     for (wire, encoded) in [
         (
             "anthropic",
             body(
-                &crate::providers::anthropic::Anthropic::new("sk-test")
+                &crate::providers::anthropic::AnthropicConfig::new("sk-test")
                     .completion("claude-haiku-4-5"),
                 request.clone(),
             ),

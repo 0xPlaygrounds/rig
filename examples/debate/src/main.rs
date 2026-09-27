@@ -24,14 +24,12 @@ impl Debater {
         let cohere_client = Cohere::from_env()?;
 
         Ok(Self {
-            gpt_4: AgentBuilder::new(rig::model(openai_client.completion(openai::GPT_4)))
+            gpt_4: AgentBuilder::new(openai_client.completion(openai::GPT_4))
                 .preamble(position_a)
                 .build(),
-            coral: AgentBuilder::new(rig::model(
-                cohere_client.completion(cohere::COMMAND_A_03_2025),
-            ))
-            .preamble(position_b)
-            .build(),
+            coral: AgentBuilder::new(cohere_client.completion(cohere::COMMAND_A_03_2025))
+                .preamble(position_b)
+                .build(),
         })
     }
 

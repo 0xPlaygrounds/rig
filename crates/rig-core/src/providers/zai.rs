@@ -1,14 +1,17 @@
 //! Z.AI's endpoints and model identifiers.
 //!
-//! Configure chat requests with [`crate::providers::openai::wire::ZAI`] or
-//! [`crate::providers::openai::wire::ZAI_CODING`], using `ZAI_API_KEY`.
+//! [`from_env`] and [`new`] build a client on the chat-completions
+//! [`ZAI`](crate::providers::openai::wire::ZAI) dialect, the module's primary
+//! one; [`anthropic_from_env`] and [`anthropic_new`] build a Messages-format
+//! client. The coding endpoint is
+//! [`ZAI_CODING`](crate::providers::openai::wire::ZAI_CODING). Both read
+//! `ZAI_API_KEY`.
 //!
 //! ```no_run
-//! use rig_core::providers::openai::wire::{OpenAI, ZAI};
 //! use rig_core::providers::zai;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let glm_4_6 = OpenAI::from_env_with(&ZAI)?.chat(zai::GLM_4_6);
+//! let glm_4_6 = zai::from_env()?.chat(zai::GLM_4_6);
 //! # let _ = glm_4_6;
 //! # Ok(())
 //! # }
@@ -35,3 +38,11 @@ pub const GLM_4_5_AIR: &str = "glm-4.5-air";
 pub const GLM_4_5V: &str = "glm-4.5v";
 /// `glm-4.5-airx`
 pub const GLM_4_5_AIRX: &str = "glm-4.5-airx";
+
+crate::providers::internal::client::openai_vendor!(crate::providers::openai::wire::ZAI, "Z.AI");
+crate::providers::internal::client::anthropic_vendor!(
+    crate::providers::anthropic::wire::ZAI,
+    "Z.AI",
+    anthropic_from_env,
+    anthropic_new
+);

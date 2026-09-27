@@ -79,7 +79,8 @@ fn built_streaming_body(
 ) -> Result<Value, ProviderError> {
     use crate::wire::{Body, Mode, Wire};
 
-    let wire = crate::providers::anthropic::wire::Anthropic::new("test-key").completion(model);
+    let wire =
+        crate::providers::anthropic::wire::AnthropicConfig::new("test-key").completion(model);
     let wire = if strict_tools {
         wire.with_strict_tools()
     } else {
@@ -1746,7 +1747,7 @@ async fn unknown_stop_reason_survives_onto_the_terminal_record() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod terminal_emission {
     use super::super::super::completion::CLAUDE_SONNET_4_6;
-    use crate::providers::anthropic::wire::Anthropic;
+    use crate::providers::anthropic::wire::AnthropicConfig;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -1771,7 +1772,7 @@ mod terminal_emission {
         sse_bytes: bytes::Bytes,
     ) -> (Vec<String>, bool, bool, crate::streaming::CompletionStream) {
         let bound = crate::driver::Model::new(
-            Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6),
+            AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
             MockStreamingClient { sse_bytes },
         );
         let request = crate::completion::CompletionRequestBuilder::new("hello").build();
@@ -1816,7 +1817,7 @@ mod terminal_emission {
         // content must be forwarded (via `from_stream_transport`) and must
         // not be papered over with a synthesized terminal record.
         let bound = crate::driver::Model::new(
-            Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6),
+            AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
             SequencedStreamingHttpClient::new(vec![
                 Ok(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA])),
                 Err(crate::http_client::Error::non_success_with_details(
@@ -1896,7 +1897,7 @@ mod terminal_emission {
     async fn streamed_error_envelope_preserves_the_verbatim_body() {
         const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
         let bound = crate::driver::Model::new(
-            Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6),
+            AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
             MockStreamingClient {
                 sse_bytes: sse(&[MESSAGE_START, ENVELOPE]),
             },
@@ -2044,7 +2045,7 @@ mod terminal_emission {
         const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
 
         let bound = crate::driver::Model::new(
-            Anthropic::new("test-key").completion(CLAUDE_SONNET_4_6),
+            AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
             MockStreamingClient {
                 sse_bytes: sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA]),
             },
@@ -2144,7 +2145,7 @@ mod projection {
         Action, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
         AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
     };
-    use crate::providers::anthropic::wire::{Anthropic, Messages};
+    use crate::providers::anthropic::wire::{AnthropicConfig, Messages};
     use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
     use futures::StreamExt;
 
@@ -2164,7 +2165,7 @@ mod projection {
     }
 
     fn wire() -> Messages {
-        Anthropic::new("test-key").completion("claude-test")
+        AnthropicConfig::new("test-key").completion("claude-test")
     }
 
     fn request() -> CompletionRequest {

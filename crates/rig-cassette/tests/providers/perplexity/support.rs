@@ -1,12 +1,12 @@
 use futures::FutureExt;
-use rig::providers::openai::wire::{OpenAI, PERPLEXITY};
+use rig::providers::openai::wire::{OpenAIConfig, PERPLEXITY};
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "perplexity",
@@ -14,7 +14,7 @@ async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
         "https://api.perplexity.ai",
     )
     .await;
-    let perplexity = OpenAI::with_key(&PERPLEXITY, cassette.api_key("PERPLEXITY_API_KEY"))
+    let perplexity = OpenAIConfig::with_key(&PERPLEXITY, cassette.api_key("PERPLEXITY_API_KEY"))
         .with_base_url(cassette.base_url());
 
     (cassette, perplexity)

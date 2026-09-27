@@ -1,5 +1,5 @@
 use rig_agent::prelude::*;
-use rig_gemini_grpc::{GeminiGrpc, completion::GenerateContent};
+use rig_gemini_grpc::GeminiGrpc;
 
 #[tracing::instrument(ret)]
 #[tokio::main]
@@ -13,7 +13,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let transport = GeminiGrpc::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
 
     // Create agent with a single context prompt
-    let model = Model::new(GenerateContent::new("gemini-2.5-flash"), transport);
+    let model = transport.completion("gemini-2.5-flash");
     let agent = AgentBuilder::new(model)
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)

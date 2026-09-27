@@ -7,7 +7,7 @@ use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
 use crate::providers::mistral::embedding::{CODESTRAL_EMBED, MISTRAL_EMBED};
 use crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002;
 use crate::providers::openai::wire::{
-    AZURE, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OpenAI, TOGETHER,
+    AZURE, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OpenAIConfig, TOGETHER,
 };
 use crate::test_utils::RecordingHttpClient;
 
@@ -29,7 +29,7 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
         "then",
         "embedding_matrix/normalized_response_is_complete.yaml",
     );
-    let wire = OpenAI::new("sk-test").embedding("text-embedding-3-small", None);
+    let wire = OpenAIConfig::new("sk-test").embedding("text-embedding-3-small", None);
     let bound = crate::driver::Model::new(wire, RecordingHttpClient::new(reply));
 
     let response = bound
@@ -71,7 +71,7 @@ async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
 async fn a_short_embedding_reply_fails_the_call() {
     let reply = r#"{"object":"list","model":"m","data":[{"object":"embedding","index":0,"embedding":[0.5]}],"usage":{"prompt_tokens":1,"total_tokens":1}}"#;
     let bound = crate::driver::Model::new(
-        OpenAI::new("sk-test").embedding("text-embedding-3-small", None),
+        OpenAIConfig::new("sk-test").embedding("text-embedding-3-small", None),
         RecordingHttpClient::new(reply),
     );
     let error = bound
@@ -90,7 +90,7 @@ async fn a_short_embedding_reply_fails_the_call() {
 #[test]
 fn an_unstated_width_resolves_from_the_model_table() {
     let width = |model: &str, ndims: Option<usize>| -> Option<serde_json::Value> {
-        let encoded = OpenAI::new("sk-test")
+        let encoded = OpenAIConfig::new("sk-test")
             .embedding(model, ndims)
             .encode(documents(), Mode::Unary)
             .expect("the request encodes");
@@ -135,7 +135,7 @@ fn an_unstated_width_resolves_from_the_model_table() {
 /// with — and the recorded request is what that looks like.
 #[test]
 fn a_requested_width_matches_the_recorded_request() {
-    let encoded = OpenAI::new("sk-test")
+    let encoded = OpenAIConfig::new("sk-test")
         .embedding("text-embedding-3-small", Some(512))
         .encode(documents(), Mode::Unary)
         .expect("the request encodes");
@@ -158,7 +158,7 @@ fn a_requested_width_matches_the_recorded_request() {
 #[test]
 fn the_dialect_decides_the_width_field() {
     fn width_field(dialect: &Dialect, model: &str) -> Option<String> {
-        let encoded = OpenAI::with_key(dialect, "k")
+        let encoded = OpenAIConfig::with_key(dialect, "k")
             .embedding(model, Some(256))
             .encode(documents(), Mode::Unary)
             .expect("the request encodes");
@@ -196,7 +196,7 @@ fn the_dialect_decides_the_width_field() {
 /// Azure addresses a deployment in the URL and therefore sends no `model`.
 #[test]
 fn azure_sends_no_model_field() {
-    let encoded = OpenAI::with_key(&AZURE, "k")
+    let encoded = OpenAIConfig::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
         .with_api_version("2024-10-21")
         .embedding("my-deployment", None)
@@ -222,7 +222,7 @@ fn azure_sends_no_model_field() {
 async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
     let reply = r#"{"object":"list","model":"m","data":[{"object":"embedding","index":0,"embedding":[0.5]}]}"#;
     let error = crate::driver::Model::new(
-        OpenAI::new("sk-test").embedding("text-embedding-3-small", None),
+        OpenAIConfig::new("sk-test").embedding("text-embedding-3-small", None),
         RecordingHttpClient::new(reply),
     )
     .call(vec!["one".to_owned()])
@@ -238,7 +238,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
 
     // Together does not guarantee it, so the same reply succeeds there.
     let response = crate::driver::Model::new(
-        OpenAI::with_key(&TOGETHER, "k")
+        OpenAIConfig::with_key(&TOGETHER, "k")
             .embedding("togethercomputer/m2-bert-80M-8k-retrieval", None),
         RecordingHttpClient::new(reply),
     )
@@ -254,7 +254,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
 async fn a_recorded_model_listing_decodes() {
     let reply = recorded("then", "models/list_models_smoke.yaml");
     let models = crate::driver::Model::new(
-        OpenAI::new("sk-test").models(),
+        OpenAIConfig::new("sk-test").models(),
         RecordingHttpClient::new(reply),
     )
     .call(())
@@ -271,7 +271,7 @@ async fn a_recorded_model_listing_decodes() {
 async fn a_listing_entry_keeps_the_limits_a_dialect_reports() {
     let reply = r#"{"object":"list","data":[{"id":"llama-3.3-70b","object":"model","created":1,"owned_by":"Meta","context_window":131072,"max_completion_tokens":32768}]}"#;
     let models = crate::driver::Model::new(
-        OpenAI::with_key(&GROQ, "k").models(),
+        OpenAIConfig::with_key(&GROQ, "k").models(),
         RecordingHttpClient::new(reply),
     )
     .call(())
@@ -296,7 +296,7 @@ fn a_transcription_request_is_multipart() {
         temperature: None,
         additional_params: Some(serde_json::json!({"response_format": "verbose_json"})),
     };
-    let encoded = OpenAI::new("sk-test")
+    let encoded = OpenAIConfig::new("sk-test")
         .transcription("whisper-1")
         .encode(request, Mode::Unary)
         .expect("the request encodes");
@@ -343,7 +343,7 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
         height: 1024,
         additional_params: None,
     };
-    let encoded = OpenAI::with_key(&XAI, "xai-key")
+    let encoded = OpenAIConfig::with_key(&XAI, "xai-key")
         .image_generation("grok-imagine-image-pro")
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
@@ -363,7 +363,7 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
     assert!(body.get("size").is_none(), "xAI takes no `size`: {body}");
 
     // OpenAI's own body is the other shape.
-    let openai = OpenAI::new("sk")
+    let openai = OpenAIConfig::new("sk")
         .image_generation("gpt-image-1")
         .encode(request(), Mode::Unary)
         .expect("encodes");
@@ -375,7 +375,7 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
     // require — every xAI image call would have failed to decode.
     let reply = r#"{"data":[{"b64_json":"aGk="}]}"#;
     let response = crate::driver::Model::new(
-        OpenAI::with_key(&XAI, "k").image_generation("grok-imagine-image-pro"),
+        OpenAIConfig::with_key(&XAI, "k").image_generation("grok-imagine-image-pro"),
         RecordingHttpClient::new(reply),
     )
     .call(request())
@@ -397,7 +397,7 @@ fn the_xai_speech_body_differs_from_openais() {
         speed: 1.0,
         additional_params: None,
     };
-    let encoded = OpenAI::with_key(&XAI, "k")
+    let encoded = OpenAIConfig::with_key(&XAI, "k")
         .audio_generation("tts-1")
         .encode(request("nova"), Mode::Unary)
         .expect("encodes");
@@ -412,14 +412,14 @@ fn the_xai_speech_body_differs_from_openais() {
     assert!(body.get("model").is_none(), "xAI's tts takes no model");
 
     // The voice its client defaulted to when the caller named none.
-    let defaulted = OpenAI::with_key(&XAI, "k")
+    let defaulted = OpenAIConfig::with_key(&XAI, "k")
         .audio_generation("tts-1")
         .encode(request(""), Mode::Unary)
         .expect("encodes");
     assert_eq!(json_body(&defaulted)["voice_id"], "eve");
 
     // OpenAI's own body is the other shape, at the other path.
-    let openai = OpenAI::new("sk")
+    let openai = OpenAIConfig::new("sk")
         .audio_generation("tts-1")
         .encode(request("nova"), Mode::Unary)
         .expect("encodes");
@@ -434,7 +434,7 @@ fn the_xai_speech_body_differs_from_openais() {
 #[cfg(feature = "audio")]
 #[test]
 fn azure_speech_carries_its_own_api_version() {
-    let provider = OpenAI::with_key(&AZURE, "k")
+    let provider = OpenAIConfig::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
         .with_api_version("2024-10-21")
         .with_audio_api_version("2025-04-01-preview");
@@ -459,7 +459,7 @@ fn azure_speech_carries_its_own_api_version() {
     );
 
     // Every other Azure route keeps the general version.
-    let embeddings = OpenAI::with_key(&AZURE, "k")
+    let embeddings = OpenAIConfig::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
         .with_api_version("2024-10-21")
         .embedding("my-embed", None)
@@ -486,7 +486,7 @@ fn azure_speech_carries_its_own_api_version() {
 async fn a_recorded_rerank_reply_folds_its_ranking() {
     let reply = r#"{"model":"bge-reranker-v2-m3","object":"list","usage":{"prompt_tokens":37,"total_tokens":37},"results":[{"index":2,"relevance_score":0.98},{"index":0,"relevance_score":0.41},{"index":1,"relevance_score":0.02}]}"#;
     let response = crate::driver::Model::new(
-        OpenAI::with_key(&LLAMACPP, "").rerank("bge-reranker-v2-m3"),
+        OpenAIConfig::with_key(&LLAMACPP, "").rerank("bge-reranker-v2-m3"),
         RecordingHttpClient::new(reply),
     )
     .call(crate::operation::RerankRequest {
@@ -527,7 +527,7 @@ async fn a_recorded_rerank_reply_folds_its_ranking() {
 async fn a_rerank_reply_accepts_either_score_key() {
     let reply = r#"{"results":[{"index":0,"score":0.75}]}"#;
     let response = crate::driver::Model::new(
-        OpenAI::with_key(&LLAMACPP, "").rerank("r"),
+        OpenAIConfig::with_key(&LLAMACPP, "").rerank("r"),
         RecordingHttpClient::new(reply),
     )
     .call(crate::operation::RerankRequest {
@@ -543,7 +543,7 @@ async fn a_rerank_reply_accepts_either_score_key() {
 
 #[test]
 fn a_rerank_request_is_the_jina_shape() {
-    let encoded = OpenAI::with_key(&LLAMACPP, "")
+    let encoded = OpenAIConfig::with_key(&LLAMACPP, "")
         .rerank("bge-reranker-v2-m3")
         .with_top_n(2)
         .encode(
@@ -570,7 +570,9 @@ fn a_rerank_request_is_the_jina_shape() {
     );
     // The batching hint the consumer trait asks for.
     assert_eq!(
-        OpenAI::with_key(&LLAMACPP, "").rerank("r").capabilities(),
+        OpenAIConfig::with_key(&LLAMACPP, "")
+            .rerank("r")
+            .capabilities(),
         1024
     );
 }
@@ -589,7 +591,7 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
         height: 768,
         additional_params: None,
     };
-    let encoded = OpenAI::with_key(&HYPERBOLIC, "hb")
+    let encoded = OpenAIConfig::with_key(&HYPERBOLIC, "hb")
         .image_generation("SDXL1.0-base")
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
@@ -612,7 +614,7 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
 
     // And the reply is keyed `images[].image`, not `data[].b64_json`.
     let response = crate::driver::Model::new(
-        OpenAI::with_key(&HYPERBOLIC, "hb").image_generation("SDXL1.0-base"),
+        OpenAIConfig::with_key(&HYPERBOLIC, "hb").image_generation("SDXL1.0-base"),
         RecordingHttpClient::new(r#"{"images":[{"image":"aGk="}]}"#),
     )
     .call(request())
@@ -630,7 +632,7 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
 fn the_huggingface_image_body_is_the_routers_own_shape() {
     use crate::providers::openai::wire::HUGGINGFACE;
 
-    let encoded = OpenAI::with_key(&HUGGINGFACE, "hf")
+    let encoded = OpenAIConfig::with_key(&HUGGINGFACE, "hf")
         .image_generation("stabilityai/stable-diffusion-3-medium-diffusers")
         .encode(
             crate::image_generation::ImageGenerationRequest {
@@ -676,7 +678,7 @@ async fn the_huggingface_image_reply_is_the_image_bytes() {
     // A real PNG header: not valid UTF-8, and not valid JSON.
     let png = b"\x89PNG\r\n\x1a\n\xff\xd8not-json";
     let response = crate::driver::Model::new(
-        OpenAI::with_key(&HUGGINGFACE, "hf").image_generation("black-forest-labs/FLUX.1-dev"),
+        OpenAIConfig::with_key(&HUGGINGFACE, "hf").image_generation("black-forest-labs/FLUX.1-dev"),
         RecordingHttpClient::new(&png[..]),
     )
     .call(crate::image_generation::ImageGenerationRequest {
@@ -707,7 +709,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
         speed: 1.0,
         additional_params: None,
     };
-    let encoded = OpenAI::with_key(&HYPERBOLIC, "hb")
+    let encoded = OpenAIConfig::with_key(&HYPERBOLIC, "hb")
         .audio_generation("EN")
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
@@ -728,7 +730,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
     assert!(body.get("voice").is_none(), "{body}");
 
     let response = crate::driver::Model::new(
-        OpenAI::with_key(&HYPERBOLIC, "hb").audio_generation("EN"),
+        OpenAIConfig::with_key(&HYPERBOLIC, "hb").audio_generation("EN"),
         RecordingHttpClient::new(r#"{"audio":"aGk="}"#),
     )
     .call(request())
@@ -740,7 +742,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
     // OpenAI's own endpoint answers with the bytes themselves, so the same
     // decoder must not go looking for an envelope there.
     let openai = crate::driver::Model::new(
-        OpenAI::new("sk").audio_generation("tts-1"),
+        OpenAIConfig::new("sk").audio_generation("tts-1"),
         RecordingHttpClient::new(&b"ID3\x04raw-mp3"[..]),
     )
     .call(request())
@@ -753,7 +755,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
 /// built without reading the environment still names a version.
 #[test]
 fn azure_always_carries_an_api_version() {
-    let provider = OpenAI::with_key(&AZURE, "k").with_base_url("https://x.openai.azure.com");
+    let provider = OpenAIConfig::with_key(&AZURE, "k").with_base_url("https://x.openai.azure.com");
     assert_eq!(provider.api_version.as_deref(), Some("2024-10-21"));
     assert!(
         !provider
@@ -763,7 +765,7 @@ fn azure_always_carries_an_api_version() {
         provider.uri("/chat/completions", Some("d"))
     );
     // No other dialect invents one.
-    assert_eq!(OpenAI::new("k").api_version, None);
+    assert_eq!(OpenAIConfig::new("k").api_version, None);
 }
 
 /// The width a dialect's own table documents, and the field suppression that
@@ -777,7 +779,7 @@ fn azure_always_carries_an_api_version() {
 /// dialect has to carry its own.
 #[test]
 fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
-    let unasked = OpenAI::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, None);
+    let unasked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, None);
     assert_eq!(
         unasked.capabilities().ndims,
         4_096,
@@ -788,7 +790,7 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
     // unasked, so the vector is identical either way.
     for wire in [
         &unasked,
-        &OpenAI::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096)),
+        &OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096)),
     ] {
         let encoded = wire
             .encode(documents(), Mode::Unary)
@@ -801,7 +803,7 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
     }
 
     // A truncating width is a real request and goes out.
-    let encoded = OpenAI::with_key(&DOUBLEWORD, "k")
+    let encoded = OpenAIConfig::with_key(&DOUBLEWORD, "k")
         .embedding(QWEN3_EMBEDDING_8B, Some(512))
         .encode(documents(), Mode::Unary)
         .expect("a width inside the documented range encodes");
@@ -809,7 +811,7 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
 
     // Mistral's fixed-width model is the same mechanism with a different
     // table: 1024 reported, and no `output_dimension` on the wire.
-    let mistral = OpenAI::with_key(&MISTRAL, "k").embedding(MISTRAL_EMBED, None);
+    let mistral = OpenAIConfig::with_key(&MISTRAL, "k").embedding(MISTRAL_EMBED, None);
     assert_eq!(mistral.capabilities().ndims, 1_024);
     let encoded = mistral
         .encode(documents(), Mode::Unary)
@@ -829,7 +831,7 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
 #[test]
 fn an_unhonourable_width_is_refused_before_the_request_is_built() {
     fn refusal(dialect: &Dialect, model: &str, ndims: usize) -> String {
-        let error: ProviderError = OpenAI::with_key(dialect, "k")
+        let error: ProviderError = OpenAIConfig::with_key(dialect, "k")
             .embedding(model, Some(ndims))
             .encode(documents(), Mode::Unary)
             .expect_err("a width the dialect cannot honour must not reach the wire")
@@ -868,7 +870,7 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
     // does not document, the caller's width is the only width there is: it
     // goes out unvalidated and the provider decides.
     let unknown =
-        OpenAI::with_key(&DOUBLEWORD, "k").embedding("Qwen/Qwen4-Unreleased", Some(8_192));
+        OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding("Qwen/Qwen4-Unreleased", Some(8_192));
     assert_eq!(unknown.capabilities().ndims, 8_192);
     let encoded = unknown
         .encode(documents(), Mode::Unary)
@@ -884,7 +886,7 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
 /// a number the caller never asked for.
 #[test]
 fn a_table_supplied_width_is_not_a_declaration() {
-    let unasked = OpenAI::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, None);
+    let unasked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, None);
     let capabilities = unasked.capabilities();
     assert_eq!(capabilities.ndims, 4_096, "the table resolves the width");
     assert_eq!(
@@ -893,6 +895,6 @@ fn a_table_supplied_width_is_not_a_declaration() {
     );
 
     // Declaring the same number is a different fact, and is recorded as one.
-    let asked = OpenAI::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096));
+    let asked = OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096));
     assert_eq!(asked.capabilities().declared, Some(4_096));
 }

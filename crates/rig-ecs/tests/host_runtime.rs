@@ -8,6 +8,7 @@
     clippy::indexing_slicing
 )]
 
+use rig_core::providers::gemini::GeminiConfig;
 mod bus_support;
 mod run_support;
 
@@ -17,7 +18,6 @@ use rig_cassette::{
 };
 use rig_core::{
     error::{ErrorKind, ErrorReport},
-    providers::gemini::Gemini,
     serve::{ErasedHandler, adapters::ModelAdapter},
 };
 use rig_ecs::{
@@ -66,12 +66,10 @@ fn gateway(
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|_| refused())?;
-    let model = rig_core::Model::new(
-        Gemini::new(token)
-            .with_base_url(endpoint)
-            .completion("gemini-test"),
-        ReqwestClient::from(http),
-    );
+    let model = GeminiConfig::new(token)
+        .with_base_url(endpoint)
+        .connect(ReqwestClient::from(http))
+        .completion("gemini-test");
     Ok(ErasedHandler::new(ModelAdapter::new("gemini-test", model)))
 }
 

@@ -34,7 +34,8 @@
 //! than trusting the builder.
 
 use rig::completion::FinishReason;
-use rig::providers::openai::wire::{LLAMACPP, OpenAI};
+use rig::providers::openai::wire::Chat;
+use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::{Value, json};
 
@@ -449,8 +450,7 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
         record_telemetry_content: false,
     };
 
-    let encoded = OpenAI::with_key(&LLAMACPP, "")
-        .chat("m")
+    let encoded = Chat::new(OpenAIConfig::with_key(&LLAMACPP, ""), "m")
         .encode(request, Mode::Unary)
         .expect("the request should encode");
     let Body::Bytes(bytes) = encoded.requests[0].body() else {

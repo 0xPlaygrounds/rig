@@ -440,7 +440,7 @@ rmcp = ["dep:rig-rmcp"]
 socks = ["reqwest", "rig-reqwest/socks"]
 # Provider clients built with no transport named (`OpenAI::from_env()`) send
 # through the bundled reqwest client: rig-core's `reqwest` feature.
-reqwest = ["dep:rig-reqwest", "rig-core/reqwest"]
+reqwest = ["dep:rig-reqwest", "rig-core/reqwest", "rig-typesafeai?/reqwest"]
 # The bundled websocket backend (`rig-tungstenite`) and the provider websocket
 # sessions it drives, through rig-core's `tungstenite` feature. Independent of
 # the HTTP transport axis: a session borrows the provider client for its

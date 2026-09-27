@@ -1,6 +1,6 @@
 //! The Gemini config's own tests: what it reads, and what it never writes.
 
-use super::{API_KEY_ENV, BASE_URL, Gemini};
+use super::{API_KEY_ENV, BASE_URL, GeminiConfig};
 use crate::wire::Wire;
 
 /// A wire is data a host may serialize into a scene, a component or a config
@@ -9,7 +9,7 @@ use crate::wire::Wire;
 /// Nothing serialized may carry it.
 #[test]
 fn a_serialized_config_carries_no_key_material() {
-    let gemini = Gemini::new("AIzaSyNOTAREALKEY-0123456789");
+    let gemini = GeminiConfig::new("AIzaSyNOTAREALKEY-0123456789");
     crate::wire::secret::tests::a_config_reloads_without_its_credential(
         &gemini,
         "AIzaSyNOTAREALKEY-0123456789",

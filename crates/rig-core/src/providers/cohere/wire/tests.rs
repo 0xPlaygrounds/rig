@@ -43,8 +43,8 @@ const STREAM_BODY: &str = concat!(
     "data: [DONE]\n\n",
 );
 
-fn cohere() -> Cohere {
-    Cohere::new("cohere-test-key")
+fn cohere() -> CohereConfig {
+    CohereConfig::new("cohere-test-key")
 }
 
 /// The request the recorded cell sent.

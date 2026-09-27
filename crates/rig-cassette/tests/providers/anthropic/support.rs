@@ -1,6 +1,6 @@
 use futures::FutureExt;
 use rig::http_client::{DynHttpClient, ReqwestClient};
-use rig::providers::anthropic::wire::Anthropic;
+use rig::providers::anthropic::wire::AnthropicConfig;
 use rig_test_support::cassette_models::AnthropicModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -13,7 +13,7 @@ pub(super) struct AnthropicFilesCassette {
     pub(super) api_key: String,
 }
 
-async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Anthropic) {
+async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, AnthropicConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "anthropic",
@@ -21,8 +21,8 @@ async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
         "https://api.anthropic.com",
     )
     .await;
-    let bound =
-        Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY")).with_base_url(cassette.base_url());
+    let bound = AnthropicConfig::new(cassette.api_key("ANTHROPIC_API_KEY"))
+        .with_base_url(cassette.base_url());
 
     (cassette, bound)
 }
@@ -48,8 +48,8 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
         "https://api.anthropic.com",
     )
     .await;
-    let provider =
-        Anthropic::new(cassette.api_key("ANTHROPIC_API_KEY")).with_base_url(cassette.base_url());
+    let provider = AnthropicConfig::new(cassette.api_key("ANTHROPIC_API_KEY"))
+        .with_base_url(cassette.base_url());
     let http = DynHttpClient::new(ReqwestClient::default()).with_middleware(middleware);
     let result = AssertUnwindSafe(test_body(AnthropicModels::new(provider, http)))
         .catch_unwind()
@@ -115,8 +115,8 @@ pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
         OPENROUTER_MESSAGES_BASE_URL,
     )
     .await;
-    let bound =
-        Anthropic::new(cassette.api_key("OPENROUTER_API_KEY")).with_base_url(cassette.base_url());
+    let bound = AnthropicConfig::new(cassette.api_key("OPENROUTER_API_KEY"))
+        .with_base_url(cassette.base_url());
 
     let result = AssertUnwindSafe(test_body(AnthropicModels::new(
         bound,
@@ -166,7 +166,7 @@ pub(super) async fn with_anthropic_files_cassette<F, Fut>(
     .await;
     let base_url = normalize_anthropic_base_url(&cassette.base_url());
     let api_key = cassette.api_key("ANTHROPIC_API_KEY");
-    let bound = Anthropic::new(api_key.as_str())
+    let bound = AnthropicConfig::new(api_key.as_str())
         .with_base_url(&base_url)
         .with_beta(beta_header);
 
@@ -292,7 +292,8 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let bound = Anthropic::new("sk-invalid-edge-matrix-key").with_base_url(cassette.base_url());
+    let bound =
+        AnthropicConfig::new("sk-invalid-edge-matrix-key").with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(AnthropicModels::new(
         bound,
         rig::rig_reqwest::shared(),

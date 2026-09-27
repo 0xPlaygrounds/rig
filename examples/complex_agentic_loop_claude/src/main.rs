@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::anthropic::{self, wire::Anthropic};
+use rig::providers::anthropic::{self, Anthropic};
 use rig::providers::openai;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, message::Message, tool::builtin::ThinkTool,
@@ -32,9 +32,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create the embedding model for our vector store
     // We'll use OpenAI's embedding model for this example
-    let openai_client = openai::wire::OpenAI::from_env()?;
-    let embedding_model =
-        rig::model(openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None)).erase();
+    let openai_client = openai::OpenAI::from_env()?;
+    let embedding_model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .erase();
 
     // Create a knowledge base with sample entries
     let knowledge_entries = vec![
@@ -82,8 +83,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_index = vector_store.index(embedding_model);
 
     // One Claude model serves every agent below: erase it once, clone the handle.
-    let claude =
-        rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)).erase();
+    let claude = anthropic_client
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .erase();
 
     // Create specialized research agent that will be used as a tool
     let research_agent = AgentBuilder::new(claude.clone())

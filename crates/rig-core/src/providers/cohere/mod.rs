@@ -14,12 +14,14 @@
 //!
 //! Pair a wire with a transport in a [`crate::Model`] to send it.
 
+mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod streaming;
 pub mod wire;
 
-pub use wire::{Chat, Cohere, Embeddings, ImageEmbeddings};
+pub use client::Cohere;
+pub use wire::{Chat, CohereConfig, Embeddings, ImageEmbeddings};
 
 /// `command-a-plus-05-2026` completion model
 pub const COMMAND_A_PLUS_05_2026: &str = "command-a-plus-05-2026";

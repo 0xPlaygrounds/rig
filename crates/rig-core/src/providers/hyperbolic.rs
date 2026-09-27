@@ -1,15 +1,14 @@
 //! Hyperbolic's model identifiers.
 //!
-//! Configure requests with [`crate::providers::openai::wire::HYPERBOLIC`].
+//! [`from_env`] and [`new`] build a client on the [`HYPERBOLIC`](crate::providers::openai::wire::HYPERBOLIC) dialect.
 //! Chat and image operations use model identifiers; speech uses a language tag
 //! such as `EN` in place of a model.
 //!
 //! ```no_run
 //! use rig_core::providers::hyperbolic;
-//! use rig_core::providers::openai::wire::{HYPERBOLIC, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let provider = OpenAI::from_env_with(&HYPERBOLIC)?;
+//! let provider = hyperbolic::from_env()?;
 //! let llama_3_1_8b = provider.chat(hyperbolic::LLAMA_3_1_8B);
 //! # Ok(())
 //! # }
@@ -47,3 +46,8 @@ pub const SSD: &str = "SSD";
 pub const SDXL_TURBO: &str = "SDXL-turbo";
 pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
 pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
+
+crate::providers::internal::client::openai_vendor!(
+    crate::providers::openai::wire::HYPERBOLIC,
+    "Hyperbolic"
+);

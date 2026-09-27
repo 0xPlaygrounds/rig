@@ -6,7 +6,7 @@ use rig::{
     completion::PromptError,
     extractor::Extractor,
     message::Message,
-    providers::anthropic::{self, wire::Anthropic},
+    providers::anthropic::{self, Anthropic},
     tool::Tool,
 };
 use schemars::JsonSchema;
@@ -76,8 +76,9 @@ async fn main() -> anyhow::Result<()> {
     // Create the Anthropic provider, on the default transport
     let anthropic_client = Anthropic::from_env()?;
     // One model serves the extractor and the executor: erase it once, clone the handle.
-    let model =
-        rig::model(anthropic_client.completion(anthropic::completion::CLAUDE_SONNET_4_6)).erase();
+    let model = anthropic_client
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .erase();
     let agent = ReasoningAgent {
         chain_of_thought_extractor: ExtractorBuilder::new(model.clone())
             .append_preamble(CHAIN_OF_THOUGHT_PROMPT)

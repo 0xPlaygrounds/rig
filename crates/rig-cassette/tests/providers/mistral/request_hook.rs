@@ -75,7 +75,7 @@ impl AgentHook for SessionIdHook<'_> {
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     let agent = rig::AgentBuilder::new(
-        OpenAiModels::from_env_with(&MISTRAL)
+        OpenAiModels::from_env_for(&MISTRAL)
             .expect("MISTRAL_API_KEY should be set")
             .completion(DEFAULT_MODEL),
     )

@@ -10,7 +10,7 @@ async fn rerank_non_success_preserves_status_and_body() {
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
     let model = crate::driver::Model::new(
-        super::VoyageAi::new("test-key").rerank(super::RERANK_2_5),
+        super::VoyageAiConfig::new("test-key").rerank(super::RERANK_2_5),
         http_client,
     );
 
@@ -42,7 +42,7 @@ async fn rerank_2xx_error_envelope_preserves_status_and_body() {
     let body = r#"{"message":"boom"}"#;
     let http_client = RecordingHttpClient::new(body); // 200 OK
     let model = crate::driver::Model::new(
-        super::VoyageAi::new("test-key").rerank(super::RERANK_2_5),
+        super::VoyageAiConfig::new("test-key").rerank(super::RERANK_2_5),
         http_client,
     );
 

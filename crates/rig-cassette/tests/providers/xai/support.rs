@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use rig::providers::xai;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
@@ -7,7 +7,7 @@ use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "xai",
@@ -15,7 +15,7 @@ async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenA
         "https://api.x.ai",
     )
     .await;
-    let client = OpenAI::with_key(&xai::DIALECT, cassette.api_key("XAI_API_KEY"))
+    let client = OpenAIConfig::with_key(&xai::DIALECT, cassette.api_key("XAI_API_KEY"))
         .with_base_url(cassette.base_url());
 
     (cassette, client)
@@ -71,7 +71,7 @@ where
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let client = OpenAI::with_key(&xai::DIALECT, "xai-invalid-edge-matrix-key")
+    let client = OpenAIConfig::with_key(&xai::DIALECT, "xai-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,

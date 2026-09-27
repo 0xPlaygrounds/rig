@@ -54,7 +54,7 @@ use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, ToolResult,
     ToolResultContent, UserContent,
 };
-use rig::providers::openai::wire::{LLAMACPP, OpenAI};
+use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -602,12 +602,10 @@ async fn tool_choice_required_forces_a_call() {
 #[tokio::test]
 async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
-    let model = rig::Model::new(
-        OpenAI::with_key(&LLAMACPP, "")
-            .with_base_url("http://127.0.0.1:1/v1")
-            .completion(CASSETTE_MODEL),
-        rig::http_client::ReqwestClient::default(),
-    );
+    let model = OpenAIConfig::with_key(&LLAMACPP, "")
+        .with_base_url("http://127.0.0.1:1/v1")
+        .connect(rig::http_client::ReqwestClient::default())
+        .completion(CASSETTE_MODEL);
 
     let error = model
         .call(
@@ -655,12 +653,10 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 /// that a checked fact rather than a reading.
 #[tokio::test]
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
-    let model = rig::Model::new(
-        OpenAI::with_key(&LLAMACPP, "")
-            .with_base_url("http://127.0.0.1:1/v1")
-            .completion(CASSETTE_MODEL),
-        rig::http_client::ReqwestClient::default(),
-    );
+    let model = OpenAIConfig::with_key(&LLAMACPP, "")
+        .with_base_url("http://127.0.0.1:1/v1")
+        .connect(rig::http_client::ReqwestClient::default())
+        .completion(CASSETTE_MODEL);
 
     let error = model
         .stream(

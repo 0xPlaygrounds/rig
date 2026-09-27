@@ -5,7 +5,7 @@ use rig::providers::gemini::{self, Gemini};
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = Gemini::from_env()?;
-    let model = rig::model(client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE));
+    let model = client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE);
 
     let response = model
         .call(

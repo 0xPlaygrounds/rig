@@ -12,7 +12,7 @@ use super::STREAMING_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_smoke() {
-    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_for(&GROQ).expect("GROQ_API_KEY should be set");
     let agent = rig::AgentBuilder::new(groq.completion(STREAMING_MODEL))
         .preamble(STREAMING_PREAMBLE)
         .build();

@@ -1,10 +1,9 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::{DistanceType, index::vector::IvfPqIndexBuilder};
-use rig_core::Model;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
-    embeddings::EmbeddingsBuilder, providers::openai::wire::OpenAI, vector_store::VectorStoreIndex,
+    embeddings::EmbeddingsBuilder, providers::openai::OpenAI, vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
@@ -19,11 +18,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let openai_client = OpenAI::from_env()?;
 
     // Select the embedding model and generate our embeddings
-    let model = Model::new(
-        openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None),
-        rig_reqwest::shared(),
-    )
-    .erase();
+    let model = openai_client
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
+        .erase();
 
     // Initialize LanceDB on S3.
     // Note: see below docs for more options and IAM permission required to read/write to S3.

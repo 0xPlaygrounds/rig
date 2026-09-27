@@ -118,7 +118,7 @@ fn unknown_finish_reason_survives_verbatim() {
 /// caller's `completion()` does.
 async fn unary(body: &'static str) -> completion::CompletionResponse {
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key")
+        crate::providers::cohere::CohereConfig::new("test-key")
             .completion(crate::providers::cohere::COMMAND_A_03_2025),
         crate::test_utils::RecordingHttpClient::new(body),
     );
@@ -344,7 +344,7 @@ async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_se
 
     let http_client = RecordingHttpClient::new("{}");
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key")
+        crate::providers::cohere::CohereConfig::new("test-key")
             .completion(crate::providers::cohere::COMMAND_A_03_2025),
         http_client.clone(),
     );
@@ -431,7 +431,7 @@ async fn completion_non_success_preserves_status_and_body() {
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
     let model = crate::driver::Model::new(
-        crate::providers::cohere::Cohere::new("test-key")
+        crate::providers::cohere::CohereConfig::new("test-key")
             .completion(crate::providers::cohere::COMMAND_A_03_2025),
         http_client,
     );

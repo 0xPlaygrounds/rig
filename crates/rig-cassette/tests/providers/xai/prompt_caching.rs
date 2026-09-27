@@ -95,7 +95,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = OpenAiModels::from_env_with(&xai::DIALECT).expect("XAI_API_KEY");
+    let client = OpenAiModels::from_env_for(&xai::DIALECT).expect("XAI_API_KEY");
     let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(model, &probe()).await;
     report_and_assert_live(&observation, &XAI_CACHE_SUPPORT, "live_cache_economics");

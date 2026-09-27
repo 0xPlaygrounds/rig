@@ -17,7 +17,7 @@ use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 /// request with `response` and nothing after it.
 fn caches(response: MockHttpResponse) -> crate::driver::Model<CachedContents, SequencedHttpClient> {
     crate::driver::Model::new(
-        crate::providers::gemini::Gemini::new("test-key").cached_contents(),
+        crate::providers::gemini::GeminiConfig::new("test-key").cached_contents(),
         SequencedHttpClient::new(vec![response]),
     )
 }
@@ -159,7 +159,7 @@ async fn a_status_error_with_no_body_still_carries_its_status() {
     // `SequencedHttpClient` answers 501 with an empty body once its scripted
     // responses run out.
     let caches = crate::driver::Model::new(
-        crate::providers::gemini::Gemini::new("test-key").cached_contents(),
+        crate::providers::gemini::GeminiConfig::new("test-key").cached_contents(),
         SequencedHttpClient::new(Vec::new()),
     );
 
