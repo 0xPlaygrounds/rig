@@ -107,7 +107,9 @@ impl PreparedRequest {
 
 /// Prepare one model call from settings, capability snapshot, ordered history,
 /// retrieved tools in advertisement order, and an optional merged patch.
-/// A committed output-tool name pins tool mode while a schema is present.
+/// A committed output-tool name pins tool mode while a schema is present,
+/// unless the model rejects the forced choice that only the output tool can
+/// satisfy (see [`ProviderCapabilities::accepts_forced_tool_choice`]).
 /// Returns errors for incompatible tool choices, unavailable allow-list names,
 /// output-tool collisions, or invalid native schemas. Performs no I/O.
 pub fn prepare_request(
@@ -188,7 +190,7 @@ pub fn prepare_request(
         },
         str::to_owned,
     );
-    let resolved_mode = if committed_output_tool.is_some() && output_schema.is_some() {
+    let mut resolved_mode = if committed_output_tool.is_some() && output_schema.is_some() {
         OutputMode::Tool
     } else {
         resolve_output_mode(
@@ -199,6 +201,24 @@ pub fn prepare_request(
             output_mode,
         )
     };
+
+    // A model that rejects forced tool choice cannot be made to call the output
+    // tool. When the choice forces nothing but that tool, ask for native output
+    // where the wire composes it, else leave the call to the model. A choice
+    // that forces real tools is left for the wire to reject.
+    let auto_choice = ToolChoice::Auto;
+    let mut tool_choice = tool_choice;
+    if matches!(resolved_mode, OutputMode::Tool)
+        && !capabilities.accepts_forced_tool_choice
+        && forces_only_output_tool(tool_choice, &executable_tool_names, &candidate_output_tool)
+    {
+        if capabilities.composes_native_output_with_tools {
+            resolved_mode = OutputMode::Native;
+            tool_choice = None;
+        } else {
+            tool_choice = Some(&auto_choice);
+        }
+    }
 
     let output_tool_name =
         matches!(resolved_mode, OutputMode::Tool).then_some(candidate_output_tool);
@@ -338,6 +358,25 @@ fn output_tool_callable(tool_choice: Option<&ToolChoice>, output_tool_name: &str
         Some(ToolChoice::Specific { function_names }) => function_names
             .iter()
             .any(|name| name.as_str() == output_tool_name),
+    }
+}
+
+/// Return whether `tool_choice` forces a call that only the output tool can
+/// satisfy: `Required` with no executable tools, or `Specific` naming only it.
+fn forces_only_output_tool(
+    tool_choice: Option<&ToolChoice>,
+    executable_tool_names: &BTreeSet<String>,
+    output_tool_name: &str,
+) -> bool {
+    match tool_choice {
+        Some(ToolChoice::Required) => executable_tool_names.is_empty(),
+        Some(ToolChoice::Specific { function_names }) => {
+            !function_names.is_empty()
+                && function_names
+                    .iter()
+                    .all(|name| name.as_str() == output_tool_name)
+        }
+        None | Some(ToolChoice::Auto | ToolChoice::None) => false,
     }
 }
 

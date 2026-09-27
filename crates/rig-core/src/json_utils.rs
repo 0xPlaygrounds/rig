@@ -13,6 +13,17 @@ pub(crate) fn is_false(value: &bool) -> bool {
     !value
 }
 
+/// `skip_serializing_if` helper for fields that default to `true`.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+pub(crate) fn is_true(value: &bool) -> bool {
+    *value
+}
+
+/// `serde(default = ...)` helper for fields that default to `true`.
+pub(crate) const fn default_true() -> bool {
+    true
+}
+
 /// Serializes a `HashMap` in lexicographic key order, propagating serializer errors.
 /// Stable ordering avoids randomized map iteration changing request bytes.
 pub fn serialize_map_sorted<S, V>(

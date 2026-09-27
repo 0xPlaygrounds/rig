@@ -323,6 +323,31 @@ fn provider_capabilities_are_externally_configurable_from_default() {
     assert_eq!(ProviderCapabilities::new(), ProviderCapabilities::default());
 }
 
+/// Records written before the field existed deserialize to the default, and
+/// the default is not written, so existing effect logs keep their bytes.
+#[test]
+fn forced_tool_choice_capability_defaults_to_accepted_and_serializes_only_when_rejected() {
+    let capabilities: ProviderCapabilities =
+        serde_json::from_value(serde_json::json!({"composes_native_output_with_tools": true}))
+            .expect("a record without the field still deserializes");
+    assert!(capabilities.accepts_forced_tool_choice);
+    assert_eq!(
+        serde_json::to_value(capabilities).expect("serializes"),
+        serde_json::json!({"composes_native_output_with_tools": true})
+    );
+
+    let rejecting = ProviderCapabilities::new().with_forced_tool_choice(false);
+    let value = serde_json::to_value(rejecting).expect("serializes");
+    assert_eq!(
+        value["accepts_forced_tool_choice"],
+        serde_json::json!(false)
+    );
+    assert_eq!(
+        serde_json::from_value::<ProviderCapabilities>(value).expect("round-trips"),
+        rejecting
+    );
+}
+
 #[test]
 fn usage_is_reported_when_any_counter_is_present() {
     use super::Usage;

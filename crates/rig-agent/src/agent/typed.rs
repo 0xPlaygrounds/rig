@@ -410,6 +410,11 @@ fn recover_output<T: DeserializeOwned>(
         TypedOutput::OutputTool => {
             let submissions = response.output_tool_calls();
             if submissions == 0 {
+                // A model that cannot be forced to call the output tool answers
+                // natively, and the run accepts schema-valid text in its place.
+                if let Ok(output) = deserialize_structured_output(&response.output) {
+                    return Ok(output);
+                }
                 tracing::warn!(
                     "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
                 );

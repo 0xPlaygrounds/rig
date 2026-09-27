@@ -607,3 +607,103 @@ async fn exhausted_retries_return_error_from_final_attempt() {
             )
     ));
 }
+
+/// One Anthropic reply body, answered for `model`.
+fn anthropic_reply(model: &str, content: serde_json::Value, stop_reason: &str) -> String {
+    json!({
+        "type": "message",
+        "id": "msg_extractor",
+        "model": model,
+        "role": "assistant",
+        "content": content,
+        "stop_reason": stop_reason,
+        "stop_sequence": null,
+        "usage": {"input_tokens": 40, "output_tokens": 12}
+    })
+    .to_string()
+}
+
+fn anthropic_extractor(
+    model: &str,
+    reply: String,
+) -> (Extractor<Person>, rig_core::test_utils::RecordingHttpClient) {
+    use rig_core::providers::anthropic::wire::AnthropicConfig;
+
+    let http = rig_core::test_utils::RecordingHttpClient::new(reply);
+    let model = AnthropicConfig::new("sk-test")
+        .connect(http.clone())
+        .completion(model);
+    (ExtractorBuilder::<Person>::new(model).build(), http)
+}
+
+fn only_request_body(http: &rig_core::test_utils::RecordingHttpClient) -> serde_json::Value {
+    let requests = http.requests();
+    assert_eq!(requests.len(), 1, "one extraction attempt, one request");
+    serde_json::from_slice(&requests[0].body).expect("the request is JSON")
+}
+
+/// The real Anthropic wire, with a recorded-shape reply and no socket:
+/// Claude Opus 5.5 rejects `tool_choice: any`, so the extractor must ask for
+/// native structured output instead and read the answer from the text.
+#[tokio::test]
+async fn extraction_uses_native_output_on_a_model_that_rejects_forced_tool_choice() {
+    use rig_core::providers::anthropic::completion::CLAUDE_OPUS_5_5;
+
+    let reply = anthropic_reply(
+        CLAUDE_OPUS_5_5,
+        json!([
+            {"type": "thinking", "thinking": "", "signature": "sig-omitted"},
+            {"type": "text", "text": "{\"name\":\"John\"}"}
+        ]),
+        "end_turn",
+    );
+    let (extractor, http) = anthropic_extractor(CLAUDE_OPUS_5_5, reply);
+
+    let person = extractor
+        .extract("John is 30.")
+        .await
+        .expect("extraction succeeds with no user change")
+        .output;
+    assert_eq!(
+        person,
+        Person {
+            name: "John".to_string()
+        }
+    );
+
+    let body = only_request_body(&http);
+    assert_eq!(body.get("tool_choice"), None);
+    assert_eq!(body.get("tools"), None);
+    assert_eq!(body["output_config"]["format"]["type"], "json_schema");
+}
+
+/// Claude Opus 5 accepts forced tool use, so the extractor keeps forcing its
+/// `submit` tool there.
+#[tokio::test]
+async fn extraction_keeps_forcing_submit_on_a_model_that_accepts_it() {
+    use rig_core::providers::anthropic::completion::CLAUDE_OPUS_5;
+
+    let reply = anthropic_reply(
+        CLAUDE_OPUS_5,
+        json!([{
+            "type": "tool_use",
+            "id": "toolu_1",
+            "name": SUBMIT_TOOL_NAME,
+            "input": {"name": "John"}
+        }]),
+        "tool_use",
+    );
+    let (extractor, http) = anthropic_extractor(CLAUDE_OPUS_5, reply);
+
+    let person = extractor
+        .extract("John is 30.")
+        .await
+        .expect("extraction succeeds")
+        .output;
+    assert_eq!(person.name, "John");
+
+    let body = only_request_body(&http);
+    assert_eq!(body["tool_choice"]["type"], "any");
+    assert_eq!(body["tools"][0]["name"], SUBMIT_TOOL_NAME);
+    assert_eq!(body.get("output_config"), None);
+}

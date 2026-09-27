@@ -23,11 +23,12 @@ use crate::{
 };
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::CompletionRequest;
+use rig_core::completion::{CompletionRequest, ProviderCapabilities};
 use rig_core::driver::{Exchange, Opened, Sending, Transport};
 use rig_core::error::{EncodeError, ProviderError};
+use rig_core::message::ToolChoice;
 use rig_core::operation::Completion;
-use rig_core::wire::{Descriptor, Mode, Wire};
+use rig_core::wire::{Capabilities, Descriptor, Mode, Wire};
 
 // Profile identifiers with a us. prefix route inference within the US region
 // family; callers elsewhere must select a supported regional profile.
@@ -67,6 +68,38 @@ pub const ANTHROPIC_CLAUDE_SONNET_4_6: &str = "us.anthropic.claude-sonnet-4-6";
 pub const ANTHROPIC_CLAUDE_SONNET_5: &str = "us.anthropic.claude-sonnet-5";
 /// `us.anthropic.claude-opus-5` (cross-region profile)
 pub const ANTHROPIC_CLAUDE_OPUS_5: &str = "us.anthropic.claude-opus-5";
+/// `us.anthropic.claude-opus-5-5` (cross-region profile). Adaptive thinking is
+/// always on and forced tool choice is rejected.
+pub const ANTHROPIC_CLAUDE_OPUS_5_5: &str = "us.anthropic.claude-opus-5-5";
+/// `us.anthropic.claude-fable-5-1` (cross-region profile). Adaptive thinking is
+/// always on and forced tool choice is rejected.
+pub const ANTHROPIC_CLAUDE_FABLE_5_1: &str = "us.anthropic.claude-fable-5-1";
+
+/// Claude model and inference-profile IDs that reject a forced tool choice,
+/// exactly as the Bedrock model cards list them for `bedrock-runtime`.
+/// Sources: <https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html>,
+/// `model-card-anthropic-claude-fable-5-1.html` and
+/// `model-card-anthropic-claude-mythos-5-1.html`.
+const REJECTS_FORCED_TOOL_CHOICE: &[&str] = &[
+    "anthropic.claude-opus-5-5",
+    "us.anthropic.claude-opus-5-5",
+    "eu.anthropic.claude-opus-5-5",
+    "au.anthropic.claude-opus-5-5",
+    "jp.anthropic.claude-opus-5-5",
+    "global.anthropic.claude-opus-5-5",
+    "anthropic.claude-fable-5-1",
+    "us.anthropic.claude-fable-5-1",
+    "global.anthropic.claude-fable-5-1",
+    "anthropic.claude-mythos-5-1",
+    "us.anthropic.claude-mythos-5-1",
+    "global.anthropic.claude-mythos-5-1",
+];
+
+/// Whether `model` accepts a forced tool choice. IDs outside the list,
+/// including inference-profile ARNs, are assumed to.
+pub(crate) fn accepts_forced_tool_choice(model: &str) -> bool {
+    !REJECTS_FORCED_TOOL_CHOICE.contains(&model)
+}
 
 /// `cohere.embed-english-v3` embedding model
 pub const COHERE_EMBED_ENGLISH: &str = "cohere.embed-english-v3";
@@ -210,18 +243,34 @@ impl Wire for Converse {
     type Decoder = StreamState;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::completion(
+                ProviderCapabilities::default()
+                    .with_forced_tool_choice(accepts_forced_tool_choice(&self.model)),
+            ))
     }
 
     /// Claude reasoning on Bedrock is Anthropic's; other models' is
     /// Bedrock's, so a request replays only the reasoning its model's issuer
-    /// signed.
+    /// signed. A forced tool choice for a model that rejects one fails here.
     fn encode(
         &self,
         mut request: CompletionRequest,
         _mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
+        if matches!(
+            request.tool_choice,
+            Some(ToolChoice::Required | ToolChoice::Specific { .. })
+        ) && !accepts_forced_tool_choice(&model)
+        {
+            return Err(EncodeError::request(format!(
+                "`{model}` rejects a forced tool choice (`ToolChoice::Required` or \
+                 `ToolChoice::Specific`); use `ToolChoice::Auto` and say in the prompt when the \
+                 tool applies"
+            )));
+        }
         rig_core::message::retain_replayable_reasoning(
             &mut request.chat_history,
             &[reasoning_issuer(&model)],
@@ -343,3 +392,6 @@ impl Transport<Converse> for BedrockRuntime {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests;
