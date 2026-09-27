@@ -260,11 +260,20 @@ impl Wire for Converse {
         _mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
-        if matches!(
-            request.tool_choice,
-            Some(ToolChoice::Required | ToolChoice::Specific { .. })
-        ) && !accepts_forced_tool_choice(&model)
-        {
+        // A raw Anthropic `tool_choice` in the model-specific fields forces too.
+        let raw_forces = request
+            .additional_params
+            .as_ref()
+            .and_then(|params| params.get("tool_choice"))
+            .and_then(|choice| choice.get("type"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|kind| matches!(kind, "any" | "tool"));
+        let forces = raw_forces
+            || matches!(
+                request.tool_choice,
+                Some(ToolChoice::Required | ToolChoice::Specific { .. })
+            );
+        if forces && !accepts_forced_tool_choice(&model) {
             return Err(EncodeError::request(format!(
                 "`{model}` rejects a forced tool choice (`ToolChoice::Required` or \
                  `ToolChoice::Specific`); use `ToolChoice::Auto` and say in the prompt when the \

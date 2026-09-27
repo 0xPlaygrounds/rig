@@ -146,7 +146,7 @@ An extractor forces its `submit` tool. For a model whose
 Claude Fable 5.1 and Claude Mythos 5.1), request preparation drops that forced
 choice: it asks for native structured output when the wire composes native
 output with tools, and otherwise lets the model choose, relying on the
-preamble. A forced choice the caller configured is left in place, and the wire
+preamble. Outside an extractor, a forced choice is left in place and the wire
 rejects it. The `rig-ecs` runtime forces nothing by default and has no such
 fallback.
 

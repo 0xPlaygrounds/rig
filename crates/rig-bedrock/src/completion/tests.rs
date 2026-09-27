@@ -82,3 +82,20 @@ fn prefix_sharing_models_keep_forced_tool_choice() {
         );
     }
 }
+
+#[test]
+fn a_raw_forced_tool_choice_in_additional_params_fails_too() {
+    let mut request = forced(ToolChoice::Auto);
+    request.tool_choice = None;
+    request.additional_params = Some(serde_json::json!({"tool_choice": {"type": "any"}}));
+    assert!(
+        Converse::new(ANTHROPIC_CLAUDE_OPUS_5_5)
+            .encode(request.clone(), Mode::Unary)
+            .is_err()
+    );
+    assert!(
+        Converse::new(ANTHROPIC_CLAUDE_OPUS_5)
+            .encode(request, Mode::Unary)
+            .is_ok()
+    );
+}
