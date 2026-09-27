@@ -32,7 +32,7 @@ use crate::tool::{
 };
 use rig_core::driver::{Exchange, Local, Sending};
 use rig_core::error::ErrorKind;
-use rig_core::error::{ProviderError, RigError};
+use rig_core::error::RigError;
 use rig_core::message::{
     AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
 };
@@ -395,7 +395,7 @@ async fn failed_attempt_error_carries_its_own_request_id() {
     .await
     .expect_err("the second attempt fails");
 
-    let PromptError::Report(ref report) = error else {
+    let PromptError::Failed(ref report) = error else {
         panic!("expected the failing attempt's report, got {error:?}");
     };
     assert_eq!(
@@ -1319,7 +1319,7 @@ async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() 
     assert_eq!(hook.model_turns.load(SeqCst), 0);
     assert!(matches!(
         error,
-        Some(StreamingError::Report(ref report))
+        Some(StreamingError::Failed(ref report))
             if report.kind == rig_core::error::ErrorKind::Provider
                 && report.message.ends_with("post-final failure")
     ));
@@ -1380,7 +1380,11 @@ async fn visible_assistant_items_after_final_are_rejected() {
         assert!(
             matches!(
                 error,
-                Some(StreamingError::Completion(ProviderError::Response(ref message)))
+                Some(StreamingError::Failed(RigError {
+                    kind: ErrorKind::Response,
+                    ref message,
+                    ..
+                }))
                     if message.contains("visible assistant content after its final response")
             ),
             "{case}: expected malformed-response error, got {error:?}"
@@ -1411,7 +1415,11 @@ async fn visible_item_after_non_emittable_final_is_rejected() {
     assert_eq!(hook.model_turns.load(SeqCst), 0);
     assert!(matches!(
         error,
-        Some(StreamingError::Completion(ProviderError::Response(message)))
+        Some(StreamingError::Failed(RigError {
+            kind: ErrorKind::Response,
+            message,
+            ..
+        }))
             if message.contains("visible assistant content after its final response")
     ));
 }
@@ -7767,7 +7775,7 @@ async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choic
         assert!(
             matches!(
                 &err,
-                PromptError::Report(RigError {
+                PromptError::Failed(RigError {
                     kind: ErrorKind::Request,
                     ..
                 })
@@ -7839,7 +7847,7 @@ async fn late_output_tool_collision_fails_before_streaming_provider() {
     assert!(
         matches!(
             &err,
-            StreamingError::Report(RigError {
+            StreamingError::Failed(RigError {
                 kind: ErrorKind::Request,
                 ..
             })
@@ -7944,7 +7952,7 @@ async fn retrieved_output_tool_collision_fails_before_provider_request() {
 
     assert!(matches!(
         &err,
-        PromptError::Report(RigError {
+        PromptError::Failed(RigError {
             kind: ErrorKind::Request,
             ..
         })

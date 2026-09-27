@@ -1901,14 +1901,14 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         let failed_with_provider_error = if streaming {
             matches!(
                 drain_stream(agent.prompt("boom").stream()).await,
-                Err(StreamingError::Report(report))
+                Err(StreamingError::Failed(report))
                     if report.kind == ErrorKind::Provider
                         && report.message.ends_with("provider exploded")
             )
         } else {
             matches!(
                 agent.prompt("boom").await,
-                Err(PromptError::Report(report))
+                Err(PromptError::Failed(report))
                     if report.kind == ErrorKind::Provider
                         && report.message.ends_with("provider exploded")
             )

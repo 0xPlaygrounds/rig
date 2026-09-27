@@ -538,11 +538,8 @@ pub async fn drain(stream: &mut StreamingResult) -> Drained {
 /// The report a runner stream error carries.
 pub fn report_of(error: &StreamingError) -> RigError {
     match error {
-        StreamingError::Completion(error) => RigError::from(error),
-        StreamingError::Report(report) => report.clone(),
+        StreamingError::Failed(report) => report.clone(),
         StreamingError::Prompt(error) => match error {
-            PromptError::Report(report) => report.clone(),
-            PromptError::CompletionError(error) => RigError::from(error),
             PromptError::PromptCancelled { reason, .. } => {
                 RigError::new(ErrorKind::Cancelled, reason.clone())
             }

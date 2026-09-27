@@ -28,7 +28,7 @@ use crate::{
     tool::{Tool, ToolContext},
 };
 use rig_core::completion::CompletionRequest;
-use rig_core::error::ProviderError;
+use rig_core::error::RigError;
 use rig_core::message::{ToolChoice, UserContent};
 
 /// Typed failure from a portable model-conformance scenario.
@@ -37,15 +37,12 @@ pub enum ScenarioError {
     /// A buffered agent run failed.
     #[error(transparent)]
     Prompt(#[from] PromptError),
-    /// A direct model completion failed.
-    #[error(transparent)]
-    Completion(#[from] ProviderError),
     /// A streaming agent run failed.
     #[error(transparent)]
     Streaming(#[from] StreamingError),
-    /// A stream item or bus effect failed, as the wire reports it.
+    /// A direct model call, a stream item or a bus effect failed.
     #[error(transparent)]
-    Report(#[from] rig_core::error::RigError),
+    Failed(#[from] RigError),
     /// Structured content could not be decoded.
     #[error(transparent)]
     Json(#[from] serde_json::Error),

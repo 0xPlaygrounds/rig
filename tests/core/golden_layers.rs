@@ -231,7 +231,7 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
     drop(stream);
     let ending = ending.expect("the run ends in an error");
     match &ending {
-        StreamingError::Report(report) => {
+        StreamingError::Failed(report) => {
             assert_eq!(report.kind, rig::error::ErrorKind::Cancelled);
             assert_eq!(report.message, CANCEL_STREAM_REASON);
         }
@@ -241,7 +241,6 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
                 "{error:?}"
             );
         }
-        other => panic!("a cancel, not {other:?}"),
     }
     assert_eq!(texts, "streamed", "the events were delivered as they came");
     for _ in 0..64 {

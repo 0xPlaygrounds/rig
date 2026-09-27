@@ -118,7 +118,7 @@ async fn denied_completion_effect_log_is_the_golden_fixture() {
         .await
         .expect_err("the denial fails the run");
     assert!(
-        matches!(&error, rig::completion::PromptError::Report(report) if report.kind == rig::error::ErrorKind::Denied),
+        matches!(&error, rig::completion::PromptError::Failed(report) if report.kind == rig::error::ErrorKind::Denied),
         "{error:?}"
     );
     let log = agent.stamp(recorder.take());

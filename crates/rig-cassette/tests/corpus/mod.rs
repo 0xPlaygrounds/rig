@@ -267,7 +267,7 @@ pub enum Ending {
     /// model still calling tools (a per-run `tool_choice` that forces a
     /// call does this). Every record is a success; the run is not.
     MaxTurns,
-    /// `PromptError::Report` of kind `ProviderResponse`: the completion
+    /// `PromptError::Failed` of kind `ProviderResponse`: the completion
     /// record's outcome is the provider's error and the run fails at it.
     ProviderError,
     /// `PromptError::UnknownToolCall`: the model called a tool the program
@@ -280,7 +280,7 @@ pub enum Ending {
     /// `PromptError::PromptCancelled` with this reason: a hook stopped the
     /// run. The records are those the engine made before the stop.
     Cancelled(&'static str),
-    /// `PromptError::Report` (or a stream's `Report` item) of this kind: a
+    /// `PromptError::Failed` (or a stream's `StreamingError::Failed`) of this kind: a
     /// layer denied or replaced what the run needed (Matrices P and T).
     Failed(ErrorKind),
 }
@@ -2717,7 +2717,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                         output = Some(response.output);
                     }
-                    Err(StreamingError::Report(report))
+                    Err(StreamingError::Failed(report))
                         if program.cancel_after_first_delta
                             && report.kind == rig_core::error::ErrorKind::Cancelled =>
                     {
@@ -2750,19 +2750,14 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Report(report))
+                    Err(StreamingError::Failed(report))
                         if program.ending == Ending::ProviderError
                             && report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Report(report))
+                    Err(StreamingError::Failed(report))
                         if program.ending == Ending::Failed(report.kind) =>
-                    {
-                        failed_as_expected = true;
-                    }
-                    Err(StreamingError::Completion(_))
-                        if program.ending == Ending::ProviderError =>
                     {
                         failed_as_expected = true;
                     }
@@ -2819,12 +2814,12 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
                 | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall)
                 | (Err(PromptError::MemoryError(_)), Ending::MemoryError) => None,
-                (Err(PromptError::Report(report)), Ending::ProviderError)
+                (Err(PromptError::Failed(report)), Ending::ProviderError)
                     if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                 {
                     None
                 }
-                (Err(PromptError::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
+                (Err(PromptError::Failed(report)), Ending::Failed(kind)) if report.kind == kind => {
                     None
                 }
                 (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))

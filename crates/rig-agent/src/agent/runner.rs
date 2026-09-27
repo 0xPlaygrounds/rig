@@ -580,9 +580,12 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(ProviderError::Response(
-                    "agent run ended without producing a final response".to_string(),
-                ))
+                PromptError::Failed(
+                    ProviderError::Response(
+                        "agent run ended without producing a final response".to_string(),
+                    )
+                    .into(),
+                )
             })
         };
         fold.instrument(agent_span).await

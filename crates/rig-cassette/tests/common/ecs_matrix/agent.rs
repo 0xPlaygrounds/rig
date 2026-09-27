@@ -66,8 +66,7 @@ fn classify_prompt(error: PromptError) -> RunFailure {
         PromptError::PromptCancelled { reason, .. } => RunFailure::Cancelled(reason),
         PromptError::MaxTurnsError { .. } => RunFailure::MaxTurns,
         PromptError::MemoryError(_) => RunFailure::MemoryError,
-        PromptError::Report(report) => RunFailure::Report(report),
-        PromptError::CompletionError(error) => RunFailure::Report(RigError::from(&error)),
+        PromptError::Failed(report) => RunFailure::Report(report),
         other => panic!("the run fails as one of the program's endings, not {other:?}"),
     }
 }
@@ -75,8 +74,7 @@ fn classify_prompt(error: PromptError) -> RunFailure {
 fn classify_stream(error: StreamingError) -> RunFailure {
     match error {
         StreamingError::Prompt(error) => classify_prompt(error),
-        StreamingError::Report(report) => RunFailure::Report(report),
-        StreamingError::Completion(error) => RunFailure::Report(RigError::from(&error)),
+        StreamingError::Failed(report) => RunFailure::Report(report),
     }
 }
 

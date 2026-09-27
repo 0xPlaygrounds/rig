@@ -4,10 +4,10 @@ use rig_core::{ProviderResponseError, http_client};
 use super::*;
 
 #[test]
-fn prompt_error_forwards_provider_response_to_completion_error() {
+fn prompt_error_forwards_the_failure_s_provider_response() {
     let body = r#"{"error":{"message":"boom"}}"#;
     let inner = ProviderError::from_http_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let error = PromptError::CompletionError(inner);
+    let error = PromptError::Failed(inner.into());
 
     assert_eq!(
         error.provider_response_status(),
@@ -26,13 +26,14 @@ fn prompt_error_forwards_provider_response_to_completion_error() {
 #[test]
 fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
     let body = r#"{"error":{"message":"unauthorized"}}"#;
-    let error = PromptError::CompletionError(ProviderError::from_transport_error(
-        http_client::Error::non_success_with_details(
+    let error = PromptError::Failed(
+        ProviderError::from_transport_error(http_client::Error::non_success_with_details(
             http::StatusCode::UNAUTHORIZED,
             http::HeaderMap::new(),
             body.to_string(),
-        ),
-    ));
+        ))
+        .into(),
+    );
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(
@@ -48,11 +49,11 @@ fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
 }
 
 #[test]
-fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
+fn prompt_error_provider_response_helpers_forward_a_failure_without_status() {
     let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
-    let error = PromptError::CompletionError(ProviderError::ProviderResponse(
-        ProviderResponseError::without_status(body),
-    ));
+    let error = PromptError::Failed(
+        ProviderError::ProviderResponse(ProviderResponseError::without_status(body)).into(),
+    );
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(error.provider_response_status(), None);
@@ -97,7 +98,7 @@ fn prompt_error_forwards_captured_response_headers() {
             headers: headers.clone(),
         }),
     ] {
-        let prompt_error = PromptError::CompletionError(completion_error);
+        let prompt_error = PromptError::Failed(completion_error.into());
         assert_eq!(
             prompt_error
                 .provider_response_headers()
@@ -138,10 +139,13 @@ fn prompt_error_reports_no_headers_for_unrelated_variants() {
 /// through `PromptError` (and, transitively, `StructuredOutputError`).
 #[test]
 fn prompt_error_forwards_the_provider_request_id() {
-    let error = PromptError::CompletionError(ProviderError::ProviderResponse(
-        ProviderResponseError::new(http::StatusCode::NOT_FOUND, "{}")
-            .with_provider_request_id(Some("req_failed_call".to_string())),
-    ));
+    let error = PromptError::Failed(
+        ProviderError::ProviderResponse(
+            ProviderResponseError::new(http::StatusCode::NOT_FOUND, "{}")
+                .with_provider_request_id(Some("req_failed_call".to_string())),
+        )
+        .into(),
+    );
     assert_eq!(error.provider_request_id(), Some("req_failed_call"));
 }
 
@@ -165,11 +169,12 @@ fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
 #[test]
 fn structured_output_error_provider_response_helpers_forward_prompt_error() {
     let body = r#"{"error":{"message":"bad input"}}"#;
-    let error = StructuredOutputError::PromptError(PromptError::CompletionError(
+    let error = StructuredOutputError::PromptError(PromptError::Failed(
         ProviderError::ProviderResponse(ProviderResponseError::new(
             http::StatusCode::BAD_REQUEST,
             body,
-        )),
+        ))
+        .into(),
     ));
 
     assert_eq!(error.provider_response_body(), Some(body));

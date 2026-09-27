@@ -187,7 +187,7 @@ async fn a_golden_whose_recorded_request_differs_fails_at_that_record_and_no_lat
         .await
         .expect("a replay never hangs")
         .expect_err("a divergent record fails the run");
-    let PromptError::Report(report) = &error else {
+    let PromptError::Failed(report) = &error else {
         panic!("the divergence is reported: {error:?}");
     };
     assert_eq!(report.kind, ErrorKind::Divergence);

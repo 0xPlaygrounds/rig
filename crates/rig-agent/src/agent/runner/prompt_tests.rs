@@ -1664,7 +1664,7 @@ async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_reques
         .expect_err("invalid ToolChoice::Specific should fail before provider request");
 
     match err {
-        PromptError::Report(RigError {
+        PromptError::Failed(RigError {
             kind: ErrorKind::Request,
             message,
             ..

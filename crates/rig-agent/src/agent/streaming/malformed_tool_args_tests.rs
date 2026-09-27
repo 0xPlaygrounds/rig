@@ -92,22 +92,15 @@ async fn run_with(action: Option<InvalidToolCallAction>) -> (Observed, MockCompl
 
 fn assert_original_report(error: StreamingError) {
     match error {
-        StreamingError::Prompt(err) => match err {
-            PromptError::Report(report) => {
-                assert_eq!(report.kind, ErrorKind::Response);
-                assert!(
-                    report
-                        .message
-                        .contains("tool call `add` arrived with malformed JSON input"),
-                    "{}",
-                    report.message
-                );
-            }
-            other => panic!("expected the provider report, got {other:?}"),
-        },
-        StreamingError::Report(report) => {
+        StreamingError::Failed(report) => {
             assert_eq!(report.kind, ErrorKind::Response);
-            assert!(report.message.contains("malformed JSON input"));
+            assert!(
+                report
+                    .message
+                    .contains("tool call `add` arrived with malformed JSON input"),
+                "{}",
+                report.message
+            );
         }
         other => panic!("expected the provider report, got {other:?}"),
     }

@@ -243,9 +243,9 @@ where
         loop {
             print!("> ");
             stdout.flush().map_err(|e| {
-                PromptError::CompletionError(ProviderError::Response(format!(
-                    "failed to flush stdout: {e}"
-                )))
+                PromptError::Failed(
+                    ProviderError::Response(format!("failed to flush stdout: {e}")).into(),
+                )
             })?;
 
             let mut input = String::new();

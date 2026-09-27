@@ -60,7 +60,6 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
     MultiTurnStreamItem, StreamingError,
 };
-use rig::completion::PromptError;
 use rig::providers::anthropic;
 use rig::streaming::StreamedUserContent;
 use rig_test_support::cassette_models::AnthropicModels;
@@ -218,17 +217,11 @@ async fn streaming_malformed_fails_by_default() {
                 }
             }
             match error.expect("default policy is fail-fast") {
-                StreamingError::Prompt(err) => match err {
-                    PromptError::Report(report) => assert!(
-                        report.message.contains("malformed JSON input"),
-                        "{}",
-                        report.message
-                    ),
-                    other => panic!("expected the provider report, got {other:?}"),
-                },
-                StreamingError::Report(report) => {
-                    assert!(report.message.contains("malformed JSON input"));
-                }
+                StreamingError::Failed(report) => assert!(
+                    report.message.contains("malformed JSON input"),
+                    "{}",
+                    report.message
+                ),
                 other => panic!("expected the provider report, got {other:?}"),
             }
         },

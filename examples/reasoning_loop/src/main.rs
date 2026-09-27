@@ -38,7 +38,7 @@ impl ReasoningAgent {
             .await
             .map_err(|e| {
                 tracing::error!("Extraction error: {:?}", e);
-                ProviderError::Provider("".into())
+                rig::RigError::from(ProviderError::Provider("".into()))
             })?
             .output;
         if extracted.steps.is_empty() {
