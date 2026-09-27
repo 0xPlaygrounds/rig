@@ -2,7 +2,7 @@
 //! Requires `JEV_TOKEN`; run with `cargo run -p typesafeai_triage`.
 
 use anyhow::Result;
-use rig::error::ProviderError;
+use rig::RigError;
 use rig::typesafeai::{
     Choice, ChoiceAnswer, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
@@ -34,7 +34,7 @@ struct Assessment<R = ChoiceAnswer<Route>, U = ScoreAnswer<Urgency>, D = NoulAns
 type AssessmentQuery = Assessment<Choice<Route>, Score<Urgency>, Noul>;
 
 impl AssessmentQuery {
-    fn new() -> Result<Self, ProviderError> {
+    fn new() -> Result<Self, RigError> {
         Ok(Self {
             route: Choice::<Route>::new(
                 "Which support team should investigate this ticket?",
@@ -76,7 +76,7 @@ impl<R: Query, U: Query, D: Query> Query for Assessment<R, U, D> {
     type Response = Assessment<R::Response, U::Response, D::Response>;
     type Output = Assessment<R::Output, U::Output, D::Output>;
 
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
         Ok(Assessment {
             route: self.route.decode(response.route)?,
             urgency: self.urgency.decode(response.urgency)?,

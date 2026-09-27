@@ -23,7 +23,7 @@ use crate::{
     tool::{Tool, ToolContext},
 };
 use rig_core::completion::message::turn_delivered_no_answer;
-use rig_core::error::ProviderError;
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::ProviderCallId;
 use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
 use schemars::JsonSchema;
@@ -1664,8 +1664,12 @@ async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_reques
         .expect_err("invalid ToolChoice::Specific should fail before provider request");
 
     match err {
-        PromptError::CompletionError(ProviderError::Request(err)) => {
-            let msg = err.to_string();
+        PromptError::Report(RigError {
+            kind: ErrorKind::Request,
+            message,
+            ..
+        }) => {
+            let msg = message;
             assert!(msg.contains("missing"), "got: {msg}");
             assert!(msg.contains("add"), "got: {msg}");
         }

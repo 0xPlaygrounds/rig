@@ -51,7 +51,7 @@ impl Transport<Converse> for Reply {
 fn complete_as(
     model: &str,
     output: InternalConverseOutput,
-) -> Result<completion::CompletionResponse, ProviderError> {
+) -> Result<completion::CompletionResponse, rig_core::RigError> {
     let request = rig_core::completion::CompletionRequest::new("hi");
     futures::executor::block_on(Model::new(Converse::new(model), Reply(output)).call(request))
 }
@@ -59,7 +59,7 @@ fn complete_as(
 /// `output` as a Nova model's Converse endpoint answers it.
 pub(crate) fn complete(
     output: InternalConverseOutput,
-) -> Result<completion::CompletionResponse, ProviderError> {
+) -> Result<completion::CompletionResponse, rig_core::RigError> {
     complete_as("amazon.nova-pro-v1:0", output)
 }
 

@@ -6,8 +6,8 @@
 //! back off. That information crosses two boundaries on its way out: the
 //! backend turns `tungstenite::Error::Http` into
 //! `http_client::Error::non_success_with_details`, and the provider session
-//! turns that into a `ProviderError` with its own request-id header read back
-//! off it.
+//! turns that into the caller's `RigError` with its own request-id header
+//! read back off it.
 //!
 //! Both halves have unit tests. This asserts the seam between them, against a
 //! real socket, because the regression it guards (rig#2314, rig#2315, rig#2210)
@@ -57,10 +57,7 @@ async fn serve_one_rejection(
 
 /// A session is not `Debug` (it owns a live connection), so unwrap the
 /// refusal by hand.
-fn expect_refusal<T>(
-    result: Result<T, rig_core::error::ProviderError>,
-    context: &str,
-) -> rig_core::error::ProviderError {
+fn expect_refusal<T>(result: Result<T, rig_core::RigError>, context: &str) -> rig_core::RigError {
     match result {
         Ok(_) => panic!("{context}"),
         Err(error) => error,

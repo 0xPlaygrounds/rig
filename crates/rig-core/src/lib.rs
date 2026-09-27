@@ -16,12 +16,11 @@
 //! transports, agent runtimes, and external storage integrations.
 //!
 //! ```no_run
-//! use rig_core::DynModel;
+//! use rig_core::{DynModel, RigError};
 //! use rig_core::completion::{CompletionRequest, CompletionResponse};
-//! use rig_core::error::ProviderError;
 //! use rig_core::operation::Completion;
 //!
-//! async fn ask(model: &DynModel<Completion>) -> Result<CompletionResponse, ProviderError> {
+//! async fn ask(model: &DynModel<Completion>) -> Result<CompletionResponse, RigError> {
 //!     let request = CompletionRequest::new("Who are you?");
 //!     model.call(request).await
 //! }

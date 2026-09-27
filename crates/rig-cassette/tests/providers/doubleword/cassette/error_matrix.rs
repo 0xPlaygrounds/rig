@@ -21,7 +21,6 @@
 //! that as the streaming contract and proves the body/status match blocking.
 
 use futures::StreamExt;
-use rig::error::ProviderError;
 use rig::error::RigError;
 use rig::providers::doubleword;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -46,13 +45,9 @@ fn assert_nested_error_envelope(json: &serde_json::Value) {
     );
 }
 
-fn assert_preserved_client_error(error: &ProviderError, expected_status: u16) {
-    assert_preserved_client_error_report(&RigError::from(error), expected_status);
-}
-
-/// The streaming twin: an in-band stream failure is a `RigError`, which
-/// carries the same preserved provider response as the `ProviderError`.
-fn assert_preserved_client_error_report(report: &RigError, expected_status: u16) {
+/// A blocking call's error and an in-band stream failure carry the same
+/// preserved provider response.
+fn assert_preserved_client_error(report: &RigError, expected_status: u16) {
     let status = report
         .provider_response_status()
         .expect("provider status should be preserved");
@@ -118,7 +113,7 @@ async fn unknown_model_streaming_body(client: OpenAiModels) {
             None => panic!("unknown-model stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error_report(&error, 404);
+    assert_preserved_client_error(&error, 404);
 }
 
 async fn invalid_key_blocking_body(client: OpenAiModels) {
@@ -141,7 +136,7 @@ async fn invalid_key_streaming_body(client: OpenAiModels) {
             None => panic!("invalid-key stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error_report(&error, 403);
+    assert_preserved_client_error(&error, 403);
 }
 
 async fn invalid_temperature_blocking_body(client: OpenAiModels) {
@@ -172,7 +167,7 @@ async fn invalid_temperature_streaming_body(client: OpenAiModels) {
             None => panic!("invalid-temperature stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error_report(&error, 400);
+    assert_preserved_client_error(&error, 400);
 }
 
 #[tokio::test]

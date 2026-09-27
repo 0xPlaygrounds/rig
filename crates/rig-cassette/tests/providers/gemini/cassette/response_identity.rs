@@ -10,6 +10,7 @@ use rig::streaming::StreamEvent;
 
 use super::super::support::with_gemini_cassette;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 
 #[tokio::test]
 async fn nonstreaming_request_id_is_none_by_design() {
@@ -140,7 +141,7 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
                 .await
                 .expect_err("a nonexistent model must fail");
             assert!(
-                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
+                error.kind == ErrorKind::ProviderResponse,
                 "the reply is the provider's, id contract or not: {error:?}"
             );
             assert_eq!(error.provider_request_id(), None);
@@ -164,7 +165,7 @@ async fn auth_rejection_keeps_transport_shape() {
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
-                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
+                error.kind == ErrorKind::ProviderResponse,
                 "the reply is the provider's, id contract or not: {error:?}"
             );
             assert_eq!(error.provider_request_id(), None);

@@ -228,7 +228,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
     .call(vec!["one".to_owned()])
     .await
     .expect_err("OpenAI always reports usage");
-    assert_eq!(error.kind(), ErrorKind::Response, "{error}");
+    assert_eq!(error.kind, ErrorKind::Response, "{error}");
     assert!(
         error
             .to_string()

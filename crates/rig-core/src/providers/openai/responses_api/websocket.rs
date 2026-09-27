@@ -10,7 +10,7 @@
 use crate::completion;
 use crate::driver::{Model, WireDriver};
 use crate::driver::{TriagedFrame, triage_frame};
-use crate::error::{EncodeError, ProviderError};
+use crate::error::{EncodeError, ProviderError, RigError};
 use crate::http_client::{self, NoBody};
 use crate::operation::Completion;
 use crate::providers::openai::responses_api::streaming::{
@@ -254,27 +254,24 @@ impl ResponsesWebSocketSessionBuilder {
     /// timeouts. Return handshake construction, transport, or provider errors.
     #[cfg(all(feature = "tungstenite", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "tungstenite")))]
-    pub async fn connect(self) -> Result<ResponsesWebSocketSession, ProviderError> {
+    pub async fn connect(self) -> Result<ResponsesWebSocketSession, RigError> {
         self.connect_with(&rig_tungstenite::TungsteniteClient::new())
             .await
     }
 
     /// Open a session over `backend` with the configured timeouts.
     /// Return handshake construction, transport, or provider errors.
-    pub async fn connect_with<W>(
-        self,
-        backend: &W,
-    ) -> Result<ResponsesWebSocketSession, ProviderError>
+    pub async fn connect_with<W>(self, backend: &W) -> Result<ResponsesWebSocketSession, RigError>
     where
         W: WebSocketClientExt,
     {
-        ResponsesWebSocketSession::connect_with_timeouts(
+        Ok(ResponsesWebSocketSession::connect_with_timeouts(
             backend,
             self.wire,
             self.connect_timeout,
             self.event_timeout,
         )
-        .await
+        .await?)
     }
 }
 
@@ -345,7 +342,7 @@ impl ResponsesWebSocketSession {
     pub async fn send(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<(), RigError> {
         self.send_with_options(
             completion_request,
             ResponsesWebSocketCreateOptions::default(),
@@ -358,13 +355,14 @@ impl ResponsesWebSocketSession {
         &mut self,
         completion_request: crate::completion::CompletionRequest,
         options: ResponsesWebSocketCreateOptions,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<(), RigError> {
         self.ensure_open()?;
 
         if self.in_flight {
             return Err(ProviderError::Provider(
                 "An OpenAI websocket response is already in flight on this session".to_string(),
-            ));
+            )
+            .into());
         }
 
         // Direct session requests bypass builder validation.
@@ -382,10 +380,10 @@ impl ResponsesWebSocketSession {
             &payload,
         );
 
-        let payload = serde_json::to_string(&payload)?;
+        let payload = serde_json::to_string(&payload).map_err(ProviderError::from)?;
 
         if let Err(error) = self.socket.send(Frame::Text(payload)).await {
-            return Err(self.fail_session(websocket_provider_error(error)));
+            return Err(self.fail_session(websocket_provider_error(error)).into());
         }
         self.in_flight = true;
 
@@ -393,8 +391,9 @@ impl ResponsesWebSocketSession {
     }
 
     /// Reads the next server event for the current in-flight turn.
-    pub async fn next_event(&mut self) -> Result<ResponsesWebSocketEvent, ProviderError> {
-        self.next_event_with_payload().await.map(|(event, _)| event)
+    pub async fn next_event(&mut self) -> Result<ResponsesWebSocketEvent, RigError> {
+        let (event, _) = self.next_event_with_payload().await?;
+        Ok(event)
     }
 
     /// Reads the next lifecycle event and retains its payload for content decoding
@@ -450,7 +449,7 @@ impl ResponsesWebSocketSession {
     pub async fn warmup(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<String, ProviderError> {
+    ) -> Result<String, RigError> {
         self.send_with_options(
             completion_request,
             ResponsesWebSocketCreateOptions::warmup(),
@@ -465,7 +464,7 @@ impl ResponsesWebSocketSession {
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, ProviderError> {
+    ) -> Result<completion::CompletionResponse, RigError> {
         let provider = self.wire.describe().name.to_owned();
         self.send(completion_request).await?;
         let (response, events) = self.wait_for_terminal_response().await?;
@@ -475,7 +474,7 @@ impl ResponsesWebSocketSession {
             // restates `output[]` (the shape a warmed-up or replayed session
             // answers with): fold that body, through the same decoder's
             // unary variant.
-            return super::wire::fold_body(&provider, response);
+            return Ok(super::wire::fold_body(&provider, response)?);
         }
         Ok(folded)
     }
@@ -484,7 +483,7 @@ impl ResponsesWebSocketSession {
     ///
     /// Call this when you are finished with the session so the websocket can
     /// terminate with a clean close handshake.
-    pub async fn close(&mut self) -> Result<(), ProviderError> {
+    pub async fn close(&mut self) -> Result<(), RigError> {
         if self.closed {
             return Ok(());
         }
@@ -495,7 +494,7 @@ impl ResponsesWebSocketSession {
             .await
             .map_err(websocket_provider_error);
         self.mark_closed();
-        result
+        Ok(result?)
     }
 
     fn prepare_request(

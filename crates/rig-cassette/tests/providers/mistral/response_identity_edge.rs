@@ -33,17 +33,9 @@ fn assert_is_request_id(id: Option<&str>) {
 
 /// An error must keep both halves of its context: the id *and* the body.
 /// Losing either one is what makes a provider failure unactionable.
-fn assert_error_keeps_id_and_body(error: &rig::error::ProviderError) {
-    assert_is_request_id(error.provider_request_id());
-    assert!(
-        error.provider_response_body().is_some(),
-        "the error body must survive alongside the id: {error:?}"
-    );
-}
-
-/// The streaming twin: an in-band stream failure is a `RigError`, which
-/// carries the same preserved id and body as the `ProviderError`.
-fn assert_report_keeps_id_and_body(report: &RigError) {
+/// A blocking call's error and an in-band stream failure carry the same
+/// preserved id and body.
+fn assert_error_keeps_id_and_body(report: &RigError) {
     assert_is_request_id(report.provider_request_id());
     assert!(
         report.provider_response_body().is_some(),
@@ -139,7 +131,7 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
                 .completion("definitely-not-a-model")
                 .stream(CompletionRequest::new("Reply with exactly: identity probe"))
             {
-                Err(error) => RigError::from(&error),
+                Err(error) => error,
                 Ok(mut stream) => {
                     let mut failure = None;
                     while let Some(item) = stream.next().await {
@@ -151,7 +143,7 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
                     failure.expect("an unroutable model must fail the stream")
                 }
             };
-            assert_report_keeps_id_and_body(&error);
+            assert_error_keeps_id_and_body(&error);
             Ok::<_, anyhow::Error>(())
         },
     )

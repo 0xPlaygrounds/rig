@@ -814,11 +814,15 @@ impl From<MemoryError> for RigError {
 impl From<&VectorStoreError> for RigError {
     fn from(error: &VectorStoreError) -> Self {
         let (kind, provider_response) = match error {
+            // The embedding failure is this error's source: its message
+            // leads the chain, followed by its own sources.
             VectorStoreError::EmbeddingError(inner) => {
                 return Self {
                     message: error.to_string(),
-                    source_chain: source_chain(error),
-                    ..Self::from(inner)
+                    source_chain: std::iter::once(inner.message.clone())
+                        .chain(inner.source_chain.iter().cloned())
+                        .collect(),
+                    ..inner.clone()
                 };
             }
             VectorStoreError::JsonError(_) => (ErrorKind::Json, None),

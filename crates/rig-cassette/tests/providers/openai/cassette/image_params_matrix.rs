@@ -66,7 +66,6 @@
 //! the caller's parameter and must not carry `response_format` unless the cell
 //! is the one that reinstates it.
 
-use rig::error::ProviderError;
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -84,7 +83,7 @@ const SIDE: u32 = 1024;
 
 /// The provider's error text for a rejected cell, which must name the
 /// caller's own parameter.
-fn rejection_body(error: &ProviderError) -> String {
+fn rejection_body(error: &rig::RigError) -> String {
     error
         .provider_response_body()
         .map_or_else(|| error.to_string(), ToOwned::to_owned)

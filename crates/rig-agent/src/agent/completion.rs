@@ -23,7 +23,7 @@ use crate::{
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
-use rig_core::error::ProviderError;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::id::ConversationId;
 
 use super::drive::AgentBus;
@@ -67,7 +67,7 @@ pub(crate) async fn build_prepared_completion_request(
     chat_history: &[Message],
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
-) -> Result<PreparedCompletionRequest, ProviderError> {
+) -> Result<PreparedCompletionRequest, RigError> {
     let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
@@ -115,7 +115,8 @@ pub(crate) async fn build_prepared_completion_request(
         tool_snapshot.take_definitions(),
         committed_output_tool,
         request_patch,
-    )?;
+    )
+    .map_err(ProviderError::from)?;
 
     // Narrow dispatch to the tools actually advertised this turn (a per-turn
     // `active_tools` allow-list), so the implementation behind every definition

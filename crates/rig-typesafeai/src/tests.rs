@@ -1,6 +1,7 @@
 use super::*;
 use crate::decode::DecodeAnswer;
 use anyhow::ensure;
+use rig_core::error::ErrorKind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -23,7 +24,7 @@ struct Batch<R, U, F> {
 impl<R: Query, U: Query, F: Query> Query for Batch<R, U, F> {
     type Response = Batch<R::Response, U::Response, F::Response>;
     type Output = Batch<R::Output, U::Output, F::Output>;
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
         Ok(Batch {
             route: self.route.decode(response.route)?,
             urgency: self.urgency.decode(response.urgency)?,
@@ -32,7 +33,7 @@ impl<R: Query, U: Query, F: Query> Query for Batch<R, U, F> {
     }
 }
 
-fn route() -> Result<Choice<Route>, ProviderError> {
+fn route() -> Result<Choice<Route>, RigError> {
     Choice::new(
         "Which team should handle the customer message?",
         [
@@ -128,7 +129,10 @@ fn rejects_corrupt_answers() -> anyhow::Result<()> {
     ] {
         ensure!(matches!(
             q.decode(serde_json::from_value(replacement)?),
-            Err(ProviderError::Response(_))
+            Err(RigError {
+                kind: ErrorKind::Response,
+                ..
+            })
         ));
     }
     Ok(())
@@ -158,7 +162,10 @@ fn rejects_labels_that_decode_to_a_different_variant() {
             "choose",
             [(Asymmetric::First, "one"), (Asymmetric::Second, "two")]
         ),
-        Err(ProviderError::Request(_))
+        Err(RigError {
+            kind: ErrorKind::Request,
+            ..
+        })
     ));
 }
 
@@ -380,11 +387,17 @@ fn rejects_non_string_choice_serialization() {
     }
     assert!(matches!(
         Choice::new("Choose", [(Tagged::One, "One"), (Tagged::Two, "Two")]),
-        Err(ProviderError::Request(_))
+        Err(RigError {
+            kind: ErrorKind::Request,
+            ..
+        })
     ));
     assert!(matches!(
         Choice::new("Choose", [(1u8, "One"), (2u8, "Two")]),
-        Err(ProviderError::Request(_))
+        Err(RigError {
+            kind: ErrorKind::Request,
+            ..
+        })
     ));
 }
 
@@ -410,13 +423,14 @@ async fn preserves_http_error_metadata() -> anyhow::Result<()> {
             .await
             .err()
             .ok_or_else(|| anyhow::anyhow!("expected provider error"))?;
-        let ProviderError::ProviderResponse(response) = &error else {
+        let (ErrorKind::ProviderResponse, Some(response)) = (error.kind, &error.provider_response)
+        else {
             anyhow::bail!("wrong error: {error}");
         };
         ensure!(response.status.map(|s| s.as_u16()) == Some(status));
         ensure!(response.provider_request_id.as_deref() == Some("error-request"));
         ensure!(response.body == r#"{"error":"overloaded"}"#);
-        ensure!(error.report().retryable);
+        ensure!(error.retryable);
         mock.assert_async().await;
     }
     Ok(())
@@ -443,7 +457,8 @@ async fn rejects_missing_and_extra_response_ids() -> anyhow::Result<()> {
             .evaluation();
         ensure!(
             matches!(client.evaluate(&"state", Noul::new("Ready?")?.named("ready")?).await,
-            Err(ProviderError::Response(message)) if message == "response question IDs differ from request")
+            Err(RigError { kind: ErrorKind::Response, message, .. })
+                if message.strip_prefix("ResponseError: ") == Some("response question IDs differ from request"))
         );
         mock.assert_async().await;
     }
@@ -480,7 +495,10 @@ fn dynamic_query_rejects_invalid_runtime_definitions() -> anyhow::Result<()> {
         let definition = serde_json::from_value(definition)?;
         ensure!(matches!(
             DynamicQuery::new(BTreeMap::from([(id.into(), definition)])),
-            Err(ProviderError::Request(_))
+            Err(RigError {
+                kind: ErrorKind::Request,
+                ..
+            })
         ));
     }
     Ok(())

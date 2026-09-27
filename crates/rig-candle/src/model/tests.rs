@@ -3,6 +3,7 @@ use candle_transformers::generation::Sampling;
 use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
 use futures::StreamExt;
+use rig_core::RigError;
 use rig_core::completion::{Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
@@ -54,7 +55,7 @@ impl Transport<Generation> for Scripted {
 /// The stream the generation wire yields for scripted `events`.
 fn stream_from_events(
     events: Vec<GenerationEvent>,
-) -> Result<rig_core::streaming::CompletionStream, ProviderError> {
+) -> Result<rig_core::streaming::CompletionStream, RigError> {
     rig_core::Model::new(
         Generation,
         Scripted(Arc::new(std::sync::Mutex::new(events))),
@@ -66,9 +67,9 @@ fn stream_from_events(
 async fn raw_completion(
     model: &CandleModel,
     request: CompletionRequest,
-) -> Result<CandleCompletionResponse, ProviderError> {
+) -> Result<CandleCompletionResponse, RigError> {
     let response = generation(model).call(request).await?;
-    Ok(serde_json::from_value(response.raw)?)
+    Ok(serde_json::from_value(response.raw).map_err(ProviderError::from)?)
 }
 
 #[cfg(not(target_family = "wasm"))]

@@ -31,7 +31,8 @@ use crate::tool::{
     server::{ToolServer, ToolServerHandle},
 };
 use rig_core::driver::{Exchange, Local, Sending};
-use rig_core::error::ProviderError;
+use rig_core::error::ErrorKind;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::message::{
     AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
 };
@@ -7766,7 +7767,10 @@ async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choic
         assert!(
             matches!(
                 &err,
-                PromptError::CompletionError(ProviderError::Request(_))
+                PromptError::Report(RigError {
+                    kind: ErrorKind::Request,
+                    ..
+                })
             ),
             "{case}: expected a local completion request error, got {err:?}"
         );
@@ -7833,7 +7837,13 @@ async fn late_output_tool_collision_fails_before_streaming_provider() {
     let err = collisions.pop().expect("one collision error was asserted");
 
     assert!(
-        matches!(&err, StreamingError::Completion(ProviderError::Request(_))),
+        matches!(
+            &err,
+            StreamingError::Report(RigError {
+                kind: ErrorKind::Request,
+                ..
+            })
+        ),
         "expected a local streaming completion request error, got {err:?}"
     );
     assert_eq!(
@@ -7934,7 +7944,10 @@ async fn retrieved_output_tool_collision_fails_before_provider_request() {
 
     assert!(matches!(
         &err,
-        PromptError::CompletionError(ProviderError::Request(_))
+        PromptError::Report(RigError {
+            kind: ErrorKind::Request,
+            ..
+        })
     ));
     assert_eq!(
         probe.request_count(),

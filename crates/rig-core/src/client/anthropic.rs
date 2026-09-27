@@ -3,7 +3,7 @@
 
 use crate::client::macros::http_client;
 use crate::driver::Model;
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::model::ModelList;
 
 use crate::providers::anthropic::wire::{AnthropicConfig, Messages};
@@ -38,13 +38,13 @@ impl Anthropic {
     }
 
     /// The models this provider serves, every page followed.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.model(self.config.models()).list().await
     }
 
     /// Check that the provider accepts the configured credential. A 401 or
-    /// 403 reply is [`ProviderError::InvalidAuthentication`].
-    pub async fn verify(&self) -> Result<(), ProviderError> {
+    /// 403 reply carries [`ErrorDetail::InvalidAuthentication`](crate::error::ErrorDetail::InvalidAuthentication).
+    pub async fn verify(&self) -> Result<(), RigError> {
         self.model(self.config.verify()).verify().await
     }
 }

@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
 use crate::error::EncodeError;
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::operation;
 use crate::providers::internal::{
     wire::{classify_or, classify_untyped_line},
@@ -219,7 +219,7 @@ pub struct CachedContent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_time: Option<String>,
     /// When this cache lapses. After it does, using the handle fails with
-    /// [`ProviderError::CacheExpired`].
+    /// [`ErrorDetail::CacheExpired`](crate::error::ErrorDetail::CacheExpired).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expire_time: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -277,10 +277,10 @@ pub enum CachedContentReply {
 impl CachedContentReply {
     /// Extract the resource returned by creation, lookup, or expiry update.
     /// Return a response error for a page or acknowledgement.
-    pub fn resource(self) -> Result<CachedContent, ProviderError> {
+    pub fn resource(self) -> Result<CachedContent, RigError> {
         match self {
             Self::Resource(resource) => Ok(resource),
-            other => Err(other.mismatch("one cached content")),
+            other => Err(other.mismatch("one cached content").into()),
         }
     }
 
@@ -298,11 +298,11 @@ impl CachedContentReply {
 
     /// The entries of one listing page. An empty collection is answered
     /// with the empty object, which is [`Self::Acknowledged`].
-    pub fn entries(self) -> Result<Vec<CachedContent>, ProviderError> {
+    pub fn entries(self) -> Result<Vec<CachedContent>, RigError> {
         match self {
             Self::Page(page) => Ok(page.cached_contents),
             Self::Acknowledged => Ok(Vec::new()),
-            other => Err(other.mismatch("a listing page")),
+            other => Err(other.mismatch("a listing page").into()),
         }
     }
 

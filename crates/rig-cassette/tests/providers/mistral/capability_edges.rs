@@ -82,7 +82,7 @@ async fn list_models_keeps_description_and_context_length() -> Result<()> {
     .await
 }
 
-fn assert_batch_cap_rejection(error: &rig::error::ProviderError) {
+fn assert_batch_cap_rejection(error: &rig::RigError) {
     let rendered = error.to_string();
     assert!(
         rendered.contains("Too many inputs"),

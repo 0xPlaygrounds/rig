@@ -766,7 +766,7 @@ proptest! {
                 }
             }
             (Some(Err(tapped)), None) => {
-                let relayed = stream.finish().map_err(|error| RigError::from(&error));
+                let relayed = stream.finish();
                 prop_assert_eq!(relayed.err(), Some(tapped));
             }
             (None, None) => prop_assert!(stream.finish().is_err(), "no terminal, truncated"),

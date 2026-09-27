@@ -15,8 +15,7 @@ mod update;
 
 use crate::completion::{CompletionResponse, Usage};
 use crate::driver::{Progress, Source, record_request_id};
-use crate::error::ProviderError;
-use crate::error::RigError;
+use crate::error::{ProviderError, RigError};
 use crate::message::{AssistantContent, ToolResult};
 use crate::operation::{Completion, CompletionReply};
 use crate::wire::{End, Fold, Operation, Ready, Reply};
@@ -348,7 +347,12 @@ impl<Op: Operation> Streamed<Op> {
 
     /// The response the events seen so far fold into. Events not yet polled
     /// are not part of it.
-    pub fn finish(self) -> Result<Op::Response, ProviderError> {
+    pub fn finish(self) -> Result<Op::Response, RigError> {
+        Ok(self.finished()?)
+    }
+
+    /// [`Self::finish`], with the fold's own error.
+    pub(crate) fn finished(self) -> Result<Op::Response, ProviderError> {
         self.fold.finish(self.reply)
     }
 
@@ -358,7 +362,7 @@ impl<Op: Operation> Streamed<Op> {
         while let Some(item) = futures::future::poll_fn(|cx| self.poll_step(cx)).await {
             item?;
         }
-        self.finish()
+        self.finished()
     }
 
     /// The request path of the reply being read, when the transport named

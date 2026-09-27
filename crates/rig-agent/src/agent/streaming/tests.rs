@@ -20,6 +20,7 @@ use crate::test_utils::{
 };
 use crate::tool::{Tool, ToolContext};
 use futures::{StreamExt, TryStreamExt};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent, ToolChoice,
     ToolResultContent, UserContent,
@@ -4128,7 +4129,11 @@ async fn tool_call_args_delta_without_name_errors_at_stream_end() {
     assert!(!saw_final_response);
     let error = error.expect("unterminated tool-call args delta should fail");
     match error {
-        StreamingError::Completion(ProviderError::Response(message)) => {
+        StreamingError::Report(RigError {
+            kind: ErrorKind::Response,
+            message,
+            ..
+        }) => {
             assert!(
                 message.contains("streamed tool call arguments"),
                 "{message}"

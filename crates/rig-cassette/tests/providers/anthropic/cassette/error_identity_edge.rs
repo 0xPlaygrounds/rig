@@ -4,12 +4,12 @@
 //! contract classification.
 
 use futures::StreamExt;
-use rig::error::ProviderError;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};
 use crate::support::assert_transport_request_id;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 
 /// 401 auth rejection: the auth tier answers before the API proper — the
 /// recorded fixture documents whether the id header still rides it.
@@ -24,7 +24,7 @@ async fn auth_rejection_carries_identity() {
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
+                error.kind == ErrorKind::ProviderResponse,
                 "contract classification holds on the auth tier: {error:?}"
             );
             assert_eq!(
@@ -59,7 +59,7 @@ async fn validation_error_carries_identity() {
                 )
                 .await
                 .expect_err("an impossible temperature must be rejected");
-            assert!(matches!(error, ProviderError::ProviderResponse(_)));
+            assert_eq!(error.kind, ErrorKind::ProviderResponse);
             assert_eq!(
                 error
                     .provider_response_status()
@@ -98,7 +98,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
             let model = client.completion("claude-nonexistent-model-for-error-edge");
             let result = model.stream(CompletionRequest::new("Never streamed").max_tokens(16));
             let error = match result {
-                Err(error) => rig::RigError::from(&error),
+                Err(error) => error,
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {
@@ -143,7 +143,7 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let result = model.stream(CompletionRequest::new("Never streamed").max_tokens(16));
             let error = match result {
-                Err(error) => rig::RigError::from(&error),
+                Err(error) => error,
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {

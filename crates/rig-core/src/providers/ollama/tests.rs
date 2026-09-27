@@ -1,6 +1,6 @@
 use super::*;
 use crate::completion::CompletionRequest;
-use crate::error::ProviderError;
+use crate::error::{ErrorKind, RigError};
 use serde_json::json;
 
 // The NDJSON wire has no discriminator, so its classify has exactly two
@@ -66,7 +66,7 @@ fn leaves_unterminated_or_inline_reasoning_markers_visible() {
 
 /// Fold one `/api/chat` reply body through the bound chat wire, the way a
 /// caller's `completion()` does.
-async fn unary(body: serde_json::Value) -> Result<completion::CompletionResponse, ProviderError> {
+async fn unary(body: serde_json::Value) -> Result<completion::CompletionResponse, RigError> {
     let model = ollama_model(crate::test_utils::RecordingHttpClient::new(
         body.to_string(),
     ));
@@ -1291,7 +1291,7 @@ async fn completion_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -1318,7 +1318,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
         .map(|response| response.embeddings)
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

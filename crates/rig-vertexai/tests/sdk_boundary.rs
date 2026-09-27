@@ -23,7 +23,7 @@ use futures::StreamExt;
 use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::Model;
 use rig_core::completion::{CompletionRequest, ToolDefinition};
-use rig_core::error::ProviderError;
+use rig_core::error::ErrorKind;
 use rig_core::message::{AssistantContent, Message, Text, ToolChoice, UserContent};
 use rig_core::streaming::StreamEvent;
 use rig_vertexai::VertexAi;
@@ -395,7 +395,7 @@ async fn deferred_client_initialization_failure_surfaces_on_first_use() {
             .await
             .expect_err("the SDK client cannot be built");
         assert!(
-            matches!(&error, ProviderError::Provider(message)
+            matches!((error.kind, error.message.strip_prefix("ProviderError: ")), (ErrorKind::Provider, Some(message))
                 if message.contains("universe domain")),
             "attempt {attempt}: unexpected error: {error}"
         );

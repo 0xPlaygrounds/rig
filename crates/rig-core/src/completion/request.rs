@@ -10,7 +10,7 @@
 //! ```
 
 use super::message::{AssistantContent, DocumentMediaType, Reasoning, ReasoningContent, ToolCall};
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::message::ToolChoice;
 use crate::{
     json_utils,
@@ -516,23 +516,24 @@ impl CompletionRequest {
     /// history came from a caller.
     /// Response-content validation is provider-specific and is not performed
     /// here.
-    pub fn validate_message_content(&self) -> Result<(), ProviderError> {
+    pub fn validate_message_content(&self) -> Result<(), RigError> {
         if self.chat_history.is_empty() {
             return Err(ProviderError::Request(
                 "request has an empty chat history; providers require at least one message"
                     .to_owned()
                     .into(),
-            ));
+            )
+            .into());
         }
 
         let empty_message = |role: &str, index: usize| {
-            ProviderError::Request(
+            RigError::from(ProviderError::Request(
                 format!(
                     "{role} message at index {index} has no content; \
                      providers reject empty content blocks"
                 )
                 .into(),
-            )
+            ))
         };
 
         for (index, message) in self.chat_history.iter().enumerate() {
@@ -561,7 +562,8 @@ impl CompletionRequest {
                                          providers reject empty content blocks"
                                     )
                                     .into(),
-                                ));
+                                )
+                                .into());
                             }
                             UserContent::ToolResult(_)
                             | UserContent::Text(_)

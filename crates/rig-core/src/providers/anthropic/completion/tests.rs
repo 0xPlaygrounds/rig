@@ -1,5 +1,6 @@
 use super::*;
 use crate::driver::WireDriver;
+use crate::error::ErrorKind;
 use crate::error::ProviderError;
 use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::operation::Completion;
@@ -3413,7 +3414,7 @@ async fn completion_http_non_success_preserves_status_and_body() {
     // rig#2314: a provider with a request-id contract preserves its
     // non-success responses as ProviderResponse, so the transport id has
     // a home on the error; this mock sent no header, so the id is None.
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(error.provider_request_id(), None);
     assert_eq!(
         error.provider_response_status(),
@@ -3447,7 +3448,7 @@ async fn completion_2xx_error_envelope_preserves_status_and_body() {
         .await
         .expect_err("completion should fail with provider error envelope");
 
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
 }

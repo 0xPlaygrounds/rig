@@ -9,9 +9,9 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
-use rig::error::ProviderError;
 
 use super::support::{with_mistral_cassette_bogus_key_result, with_mistral_cassette_result};
+use rig::error::ErrorKind;
 
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
@@ -51,7 +51,9 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
                 .await
                 .expect_err("a bogus key must not list models");
 
-            let ProviderError::ProviderResponse(response) = &error else {
+            let (ErrorKind::ProviderResponse, Some(response)) =
+                (error.kind, &error.provider_response)
+            else {
                 anyhow::bail!(
                     "a rejected listing must keep the provider's reply\nDisplay: {error}\n\
                      Debug: {error:#?}"

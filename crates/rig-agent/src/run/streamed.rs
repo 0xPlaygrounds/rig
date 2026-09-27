@@ -15,7 +15,7 @@ use std::collections::{BTreeSet, HashMap};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::FinishReason;
-use rig_core::error::ProviderError;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
@@ -606,11 +606,12 @@ impl StreamedTurnAssembler {
     /// Returns an error when the provider stream is inconsistent (argument
     /// deltas finishing without a validated tool name) or when an invalid
     /// tool call is still awaiting resolution.
-    pub fn ingest(&mut self, item: &StreamEvent) -> Result<Vec<StreamedTurnEvent>, ProviderError> {
+    pub fn ingest(&mut self, item: &StreamEvent) -> Result<Vec<StreamedTurnEvent>, RigError> {
         if self.pending_invalid.is_some() {
             return Err(ProviderError::Response(
                 "streamed turn ingested while an invalid tool call awaits resolution".to_string(),
-            ));
+            )
+            .into());
         }
 
         match item {
@@ -919,15 +920,15 @@ impl StreamedTurnAssembler {
 
     /// Error when argument deltas were buffered for a tool call whose name
     /// never validated, indicating an inconsistent provider stream.
-    pub fn pending_delta_error(&self) -> Option<ProviderError> {
+    pub fn pending_delta_error(&self) -> Option<RigError> {
         self.delta_states
             .iter()
             .find(|(_, state)| !state.name_validated && !state.buffered_arguments.is_empty())
             .map(|(block_id, state)| {
-                ProviderError::Response(format!(
+                RigError::from(ProviderError::Response(format!(
                     "streamed tool call arguments received before a validated tool name for block_id `{block_id}` ({} buffered argument delta(s))",
                     state.buffered_arguments.len()
-                ))
+                )))
             })
     }
 

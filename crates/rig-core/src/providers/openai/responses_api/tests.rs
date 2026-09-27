@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::ErrorKind;
 use crate::error::ProviderError;
 use crate::message;
 use crate::test_utils::MockCompletionModel;
@@ -2277,7 +2278,7 @@ async fn responses_completion_http_non_success_preserves_status_and_body() {
     // rig#2314: a provider with a request-id contract preserves its
     // non-success responses as ProviderResponse, so the transport id has
     // a home on the error; this mock sent no header, so the id is None.
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(error.provider_request_id(), None);
     assert_eq!(
         error.provider_response_status(),

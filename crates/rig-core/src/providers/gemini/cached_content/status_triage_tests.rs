@@ -11,6 +11,7 @@
 //! (`CacheExpired { .. } => recreate the cache`) fires on each.
 
 use super::*;
+use crate::error::{ErrorDetail, ErrorKind};
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 /// A `cachedContents` resource handle whose transport answers the next
@@ -38,7 +39,9 @@ async fn a_status_error_without_captured_headers_still_reports_expired() {
         .await
         .expect_err("a missing handle should not resolve");
 
-    let ProviderError::CacheExpired { name, response } = &error else {
+    let (Some(ErrorDetail::CacheExpired { name }), Some(response)) =
+        (&error.detail, &error.provider_response)
+    else {
         panic!("a handle that is gone should report CacheExpired: {error:?}");
     };
     assert_eq!(name, "cachedContents/abc123");
@@ -67,7 +70,9 @@ async fn a_non_success_response_is_triaged_rather_than_deserialized() {
     .await
     .expect_err("a missing handle should not resolve");
 
-    let ProviderError::CacheExpired { name, response } = &error else {
+    let (Some(ErrorDetail::CacheExpired { name }), Some(response)) =
+        (&error.detail, &error.provider_response)
+    else {
         panic!("an Ok-wrapped 404 should report CacheExpired, not a parse error: {error:?}");
     };
     assert_eq!(name, "cachedContents/abc123");
@@ -92,7 +97,7 @@ async fn a_403_on_an_existing_handle_reports_expired_like_a_404() {
     .expect_err("a lapsed handle should not delete");
 
     assert!(
-        matches!(&error, ProviderError::CacheExpired { name, .. } if name == "cachedContents/abc123"),
+        matches!(&error.detail, Some(ErrorDetail::CacheExpired { name }) if name == "cachedContents/abc123"),
         "{error:?}"
     );
 }
@@ -113,7 +118,8 @@ async fn a_403_on_create_is_an_api_error_not_an_expiry() {
     .await
     .expect_err("a refused create should not succeed");
 
-    let ProviderError::ProviderResponse(response) = &error else {
+    let (ErrorKind::ProviderResponse, Some(response)) = (error.kind, &error.provider_response)
+    else {
         panic!("a create that never made a handle cannot be CacheExpired: {error:?}");
     };
     assert_eq!(response.status, Some(http::StatusCode::FORBIDDEN));
@@ -137,7 +143,8 @@ async fn a_server_error_reports_the_status_rather_than_an_expiry() {
     .await
     .expect_err("a 500 should not resolve");
 
-    let ProviderError::ProviderResponse(response) = &error else {
+    let (ErrorKind::ProviderResponse, Some(response)) = (error.kind, &error.provider_response)
+    else {
         panic!("a 500 is not an expiry: {error:?}");
     };
     assert_eq!(
@@ -168,7 +175,8 @@ async fn a_status_error_with_no_body_still_carries_its_status() {
         .await
         .expect_err("an unscripted request should not resolve");
 
-    let ProviderError::ProviderResponse(response) = &error else {
+    let (ErrorKind::ProviderResponse, Some(response)) = (error.kind, &error.provider_response)
+    else {
         panic!("a 501 is not an expiry: {error:?}");
     };
     assert_eq!(response.status, Some(http::StatusCode::NOT_IMPLEMENTED));

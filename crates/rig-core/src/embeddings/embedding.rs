@@ -4,7 +4,7 @@
 //! use rig_core::DynModel;
 //! use rig_core::operation::Embedding;
 //!
-//! # async fn example(model: DynModel<Embedding>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(model: DynModel<Embedding>) -> Result<(), rig_core::RigError> {
 //! let embedding = model.embed_text("A document").await?;
 //! # let _ = embedding;
 //! # Ok(())
@@ -12,7 +12,7 @@
 //! ```
 
 use crate::completion::{ResponseIdentity, Usage};
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use serde::{Deserialize, Serialize};
 
 impl<W, T> crate::driver::Model<W, T>
@@ -21,15 +21,15 @@ where
     T: crate::driver::Transport<W>,
 {
     /// Embed one text, returning the last vector or an error if none is returned.
-    pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {
-        last_embedding(self.call(vec![text.to_owned()]).await?)
+    pub async fn embed_text(&self, text: &str) -> Result<Embedding, RigError> {
+        Ok(last_embedding(self.call(vec![text.to_owned()]).await?)?)
     }
 }
 
 impl crate::driver::DynModel<crate::operation::Embedding> {
     /// Embed one text, returning the last vector or an error if none is returned.
-    pub async fn embed_text(&self, text: &str) -> Result<Embedding, ProviderError> {
-        last_embedding(self.call(vec![text.to_owned()]).await?)
+    pub async fn embed_text(&self, text: &str) -> Result<Embedding, RigError> {
+        Ok(last_embedding(self.call(vec![text.to_owned()]).await?)?)
     }
 }
 

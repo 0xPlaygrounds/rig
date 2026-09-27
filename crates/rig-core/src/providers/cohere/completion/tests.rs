@@ -1,5 +1,6 @@
 use super::*;
 use crate::completion::CompletionRequest;
+use crate::error::ErrorKind;
 use serde_path_to_error::deserialize;
 
 #[test]
@@ -355,7 +356,7 @@ async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_se
         .await
         .expect_err("REQUIRED without tools should fail locally");
 
-    assert!(matches!(error, ProviderError::Request(_)));
+    assert_eq!(error.kind, ErrorKind::Request);
     let message = error.to_string();
     assert!(
         message.contains("at least one tool") && message.contains("REQUIRED"),
@@ -437,7 +438,7 @@ async fn completion_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

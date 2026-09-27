@@ -1,6 +1,6 @@
 //! Typed definitions bind each question to its answer type.
 use crate::types::{Answer, Question};
-use rig_core::error::ProviderError;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -106,17 +106,14 @@ impl<L: Ord> Score<L> {
     pub fn new<const N: usize, D: Serialize>(
         instructions: impl Serialize,
         levels: [(L, D); N],
-    ) -> Result<Self, ProviderError> {
+    ) -> Result<Self, RigError> {
         const { assert!(N >= 2 && N <= 10, "score requires 2 to 10 levels") };
         Self::try_from_iter(instructions, levels)
     }
 
     /// Define a typed rubric from a runtime collection, validating its size and
     /// rejecting repeated variants before evaluation.
-    pub fn try_from_iter<I, D>(
-        instructions: impl Serialize,
-        levels: I,
-    ) -> Result<Self, ProviderError>
+    pub fn try_from_iter<I, D>(instructions: impl Serialize, levels: I) -> Result<Self, RigError>
     where
         I: IntoIterator<Item = (L, D)>,
         D: Serialize,
@@ -125,15 +122,13 @@ impl<L: Ord> Score<L> {
         let mut criteria = Vec::new();
         for (level, description) in levels {
             if variants.contains(&level) {
-                return Err(ProviderError::Request("score levels must be unique".into()));
+                return Err(ProviderError::Request("score levels must be unique".into()).into());
             }
             variants.push(level);
             criteria.push(content(description)?);
         }
         if !(2..=10).contains(&criteria.len()) {
-            return Err(ProviderError::Request(
-                "score requires 2 to 10 levels".into(),
-            ));
+            return Err(ProviderError::Request("score requires 2 to 10 levels".into()).into());
         }
         Ok(Self {
             instructions: content(instructions)?,
@@ -146,7 +141,7 @@ impl<L: Ord> Score<L> {
 impl<L: Ord + Clone + WasmCompatSend + WasmCompatSync> Query for Score<L> {
     type Response = Answer;
     type Output = ScoreAnswer<L>;
-    fn decode(&self, response: Answer) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Answer) -> Result<Self::Output, RigError> {
         let answer: DynamicScoreAnswer = decode_question(&self.definition(), &response)?;
         let probabilities = answer
             .probabilities
@@ -205,7 +200,7 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
     pub fn new<const N: usize, D: Serialize>(
         instructions: impl Serialize,
         alternatives: [(T, D); N],
-    ) -> Result<Self, ProviderError> {
+    ) -> Result<Self, RigError> {
         const { assert!(N >= 2 && N <= 255, "choice requires 2 to 255 alternatives") };
         Self::try_from_iter(instructions, alternatives)
     }
@@ -214,17 +209,19 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
     pub fn try_from_iter<I, D>(
         instructions: impl Serialize,
         alternatives: I,
-    ) -> Result<Self, ProviderError>
+    ) -> Result<Self, RigError>
     where
         I: IntoIterator<Item = (T, D)>,
         D: Serialize,
     {
         let mut criteria = BTreeMap::new();
         for (value, description) in alternatives {
-            let Value::String(label) = serde_json::to_value(&value)? else {
+            let Value::String(label) = serde_json::to_value(&value).map_err(ProviderError::from)?
+            else {
                 return Err(ProviderError::Request(
                     "choice values must serialize to strings".into(),
-                ));
+                )
+                .into());
             };
             let decoded: T =
                 serde_json::from_value(Value::String(label.clone())).map_err(|_| {
@@ -235,9 +232,10 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
             if decoded != value {
                 return Err(ProviderError::Request(
                     "choice labels must round-trip without changing values".into(),
-                ));
+                )
+                .into());
             }
-            let description = serde_json::to_value(description)?;
+            let description = serde_json::to_value(description).map_err(ProviderError::from)?;
             let description = match description {
                 Value::Null => None,
                 description => Some(content(description)?),
@@ -245,13 +243,14 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
             if label.is_empty() || criteria.insert(label, description).is_some() {
                 return Err(ProviderError::Request(
                     "choice labels must be nonempty and unique".into(),
-                ));
+                )
+                .into());
             }
         }
         if !(2..=255).contains(&criteria.len()) {
-            return Err(ProviderError::Request(
-                "choice requires 2 to 255 alternatives".into(),
-            ));
+            return Err(
+                ProviderError::Request("choice requires 2 to 255 alternatives".into()).into(),
+            );
         }
         Ok(Self {
             instructions: content(instructions)?,
@@ -271,16 +270,13 @@ impl DynamicScore {
     pub fn new<const N: usize, D: Serialize>(
         instructions: impl Serialize,
         levels: [D; N],
-    ) -> Result<Self, ProviderError> {
+    ) -> Result<Self, RigError> {
         const { assert!(N >= 2 && N <= 10, "score requires 2 to 10 levels") };
         Self::try_from_iter(instructions, levels)
     }
 
     /// Define a runtime-supplied rubric, validating its count at construction.
-    pub fn try_from_iter<I, D>(
-        instructions: impl Serialize,
-        levels: I,
-    ) -> Result<Self, ProviderError>
+    pub fn try_from_iter<I, D>(instructions: impl Serialize, levels: I) -> Result<Self, RigError>
     where
         I: IntoIterator<Item = D>,
         D: Serialize,
@@ -290,9 +286,7 @@ impl DynamicScore {
             .map(content)
             .collect::<Result<Vec<_>, _>>()?;
         if !(2..=10).contains(&criteria.len()) {
-            return Err(ProviderError::Request(
-                "score requires 2 to 10 levels".into(),
-            ));
+            return Err(ProviderError::Request("score requires 2 to 10 levels".into()).into());
         }
         Ok(Self {
             instructions: content(instructions)?,
@@ -302,18 +296,14 @@ impl DynamicScore {
 }
 impl Noul {
     /// Define a statement or question for which a high probability means yes.
-    pub fn new(instructions: impl Serialize) -> Result<Self, ProviderError> {
+    pub fn new(instructions: impl Serialize) -> Result<Self, RigError> {
         Ok(Self {
             instructions: content(instructions)?,
             criteria: None,
         })
     }
     /// Clarify outcomes using strings, objects, arrays, or null descriptions.
-    pub fn criteria(
-        mut self,
-        yes: impl Serialize,
-        no: impl Serialize,
-    ) -> Result<Self, ProviderError> {
+    pub fn criteria(mut self, yes: impl Serialize, no: impl Serialize) -> Result<Self, RigError> {
         self.criteria = Some(BTreeMap::from([
             ("true".into(), content(yes)?),
             ("false".into(), content(no)?),
@@ -328,7 +318,7 @@ impl Noul {
 /// against its original question and converts it to its application answer.
 ///
 /// ```
-/// use rig_core::error::ProviderError;
+/// use rig_core::RigError;
 /// use rig_typesafeai::{Noul, NoulAnswer, Query};
 /// use serde::{Serialize, Deserialize};
 ///
@@ -343,7 +333,7 @@ impl Noul {
 ///     type Response = Assessment<R::Response, V::Response>;
 ///     type Output = Assessment<R::Output, V::Output>;
 ///
-///     fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+///     fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
 ///         Ok(Assessment {
 ///             ready: self.ready.decode(response.ready)?,
 ///             needs_review: self.needs_review.decode(response.needs_review)?,
@@ -355,7 +345,7 @@ impl Noul {
 ///     ready: Noul::new("Is this ready to ship?")?,
 ///     needs_review: Noul::new("Does this need human review?")?,
 /// };
-/// # Ok::<(), ProviderError>(())
+/// # Ok::<(), RigError>(())
 /// ```
 pub trait Query: Serialize + WasmCompatSend + WasmCompatSync {
     /// The intermediate response shape deserialized by Serde.
@@ -364,10 +354,10 @@ pub trait Query: Serialize + WasmCompatSend + WasmCompatSync {
     type Output;
     /// Validate and convert a deserialized response. Composite queries delegate
     /// to their fields, keeping validation inside the evaluation error boundary.
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError>;
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError>;
 
     /// Give a standalone question a runtime ID. Named struct fields do not need this.
-    fn named(self, id: impl Into<String>) -> Result<NamedQuery<Self>, ProviderError>
+    fn named(self, id: impl Into<String>) -> Result<NamedQuery<Self>, RigError>
     where
         Self: Sized,
     {
@@ -421,11 +411,12 @@ impl<Q: Serialize> Serialize for NamedQuery<Q> {
 impl<Q: Query> Query for NamedQuery<Q> {
     type Response = BTreeMap<String, Q::Response>;
     type Output = Q::Output;
-    fn decode(&self, mut response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, mut response: Self::Response) -> Result<Self::Output, RigError> {
         if response.len() != 1 {
             return Err(ProviderError::Response(
                 "response question IDs differ from request".into(),
-            ));
+            )
+            .into());
         }
         let answer = response
             .remove(&self.id)
@@ -445,7 +436,7 @@ pub struct JoinedQuery<A, B> {
 impl<A: Query, B: Query> Query for JoinedQuery<A, B> {
     type Response = Value;
     type Output = (A::Output, B::Output);
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
         Ok((
             self.first
                 .decode(select_response(&self.first, &response)?)?,
@@ -490,25 +481,26 @@ where
 {
     type Response = Q::Response;
     type Output = A;
-    fn decode(&self, response: Self::Response) -> Result<A, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<A, RigError> {
         Ok((self.map)(self.questions.decode(response)?))
     }
 }
 impl<Q: Query + ?Sized> Query for &Q {
     type Response = Q::Response;
     type Output = Q::Output;
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
         (**self).decode(response)
     }
 }
 impl<Q: Query> Query for BTreeMap<String, Q> {
     type Response = BTreeMap<String, Q::Response>;
     type Output = BTreeMap<String, Q::Output>;
-    fn decode(&self, response: Self::Response) -> Result<Self::Output, ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, RigError> {
         if !self.keys().eq(response.keys()) {
             return Err(ProviderError::Response(
                 "response question IDs differ from request".into(),
-            ));
+            )
+            .into());
         }
         self.iter()
             .zip(response)
@@ -534,8 +526,8 @@ macro_rules! primitive {
         impl $($generics)* Query for $question {
             type Response = Answer;
             type Output = $answer;
-            fn decode(&self, response: Answer) -> Result<Self::Output, ProviderError> {
-                decode_question(&self.definition(), &response)
+            fn decode(&self, response: Answer) -> Result<Self::Output, RigError> {
+                Ok(decode_question(&self.definition(), &response)?)
             }
         }
     };

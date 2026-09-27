@@ -8,6 +8,7 @@ use crate::{
 };
 
 use super::*;
+use crate::error::{ErrorKind, RigError};
 use serde_json::json;
 
 #[test]
@@ -42,10 +43,10 @@ async fn test_generate_content_response_deserializes_without_candidates_or_respo
         .await
         .expect_err("a blocked prompt is an error");
     assert!(
-        matches!(&error, ProviderError::ProviderResponse(response) if response.body.contains("blocked the prompt") && response.body.contains("SAFETY") && response.refusal && response.code.as_deref() == Some("SAFETY")),
+        matches!((error.kind, &error.provider_response), (ErrorKind::ProviderResponse, Some(response)) if response.body.contains("blocked the prompt") && response.body.contains("SAFETY") && response.refusal && response.code.as_deref() == Some("SAFETY")),
         "{error}"
     );
-    let report = crate::error::RigError::from(&error);
+    let report = error.clone();
     assert!(
         report.refusal,
         "the verdict is a refusal on the report: {report:?}"
@@ -108,7 +109,7 @@ async fn test_unspecified_block_reason_is_not_a_block() {
     .await
     .expect_err("no candidates");
     assert!(
-        matches!(&error, ProviderError::Response(message) if message == crate::message::EMPTY_RESPONSE_ERROR),
+        matches!((error.kind, error.message.strip_prefix("ResponseError: ")), (ErrorKind::Response, Some(message)) if message == crate::message::EMPTY_RESPONSE_ERROR),
         "{error}"
     );
 }
@@ -119,7 +120,7 @@ async fn test_no_candidates_without_prompt_feedback_is_still_a_response_error() 
         .await
         .expect_err("empty candidates should become a response error");
     assert!(
-        matches!(&error, ProviderError::Response(message) if message == crate::message::EMPTY_RESPONSE_ERROR),
+        matches!((error.kind, error.message.strip_prefix("ResponseError: ")), (ErrorKind::Response, Some(message)) if message == crate::message::EMPTY_RESPONSE_ERROR),
         "{error}"
     );
 }
@@ -488,9 +489,7 @@ async fn test_tool_protocol_finish_reason_returns_response_error() {
             .expect_err("tool protocol finish reason should fail");
 
         assert!(
-            matches!(
-                &err,
-                ProviderError::Response(message)
+            matches!((err.kind, err.message.strip_prefix("ResponseError: ")), (ErrorKind::Response, Some(message))
                     if message.contains(&reason_name)
                         && message.contains(finish_message)
             ),
@@ -1687,7 +1686,7 @@ async fn completion_non_success_preserves_status_and_body() {
     .await
     .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -1719,7 +1718,7 @@ async fn block_reasons_split_into_final_refusals_and_transient_blocks() {
         .await
         .expect_err(reason);
         assert_eq!(error.is_retryable(), retryable, "{reason}: {error:?}");
-        let report = crate::error::RigError::from(&error);
+        let report = error.clone();
         assert_eq!(report.retryable, retryable, "{reason}: {report:?}");
         assert!(
             report.message.contains(&format!("block_reason={reason}")),
@@ -1727,7 +1726,7 @@ async fn block_reasons_split_into_final_refusals_and_transient_blocks() {
             report.message
         );
         assert!(
-            matches!(&error, ProviderError::ProviderResponse(response) if response.status == Some(http::StatusCode::OK) && response.refusal != retryable && response.code.as_deref() == Some(reason)),
+            matches!((error.kind, &error.provider_response), (ErrorKind::ProviderResponse, Some(response)) if response.status == Some(http::StatusCode::OK) && response.refusal != retryable && response.code.as_deref() == Some(reason)),
             "{reason}: {error:?}"
         );
         assert_eq!(report.kind, crate::error::ErrorKind::ProviderResponse);
@@ -1810,7 +1809,7 @@ fn folded(
 async fn fold_unary(
     model: &str,
     body: impl Into<bytes::Bytes>,
-) -> Result<crate::completion::CompletionResponse, ProviderError> {
+) -> Result<crate::completion::CompletionResponse, RigError> {
     crate::driver::Model::new(wire(model), RecordingHttpClient::new(body))
         .call(wire_request("probe"))
         .await

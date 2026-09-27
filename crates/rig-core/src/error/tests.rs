@@ -25,7 +25,7 @@ fn retrieval_wrapping_preserves_embedding_error_classification() {
         ));
         let direct = RigError::from(&inner);
         assert_eq!(direct.retryable, retryable);
-        let error = VectorStoreError::EmbeddingError(inner);
+        let error = VectorStoreError::EmbeddingError(inner.into());
         let wrapped = RigError::from(&error);
         assert_eq!(wrapped.kind, direct.kind);
         assert_eq!(wrapped.http_status, direct.http_status);
@@ -36,6 +36,29 @@ fn retrieval_wrapping_preserves_embedding_error_classification() {
         assert_eq!(wrapped.message, error.to_string());
         assert!(!wrapped.source_chain.is_empty());
     }
+}
+
+/// An embedding failure inside a vector search reports its own message and
+/// every source below it, as it did while it was carried as the provider's
+/// error.
+#[test]
+fn a_wrapped_embedding_failure_keeps_its_whole_source_chain() {
+    let json = serde_json::from_str::<serde_json::Value>("{").expect_err("truncated JSON");
+    let error = VectorStoreError::EmbeddingError(ProviderError::Json(json).into());
+    let report = RigError::from(&error);
+    assert_eq!(report.kind, ErrorKind::Json);
+    assert!(!report.retryable);
+    assert_eq!(
+        report.message,
+        "Embedding error: JsonError: EOF while parsing an object at line 1 column 1"
+    );
+    assert_eq!(
+        report.source_chain,
+        [
+            "JsonError: EOF while parsing an object at line 1 column 1",
+            "EOF while parsing an object at line 1 column 1",
+        ]
+    );
 }
 
 /// These are normalization contracts over captured parts, not provider wire behavior.
@@ -518,7 +541,7 @@ fn provider_reports_retain_structured_provider_metadata() {
         .with_provider_request_id(Some("req-retained".into()));
     let direct = ProviderError::ProviderResponse(response.clone());
     let wrapped =
-        VectorStoreError::EmbeddingError(ProviderError::ProviderResponse(response.clone()));
+        VectorStoreError::EmbeddingError(ProviderError::ProviderResponse(response.clone()).into());
     for report in [RigError::from(&direct), RigError::from(&wrapped)] {
         assert_eq!(report.request_id.as_deref(), Some("req-retained"));
         assert_eq!(

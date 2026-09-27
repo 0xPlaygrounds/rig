@@ -85,7 +85,7 @@ impl Serve for ModelAdapter<Completion> {
                     Some(context) => model.call_observed(request, context).await,
                     None => model.call(request).await,
                 };
-                Reply::Outcome(result.map(Outcome::Completion).map_err(RigError::from))
+                Reply::Outcome(result.map(Outcome::Completion))
             }
             EffectKind::Completion {
                 request,
@@ -97,7 +97,7 @@ impl Serve for ModelAdapter<Completion> {
                 };
                 match opened {
                     Ok(stream) => Reply::Stream(Box::pin(stream)),
-                    Err(error) => Reply::Outcome(Err(RigError::from(error))),
+                    Err(error) => Reply::Outcome(Err(error)),
                 }
             }
             other @ (EffectKind::ToolCall { .. }
@@ -139,8 +139,7 @@ impl Serve for ModelAdapter<Embedding> {
                 model
                     .call(texts)
                     .await
-                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
-                    .map_err(RigError::from),
+                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response))),
             ),
             EffectKind::Embed {
                 inputs: EmbedInputs::Images(_),
@@ -185,8 +184,7 @@ impl Serve for ModelAdapter<Rerank> {
                         documents: request.documents,
                     })
                     .await
-                    .map(Outcome::Reranked)
-                    .map_err(RigError::from),
+                    .map(Outcome::Reranked),
             ),
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }

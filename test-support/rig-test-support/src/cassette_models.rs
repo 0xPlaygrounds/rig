@@ -3,9 +3,9 @@
 //! these types and never spell a provider constructor, so a change to how a
 //! provider builds its models edits this file alone.
 
+use rig_core::RigError;
 use rig_core::client::env::EnvError;
 use rig_core::driver::Model;
-use rig_core::error::ProviderError;
 use rig_core::http_client::{DynHttpClient, HttpClientExt};
 use rig_core::model::ModelList;
 use rig_core::providers::{anthropic, cohere, copilot, gemini, ollama, openai};
@@ -103,12 +103,12 @@ impl OpenAiModels {
     }
 
     /// The provider's model listing.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.client().list_models().await
     }
 
     /// The provider's credential check.
-    pub async fn verify(&self) -> Result<(), ProviderError> {
+    pub async fn verify(&self) -> Result<(), RigError> {
         self.client().verify().await
     }
 }
@@ -162,12 +162,12 @@ impl AnthropicModels {
     }
 
     /// The provider's model listing.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.client().list_models().await
     }
 
     /// The provider's credential check.
-    pub async fn verify(&self) -> Result<(), ProviderError> {
+    pub async fn verify(&self) -> Result<(), RigError> {
         self.client().verify().await
     }
 }
@@ -270,12 +270,12 @@ impl GeminiModels {
     }
 
     /// The provider's model listing.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.client().list_models().await
     }
 
     /// The provider's credential check.
-    pub async fn verify(&self) -> Result<(), ProviderError> {
+    pub async fn verify(&self) -> Result<(), RigError> {
         self.client().verify().await
     }
 }
@@ -379,7 +379,7 @@ impl OllamaModels {
     }
 
     /// The daemon's model listing.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.client().list_models().await
     }
 }
@@ -431,7 +431,7 @@ impl CopilotModels {
     }
 
     /// The session's model listing.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.client().list_models().await
     }
 }

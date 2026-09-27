@@ -1,12 +1,12 @@
 //! ChatGPT cassette coverage for non-success Responses API status handling.
 
 use axum::http;
-use rig::error::ProviderError;
 use rig::providers::chatgpt;
 use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::with_chatgpt_cassette;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 
 #[tokio::test]
 async fn nonstreaming_unauthorized_preserves_status_and_body() {
@@ -40,7 +40,7 @@ async fn assert_nonstreaming_http_error(
         .await
         .expect_err("non-success response should fail");
 
-    assert!(matches!(&error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(error.provider_response_status(), Some(expected_status));
     let body = error
         .provider_response_body()

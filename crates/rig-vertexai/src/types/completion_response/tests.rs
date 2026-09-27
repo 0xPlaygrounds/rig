@@ -2,6 +2,7 @@ use super::*;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
+use rig_core::error::ErrorKind;
 
 /// Answers every request with one scripted SDK reply.
 #[derive(Clone)]
@@ -22,11 +23,11 @@ impl Transport<crate::completion::GenerateContent> for Reply {
 
 /// The reply as the unary endpoint answers it.
 pub(crate) trait Complete {
-    fn complete(self) -> Result<CompletionResponse, ProviderError>;
+    fn complete(self) -> Result<CompletionResponse, rig_core::RigError>;
 }
 
 impl Complete for vertexai::model::GenerateContentResponse {
-    fn complete(self) -> Result<CompletionResponse, ProviderError> {
+    fn complete(self) -> Result<CompletionResponse, rig_core::RigError> {
         let model = Model::new(
             crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH),
             Reply(self),
@@ -37,7 +38,7 @@ impl Complete for vertexai::model::GenerateContentResponse {
 
 pub(crate) fn complete(
     response: vertexai::model::GenerateContentResponse,
-) -> Result<CompletionResponse, ProviderError> {
+) -> Result<CompletionResponse, rig_core::RigError> {
     response.complete()
 }
 use rig_core::message::{
@@ -280,11 +281,11 @@ fn thought_image_only_response_fails_without_visible_assistant_content() {
     };
     // Rejected with the shared empty-response wording via
     // `require_non_empty_response`, like every other wire.
-    assert!(matches!(
-        error,
-        ProviderError::Response(message)
-            if message == rig_core::message::EMPTY_RESPONSE_ERROR
-    ));
+    assert!(
+        matches!((error.kind, error.message.strip_prefix("ResponseError: ")), (ErrorKind::Response, Some(message))
+                if message == rig_core::message::EMPTY_RESPONSE_ERROR
+        )
+    );
 }
 
 #[test]
@@ -297,7 +298,7 @@ fn inline_audio_and_non_image_media_are_rejected() {
         let Err(error) = result else {
             panic!("unsupported inline media must fail")
         };
-        assert!(matches!(error, ProviderError::Response(_)));
+        assert_eq!(error.kind, ErrorKind::Response);
         assert!(error.to_string().contains(mime_type));
     }
 }
@@ -312,7 +313,7 @@ fn inline_gif_and_svg_images_are_rejected() {
         let Err(error) = result else {
             panic!("non-replayable inline image must fail")
         };
-        assert!(matches!(error, ProviderError::Response(_)));
+        assert_eq!(error.kind, ErrorKind::Response);
         assert!(
             error
                 .to_string()
@@ -328,7 +329,7 @@ fn signed_inline_image_is_rejected() {
     let Err(error) = result else {
         panic!("signed inline image must fail")
     };
-    assert!(matches!(error, ProviderError::Response(_)));
+    assert_eq!(error.kind, ErrorKind::Response);
     assert!(error.to_string().contains("thought_signature"));
 }
 

@@ -28,8 +28,8 @@
 pub mod chat;
 pub mod responses;
 
+use rig_core::RigError;
 use rig_core::completion::{CompletionRequest, CompletionResponse};
-use rig_core::error::ProviderError;
 use rig_core::streaming::StreamFinal;
 
 use crate::support::{
@@ -45,7 +45,7 @@ pub async fn capture_completion(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<CompletionResponse>,
-) -> Result<(), ProviderError> {
+) -> Result<(), RigError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(model.call(request).await?);
     Ok(())
@@ -62,7 +62,7 @@ pub async fn capture_completion_pair(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(CompletionResponse, CompletionResponse)>,
-) -> Result<(), ProviderError> {
+) -> Result<(), RigError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let first = model.call(request.clone()).await?;
     let second = model.call(request).await?;
@@ -76,7 +76,7 @@ pub async fn capture_text_and_terminal(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
-) -> Result<(), ProviderError> {
+) -> Result<(), RigError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let (text, terminal) = collect_text_and_terminal(model.stream(request)?).await;
     sink.put((
@@ -96,7 +96,7 @@ pub async fn capture_terminal(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<StreamFinal>,
-) -> Result<(), ProviderError> {
+) -> Result<(), RigError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_required_terminal(model.stream(request)?).await);
     Ok(())
@@ -108,7 +108,7 @@ pub async fn capture_sole_terminal(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<StreamFinal>,
-) -> Result<(), ProviderError> {
+) -> Result<(), RigError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_sole_terminal(model.stream(request)?).await);
     Ok(())
@@ -125,7 +125,7 @@ pub async fn capture_text_and_sole_terminal(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
     sink: Observed<(String, StreamFinal)>,
-) -> Result<(), ProviderError> {
+) -> Result<(), RigError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_text_and_sole_terminal(model.stream(request)?).await);
     Ok(())
