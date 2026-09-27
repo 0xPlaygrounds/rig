@@ -518,21 +518,17 @@ impl CompletionRequest {
     /// here.
     pub fn validate_message_content(&self) -> Result<(), ProviderError> {
         if self.chat_history.is_empty() {
-            return Err(ProviderError::Request(
+            return Err(ProviderError::request(
                 "request has an empty chat history; providers require at least one message"
-                    .to_owned()
-                    .into(),
+                    .to_owned(),
             ));
         }
 
         let empty_message = |role: &str, index: usize| {
-            ProviderError::Request(
-                format!(
-                    "{role} message at index {index} has no content; \
+            ProviderError::request(format!(
+                "{role} message at index {index} has no content; \
                      providers reject empty content blocks"
-                )
-                .into(),
-            )
+            ))
         };
 
         for (index, message) in self.chat_history.iter().enumerate() {
@@ -554,14 +550,11 @@ impl CompletionRequest {
                         match item {
                             UserContent::ToolResult(result) if result.content.is_empty() => {
                                 let name = &result.name;
-                                return Err(ProviderError::Request(
-                                    format!(
-                                        "tool result for `{name}` at index {position} of the \
+                                return Err(ProviderError::request(format!(
+                                    "tool result for `{name}` at index {position} of the \
                                          user message at index {index} has no content; \
                                          providers reject empty content blocks"
-                                    )
-                                    .into(),
-                                ));
+                                )));
                             }
                             UserContent::ToolResult(_)
                             | UserContent::Text(_)

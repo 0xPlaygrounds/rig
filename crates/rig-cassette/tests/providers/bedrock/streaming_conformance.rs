@@ -64,7 +64,7 @@ fn driver() -> WireDriver {
                                 "bedrock conformance frames must be Converse events".to_string(),
                             )
                         }),
-                    Err(error) => Err(ProviderError::Http(error)),
+                    Err(error) => Err(ProviderError::Http(error.into())),
                 })
                 .collect();
             let model = Model::new(

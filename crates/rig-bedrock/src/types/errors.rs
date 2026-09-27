@@ -141,7 +141,7 @@ fn gated((message, fallback, code): Classified, transport: Transport) -> Provide
         (Some(body), status) => reply(body, status),
         (None, Some(status)) => reply(String::new(), Some(status)),
         (None, None) if transport.transient == Some(true) => ProviderError::Http(
-            rig_core::http_client::Error::instance(std::io::Error::other(fallback)),
+            rig_core::http_client::Error::instance(std::io::Error::other(fallback)).into(),
         ),
         (None, None) => ProviderError::Provider(fallback),
     }

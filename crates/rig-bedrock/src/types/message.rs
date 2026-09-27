@@ -26,14 +26,14 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
                     .into_iter()
                     .map(|user_content| RigUserContent(user_content).try_into())
                     .collect::<Result<Vec<Vec<_>>, _>>()
-                    .map_err(|e| ProviderError::Request(Box::new(e)))
+                    .map_err(|e| ProviderError::request(e))
                     .map(|nested| nested.into_iter().flatten().collect())?;
 
                 aws_bedrock::Message::builder()
                     .role(aws_bedrock::ConversationRole::User)
                     .set_content(Some(message_content))
                     .build()
-                    .map_err(|e| ProviderError::Request(Box::new(e)))?
+                    .map_err(|e| ProviderError::request(e))?
             }
             Message::Assistant { content, .. } => aws_bedrock::Message::builder()
                 .role(aws_bedrock::ConversationRole::Assistant)
@@ -49,7 +49,7 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
                         .collect(),
                 ))
                 .build()
-                .map_err(|e| ProviderError::Request(Box::new(e)))?,
+                .map_err(|e| ProviderError::request(e))?,
         };
         Ok(result)
     }

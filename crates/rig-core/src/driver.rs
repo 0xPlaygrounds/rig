@@ -638,7 +638,7 @@ impl<D, F> FrameDriver<D, F> {
             }
         };
         if let Some(error) = corruption {
-            ready.push(Err(ProviderError::Json(error)));
+            ready.push(Err(ProviderError::from(error)));
         }
     }
 
@@ -857,7 +857,7 @@ pub fn triage_frame<T>(event: WireEvent<T>) -> Result<TriagedFrame<T>, ProviderE
             warn_unmodeled(&event_type, &value);
             Ok(TriagedFrame::Unknown(value))
         }
-        WireEvent::Corrupt(error) => Err(ProviderError::Json(error)),
+        WireEvent::Corrupt(error) => Err(ProviderError::from(error)),
     }
 }
 

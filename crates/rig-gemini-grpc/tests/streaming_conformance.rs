@@ -60,7 +60,7 @@ fn driver() -> WireDriver {
                                     .to_string(),
                             )
                         }),
-                    Err(error) => Err(ProviderError::Http(error)),
+                    Err(error) => Err(ProviderError::Http(error.into())),
                 })
                 .collect();
             let request: CompletionRequest = CompletionRequest::new("hello");

@@ -43,11 +43,9 @@ fn object_ids<T: DeserializeOwned>(
 
 pub(crate) fn request_ids(raw: &RawValue) -> Result<BTreeSet<String>, ProviderError> {
     let ids = object_ids::<Question>(raw, crate::questions::validate_definition)
-        .map_err(|error| ProviderError::Request(error.to_string().into()))?;
+        .map_err(|error| ProviderError::request(error.to_string()))?;
     if ids.is_empty() {
-        return Err(ProviderError::Request(
-            "at least one question is required".into(),
-        ));
+        return Err(ProviderError::request("at least one question is required"));
     }
     Ok(ids)
 }

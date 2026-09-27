@@ -344,7 +344,7 @@ where
             let uri = format!("https://gateway.test{}", request.uri().path());
             *request.uri_mut() = uri
                 .parse()
-                .map_err(|_| ProviderError::Request("the gateway path is not a URI".into()))?;
+                .map_err(|_| ProviderError::request("the gateway path is not a URI"))?;
         }
         Transport::<W>::send(&self.inner, payload, exchange)
     }

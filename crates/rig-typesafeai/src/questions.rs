@@ -125,15 +125,13 @@ impl<L: Ord> Score<L> {
         let mut criteria = Vec::new();
         for (level, description) in levels {
             if variants.contains(&level) {
-                return Err(ProviderError::Request("score levels must be unique".into()));
+                return Err(ProviderError::request("score levels must be unique"));
             }
             variants.push(level);
             criteria.push(content(description)?);
         }
         if !(2..=10).contains(&criteria.len()) {
-            return Err(ProviderError::Request(
-                "score requires 2 to 10 levels".into(),
-            ));
+            return Err(ProviderError::request("score requires 2 to 10 levels"));
         }
         Ok(Self {
             instructions: content(instructions)?,
@@ -180,8 +178,8 @@ fn content(value: impl Serialize) -> Result<Value, ProviderError> {
         value,
         Value::String(_) | Value::Object(_) | Value::Array(_) | Value::Null
     ) {
-        return Err(ProviderError::Request(
-            "question content must be a string, object, array, or null".into(),
+        return Err(ProviderError::request(
+            "question content must be a string, object, array, or null",
         ));
     }
     Ok(value)
@@ -189,7 +187,7 @@ fn content(value: impl Serialize) -> Result<Value, ProviderError> {
 fn question_id(id: impl Into<String>) -> Result<String, ProviderError> {
     let id = id.into();
     if id.is_empty() {
-        return Err(ProviderError::Request("question ID cannot be empty".into()));
+        return Err(ProviderError::request("question ID cannot be empty"));
     }
     Ok(id)
 }
@@ -222,19 +220,19 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
         let mut criteria = BTreeMap::new();
         for (value, description) in alternatives {
             let Value::String(label) = serde_json::to_value(&value)? else {
-                return Err(ProviderError::Request(
-                    "choice values must serialize to strings".into(),
+                return Err(ProviderError::request(
+                    "choice values must serialize to strings",
                 ));
             };
             let decoded: T =
                 serde_json::from_value(Value::String(label.clone())).map_err(|_| {
-                    ProviderError::Request(
-                        "choice labels must deserialize to their original values".into(),
+                    ProviderError::request(
+                        "choice labels must deserialize to their original values",
                     )
                 })?;
             if decoded != value {
-                return Err(ProviderError::Request(
-                    "choice labels must round-trip without changing values".into(),
+                return Err(ProviderError::request(
+                    "choice labels must round-trip without changing values",
                 ));
             }
             let description = serde_json::to_value(description)?;
@@ -243,14 +241,14 @@ impl<T: Serialize + DeserializeOwned + Ord> Choice<T> {
                 description => Some(content(description)?),
             };
             if label.is_empty() || criteria.insert(label, description).is_some() {
-                return Err(ProviderError::Request(
-                    "choice labels must be nonempty and unique".into(),
+                return Err(ProviderError::request(
+                    "choice labels must be nonempty and unique",
                 ));
             }
         }
         if !(2..=255).contains(&criteria.len()) {
-            return Err(ProviderError::Request(
-                "choice requires 2 to 255 alternatives".into(),
+            return Err(ProviderError::request(
+                "choice requires 2 to 255 alternatives",
             ));
         }
         Ok(Self {
@@ -290,9 +288,7 @@ impl DynamicScore {
             .map(content)
             .collect::<Result<Vec<_>, _>>()?;
         if !(2..=10).contains(&criteria.len()) {
-            return Err(ProviderError::Request(
-                "score requires 2 to 10 levels".into(),
-            ));
+            return Err(ProviderError::request("score requires 2 to 10 levels"));
         }
         Ok(Self {
             instructions: content(instructions)?,
@@ -459,7 +455,7 @@ fn select_response<Q: Query>(query: &Q, response: &Value) -> Result<Q::Response,
     let definitions = serde_json::to_value(query)?;
     let definitions = definitions
         .as_object()
-        .ok_or_else(|| ProviderError::Request("joined queries must serialize as objects".into()))?;
+        .ok_or_else(|| ProviderError::request("joined queries must serialize as objects"))?;
     let response = response
         .as_object()
         .ok_or_else(|| ProviderError::Response("answers must be an object".into()))?;
@@ -578,8 +574,8 @@ pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), P
         } => {
             content(instructions)?;
             if !(2..=255).contains(&criteria.len()) || criteria.keys().any(String::is_empty) {
-                return Err(ProviderError::Request(
-                    "choice requires 2 to 255 nonempty labels".into(),
+                return Err(ProviderError::request(
+                    "choice requires 2 to 255 nonempty labels",
                 ));
             }
             for description in criteria.values().flatten() {
@@ -592,9 +588,7 @@ pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), P
         } => {
             content(instructions)?;
             if !(2..=10).contains(&criteria.len()) {
-                return Err(ProviderError::Request(
-                    "score requires 2 to 10 levels".into(),
-                ));
+                return Err(ProviderError::request("score requires 2 to 10 levels"));
             }
             for description in criteria {
                 content(description)?;
@@ -610,8 +604,8 @@ pub(crate) fn validate_definition(id: &str, question: &Question) -> Result<(), P
                     || !criteria.contains_key("true")
                     || !criteria.contains_key("false")
                 {
-                    return Err(ProviderError::Request(
-                        "Noul criteria require true and false descriptions".into(),
+                    return Err(ProviderError::request(
+                        "Noul criteria require true and false descriptions",
                     ));
                 }
                 for description in criteria.values() {
@@ -748,7 +742,7 @@ pub(crate) fn validate(question: &Question, answer: &Answer) -> Result<(), Provi
 pub(crate) fn state(value: impl Serialize) -> Result<Value, ProviderError> {
     let value = content(value)?;
     if value.is_null() {
-        return Err(ProviderError::Request("state cannot be null".into()));
+        return Err(ProviderError::request("state cannot be null"));
     }
     Ok(value)
 }

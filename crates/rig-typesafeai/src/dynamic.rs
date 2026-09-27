@@ -14,9 +14,7 @@ impl DynamicQuery {
     /// Validate runtime question definitions before accepting them.
     pub fn new(definitions: BTreeMap<String, Question>) -> Result<Self, ProviderError> {
         if definitions.is_empty() {
-            return Err(ProviderError::Request(
-                "at least one question is required".into(),
-            ));
+            return Err(ProviderError::request("at least one question is required"));
         }
         for (id, question) in &definitions {
             crate::questions::validate_definition(id, question)?;

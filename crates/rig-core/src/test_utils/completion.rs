@@ -42,7 +42,7 @@ impl MockError {
     pub(crate) fn into_completion_error(self) -> ProviderError {
         match self {
             Self::Provider(message) => ProviderError::Provider(message),
-            Self::Request(message) => ProviderError::Request(message.into()),
+            Self::Request(message) => ProviderError::request(message),
             Self::ProviderResponse(response) => ProviderError::ProviderResponse(response),
         }
     }

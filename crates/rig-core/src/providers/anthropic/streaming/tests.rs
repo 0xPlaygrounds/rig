@@ -90,12 +90,10 @@ fn built_streaming_body(
     let request = encoded
         .requests
         .first()
-        .ok_or_else(|| ProviderError::Request("the wire encoded no request".into()))?;
+        .ok_or_else(|| ProviderError::request("the wire encoded no request"))?;
     match request.body() {
         Body::Bytes(bytes) => Ok(serde_json::from_slice(bytes)?),
-        Body::Multipart(_) => Err(ProviderError::Request(
-            "the Messages endpoint takes JSON".into(),
-        )),
+        Body::Multipart(_) => Err(ProviderError::request("the Messages endpoint takes JSON")),
     }
 }
 

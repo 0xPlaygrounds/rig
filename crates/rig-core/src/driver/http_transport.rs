@@ -42,20 +42,17 @@ where
             // provider taking a bounded number of items per request) is
             // called whole instead.
             if requests.len() != 1 {
-                return Err(ProviderError::Request(
-                    format!(
-                        "a streamed reply takes exactly one request, not {}",
-                        requests.len()
-                    )
-                    .into(),
-                ));
+                return Err(ProviderError::request(format!(
+                    "a streamed reply takes exactly one request, not {}",
+                    requests.len()
+                )));
             }
             if streamed
                 && let Some(request) = requests.first()
                 && matches!(request.body(), Body::Multipart(_))
             {
-                return Err(ProviderError::Request(
-                    "a multipart request cannot open a streamed reply".into(),
+                return Err(ProviderError::request(
+                    "a multipart request cannot open a streamed reply",
                 ));
             }
         }
@@ -438,8 +435,8 @@ fn byte_request(request: http::Request<Body>) -> Result<http::Request<Vec<u8>>, 
     let (parts, body) = request.into_parts();
     match body {
         Body::Bytes(bytes) => Ok(http::Request::from_parts(parts, bytes)),
-        Body::Multipart(_) => Err(ProviderError::Request(
-            "a multipart request cannot open a streamed reply".into(),
+        Body::Multipart(_) => Err(ProviderError::request(
+            "a multipart request cannot open a streamed reply",
         )),
     }
 }

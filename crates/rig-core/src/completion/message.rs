@@ -1819,7 +1819,7 @@ pub enum MessageError {
 
 impl From<MessageError> for ProviderError {
     fn from(error: MessageError) -> Self {
-        ProviderError::Request(error.into())
+        ProviderError::request(error)
     }
 }
 

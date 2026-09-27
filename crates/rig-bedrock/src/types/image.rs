@@ -33,8 +33,8 @@ impl TryFrom<RigImage> for aws_bedrock::ImageBlock {
         }?;
 
         let DocumentSourceKind::Base64(data) = image.0.data else {
-            return Err(ProviderError::Request(
-                "Only base64 encoded strings are allowed for image input on AWS Bedrock".into(),
+            return Err(ProviderError::request(
+                "Only base64 encoded strings are allowed for image input on AWS Bedrock",
             ));
         };
 

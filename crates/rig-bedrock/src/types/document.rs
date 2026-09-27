@@ -27,7 +27,7 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             DocumentSourceKind::Base64(blob) => {
                 let bytes = BASE64_STANDARD
                     .decode(blob)
-                    .map_err(|e| ProviderError::Request(e.into()))?;
+                    .map_err(|e| ProviderError::request(e))?;
 
                 aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
             }
@@ -37,9 +37,9 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
                 aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(str.as_bytes()))
             }
             doc => {
-                return Err(ProviderError::Request(
-                    format!("Unsupported document kind: {doc}").into(),
-                ));
+                return Err(ProviderError::request(format!(
+                    "Unsupported document kind: {doc}"
+                )));
             }
         };
 

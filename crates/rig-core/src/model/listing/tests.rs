@@ -92,7 +92,7 @@ fn a_rejected_listing_names_its_provider_and_path() {
 fn a_listing_that_did_not_parse_names_its_provider_and_path() {
     let json = serde_json::from_str::<serde_json::Value>("{").expect_err("malformed");
     for error in [
-        ProviderError::Json(json),
+        ProviderError::Json(json.into()),
         ProviderError::Response("Invalid JSON".to_owned()),
     ] {
         let ProviderError::Response(message) = with_route(error, "openai", "/v1/models") else {
@@ -105,13 +105,13 @@ fn a_listing_that_did_not_parse_names_its_provider_and_path() {
 #[test]
 fn a_listing_transport_failure_is_unchanged_by_its_route() {
     let error = with_route(
-        ProviderError::Http(crate::http_client::Error::StreamEnded),
+        ProviderError::Http(crate::http_client::Error::StreamEnded.into()),
         "openai",
         "/v1/models",
     );
     assert!(matches!(
         error,
-        ProviderError::Http(crate::http_client::Error::StreamEnded)
+        ProviderError::Http(ref error) if matches!(**error, crate::http_client::Error::StreamEnded)
     ));
     assert!(error.is_retryable());
 }

@@ -60,7 +60,7 @@ fn driver() -> WireDriver {
                                 "candle conformance frames must be generation events".to_string(),
                             )
                         }),
-                    Err(error) => Err(ProviderError::Http(error)),
+                    Err(error) => Err(ProviderError::Http(error.into())),
                 })
                 .collect();
             let stream = Model::new(

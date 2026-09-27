@@ -1196,7 +1196,7 @@ impl AdapterOutput {
                     })),
                     ImagePart::Unknown => match serde_json::to_value(image) {
                         Ok(value) => self.unknown(UnknownPayload::new(value)),
-                        Err(error) => self.error(ProviderError::Json(error)),
+                        Err(error) => self.error(ProviderError::from(error)),
                     },
                 },
                 AssistantContent::ToolCall(call) => {

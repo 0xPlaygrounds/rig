@@ -144,7 +144,7 @@ impl Transport<Embeddings> for BedrockRuntime {
                         String::from_utf8(response.body.into_inner())
                             .map_err(|error| ProviderError::Response(error.to_string()))
                     })
-                    .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::Json));
+                    .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::from));
                 frames.push(Ok(match reply {
                     Ok(response) => EmbeddingFrame::Embedded { document, response },
                     Err(error) => EmbeddingFrame::Failed(error),
