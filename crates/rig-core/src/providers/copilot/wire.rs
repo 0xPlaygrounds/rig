@@ -22,7 +22,7 @@ use crate::operation::{Completion, ModelListing};
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// Copilot's embeddings wire is the shared one, pointed at Copilot by
-/// [`Copilot::embedding`]; the editor envelope is the dialect's modality
+/// [`Copilot::embedding`](crate::providers::copilot::Copilot::embedding); the editor envelope is the dialect's modality
 /// hook.
 pub use crate::providers::openai::wire::Embeddings;
 use crate::providers::openai::wire::{
@@ -344,7 +344,7 @@ impl Wire for CopilotWire {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        self.wire.capabilities()
+        Wire::capabilities(&self.wire)
     }
 
     fn telemetry(&self, mode: Mode) -> GenAiOperation {

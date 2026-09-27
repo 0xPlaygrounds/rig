@@ -401,7 +401,11 @@ proptest! {
         error_at in proptest::option::of(0usize..30),
     ) {
         let done = assert_contract(&updates_of(stream_of(&parts, &order, error_at)));
-        let folded = futures::executor::block_on(relayed(stream_of(&parts, &order, error_at)).drain())
+        // The fold after every item, in-band errors included.
+        let mut stream = relayed(stream_of(&parts, &order, error_at));
+        futures::executor::block_on(async { while stream.next().await.is_some() {} });
+        let folded = stream
+            .finish()
             .map_err(|error| TestCaseError::fail(error.to_string()))?;
         prop_assert_eq!(done, folded);
     }

@@ -1,12 +1,12 @@
 //! The Ollama client: an [`OllamaConfig`] on a transport, and the models it
 //! builds.
 
+use crate::client::macros::http_client;
 use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
-use crate::providers::internal::client::http_client;
 
-use super::wire::{Chat, Embeddings, OllamaConfig};
+use crate::providers::ollama::wire::{Chat, Embeddings, OllamaConfig};
 
 http_client!(
     /// An Ollama daemon: its [`OllamaConfig`] on a transport. Every model it

@@ -1,18 +1,20 @@
 //! The OpenAI client: an [`OpenAIConfig`] on a transport, and the models it
 //! builds.
 
+use crate::client::macros::http_client;
 use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
 use crate::providers::chatgpt::auth::{AuthError, Authenticator};
-use crate::providers::internal::client::http_client;
 use crate::providers::openai::responses_api::wire::Responses;
 
 #[cfg(feature = "image")]
-use super::wire::Images;
+use crate::providers::openai::wire::Images;
 #[cfg(feature = "audio")]
-use super::wire::Speech;
-use super::wire::{Chat, Embeddings, OpenAIConfig, OpenAiWire, Rerank, Transcriptions};
+use crate::providers::openai::wire::Speech;
+use crate::providers::openai::wire::{
+    Chat, Embeddings, OpenAIConfig, OpenAiWire, Rerank, Transcriptions,
+};
 
 http_client!(
     /// An OpenAI-shaped provider: its [`OpenAIConfig`] on a transport. Every

@@ -16,7 +16,4 @@
 pub const SONAR_PRO: &str = "sonar_pro";
 pub const SONAR: &str = "sonar";
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::PERPLEXITY,
-    "Perplexity"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::PERPLEXITY, "Perplexity");

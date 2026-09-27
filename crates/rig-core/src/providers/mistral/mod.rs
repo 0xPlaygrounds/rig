@@ -24,7 +24,4 @@ pub use completion::*;
 pub use embedding::*;
 pub use transcription::*;
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::MISTRAL,
-    "Mistral"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::MISTRAL, "Mistral");

@@ -1,5 +1,5 @@
-//! `CompletionRequest::new` and its setters build what
-//! `CompletionRequestBuilder::new(p).build()` built, and a response reads
+//! `CompletionRequest::new` and its setters build what #2600's request
+//! builder built, and a response reads
 //! back as text, reasoning, tool calls and the assistant turn. Every expected
 //! value is written out here.
 

@@ -51,7 +51,7 @@ where
     }
 
     fn capabilities(&self) -> <W::Op as Operation>::Capabilities {
-        self.wire.capabilities()
+        Wire::capabilities(&self.wire)
     }
 
     fn call(

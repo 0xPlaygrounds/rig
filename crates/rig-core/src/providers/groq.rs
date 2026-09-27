@@ -33,4 +33,4 @@ pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
 /// The `whisper-large-v3-turbo` transcription model.
 pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
 
-crate::providers::internal::client::openai_vendor!(crate::providers::openai::wire::GROQ, "Groq");
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::GROQ, "Groq");

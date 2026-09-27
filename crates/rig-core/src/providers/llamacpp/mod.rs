@@ -15,7 +15,4 @@ pub mod completion;
 
 pub use completion::{CompletionResponse, LLAMA_CPP, Timings};
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::LLAMACPP,
-    "llama.cpp"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::LLAMACPP, "llama.cpp");

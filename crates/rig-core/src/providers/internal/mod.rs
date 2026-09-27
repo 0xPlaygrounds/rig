@@ -10,7 +10,6 @@
 
 pub(crate) mod auth;
 pub mod chunk_lifecycle;
-pub(crate) mod client;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod device_auth;
 pub(crate) mod openai_chat_completions_compatible;

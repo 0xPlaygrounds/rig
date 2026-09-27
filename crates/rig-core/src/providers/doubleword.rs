@@ -33,7 +33,4 @@ pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 /// defined by [`crate::providers::openai::wire::DOUBLEWORD`].
 pub const QWEN3_EMBEDDING_8B: &str = "Qwen/Qwen3-Embedding-8B";
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::DOUBLEWORD,
-    "Doubleword"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::DOUBLEWORD, "Doubleword");

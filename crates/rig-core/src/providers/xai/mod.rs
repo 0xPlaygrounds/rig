@@ -65,4 +65,4 @@ pub const DIALECT: Dialect = Dialect {
     ..Dialect::gateway("xai", "https://api.x.ai", "XAI_API_KEY")
 };
 
-crate::providers::internal::client::openai_vendor!(DIALECT, "xAI");
+crate::client::macros::openai_vendor!(DIALECT, "xAI");

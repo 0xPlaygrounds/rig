@@ -30,7 +30,4 @@ pub use embedding::*;
 pub use image_generation::*;
 pub use transcription::*;
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::VENICE,
-    "Venice"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::VENICE, "Venice");

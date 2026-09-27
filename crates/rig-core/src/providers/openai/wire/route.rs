@@ -54,7 +54,7 @@ pub enum OpenAiWire {
 
 impl OpenAiWire {
     /// The wire for `model` on `provider`'s
-    /// [`completion_route`](OpenAI::completion_route).
+    /// [`completion_route`](OpenAIConfig::completion_route).
     pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         let model = model.into();
         let route = provider.route.unwrap_or_else(|| {

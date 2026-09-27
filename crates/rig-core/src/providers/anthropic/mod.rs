@@ -13,12 +13,11 @@
 //!
 //! Pair a wire with a transport in a [`Model`](crate::Model) to send it.
 
-mod client;
 pub mod completion;
 pub mod streaming;
 pub mod wire;
 
-pub use client::Anthropic;
+pub use crate::client::anthropic::Anthropic;
 pub use completion::{
     CLAUDE_FABLE_5, CLAUDE_FABLE_5_1, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_4_6, CLAUDE_OPUS_4_7,
     CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5,

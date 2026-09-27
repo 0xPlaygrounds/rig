@@ -12,4 +12,4 @@
 //! # }
 //! ```
 
-crate::providers::internal::client::openai_vendor!(crate::providers::openai::wire::MIRA, "Mira");
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::MIRA, "Mira");

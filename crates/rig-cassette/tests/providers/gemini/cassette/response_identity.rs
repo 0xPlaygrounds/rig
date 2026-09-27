@@ -224,7 +224,8 @@ async fn a_model_from_a_provider_reference_replays_the_recording() {
         "response_identity/nonstreaming_request_id_is_none_by_design",
         |client| async move {
             let reference = rig::providers::registry::ProviderRef::parse(&format!(
-                "gemini:{}",
+                "{}:{}",
+                gemini::PROVIDER_NAME,
                 gemini::completion::GEMINI_2_5_FLASH
             ))
             .expect("a registered reference");

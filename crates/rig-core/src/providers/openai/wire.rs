@@ -1,6 +1,8 @@
 //! OpenAI-compatible configurations, dialect policies, and endpoint wires.
-//! A [`Dialect`] selects request and response policies; [`OpenAIConfig`]
-//! holds credentials and overrides. An [`OpenAI`](super::OpenAI) client puts
+//! A [`Dialect`](crate::providers::openai::wire::Dialect) selects request
+//! and response policies; [`OpenAIConfig`](crate::providers::openai::OpenAIConfig)
+//! holds credentials and overrides. An
+//! [`OpenAI`](crate::providers::openai::OpenAI) client puts
 //! the configuration on a transport and builds each endpoint's model.
 //!
 //! ```
@@ -518,7 +520,8 @@ pub struct Quirks {
     pub auth: Auth,
     /// How the dialect addresses a model.
     pub routing: Routing,
-    /// Which completion endpoint [`OpenAI::completion`] builds: the
+    /// Which completion endpoint
+    /// [`OpenAI::completion`](crate::providers::openai::OpenAI::completion) builds: the
     /// dialect's flagship. Chat Completions is the one endpoint every
     /// dialect serves, so it is the baseline; OpenAI itself, xAI and ChatGPT
     /// serve `/responses` as their primary API and say so.
@@ -968,7 +971,8 @@ impl OpenAIConfig {
             .unwrap_or(self.dialect.quirks.responses.system_instructions)
     }
 
-    /// Override dialect and model-specific routing for [`Self::completion`].
+    /// Override dialect and model-specific routing for the client's
+    /// [`completion`](crate::providers::openai::OpenAI::completion).
     pub fn with_route(mut self, route: Route) -> Self {
         self.route = Some(route);
         self

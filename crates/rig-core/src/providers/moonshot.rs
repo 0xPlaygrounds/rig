@@ -36,11 +36,8 @@ pub const KIMI_K2_7_CODE_HIGHSPEED: &str = "kimi-k2.7-code-highspeed";
 /// Identifier for the Kimi K2.6 model.
 pub const KIMI_K2_6: &str = "kimi-k2.6";
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::MOONSHOT,
-    "Moonshot"
-);
-crate::providers::internal::client::anthropic_vendor!(
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::MOONSHOT, "Moonshot");
+crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::MOONSHOT,
     "Moonshot",
     anthropic_from_env,

@@ -14,13 +14,12 @@
 //!
 //! Pair a wire with a transport in a [`crate::Model`] to send it.
 
-mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod streaming;
 pub mod wire;
 
-pub use client::Cohere;
+pub use crate::client::cohere::Cohere;
 pub use wire::{Chat, CohereConfig, Embeddings, ImageEmbeddings};
 
 /// `command-a-plus-05-2026` completion model

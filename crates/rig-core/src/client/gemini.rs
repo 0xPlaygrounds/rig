@@ -1,19 +1,19 @@
 //! The Gemini client: a [`GeminiConfig`] on a transport, and the models it
 //! builds.
 
+use crate::client::macros::http_client;
 use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
-use crate::providers::internal::client::http_client;
 
-use super::GeminiConfig;
-use super::cached_content::CachedContents;
-use super::completion::GenerateContent;
-use super::embedding::Embeddings;
+use crate::providers::gemini::GeminiConfig;
+use crate::providers::gemini::cached_content::CachedContents;
+use crate::providers::gemini::completion::GenerateContent;
+use crate::providers::gemini::embedding::Embeddings;
 #[cfg(feature = "image")]
-use super::image_generation::Images;
-use super::interactions_api::{InteractionResume, Interactions};
-use super::transcription::Transcriptions;
+use crate::providers::gemini::image_generation::Images;
+use crate::providers::gemini::interactions_api::{InteractionResume, Interactions};
+use crate::providers::gemini::transcription::Transcriptions;
 
 http_client!(
     /// Gemini: its [`GeminiConfig`] on a transport. Every model it builds

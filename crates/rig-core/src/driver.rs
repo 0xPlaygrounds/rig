@@ -189,7 +189,7 @@ where
     /// What a runtime accounts for about this model, such as an embedding
     /// model's width.
     pub fn capabilities(&self) -> Capabilities<W> {
-        self.wire.capabilities()
+        Wire::capabilities(&self.wire)
     }
 
     /// Send `request` and fold the whole reply into the operation's
@@ -238,7 +238,7 @@ where
             .streamed(request, Mode::Unary, observation)?
             .drain()
             .await?;
-        <W::Op as Operation>::accept(&self.wire.capabilities(), self.wire.name(), &response)?;
+        <W::Op as Operation>::accept(&self.capabilities(), self.wire.name(), &response)?;
         Ok(response)
     }
 

@@ -47,7 +47,4 @@ pub const SDXL_TURBO: &str = "SDXL-turbo";
 pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
 pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::HYPERBOLIC,
-    "Hyperbolic"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::HYPERBOLIC, "Hyperbolic");

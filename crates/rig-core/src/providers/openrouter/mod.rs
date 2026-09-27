@@ -32,7 +32,4 @@ pub use transcription::{
     WHISPER_LARGE_V3_TURBO,
 };
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::OPENROUTER,
-    "OpenRouter"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::OPENROUTER, "OpenRouter");

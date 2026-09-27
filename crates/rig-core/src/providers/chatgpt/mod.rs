@@ -75,4 +75,4 @@ pub(crate) fn session_id() -> String {
     crate::id::generate()
 }
 
-crate::providers::internal::client::openai_vendor!(DIALECT, "ChatGPT");
+crate::client::macros::openai_vendor!(DIALECT, "ChatGPT");

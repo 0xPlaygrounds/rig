@@ -9,8 +9,7 @@
     )
 )]
 //! The bundled native websocket backend for Rig: a
-//! [`WebSocketClientExt`](rig_http::ws_client::WebSocketClientExt)
-//! implementation over tokio-tungstenite. rig-core's `tungstenite` feature
+//! [`rig_http::ws_client::WebSocketClientExt`] implementation over tokio-tungstenite. rig-core's `tungstenite` feature
 //! opens Responses WebSocket sessions over it with no backend named.
 //!
 //! Sockets use the current Tokio runtime or a lazy fallback runtime. Off-runtime

@@ -1,12 +1,12 @@
 //! The Anthropic client: an [`AnthropicConfig`] on a transport, and the
 //! models it builds.
 
+use crate::client::macros::http_client;
 use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
-use crate::providers::internal::client::http_client;
 
-use super::wire::{AnthropicConfig, Messages};
+use crate::providers::anthropic::wire::{AnthropicConfig, Messages};
 
 http_client!(
     /// A Messages-format provider: its [`AnthropicConfig`] on a transport.

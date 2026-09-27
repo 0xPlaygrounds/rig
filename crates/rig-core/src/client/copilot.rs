@@ -1,13 +1,13 @@
 //! The Copilot client: a [`CopilotConfig`] on a transport, and the models it
 //! builds.
 
+use crate::client::macros::http_client;
 use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
-use crate::providers::internal::client::http_client;
 
-use super::auth::{AuthError, Authenticator};
-use super::wire::{CopilotConfig, CopilotWire, Embeddings};
+use crate::providers::copilot::auth::{AuthError, Authenticator};
+use crate::providers::copilot::wire::{CopilotConfig, CopilotWire, Embeddings};
 
 http_client!(
     /// GitHub Copilot: its [`CopilotConfig`] on a transport. Every model it

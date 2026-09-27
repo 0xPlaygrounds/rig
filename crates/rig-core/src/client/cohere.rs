@@ -1,10 +1,10 @@
 //! The Cohere client: a [`CohereConfig`] on a transport, and the models it
 //! builds.
 
+use crate::client::macros::http_client;
 use crate::driver::Model;
-use crate::providers::internal::client::http_client;
 
-use super::wire::{Chat, CohereConfig, Embeddings, ImageEmbeddings};
+use crate::providers::cohere::wire::{Chat, CohereConfig, Embeddings, ImageEmbeddings};
 
 http_client!(
     /// Cohere: its [`CohereConfig`] on a transport. Every model it builds

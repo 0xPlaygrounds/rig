@@ -1,10 +1,10 @@
 //! The Voyage AI client: a [`VoyageAiConfig`] on a transport, and the models
 //! it builds.
 
+use crate::client::macros::http_client;
 use crate::driver::Model;
-use crate::providers::internal::client::http_client;
 
-use super::wire::{Embeddings, Rerank, VoyageAiConfig};
+use crate::providers::voyageai::wire::{Embeddings, Rerank, VoyageAiConfig};
 
 http_client!(
     /// Voyage AI: its [`VoyageAiConfig`] on a transport. Every model it

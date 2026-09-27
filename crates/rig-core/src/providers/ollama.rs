@@ -29,10 +29,9 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-mod client;
 pub mod wire;
 
-pub use client::Ollama;
+pub use crate::client::ollama::Ollama;
 pub use wire::{Chat, Embeddings, Models, OllamaConfig};
 
 /// The address of a local daemon.

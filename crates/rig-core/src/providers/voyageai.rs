@@ -16,10 +16,9 @@
 
 use serde::{Deserialize, Serialize};
 
-mod client;
 pub mod wire;
 
-pub use client::VoyageAi;
+pub use crate::client::voyageai::VoyageAi;
 pub use wire::{Embeddings, Rerank, VoyageAiConfig};
 
 /// Voyage AI's API root.

@@ -49,7 +49,4 @@ pub mod image_generation_models {
 #[cfg(feature = "image")]
 pub use image_generation_models::*;
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::HUGGINGFACE,
-    "Hugging Face"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::HUGGINGFACE, "Hugging Face");

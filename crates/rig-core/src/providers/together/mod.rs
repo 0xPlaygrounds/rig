@@ -21,7 +21,4 @@ pub mod embedding;
 pub use completion::*;
 pub use embedding::*;
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::TOGETHER,
-    "Together AI"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::TOGETHER, "Together AI");

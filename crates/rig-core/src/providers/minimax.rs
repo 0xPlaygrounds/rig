@@ -40,11 +40,8 @@ pub const MINIMAX_M2_1_HIGHSPEED: &str = "MiniMax-M2.1-highspeed";
 /// `MiniMax-M2`
 pub const MINIMAX_M2: &str = "MiniMax-M2";
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::MINIMAX,
-    "MiniMax"
-);
-crate::providers::internal::client::anthropic_vendor!(
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::MINIMAX, "MiniMax");
+crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::MINIMAX,
     "MiniMax",
     anthropic_from_env,

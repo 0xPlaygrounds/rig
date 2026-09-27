@@ -27,9 +27,7 @@ pub mod responses_api;
 /// `Dialect` constant per OpenAI-shaped provider.
 pub mod wire;
 
-mod client;
-
-pub use client::OpenAI;
+pub use crate::client::openai::OpenAI;
 pub use wire::{OpenAIConfig, Route};
 
 #[cfg(feature = "audio")]

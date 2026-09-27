@@ -48,7 +48,4 @@ pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 /// `gpt-3.5-turbo-16k` completion model
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::AZURE,
-    "Azure OpenAI"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::AZURE, "Azure OpenAI");

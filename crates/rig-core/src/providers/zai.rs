@@ -39,8 +39,8 @@ pub const GLM_4_5V: &str = "glm-4.5v";
 /// `glm-4.5-airx`
 pub const GLM_4_5_AIRX: &str = "glm-4.5-airx";
 
-crate::providers::internal::client::openai_vendor!(crate::providers::openai::wire::ZAI, "Z.AI");
-crate::providers::internal::client::anthropic_vendor!(
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::ZAI, "Z.AI");
+crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::ZAI,
     "Z.AI",
     anthropic_from_env,

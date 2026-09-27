@@ -31,11 +31,8 @@ pub const MIMO_V2_5: &str = "mimo-v2.5";
 /// `mimo-v2.5-pro`
 pub const MIMO_V2_5_PRO: &str = "mimo-v2.5-pro";
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::XIAOMIMIMO,
-    "Xiaomi MiMo"
-);
-crate::providers::internal::client::anthropic_vendor!(
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::XIAOMIMIMO, "Xiaomi MiMo");
+crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::XIAOMIMIMO,
     "Xiaomi MiMo",
     anthropic_from_env,

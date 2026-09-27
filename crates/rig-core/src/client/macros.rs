@@ -1,5 +1,5 @@
-//! The client half every HTTP provider shares: a configuration on a
-//! transport, and the models it builds.
+//! The declarations every HTTP provider client shares: a configuration on a
+//! transport, the models it builds, and the vendors that build it by name.
 
 /// Declare `$client`, the configuration `$config` on an erased HTTP
 /// transport, with the transport-handling methods every HTTP provider
@@ -66,7 +66,7 @@ pub(crate) use http_client;
 /// client on the shared reqwest client.
 macro_rules! openai_vendor {
     ($dialect:path, $name:literal) => {
-        $crate::providers::internal::client::openai_vendor!($dialect, $name, from_env, new);
+        $crate::client::macros::openai_vendor!($dialect, $name, from_env, new);
     };
     ($dialect:path, $name:literal, $from_env:ident, $new:ident) => {
         #[doc = concat!(

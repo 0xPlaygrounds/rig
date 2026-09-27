@@ -28,10 +28,9 @@
 /// let auth = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
 /// ```
 pub mod auth;
-mod client;
 pub mod wire;
 
-pub use client::Copilot;
+pub use crate::client::copilot::Copilot;
 pub use wire::CopilotConfig;
 
 use crate::completion;

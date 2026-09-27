@@ -66,7 +66,7 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result
     let mut history = vec![Message::user("Capital of France?")];
     history.push(model.call(history.clone()).await?.into());
     anyhow::ensure!(history.len() == 2);
-    anyhow::ensure!(matches!(&history[1], Message::Assistant { .. }));
+    anyhow::ensure!(matches!(history.last(), Some(Message::Assistant { .. })));
     responses.assert_calls_async(2).await;
 
     let deepseek = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);

@@ -115,7 +115,4 @@ pub enum ToolType {
     Function,
 }
 
-crate::providers::internal::client::openai_vendor!(
-    crate::providers::openai::wire::DEEPSEEK,
-    "DeepSeek"
-);
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::DEEPSEEK, "DeepSeek");
