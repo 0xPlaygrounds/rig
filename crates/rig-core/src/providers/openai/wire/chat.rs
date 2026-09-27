@@ -99,6 +99,7 @@ impl Chat {
             OutputCap::OpenAiReasoningFamilies => is_openai_reasoning_model(&typed.model),
         };
         let mut body = request_body(&typed, modern_output_cap)?;
+        unary::check_gpt_6_request(&body, unary::OpenAiEndpoint::ChatCompletions)?;
 
         if mode == Mode::Streaming {
             if quirks.stream_include_usage {

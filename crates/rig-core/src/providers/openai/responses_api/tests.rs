@@ -1289,7 +1289,10 @@ fn service_tier_serializes_expected_strings() {
 fn responses_usage_token_usage_preserves_reasoning_tokens() {
     let usage = ResponsesUsage {
         input_tokens: 100,
-        input_tokens_details: Some(InputTokensDetails { cached_tokens: 25 }),
+        input_tokens_details: Some(InputTokensDetails {
+            cached_tokens: 25,
+            cache_write_tokens: None,
+        }),
         output_tokens: 50,
         output_tokens_details: Some(OutputTokensDetails {
             reasoning_tokens: 15,
@@ -2221,7 +2224,10 @@ fn responses_usage_add_preserves_rhs_details_when_lhs_details_are_absent() {
     };
     let rhs = ResponsesUsage {
         input_tokens: 3,
-        input_tokens_details: Some(InputTokensDetails { cached_tokens: 2 }),
+        input_tokens_details: Some(InputTokensDetails {
+            cached_tokens: 2,
+            cache_write_tokens: None,
+        }),
         output_tokens: 5,
         output_tokens_details: Some(OutputTokensDetails {
             reasoning_tokens: 4,

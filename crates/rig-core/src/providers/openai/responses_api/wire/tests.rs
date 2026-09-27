@@ -582,3 +582,78 @@ async fn an_error_envelope_on_a_success_fails_the_xai_call() {
         "the provider's own message must survive: {error}"
     );
 }
+
+// Prompt caching from GPT-5.6 on: `prompt_cache_options` on the request and
+// `cache_write_tokens` in the usage. The recorded identity turn reports a
+// zero cache write; the second case writes a nonzero count into a copy of it,
+// since the corpus holds no recorded nonzero write yet.
+// Source: <https://developers.openai.com/api/docs/guides/prompt-caching#monitor-cache-performance>
+
+const IDENTITY_STREAM: &str = "openai/response_identity/responses_streaming_carries_identity.yaml";
+
+#[tokio::test]
+async fn cache_write_tokens_reach_rig_usage_unary_and_streamed() {
+    let recorded = cassette_body(IDENTITY_STREAM);
+    assert!(recorded.contains("\"cache_write_tokens\":0"));
+    let written = recorded.replace("\"cache_write_tokens\":0", "\"cache_write_tokens\":1536");
+    for (sse, expected) in [(recorded, 0), (written, 1536)] {
+        let streamed = folded_stream(openai(), &sse).await;
+        let unary = folded_unary(openai(), &terminal_response_body(&sse)).await;
+        for (response, mode) in [(streamed, "streamed"), (unary, "unary")] {
+            assert_eq!(
+                response.usage.cache_creation_input_tokens,
+                Some(expected),
+                "{mode}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_unreported_cache_write_stays_unreported() {
+    let response = folded_unary(openai(), &terminal_response_body(CHATGPT_EMPTY_OUTPUT)).await;
+    assert_eq!(response.usage.cached_input_tokens, Some(0));
+    assert_eq!(response.usage.cache_creation_input_tokens, None);
+}
+
+#[test]
+fn prompt_cache_options_reach_the_request_typed_and_through_additional_params() {
+    use crate::providers::openai::responses_api::{
+        AdditionalParameters, PromptCacheMode, PromptCacheOptions, PromptCacheTtl,
+    };
+
+    let wire = OpenAIConfig::new("test-key").responses(crate::providers::openai::GPT_6_SOL);
+    let typed = AdditionalParameters {
+        prompt_cache_options: Some(
+            PromptCacheOptions::new()
+                .with_ttl(PromptCacheTtl::ThirtyMinutes)
+                .with_mode(PromptCacheMode::Explicit)
+                .with_prewarm(true),
+        ),
+        ..AdditionalParameters::default()
+    };
+    let raw = serde_json::json!({
+        "prompt_cache_options": {"ttl": "30m", "mode": "explicit", "prewarm": true}
+    });
+    for params in [typed.to_json(), raw.clone()] {
+        let body = encoded_body_of(
+            &wire,
+            CompletionRequest {
+                additional_params: Some(params),
+                ..prompt()
+            },
+            Mode::Unary,
+        );
+        assert_eq!(body["prompt_cache_options"], raw["prompt_cache_options"]);
+        assert_eq!(body.get("prompt_cache_retention"), None);
+    }
+
+    let invalid = wire.encode(
+        CompletionRequest {
+            additional_params: Some(serde_json::json!({"prompt_cache_options": {"ttl": "1h"}})),
+            ..prompt()
+        },
+        Mode::Unary,
+    );
+    assert!(invalid.is_err(), "`30m` is the only documented lifetime");
+}

@@ -29,6 +29,117 @@ where
     content.serialize(serializer)
 }
 
+/// `gpt-6-astra` completion model. Its reasoning effort runs from `low` to
+/// `max` (`none` is rejected), and it calls tools only through the Responses
+/// API.
+pub const GPT_6_ASTRA: &str = "gpt-6-astra";
+
+/// `gpt-6-sol` completion model. Its reasoning effort runs from `none` to
+/// `max` and defaults to `medium`; Chat Completions calls tools only at
+/// effort `none`.
+pub const GPT_6_SOL: &str = "gpt-6-sol";
+
+/// `gpt-6-luna` completion model. Its reasoning effort runs from `none` to
+/// `max` and defaults to `medium`; Chat Completions calls tools only at
+/// effort `none`.
+pub const GPT_6_LUNA: &str = "gpt-6-luna";
+
+/// Where a GPT-6 model can call tools through Chat Completions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Gpt6ChatTools {
+    /// Never: tool calling requires the Responses API.
+    Unsupported,
+    /// Only with `reasoning_effort: "none"`.
+    WithoutReasoning,
+}
+
+/// The GPT-6 models Rig checks requests for, by exact ID.
+/// Sources: <https://developers.openai.com/api/docs/guides/latest-model>,
+/// <https://developers.openai.com/api/docs/models/gpt-6-astra>,
+/// <https://developers.openai.com/api/docs/models/gpt-6-sol> and
+/// <https://developers.openai.com/api/docs/models/gpt-6-luna>.
+fn gpt_6_chat_tools(model: &str) -> Option<Gpt6ChatTools> {
+    match model {
+        GPT_6_ASTRA => Some(Gpt6ChatTools::Unsupported),
+        GPT_6_SOL | GPT_6_LUNA => Some(Gpt6ChatTools::WithoutReasoning),
+        _ => None,
+    }
+}
+
+/// The OpenAI endpoint a request body is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OpenAiEndpoint {
+    ChatCompletions,
+    Responses,
+}
+
+/// Reject a GPT-6 request body the API would refuse. Every GPT-6 model
+/// reasons by default, so unless the body sets effort `none`, it must not
+/// carry `temperature`, `top_p` or `top_logprobs` (nor `logprobs` on Chat
+/// Completions). On Chat Completions, GPT-6 Astra cannot carry tools and
+/// GPT-6 Sol and Luna carry them only at effort `none`. Other models pass.
+pub(crate) fn check_gpt_6_request(
+    body: &serde_json::Value,
+    endpoint: OpenAiEndpoint,
+) -> Result<(), EncodeError> {
+    let Some(model) = body.get("model").and_then(serde_json::Value::as_str) else {
+        return Ok(());
+    };
+    let Some(chat_tools) = gpt_6_chat_tools(model) else {
+        return Ok(());
+    };
+    let (effort, effort_field) = match endpoint {
+        OpenAiEndpoint::ChatCompletions => (body.get("reasoning_effort"), "reasoning_effort"),
+        OpenAiEndpoint::Responses => (body.pointer("/reasoning/effort"), "reasoning.effort"),
+    };
+    let reasons = effort.and_then(serde_json::Value::as_str) != Some("none");
+    let present = |field: &str| body.get(field).is_some_and(|value| !value.is_null());
+
+    if reasons {
+        let sampling: &[&str] = match endpoint {
+            OpenAiEndpoint::ChatCompletions => {
+                &["temperature", "top_p", "top_logprobs", "logprobs"]
+            }
+            OpenAiEndpoint::Responses => &["temperature", "top_p", "top_logprobs"],
+        };
+        if let Some(field) = sampling.iter().find(|field| present(field)) {
+            let fix = if chat_tools == Gpt6ChatTools::Unsupported {
+                format!("remove `{field}`")
+            } else {
+                format!("remove `{field}` or set `{effort_field}` to `none`")
+            };
+            return Err(EncodeError::request(format!(
+                "`{model}` rejects `{field}` while it reasons, which it does unless \
+                 `{effort_field}` is `none`; {fix}"
+            )));
+        }
+    }
+
+    let carries_tools = body
+        .get("tools")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|tools| !tools.is_empty());
+    if endpoint == OpenAiEndpoint::ChatCompletions && carries_tools {
+        match chat_tools {
+            Gpt6ChatTools::Unsupported => {
+                return Err(EncodeError::request(format!(
+                    "`{model}` cannot call tools through Chat Completions; use the Responses \
+                     API (`OpenAI::completion` or `OpenAI::responses`)"
+                )));
+            }
+            Gpt6ChatTools::WithoutReasoning if reasons => {
+                return Err(EncodeError::request(format!(
+                    "`{model}` calls tools through Chat Completions only with \
+                     `reasoning_effort` `none`; set it, or use the Responses API \
+                     (`OpenAI::completion` or `OpenAI::responses`) to reason with tools"
+                )));
+            }
+            Gpt6ChatTools::WithoutReasoning => {}
+        }
+    }
+    Ok(())
+}
+
 /// `gpt-5.6` completion model (alias that routes to GPT-5.6 Sol)
 pub const GPT_5_6: &str = "gpt-5.6";
 

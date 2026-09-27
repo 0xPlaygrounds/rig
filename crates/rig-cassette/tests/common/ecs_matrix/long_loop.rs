@@ -852,7 +852,7 @@ pub(crate) fn raw_usage(
             (
                 count(&usage["input_tokens"]),
                 count(&usage["input_tokens_details"]["cached_tokens"]),
-                None,
+                count(&usage["input_tokens_details"]["cache_write_tokens"]),
             )
         }
         ThinkingWire::Gemini => {
