@@ -6,7 +6,7 @@ use rig_core::error::{ProviderError, RigError};
 use super::*;
 
 #[test]
-fn a_response_failure_reports_as_a_wire_s() {
+fn a_response_failure_reports_as_a_wire_does() {
     assert_eq!(
         response("provider stream ended without a terminal record"),
         RigError::from(ProviderError::Response(
@@ -16,7 +16,7 @@ fn a_response_failure_reports_as_a_wire_s() {
 }
 
 #[test]
-fn a_request_failure_reports_as_a_wire_s() {
+fn a_request_failure_reports_as_a_wire_does() {
     assert_eq!(
         request("Failed to get tool definitions: gone"),
         RigError::from(ProviderError::Request(
@@ -26,7 +26,7 @@ fn a_request_failure_reports_as_a_wire_s() {
 }
 
 #[test]
-fn a_request_failure_with_a_cause_reports_as_a_wire_s() {
+fn a_request_failure_with_a_cause_reports_as_a_wire_does() {
     let cause = || {
         rig_core::vector_store::VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
             "the index is gone",

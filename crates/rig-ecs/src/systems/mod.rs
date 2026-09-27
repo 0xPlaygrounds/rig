@@ -2458,12 +2458,9 @@ pub fn read_turn(
                 .finish_reason()
                 .filter(|reason| reason.truncated_output())
         {
-            // Reads as the classic agent reports the same turn.
-            let report = rig_core::error::RigError::new(
-                rig_core::error::ErrorKind::Response,
-                format!("ResponseError: {}", reason.no_answer_message()),
-            );
-            commands.entity(run).end(Failed(Failure::Provider(report)));
+            commands
+                .entity(run)
+                .end(Failed(Failure::Provider(no_answer(&reason))));
             continue;
         }
         let access = access.get(turn).ok();
@@ -2929,3 +2926,15 @@ pub fn run_cancelled(
             .remove::<(Batch, Fresh, RequestPatch)>();
     }
 }
+
+/// A turn the provider truncated before it produced an answer, reported as
+/// the classic agent reports the same turn.
+fn no_answer(reason: &rig_core::completion::FinishReason) -> rig_core::error::RigError {
+    rig_core::error::RigError::new(
+        rig_core::error::ErrorKind::Response,
+        format!("ResponseError: {}", reason.no_answer_message()),
+    )
+}
+
+#[cfg(test)]
+mod tests;

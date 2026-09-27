@@ -9,7 +9,17 @@ async fn main() -> Result<(), RigError> {
     const MODEL: &str = "gemini-2.5-flash-lite";
     // google-cloud-auth does not read ~/.config/gcloud/configurations so requiring that
     // project be set by env var for this example
-    let project_id: String = rig_core::client::env::required("GOOGLE_CLOUD_PROJECT")?;
+    let project_id: String =
+        rig_core::client::env::required("GOOGLE_CLOUD_PROJECT").map_err(|error| {
+            let error = RigError::from(error);
+            RigError {
+                message: format!(
+                    "GOOGLE_CLOUD_PROJECT env var must be set to run this example: {}",
+                    error.message
+                ),
+                ..error
+            }
+        })?;
 
     // implicit ADC auth here, but builder can include a .with_credentials method
     let client = vertexai::client::PredictionService::builder()
