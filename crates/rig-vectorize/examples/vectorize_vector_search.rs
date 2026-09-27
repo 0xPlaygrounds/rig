@@ -37,9 +37,9 @@ async fn main() -> Result<(), RigError> {
 
     let vector_store = VectorizeVectorStore::new(
         model.clone(),
-        std::env::var("CLOUDFLARE_ACCOUNT_ID").map_err(RigError::other)?,
+        rig_core::client::env::required("CLOUDFLARE_ACCOUNT_ID")?,
         "rig-example",
-        std::env::var("CLOUDFLARE_API_TOKEN").map_err(RigError::other)?,
+        rig_core::client::env::required("CLOUDFLARE_API_TOKEN")?,
     );
 
     let documents = EmbeddingsBuilder::new(model)

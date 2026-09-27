@@ -398,8 +398,7 @@ fn print_report(report: &Report) {
 
 #[tokio::main]
 async fn main() -> Result<(), RigError> {
-    let api_key = std::env::var("GEMINI_API_KEY")
-        .map_err(|_| RigError::new(ErrorKind::Other, "GEMINI_API_KEY must be set"))?;
+    let api_key = rig::client::env::required("GEMINI_API_KEY")?;
     let http = reqwest::Client::new();
 
     // Short prompt for the clean baseline (completes quickly, real usage).

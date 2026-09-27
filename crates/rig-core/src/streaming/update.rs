@@ -27,10 +27,12 @@ use super::{BlockKind, Delta, StreamEvent};
 /// part that ended before it has its `End`, and its `partial` holds those
 /// parts in index order. A part still open at the failure gets no `End` and
 /// is not in `partial`; a part after it keeps the index it was given, which
-/// counts the open part. A failure the driver reads from the transport
+/// counts the open part. On the driver path, a failure that ends the reply
+/// (a transport failure, or an error the decoder reads as the reply's end)
 /// closes the open text and reasoning first, so they end and are in
-/// `partial`. A relayed stream receives the origin's closes after its error,
-/// so its open parts do not end.
+/// `partial`; an error in the middle of a reply (a corrupt frame, a
+/// malformed tool call) leaves them open. A relayed stream receives the
+/// origin's closes after its error, so its open parts do not end.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Update {

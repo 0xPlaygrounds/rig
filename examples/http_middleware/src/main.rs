@@ -5,7 +5,6 @@
 //! request body, and reading rate-limit / request-id response headers — on a
 //! streaming call, before the stream is consumed. Requires `ANTHROPIC_API_KEY`.
 
-use rig::error::ErrorKind;
 use rig::http_client::{
     DynHttpClient, HeaderMap, HeaderValue, HttpMiddleware, Method, ReqwestClient, Uri,
 };
@@ -74,12 +73,7 @@ impl HttpMiddleware for WireLogger {
 
 #[tokio::main]
 async fn main() -> Result<(), RigError> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|error| {
-        RigError::new(
-            ErrorKind::Other,
-            format!("ANTHROPIC_API_KEY is not set: {error}"),
-        )
-    })?;
+    let api_key = rig::client::env::required("ANTHROPIC_API_KEY")?;
 
     // Wrap the bundled client with the middleware; any client can take the
     // same handle with `with_http`.

@@ -114,6 +114,10 @@ async fn an_error_event_after_content_fails_with_the_event_and_the_text() {
     assert_eq!(error.kind, ErrorKind::ProviderResponse, "{error:?}");
     assert_eq!(error.code.as_deref(), Some("server_error"), "{error:?}");
     assert!(
+        error.message.starts_with("ProviderResponseError: ") && error.message.contains("boom"),
+        "the provider's reply, as the message: {error:?}"
+    );
+    assert!(
         error
             .provider_response_body()
             .is_some_and(|body| body.contains("boom")),

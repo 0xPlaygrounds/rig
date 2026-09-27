@@ -31,6 +31,15 @@ async fn an_in_band_error_after_content_fails_with_the_envelope_and_the_text() {
     assert_eq!(error.kind, ErrorKind::ProviderResponse, "{error:?}");
     assert_eq!(error.http_status, Some(503), "{error:?}");
     assert!(error.retryable, "{error:?}");
+    assert!(
+        error
+            .message
+            .starts_with("ProviderResponseError: status 503 Service Unavailable: ")
+            && error
+                .message
+                .contains("The model is overloaded. Please try again later."),
+        "the envelope, as the message: {error:?}"
+    );
     assert_eq!(
         error
             .provider_response_body()

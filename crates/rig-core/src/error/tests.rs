@@ -909,13 +909,13 @@ fn a_relayed_report_takes_the_transport_s_status_and_code() {
     assert_eq!(relayed.is_retryable(), retryable);
 }
 
-/// `json` is `report`'s wire form both ways: serializing `report` gives it,
-/// and it deserializes back to `report`.
+/// `json` is `report`'s wire form both ways: serializing `report` gives
+/// exactly these bytes, keys in this order, and they deserialize back to
+/// `report`.
 fn assert_wire_form(json: &str, report: &RigError) {
-    let expected: serde_json::Value = serde_json::from_str(json).expect("pinned JSON parses");
     assert_eq!(
-        serde_json::to_value(report).expect("serialize"),
-        expected,
+        serde_json::to_string(report).expect("serialize"),
+        json,
         "{report:?} serializes to its pinned JSON"
     );
     assert_eq!(
@@ -928,22 +928,23 @@ fn assert_wire_form(json: &str, report: &RigError) {
 /// One error per kind against JSON written out here. The first four are
 /// copied from effect goldens (`anthropic_cancelled_stream`,
 /// `anthropic_memory_failing_append`, `anthropic_outcome_model_error`,
-/// `gemini_long_loop_output_cap_midway`); the others but `configuration`
-/// are `main`'s serialization of `new(kind, "m")` under the type's old name.
+/// `gemini_long_loop_output_cap_midway`), compacted with their key order
+/// kept; the others but `configuration` are `main`'s serialization of
+/// `new(kind, "m")` under the type's old name.
 #[test]
 fn rig_error_json_is_pinned_per_kind() {
     let bare = |kind| RigError::new(kind, "m");
     let reply = "{\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}";
     let pins = [
         (
-            r#"{"kind": "cancelled", "retryable": false, "message": "the consumer cancelled the dispatch before it was answered", "code": null, "http_status": null, "refusal": false, "source_chain": []}"#,
+            r#"{"kind":"cancelled","retryable":false,"message":"the consumer cancelled the dispatch before it was answered","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
             RigError::new(
                 ErrorKind::Cancelled,
                 "the consumer cancelled the dispatch before it was answered",
             ),
         ),
         (
-            r#"{"kind": "memory_backend", "retryable": false, "message": "Memory backend error: the store refused the append", "code": null, "http_status": null, "refusal": false, "source_chain": ["the store refused the append"]}"#,
+            r#"{"kind":"memory_backend","retryable":false,"message":"Memory backend error: the store refused the append","code":null,"http_status":null,"refusal":false,"source_chain":["the store refused the append"]}"#,
             RigError {
                 source_chain: vec!["the store refused the append".to_owned()],
                 ..RigError::new(
@@ -953,7 +954,7 @@ fn rig_error_json_is_pinned_per_kind() {
             },
         ),
         (
-            r#"{"kind": "provider_response", "retryable": false, "message": "ProviderResponseError: status 401 Unauthorized: {\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}", "code": "authentication_error", "http_status": 401, "refusal": false, "source_chain": [], "provider_response": {"status": 401, "body": "{\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}", "provider_request_id": null}}"#,
+            r#"{"kind":"provider_response","retryable":false,"message":"ProviderResponseError: status 401 Unauthorized: {\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}","code":"authentication_error","http_status":401,"refusal":false,"source_chain":[],"provider_response":{"status":401,"body":"{\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}","provider_request_id":null}}"#,
             RigError {
                 provider_response: Some(ProviderResponseError::new(
                     StatusCode::UNAUTHORIZED,
@@ -968,7 +969,7 @@ fn rig_error_json_is_pinned_per_kind() {
             },
         ),
         (
-            r#"{"kind": "response", "retryable": false, "message": "ResponseError: Gemini stopped with finish_reason=MalformedFunctionCall: Malformed function call: tool", "code": null, "http_status": null, "refusal": false, "source_chain": []}"#,
+            r#"{"kind":"response","retryable":false,"message":"ResponseError: Gemini stopped with finish_reason=MalformedFunctionCall: Malformed function call: tool","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
             RigError::new(
                 ErrorKind::Response,
                 "ResponseError: Gemini stopped with finish_reason=MalformedFunctionCall: Malformed function call: tool",
@@ -1039,7 +1040,7 @@ fn rig_error_json_is_pinned_per_kind() {
     for (json, report) in &pins {
         assert_wire_form(json, report);
     }
-    // Every kind is pinned: a new kind fails to compile here until it is.
+    // A new kind fails to compile here, a reminder to pin it above.
     for (_, report) in &pins {
         match report.kind {
             ErrorKind::Http

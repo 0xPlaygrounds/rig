@@ -745,12 +745,13 @@ fn forked_held_run_remaps_committed_utterances_and_releases_independently() {
     assert_eq!(requests.lock().unwrap().len(), 3);
 }
 
-/// An invalid hold request converts as a failure from outside a run.
+/// An invalid hold request converts as a request that cannot be built, as
+/// the checkpoint's own validation reports one.
 #[test]
-fn a_checkpoint_error_converts_as_other() {
+fn a_checkpoint_error_converts_as_a_request() {
     use rig_core::error::{ErrorKind, RigError};
     let error = RigError::from(CheckpointError::ZeroTurn);
-    assert_eq!(error.kind, ErrorKind::Other);
+    assert_eq!(error.kind, ErrorKind::Request);
     assert!(!error.retryable);
     assert_eq!(error.message, "checkpoint turn must be at least one");
 }

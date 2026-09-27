@@ -34,11 +34,11 @@ async fn main() -> Result<(), RigError> {
         .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
         .erase();
 
-    let base_url = std::env::var("MILVUS_BASE_URL").map_err(RigError::other)?;
-    let collection_name = std::env::var("MILVUS_COLLECTION_NAME").map_err(RigError::other)?;
-    let database_name = std::env::var("MILVUS_DATABASE_NAME").map_err(RigError::other)?;
-    let milvus_user = std::env::var("MILVUS_USERNAME").map_err(RigError::other)?;
-    let milvus_password = std::env::var("MILVUS_PASSWORD").map_err(RigError::other)?;
+    let base_url = rig_core::client::env::required("MILVUS_BASE_URL")?;
+    let collection_name = rig_core::client::env::required("MILVUS_COLLECTION_NAME")?;
+    let database_name = rig_core::client::env::required("MILVUS_DATABASE_NAME")?;
+    let milvus_user = rig_core::client::env::required("MILVUS_USERNAME")?;
+    let milvus_password = rig_core::client::env::required("MILVUS_PASSWORD")?;
 
     let vector_store =
         rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name)

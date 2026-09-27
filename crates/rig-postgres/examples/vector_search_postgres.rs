@@ -40,7 +40,7 @@ async fn main() -> Result<(), RigError> {
         .erase();
 
     // setup Postgres
-    let database_url = std::env::var("DATABASE_URL").map_err(RigError::other)?;
+    let database_url = rig_core::client::env::required("DATABASE_URL")?;
     let pool = PgPoolOptions::new()
         .max_connections(50)
         .idle_timeout(std::time::Duration::from_secs(5))

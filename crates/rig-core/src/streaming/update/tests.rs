@@ -830,3 +830,61 @@ fn a_stream_without_a_terminal_ends_with_failed() {
     );
     assert_eq!(partial.text(), "cut");
 }
+
+/// A transport failure on the direct driver path, after text that had not
+/// closed: the driver closes the text before the failure, so the text ends
+/// and is in `partial`, and the updates end with the transport's error.
+#[test]
+fn a_transport_failure_on_the_driver_path_ends_the_open_text_first() {
+    let frames = [
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-6\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Par\"}}\n\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"is.\"}}\n\n",
+    ];
+    let reset: Box<dyn std::error::Error + Send + Sync> =
+        Box::new(std::io::Error::other("connection reset"));
+    let mut chunks: Vec<crate::http_client::Result<bytes::Bytes>> = frames
+        .iter()
+        .map(|frame| Ok(bytes::Bytes::from_static(frame.as_bytes())))
+        .collect();
+    chunks.push(Err(crate::http_client::Error::Instance(reset)));
+    let model = crate::providers::anthropic::AnthropicConfig::new("test-key")
+        .connect(crate::test_utils::SequencedStreamingHttpClient::new(chunks))
+        .completion(crate::providers::anthropic::CLAUDE_SONNET_4_6);
+    let mut stream = model
+        .stream("Capital of France?")
+        .expect("the stream opens");
+    let updates = futures::executor::block_on(stream.updates().collect::<Vec<_>>());
+
+    let (error, partial) = assert_failed_contract(&updates);
+    assert_eq!(error.kind, ErrorKind::Http);
+    assert!(error.retryable, "a reset connection is worth retrying");
+    assert_eq!(
+        error.message,
+        "HttpError: Http client error: connection reset"
+    );
+    assert_eq!(
+        updates[..updates.len() - 1],
+        [
+            Update::Start {
+                index: 0,
+                part: PartKind::Text
+            },
+            Update::Delta {
+                index: 0,
+                text: "Par".into()
+            },
+            Update::Delta {
+                index: 0,
+                text: "is.".into()
+            },
+            Update::End {
+                index: 0,
+                part: AssistantContent::text("Paris.")
+            }
+        ]
+    );
+    assert_eq!(partial.choice, [AssistantContent::text("Paris.")]);
+    assert_eq!(partial, stream.partial());
+}

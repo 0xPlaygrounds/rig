@@ -19,7 +19,7 @@ use rig::providers::anthropic::{self, Anthropic};
 use rig::providers::deepseek;
 use rig::providers::openai::{self, OpenAI};
 use rig::providers::registry::ProviderRef;
-use rig::streaming::Update;
+use rig::streaming::{CompletionStream, StreamEvents, Update};
 use rig::{Agent, RigError};
 use rig_core::test_utils::MockStreamingClient;
 
@@ -144,10 +144,14 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> Result<(), Rig
     responses.assert_calls_async(2).await;
 
     say_hi(&model.clone().into()).await?;
+    ensure(
+        call_with_one_retry(&model.clone().into()).await? == "identity probe",
+        "the answer, with no retry needed",
+    )?;
     let agent = AgentBuilder::new(model).build();
     greet(&agent).await?;
     run(&agent).await?;
-    responses.assert_calls_async(5).await;
+    responses.assert_calls_async(6).await;
 
     let deepseek = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
     ensure(
@@ -226,6 +230,31 @@ async fn tell_a_story(
     Ok(())
 }
 
+/// Reads a stream relayed over the bus: its failure is the last update,
+/// with what arrived before it.
+async fn read_relayed(events: StreamEvents, kept: &mut Vec<Message>) -> Result<(), RigError> {
+    let mut stream = CompletionStream::relay("model", events);
+    let mut updates = stream.updates();
+    while let Some(update) = updates.next().await {
+        if let Update::Failed { error, partial } = update {
+            kept.push(partial.into());
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+/// Calls once more when the transport failed and the failure is worth
+/// retrying: the report's kind and verdict replace a downcast.
+async fn call_with_one_retry(model: &DynModel<Completion>) -> Result<String, RigError> {
+    match model.call("Hi").await {
+        Err(error) if error.kind == ErrorKind::Http && error.retryable => {
+            Ok(model.call("Hi").await?.text())
+        }
+        result => Ok(result?.text()),
+    }
+}
+
 /// A stream cut before its end fails with what arrived: the caller keeps
 /// the partial answer in its history and returns the error.
 #[tokio::test]
@@ -237,6 +266,14 @@ async fn a_failed_stream_ends_with_its_partial_response() -> Result<(), RigError
         .with_http(http)
         .completion(anthropic::CLAUDE_SONNET_4_6)
         .into();
+
+    let mut kept = Vec::new();
+    let relayed = read_relayed(Box::pin(model.stream("Tell me a story.")?), &mut kept).await;
+    ensure(
+        relayed.is_err_and(|error| error.kind == ErrorKind::Response),
+        "the relayed truncation",
+    )?;
+    ensure(kept.len() == 1, "the relayed partial answer is kept")?;
 
     let mut history = Vec::new();
     let Err(error) = tell_a_story(&model, &mut history).await else {

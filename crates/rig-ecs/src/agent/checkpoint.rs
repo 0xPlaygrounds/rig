@@ -98,10 +98,14 @@ pub enum CheckpointError {
     ZeroTurn,
 }
 
-/// The host's request is not one a run can honor.
+/// The host's request is not one a run can honor, as the checkpoint's own
+/// validation reports it: a request that cannot be built.
 impl From<CheckpointError> for rig_core::error::RigError {
     fn from(error: CheckpointError) -> Self {
-        Self::other(error)
+        Self {
+            kind: rig_core::error::ErrorKind::Request,
+            ..Self::other(error)
+        }
     }
 }
 
