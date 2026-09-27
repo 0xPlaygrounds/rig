@@ -5,7 +5,7 @@
 //! client; on a host with none (a bare `ubuntu` container, say)
 //! `reqwest::Client::new()` panics with "No CA certificates were loaded from
 //! the system". [`rig_reqwest::shared`] promises a transport, so that failure
-//! must come back from the first call as `ProviderError::Http`.
+//! must come back from the first call as an `ErrorKind::Http` error.
 //!
 //! The store is emptied through the `SSL_CERT_FILE` / `SSL_CERT_DIR`
 //! overrides rustls-native-certs honours, which is why this test is its own
@@ -20,7 +20,7 @@
 
 use futures::StreamExt;
 use rig_core::completion::CompletionRequest;
-use rig_core::error::{ErrorKind, ProviderError};
+use rig_core::error::ErrorKind;
 use rig_core::providers::openai::OpenAIConfig;
 
 fn empty_the_ca_store() {
@@ -41,8 +41,8 @@ async fn the_shared_transport_reports_a_missing_ca_store_on_send() {
         .completion("gpt-5.2");
     let request = CompletionRequest::new("hello");
     let outcome = match model.call(request.clone()).await {
-        Err(ProviderError::Http(error)) => error.to_string(),
-        Err(other) => format!("wrong variant: {other}"),
+        Err(error) if error.kind == ErrorKind::Http => error.message,
+        Err(other) => format!("wrong kind: {other:?}"),
         Ok(_) => "sent a request with no CA store".to_owned(),
     };
     assert!(
