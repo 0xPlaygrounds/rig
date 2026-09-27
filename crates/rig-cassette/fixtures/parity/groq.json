@@ -1,0 +1,4496 @@
+{
+  "agent_tool_sessions/json_object_response_format_roundtrip.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "{\n  \"release_lane\": \"canary\",\n  \"risk\": \"low\",\n  \"checks\": {\n    \"compile\": true,\n    \"replay\": true\n  }\n}",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 46,
+      "output_tokens": 45,
+      "total_tokens": 91
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-f17f227a-0931-40f8-b952-93843486e6b1",
+    "finish_reason": "stop",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36hjf21egaasf8cq1afm781",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "{\n  \"release_lane\": \"canary\",\n  \"risk\": \"low\",\n  \"checks\": {\n    \"compile\": true,\n    \"replay\": true\n  }\n}",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-f17f227a-0931-40f8-b952-93843486e6b1",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_57c7e760a9",
+      "usage": {
+        "completion_time": 0.088502995,
+        "completion_tokens": 45,
+        "prompt_time": 0.003381439,
+        "prompt_tokens": 46,
+        "queue_time": 0.004410393,
+        "total_time": 0.091884434,
+        "total_tokens": 91
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hjf21egaasf8cq1afm781",
+        "seed": 1201209497
+      }
+    }
+  },
+  "agent_tool_sessions/json_schema_structured_output_roundtrip.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to output the JSON object as per schema. Must include fields: lane, risk, checks with compile and replay booleans. Must be compact JSON, no additional properties.\n\nThus: {\"lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "{\"lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 260,
+      "output_tokens": 91,
+      "total_tokens": 351,
+      "reasoning_tokens": 61
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-17796c76-ea84-4c96-85ca-ca9b8fd185cd",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36h5mrweaf9bqd393r4wkn6",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "{\"lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}",
+            "reasoning": "We need to output the JSON object as per schema. Must include fields: lane, risk, checks with compile and replay booleans. Must be compact JSON, no additional properties.\n\nThus: {\"lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-17796c76-ea84-4c96-85ca-ca9b8fd185cd",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_5979a0e1b7",
+      "usage": {
+        "completion_time": 0.118494915,
+        "completion_tokens": 91,
+        "completion_tokens_details": {
+          "reasoning_tokens": 61
+        },
+        "prompt_time": 0.018146425,
+        "prompt_tokens": 260,
+        "queue_time": 0.142865247,
+        "total_time": 0.13664134,
+        "total_tokens": 351
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36h5mrweaf9bqd393r4wkn6",
+        "seed": 640703055
+      }
+    }
+  },
+  "agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "Your favorite color is teal, the tool label is crimson-harbor, and the release lane is canary.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 446,
+      "output_tokens": 24,
+      "total_tokens": 470
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-34b7078f-6737-4f11-9a40-ebf9a767a8f9",
+    "finish_reason": "stop",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36k0ertexj9k41g2sc4ab0m",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "Your favorite color is teal, the tool label is crimson-harbor, and the release lane is canary.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-34b7078f-6737-4f11-9a40-ebf9a767a8f9",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_fea14bdc83",
+      "usage": {
+        "completion_time": 0.045711825,
+        "completion_tokens": 24,
+        "prompt_time": 0.031356318,
+        "prompt_tokens": 446,
+        "queue_time": 0.022916197,
+        "total_time": 0.077068143,
+        "total_tokens": 470
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36k0ertexj9k41g2sc4ab0m",
+        "seed": 1755392102
+      }
+    }
+  },
+  "agent_tool_sessions/low_latency_streaming_text_surfaces_final_usage.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "alpha,beta,gamma,delta,epsilon,zeta,eta,theta",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 51,
+      "output_tokens": 16,
+      "total_tokens": 67
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-ef12fcaf-398b-47b9-9da8-02447c010364",
+    "finish_reason": "stop",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36hnsxxej1b3dnab3p9z9hc",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 51,
+        "completion_tokens": 16,
+        "total_tokens": 67,
+        "queue_time": 0.004035914,
+        "prompt_time": 0.00400693,
+        "completion_time": 0.031519729,
+        "total_time": 0.035526659
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-ef12fcaf-398b-47b9-9da8-02447c010364",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_57c7e760a9",
+        "x_groq": {
+          "id": "req_01m36hnsxxej1b3dnab3p9z9hc",
+          "seed": 2067746839,
+          "usage": {
+            "completion_time": 0.031519729,
+            "completion_tokens": 16,
+            "prompt_time": 0.00400693,
+            "prompt_tokens": 51,
+            "queue_time": 0.004035914,
+            "total_time": 0.035526659,
+            "total_tokens": 67
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "znjyej3xe",
+          "item_id": null,
+          "name": "lookup_harbor_label",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      },
+      {
+        "tool_call": {
+          "id": "b9tm540rw",
+          "item_id": null,
+          "name": "lookup_orchard_label",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 410,
+      "output_tokens": 36,
+      "total_tokens": 446
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-0b83d81a-3f7f-4bce-b66d-f599bc8f9193",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jh326ehjrhm27senqn6rk",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_harbor_label"
+                },
+                "id": "znjyej3xe",
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_orchard_label"
+                },
+                "id": "b9tm540rw",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-0b83d81a-3f7f-4bce-b66d-f599bc8f9193",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_57c7e760a9",
+      "usage": {
+        "completion_time": 0.075613879,
+        "completion_tokens": 36,
+        "prompt_time": 0.033889083,
+        "prompt_tokens": 410,
+        "queue_time": 0.028861322,
+        "total_time": 0.109502962,
+        "total_tokens": 446
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jh326ehjrhm27senqn6rk",
+        "seed": 539273634
+      }
+    }
+  },
+  "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "The two tool outputs are \"crimson-harbor\" and \"silver-orchard\".",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 477,
+      "output_tokens": 20,
+      "total_tokens": 497
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-7f78e339-e3f0-42b9-93d9-c5997b393242",
+    "finish_reason": "stop",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jh38aeex9afjnhgyjayc8",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "The two tool outputs are \"crimson-harbor\" and \"silver-orchard\".",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-7f78e339-e3f0-42b9-93d9-c5997b393242",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_57c7e760a9",
+      "usage": {
+        "completion_time": 0.039422384,
+        "completion_tokens": 20,
+        "prompt_time": 0.0381043,
+        "prompt_tokens": 477,
+        "queue_time": 0.023233745,
+        "total_time": 0.077526684,
+        "total_tokens": 497
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jh38aeex9afjnhgyjayc8",
+        "seed": 213147573
+      }
+    }
+  },
+  "agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "cmn4emmv0",
+          "item_id": null,
+          "name": "lookup_harbor_label",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      },
+      {
+        "tool_call": {
+          "id": "q0j7bywj3",
+          "item_id": null,
+          "name": "lookup_orchard_label",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 410,
+      "output_tokens": 36,
+      "total_tokens": 446
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-723f1e72-c2bb-4f03-b373-bc9ef78b2a1d",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jjyv5ew79ppc6cscen2ha",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 410,
+        "completion_tokens": 36,
+        "total_tokens": 446,
+        "queue_time": 0.029443196,
+        "prompt_time": 0.032745243,
+        "completion_time": 0.072395918,
+        "total_time": 0.105141161
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-723f1e72-c2bb-4f03-b373-bc9ef78b2a1d",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_5e14805ce3",
+        "x_groq": {
+          "id": "req_01m36jjyv5ew79ppc6cscen2ha",
+          "seed": 1833284288,
+          "usage": {
+            "completion_time": 0.072395918,
+            "completion_tokens": 36,
+            "prompt_time": 0.032745243,
+            "prompt_tokens": 410,
+            "queue_time": 0.029443196,
+            "total_time": 0.105141161,
+            "total_tokens": 446
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml#1": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "The lookup_harbor_label returned \"crimson-harbor\" and lookup_orchard_label returned \"silver-orchard\".",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 477,
+      "output_tokens": 28,
+      "total_tokens": 505
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-088f54a8-1530-4776-9830-b7812a3ac7ff",
+    "finish_reason": "stop",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jjz1be8ms9efpxwj1xzw5",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 477,
+        "completion_tokens": 28,
+        "total_tokens": 505,
+        "queue_time": 0.022160739,
+        "prompt_time": 0.03816192,
+        "completion_time": 0.056713753,
+        "total_time": 0.094875673
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-088f54a8-1530-4776-9830-b7812a3ac7ff",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_5e14805ce3",
+        "x_groq": {
+          "id": "req_01m36jjz1be8ms9efpxwj1xzw5",
+          "seed": 1821687485,
+          "usage": {
+            "completion_time": 0.056713753,
+            "completion_tokens": 28,
+            "prompt_time": 0.03816192,
+            "prompt_tokens": 477,
+            "queue_time": 0.022160739,
+            "total_time": 0.094875673,
+            "total_tokens": 505
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "w2acbw4dw",
+          "item_id": null,
+          "name": "inspect_manifest",
+          "arguments": {
+            "flags": {
+              "critical": true,
+              "retries": 2
+            },
+            "note": "streamed nested JSON",
+            "project": "rig-groq",
+            "steps": [
+              {
+                "name": "plan",
+                "weight": 1
+              },
+              {
+                "name": "verify",
+                "weight": 2
+              }
+            ]
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 448,
+      "output_tokens": 104,
+      "total_tokens": 552
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-d70b46a9-7be5-49e1-8652-4ec3239a930f",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jmtkmeef95b66xzrfvhe2",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 448,
+        "completion_tokens": 104,
+        "total_tokens": 552,
+        "queue_time": 0.071996749,
+        "prompt_time": 0.03729024,
+        "completion_time": 0.256833784,
+        "total_time": 0.294124024
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-d70b46a9-7be5-49e1-8652-4ec3239a930f",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_5e14805ce3",
+        "x_groq": {
+          "id": "req_01m36jmtkmeef95b66xzrfvhe2",
+          "seed": 1870259520,
+          "usage": {
+            "completion_time": 0.256833784,
+            "completion_tokens": 104,
+            "prompt_time": 0.03729024,
+            "prompt_tokens": 448,
+            "queue_time": 0.071996749,
+            "total_time": 0.294124024,
+            "total_tokens": 552
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "5dettfrmf",
+          "item_id": null,
+          "name": "ping_empty",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 896,
+      "output_tokens": 15,
+      "total_tokens": 911
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-308c299c-936d-428b-9f1f-afcce87e7606",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jppcvegyvpm3x96r6e41f",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "ping_empty"
+                },
+                "id": "5dettfrmf",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-308c299c-936d-428b-9f1f-afcce87e7606",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_57c7e760a9",
+      "usage": {
+        "completion_time": 0.030324028,
+        "completion_tokens": 15,
+        "prompt_time": 0.071952213,
+        "prompt_tokens": 896,
+        "queue_time": 0.031786226,
+        "total_time": 0.102276241,
+        "total_tokens": 911
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jppcvegyvpm3x96r6e41f",
+        "seed": 2144679403
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "yp19xp3yd",
+          "item_id": null,
+          "name": "inspect_manifest",
+          "arguments": {
+            "flags": {
+              "critical": true,
+              "retries": 2
+            },
+            "note": "line one; line two says \"hello\" and path C:/rig/groq",
+            "project": "rig-groq",
+            "steps": [
+              {
+                "name": "plan",
+                "weight": 1
+              },
+              {
+                "name": "verify",
+                "weight": 2
+              }
+            ]
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 931,
+      "output_tokens": 117,
+      "total_tokens": 1048
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-376fac93-f2d5-44a3-85cf-42039e422fb3",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jppk3e1w9thj04ecebayh",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"flags\":{\"critical\":true,\"retries\":2},\"note\":\"line one; line two says \\\"hello\\\" and path C:/rig/groq\",\"project\":\"rig-groq\",\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}]}",
+                  "name": "inspect_manifest"
+                },
+                "id": "yp19xp3yd",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-376fac93-f2d5-44a3-85cf-42039e422fb3",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_57c7e760a9",
+      "usage": {
+        "completion_time": 0.321721785,
+        "completion_tokens": 117,
+        "prompt_time": 0.074660759,
+        "prompt_tokens": 931,
+        "queue_time": 0.023479869,
+        "total_time": 0.396382544,
+        "total_tokens": 1048
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jppk3e1w9thj04ecebayh",
+        "seed": 407698168
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#2": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "exd1a5pqa",
+          "item_id": null,
+          "name": "join_labels",
+          "arguments": {
+            "labels": [
+              "north",
+              "beta gamma",
+              "quote:\"delta\"",
+              "slash\\path"
+            ],
+            "separator": "|"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1087,
+      "output_tokens": 55,
+      "total_tokens": 1142
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-4c970553-b51f-4bc1-81de-80bc0a3a4eb3",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jpq4teqc9wbqaqhvc6ekw",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
+                  "name": "join_labels"
+                },
+                "id": "exd1a5pqa",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-4c970553-b51f-4bc1-81de-80bc0a3a4eb3",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_5e14805ce3",
+      "usage": {
+        "completion_time": 0.1355205,
+        "completion_tokens": 55,
+        "prompt_time": 0.087392509,
+        "prompt_tokens": 1087,
+        "queue_time": 0.036415221,
+        "total_time": 0.222913009,
+        "total_tokens": 1142
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jpq4teqc9wbqaqhvc6ekw",
+        "seed": 449265998
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#3": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "a9md5g42r",
+          "item_id": null,
+          "name": "optional_nullable_probe",
+          "arguments": {
+            "name": "sentinel",
+            "nullable_code": null
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1175,
+      "output_tokens": 41,
+      "total_tokens": 1216
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-1d4f2075-43da-49a5-a77c-d367670d4aa2",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jpqhxeqyvfj0mtk0h3wr1",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"name\":\"sentinel\",\"nullable_code\":null}",
+                  "name": "optional_nullable_probe"
+                },
+                "id": "a9md5g42r",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-1d4f2075-43da-49a5-a77c-d367670d4aa2",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_57c7e760a9",
+      "usage": {
+        "completion_time": 0.10390801,
+        "completion_tokens": 41,
+        "prompt_time": 0.094633007,
+        "prompt_tokens": 1175,
+        "queue_time": 0.06323568,
+        "total_time": 0.198541017,
+        "total_tokens": 1216
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jpqhxeqyvfj0mtk0h3wr1",
+        "seed": 1017535681
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#4": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "zh6t2s3ak",
+          "item_id": null,
+          "name": "escape_echo",
+          "arguments": {
+            "text": "Line 1\nLine \"2\" with colon: ok and unicode snowman ☃"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1246,
+      "output_tokens": 43,
+      "total_tokens": 1289
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-7119e1ea-bc93-43f8-b918-e5d91e6f18e7",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jpr4seqdsv0pc8e3vjh9n",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with colon: ok and unicode snowman ☃\"}",
+                  "name": "escape_echo"
+                },
+                "id": "zh6t2s3ak",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-7119e1ea-bc93-43f8-b918-e5d91e6f18e7",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_5e14805ce3",
+      "usage": {
+        "completion_time": 0.145815365,
+        "completion_tokens": 43,
+        "prompt_time": 0.100547463,
+        "prompt_tokens": 1246,
+        "queue_time": 0.082561605,
+        "total_time": 0.246362828,
+        "total_tokens": 1289
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jpr4seqdsv0pc8e3vjh9n",
+        "seed": 1606391344
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml#5": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1328,
+      "output_tokens": 29,
+      "total_tokens": 1357
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-96f8c347-1af6-4347-8cc7-8e763373bc65",
+    "finish_reason": "stop",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jprmqea08ts1y29dmresy",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-96f8c347-1af6-4347-8cc7-8e763373bc65",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_b930cafd52",
+      "usage": {
+        "completion_time": 0.055237771,
+        "completion_tokens": 29,
+        "prompt_time": 0.117177437,
+        "prompt_tokens": 1328,
+        "queue_time": 0.252745323,
+        "total_time": 0.172415208,
+        "total_tokens": 1357
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jprmqea08ts1y29dmresy",
+        "seed": 1784305250
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "rjcxzfxjx",
+          "item_id": null,
+          "name": "ping_empty",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 896,
+      "output_tokens": 15,
+      "total_tokens": 911
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-a1b62843-c67f-40ab-9744-5896de6aed3e",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jrmkwe8bv901tpke4ndvd",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 896,
+        "completion_tokens": 15,
+        "total_tokens": 911,
+        "queue_time": 0.023389366,
+        "prompt_time": 0.071908552,
+        "completion_time": 0.030638144,
+        "total_time": 0.102546696
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-a1b62843-c67f-40ab-9744-5896de6aed3e",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_5e14805ce3",
+        "x_groq": {
+          "id": "req_01m36jrmkwe8bv901tpke4ndvd",
+          "seed": 602109842,
+          "usage": {
+            "completion_time": 0.030638144,
+            "completion_tokens": 15,
+            "prompt_time": 0.071908552,
+            "prompt_tokens": 896,
+            "queue_time": 0.023389366,
+            "total_time": 0.102546696,
+            "total_tokens": 911
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#1": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "c48cct7h9",
+          "item_id": null,
+          "name": "inspect_manifest",
+          "arguments": {
+            "flags": {
+              "critical": true,
+              "retries": 2
+            },
+            "note": "line one; line two says \"hello\" and path C:/rig/groq",
+            "project": "rig-groq",
+            "steps": [
+              {
+                "name": "plan",
+                "weight": 1
+              },
+              {
+                "name": "verify",
+                "weight": 2
+              }
+            ]
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 931,
+      "output_tokens": 117,
+      "total_tokens": 1048
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-3d9f4f94-5f45-42b2-b1f8-9a223ab2e078",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jrmtze59r64gtamc7nd09",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 931,
+        "completion_tokens": 117,
+        "total_tokens": 1048,
+        "queue_time": 0.022806488,
+        "prompt_time": 0.074745969,
+        "completion_time": 0.326631343,
+        "total_time": 0.401377312
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-3d9f4f94-5f45-42b2-b1f8-9a223ab2e078",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_5e14805ce3",
+        "x_groq": {
+          "id": "req_01m36jrmtze59r64gtamc7nd09",
+          "seed": 683478589,
+          "usage": {
+            "completion_time": 0.326631343,
+            "completion_tokens": 117,
+            "prompt_time": 0.074745969,
+            "prompt_tokens": 931,
+            "queue_time": 0.022806488,
+            "total_time": 0.401377312,
+            "total_tokens": 1048
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#2": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "e4jqtc0z2",
+          "item_id": null,
+          "name": "join_labels",
+          "arguments": {
+            "labels": [
+              "north",
+              "beta gamma",
+              "quote:\"delta\"",
+              "slash\\path"
+            ],
+            "separator": "|"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1087,
+      "output_tokens": 55,
+      "total_tokens": 1142
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-cffe4fb7-f783-4dfb-8274-6c0f203288be",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jrnb2e9b9pjaw346y1rex",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 1087,
+        "completion_tokens": 55,
+        "total_tokens": 1142,
+        "queue_time": 0.023290193,
+        "prompt_time": 0.093072468,
+        "completion_time": 0.128306431,
+        "total_time": 0.221378899
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-cffe4fb7-f783-4dfb-8274-6c0f203288be",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_5e14805ce3",
+        "x_groq": {
+          "id": "req_01m36jrnb2e9b9pjaw346y1rex",
+          "seed": 1169938239,
+          "usage": {
+            "completion_time": 0.128306431,
+            "completion_tokens": 55,
+            "prompt_time": 0.093072468,
+            "prompt_tokens": 1087,
+            "queue_time": 0.023290193,
+            "total_time": 0.221378899,
+            "total_tokens": 1142
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#3": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "k16tyypvm",
+          "item_id": null,
+          "name": "optional_nullable_probe",
+          "arguments": {
+            "name": "sentinel",
+            "nullable_code": null
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1175,
+      "output_tokens": 41,
+      "total_tokens": 1216
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-fd4388ed-687c-4082-b31b-be8e7b3ac528",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jrnqzetarjf0tc6erdxzs",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 1175,
+        "completion_tokens": 41,
+        "total_tokens": 1216,
+        "queue_time": 0.023295957,
+        "prompt_time": 0.094309532,
+        "completion_time": 0.113911155,
+        "total_time": 0.208220687
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-fd4388ed-687c-4082-b31b-be8e7b3ac528",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_5e14805ce3",
+        "x_groq": {
+          "id": "req_01m36jrnqzetarjf0tc6erdxzs",
+          "seed": 1581393356,
+          "usage": {
+            "completion_time": 0.113911155,
+            "completion_tokens": 41,
+            "prompt_time": 0.094309532,
+            "prompt_tokens": 1175,
+            "queue_time": 0.023295957,
+            "total_time": 0.208220687,
+            "total_tokens": 1216
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#4": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "nc94bxy3q",
+          "item_id": null,
+          "name": "escape_echo",
+          "arguments": {
+            "text": "Line 1\nLine \"2\" with colon: ok and unicode snowman ☃"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1246,
+      "output_tokens": 43,
+      "total_tokens": 1289
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-d3aa504a-79b0-408b-8ebb-8309f8a807ba",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jrp14efj9ve0h2kz74961",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 1246,
+        "completion_tokens": 43,
+        "total_tokens": 1289,
+        "queue_time": 0.02545509,
+        "prompt_time": 0.100148308,
+        "completion_time": 0.151163614,
+        "total_time": 0.251311922
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-d3aa504a-79b0-408b-8ebb-8309f8a807ba",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_57c7e760a9",
+        "x_groq": {
+          "id": "req_01m36jrp14efj9ve0h2kz74961",
+          "seed": 93507697,
+          "usage": {
+            "completion_time": 0.151163614,
+            "completion_tokens": 43,
+            "prompt_time": 0.100148308,
+            "prompt_tokens": 1246,
+            "queue_time": 0.02545509,
+            "total_time": 0.251311922,
+            "total_tokens": 1289
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml#5": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1328,
+      "output_tokens": 29,
+      "total_tokens": 1357
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-3eaf7c4c-2aab-4033-87c2-cbd3502ec710",
+    "finish_reason": "stop",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jrpe7etqs2z4e7sjftn64",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 1328,
+        "completion_tokens": 29,
+        "total_tokens": 1357,
+        "queue_time": 0.022277903,
+        "prompt_time": 0.106835604,
+        "completion_time": 0.057130079,
+        "total_time": 0.163965683
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-3eaf7c4c-2aab-4033-87c2-cbd3502ec710",
+      "model": "qwen/qwen3.8-27b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_57c7e760a9",
+        "x_groq": {
+          "id": "req_01m36jrpe7etqs2z4e7sjftn64",
+          "seed": 1604590240,
+          "usage": {
+            "completion_time": 0.057130079,
+            "completion_tokens": 29,
+            "prompt_time": 0.106835604,
+            "prompt_tokens": 1328,
+            "queue_time": 0.022277903,
+            "total_time": 0.163965683,
+            "total_tokens": 1357
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "agent_tool_sessions/tool_choice_auto_required_specific_and_none.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "x3zhgr0dm",
+          "item_id": null,
+          "name": "lookup_harbor_label",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 274,
+      "output_tokens": 18,
+      "total_tokens": 292
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-822f0988-befd-44bc-a5c7-5e1f9c1f8e18",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jz8sye9sa4nmfsjg69pf5",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_harbor_label"
+                },
+                "id": "x3zhgr0dm",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-822f0988-befd-44bc-a5c7-5e1f9c1f8e18",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_57c7e760a9",
+      "usage": {
+        "completion_time": 0.03729819,
+        "completion_tokens": 18,
+        "prompt_time": 0.021746716,
+        "prompt_tokens": 274,
+        "queue_time": 0.024733853,
+        "total_time": 0.059044906,
+        "total_tokens": 292
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jz8sye9sa4nmfsjg69pf5",
+        "seed": 2135950543
+      }
+    }
+  },
+  "agent_tool_sessions/tool_choice_auto_required_specific_and_none.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "yb0yeahxt",
+          "item_id": null,
+          "name": "lookup_harbor_label",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 280,
+      "output_tokens": 18,
+      "total_tokens": 298
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-260e4a9a-5afa-4533-8796-a322dc0b9a01",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jz8ypehnb4g0fp440a5ah",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_harbor_label"
+                },
+                "id": "yb0yeahxt",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-260e4a9a-5afa-4533-8796-a322dc0b9a01",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_1944680867",
+      "usage": {
+        "completion_time": 0.035144809,
+        "completion_tokens": 18,
+        "prompt_time": 0.019032885,
+        "prompt_tokens": 280,
+        "queue_time": 0.052088629,
+        "total_time": 0.054177694,
+        "total_tokens": 298
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jz8ypehnb4g0fp440a5ah",
+        "seed": 1407198902
+      }
+    }
+  },
+  "agent_tool_sessions/tool_choice_auto_required_specific_and_none.yaml#2": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "p0hsmxdcq",
+          "item_id": null,
+          "name": "lookup_orchard_label",
+          "arguments": {},
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 329,
+      "output_tokens": 18,
+      "total_tokens": 347
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-60ea88b0-a3c9-40b2-9446-e762bc5dfb5f",
+    "finish_reason": "tool_calls",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36jz93ves7a7ghdwjmgz1m2",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_orchard_label"
+                },
+                "id": "p0hsmxdcq",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-60ea88b0-a3c9-40b2-9446-e762bc5dfb5f",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_57c7e760a9",
+      "usage": {
+        "completion_time": 0.036208933,
+        "completion_tokens": 18,
+        "prompt_time": 0.026487987,
+        "prompt_tokens": 329,
+        "queue_time": 0.032257048,
+        "total_time": 0.06269692,
+        "total_tokens": 347
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jz93ves7a7ghdwjmgz1m2",
+        "seed": 1506086341
+      }
+    }
+  },
+  "agent_tool_sessions/tool_choice_auto_required_specific_and_none.yaml#3": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Do not call tools. Reply with exactly this phrase: no-tool-answer\". So we must output exactly that phrase, no extra text. Ensure not to call any tools. Just output \"no-tool-answer\".",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "no-tool-answer",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 132,
+      "output_tokens": 59,
+      "total_tokens": 191,
+      "reasoning_tokens": 47
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-3b0df125-9fa2-48e9-bf7a-cdf15577e779",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-120b",
+    "provider_request_id": "req_01m36jz98medsaqv6asjnftm6r",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "no-tool-answer",
+            "reasoning": "The user says: \"Do not call tools. Reply with exactly this phrase: no-tool-answer\". So we must output exactly that phrase, no extra text. Ensure not to call any tools. Just output \"no-tool-answer\".",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-3b0df125-9fa2-48e9-bf7a-cdf15577e779",
+      "model": "openai/gpt-oss-120b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_64b2f1c926",
+      "usage": {
+        "completion_time": 0.125074783,
+        "completion_tokens": 59,
+        "completion_tokens_details": {
+          "reasoning_tokens": 47
+        },
+        "prompt_time": 0.029083472,
+        "prompt_tokens": 132,
+        "queue_time": 0.279884311,
+        "total_time": 0.154158255,
+        "total_tokens": 191
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36jz98medsaqv6asjnftm6r",
+        "seed": 1574522375
+      }
+    }
+  },
+  "constants_matrix/gpt_oss_120b_completion_smoke.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We have a user request: \"Reply with the single word OK.\" There's no disallowed content. The user wants a single word response: OK. According to policy, we comply.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "OK",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 78,
+      "output_tokens": 48,
+      "total_tokens": 126,
+      "reasoning_tokens": 38
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-885330b2-e18d-4fc4-85d2-1c850a0d41a0",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-120b",
+    "provider_request_id": "req_01m36hbvvnejjvkmhnmv5nwbaa",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "OK",
+            "reasoning": "We have a user request: \"Reply with the single word OK.\" There's no disallowed content. The user wants a single word response: OK. According to policy, we comply.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-885330b2-e18d-4fc4-85d2-1c850a0d41a0",
+      "model": "openai/gpt-oss-120b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_3166198c1d",
+      "usage": {
+        "completion_time": 0.101623401,
+        "completion_tokens": 48,
+        "completion_tokens_details": {
+          "reasoning_tokens": 38
+        },
+        "prompt_time": 0.003453967,
+        "prompt_tokens": 78,
+        "queue_time": 0.074423117,
+        "total_time": 0.105077368,
+        "total_tokens": 126
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hbvvnejjvkmhnmv5nwbaa",
+        "seed": 1173313477
+      }
+    }
+  },
+  "constants_matrix/gpt_oss_20b_completion_smoke.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user wants a single word \"OK\". Just output OK.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "OK",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 78,
+      "output_tokens": 24,
+      "total_tokens": 102,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-711588cd-2be4-4e94-a545-6888280c9185",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36h5pcvensrnvb81cpv1pnb",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "OK",
+            "reasoning": "The user wants a single word \"OK\". Just output OK.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-711588cd-2be4-4e94-a545-6888280c9185",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_976a85d17a",
+      "usage": {
+        "completion_time": 0.024091798,
+        "completion_tokens": 24,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "prompt_time": 0.004233099,
+        "prompt_tokens": 78,
+        "queue_time": 0.115155967,
+        "total_time": 0.028324897,
+        "total_tokens": 102
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36h5pcvensrnvb81cpv1pnb",
+        "seed": 780107356
+      }
+    }
+  },
+  "constants_matrix/qwen3_8_27b_completion_smoke.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "OK",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 19,
+      "output_tokens": 2,
+      "total_tokens": 21
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-60543215-625d-4b57-8070-510c01f217a8",
+    "finish_reason": "stop",
+    "model": "qwen/qwen3.8-27b",
+    "provider_request_id": "req_01m36h5pcze27rf9mdgxhhekeg",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "OK",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-60543215-625d-4b57-8070-510c01f217a8",
+      "model": "qwen/qwen3.8-27b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_5e14805ce3",
+      "usage": {
+        "completion_time": 0.004194816,
+        "completion_tokens": 2,
+        "prompt_time": 0.001452152,
+        "prompt_tokens": 19,
+        "queue_time": 0.091040441,
+        "total_time": 0.005646968,
+        "total_tokens": 21
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36h5pcze27rf9mdgxhhekeg",
+        "seed": 83407184
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to perform two lookups: alpha record and beta record. Then for each returned code, we need to verify it using verify_code. We must use the provided tools. No guesswork. We must handle transient failure: if verify_code fails transiently, call it again once. Report both codes with verification status.\n\nThus, we need to call functions.lookup_record twice: once with record \"alpha\", then with \"beta\". Then for each code, call functions.verify_code with code. If fails transiently, retry once. Then produce a brief answer: codes and verification status. We need to output maybe something like \"Alpha: <code>, verified: true\" etc.\n\nWe need to use the tool. Let's do first lookup.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_9a895906-1f80-41a4-b138-0828027ed032",
+          "item_id": null,
+          "name": "lookup_record",
+          "arguments": {
+            "record": "alpha"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 227,
+      "output_tokens": 173,
+      "total_tokens": 400,
+      "reasoning_tokens": 150
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-cf17299b-06e5-45c5-bb68-3ffa2526dc01",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbwf7efdt0axpyzgf2va6",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 227,
+        "completion_tokens": 173,
+        "total_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 150
+        },
+        "queue_time": 0.210132574,
+        "prompt_time": 0.012749555,
+        "completion_time": 0.21556922,
+        "total_time": 0.228318775
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-cf17299b-06e5-45c5-bb68-3ffa2526dc01",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_9b8528b477",
+        "x_groq": {
+          "id": "req_01m36hbwf7efdt0axpyzgf2va6",
+          "seed": 1832310012,
+          "usage": {
+            "completion_time": 0.21556922,
+            "completion_tokens": 173,
+            "completion_tokens_details": {
+              "reasoning_tokens": 150
+            },
+            "prompt_time": 0.012749555,
+            "prompt_tokens": 227,
+            "queue_time": 0.210132574,
+            "total_time": 0.228318775,
+            "total_tokens": 400
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#1": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to also lookup beta record. Let's call lookup_record for beta.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_1fa072f9-02a4-4a4a-ac54-c489d8ffc008",
+          "item_id": null,
+          "name": "lookup_record",
+          "arguments": {
+            "record": "beta"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 261,
+      "output_tokens": 36,
+      "total_tokens": 297,
+      "reasoning_tokens": 16
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-26a2c769-468f-4646-9f52-4312e47b0411",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbx0zedbrfspqadrp9e95",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 261,
+        "completion_tokens": 36,
+        "total_tokens": 297,
+        "completion_tokens_details": {
+          "reasoning_tokens": 16
+        },
+        "queue_time": 0.177599101,
+        "prompt_time": 0.013220741,
+        "completion_time": 0.04100135,
+        "total_time": 0.054222091
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-26a2c769-468f-4646-9f52-4312e47b0411",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_a4315eb300",
+        "x_groq": {
+          "id": "req_01m36hbx0zedbrfspqadrp9e95",
+          "seed": 1173860503,
+          "usage": {
+            "completion_time": 0.04100135,
+            "completion_tokens": 36,
+            "completion_tokens_details": {
+              "reasoning_tokens": 16
+            },
+            "prompt_time": 0.013220741,
+            "prompt_tokens": 261,
+            "queue_time": 0.177599101,
+            "total_time": 0.054222091,
+            "total_tokens": 297
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#2": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to verify each code via verify_code. Call verify_code for alpha-code-7431. If fails transiently, retry once. Then beta-code-2286. Provide brief answer: \"Alpha code: X (verified), Beta code: Y (verified)\". Let's perform calls.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_0952b6d8-526e-4117-9bdc-71ba68654e05",
+          "item_id": null,
+          "name": "verify_code",
+          "arguments": {
+            "code": "alpha-code-7431"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 295,
+      "output_tokens": 84,
+      "total_tokens": 379,
+      "reasoning_tokens": 60
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-36ae330c-4d85-452e-9eec-ee9f1fe8b083",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbxajefz8q8101c7gtveh",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 295,
+        "completion_tokens": 84,
+        "total_tokens": 379,
+        "completion_tokens_details": {
+          "reasoning_tokens": 60
+        },
+        "queue_time": 0.003199634,
+        "prompt_time": 0.014437529,
+        "completion_time": 0.105642263,
+        "total_time": 0.120079792
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-36ae330c-4d85-452e-9eec-ee9f1fe8b083",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_4a35f7bd1b",
+        "x_groq": {
+          "id": "req_01m36hbxajefz8q8101c7gtveh",
+          "seed": 252837713,
+          "usage": {
+            "completion_time": 0.105642263,
+            "completion_tokens": 84,
+            "completion_tokens_details": {
+              "reasoning_tokens": 60
+            },
+            "prompt_time": 0.014437529,
+            "prompt_tokens": 295,
+            "queue_time": 0.003199634,
+            "total_time": 0.120079792,
+            "total_tokens": 379
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#3": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "Now we verify beta.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_95688078-5a83-4011-90fd-da2034b21f33",
+          "item_id": null,
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 330,
+      "output_tokens": 30,
+      "total_tokens": 360,
+      "reasoning_tokens": 6
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-a3618bf2-b1a9-472e-9ab2-3e2ec66d54e0",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbxgaeym8xbfprgwqzspg",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 330,
+        "completion_tokens": 30,
+        "total_tokens": 360,
+        "completion_tokens_details": {
+          "reasoning_tokens": 6
+        },
+        "queue_time": 0.086137218,
+        "prompt_time": 0.024220094,
+        "completion_time": 0.032293,
+        "total_time": 0.056513094
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-a3618bf2-b1a9-472e-9ab2-3e2ec66d54e0",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_976a85d17a",
+        "x_groq": {
+          "id": "req_01m36hbxgaeym8xbfprgwqzspg",
+          "seed": 1415507992,
+          "usage": {
+            "completion_time": 0.032293,
+            "completion_tokens": 30,
+            "completion_tokens_details": {
+              "reasoning_tokens": 6
+            },
+            "prompt_time": 0.024220094,
+            "prompt_tokens": 330,
+            "queue_time": 0.086137218,
+            "total_time": 0.056513094,
+            "total_tokens": 360
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#4": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "Beta verification failed transiently. We should retry once.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_3fcb3a90-dfd8-4836-b17f-553919e5fb9b",
+          "item_id": null,
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 362,
+      "output_tokens": 35,
+      "total_tokens": 397,
+      "cached_input_tokens": 256,
+      "reasoning_tokens": 12
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-98090778-2d64-4584-96c6-1996e88ebc8b",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbxptewbv9ad6qb16sr9d",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 362,
+        "completion_tokens": 35,
+        "total_tokens": 397,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 12
+        },
+        "queue_time": 0.115118138,
+        "prompt_time": 0.014920304,
+        "completion_time": 0.036050857,
+        "total_time": 0.050971161
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-98090778-2d64-4584-96c6-1996e88ebc8b",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_976a85d17a",
+        "x_groq": {
+          "id": "req_01m36hbxptewbv9ad6qb16sr9d",
+          "seed": 678523796,
+          "usage": {
+            "completion_time": 0.036050857,
+            "completion_tokens": 35,
+            "completion_tokens_details": {
+              "reasoning_tokens": 12
+            },
+            "prompt_time": 0.014920304,
+            "prompt_tokens": 362,
+            "prompt_tokens_details": {
+              "cached_tokens": 256
+            },
+            "queue_time": 0.115118138,
+            "total_time": 0.050971161,
+            "total_tokens": 397
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#5": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We have to answer briefly: report both codes with verification status. For alpha: verified. For beta: verified after retry. So answer accordingly.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "Alpha code: **alpha-code-7431** – verified.  \nBeta code: **beta-code-2286** – verified.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 397,
+      "output_tokens": 66,
+      "total_tokens": 463,
+      "reasoning_tokens": 30
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-fab612bf-5b90-4e44-b69b-7e1986d5022d",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbxy4ehxteqe0nmqm7z9e",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 397,
+        "completion_tokens": 66,
+        "total_tokens": 463,
+        "completion_tokens_details": {
+          "reasoning_tokens": 30
+        },
+        "queue_time": 0.176171109,
+        "prompt_time": 0.029907339,
+        "completion_time": 0.07322745,
+        "total_time": 0.103134789
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-fab612bf-5b90-4e44-b69b-7e1986d5022d",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_feb9b278f1",
+        "x_groq": {
+          "id": "req_01m36hbxy4ehxteqe0nmqm7z9e",
+          "seed": 1555559002,
+          "usage": {
+            "completion_time": 0.07322745,
+            "completion_tokens": 66,
+            "completion_tokens_details": {
+              "reasoning_tokens": 30
+            },
+            "prompt_time": 0.029907339,
+            "prompt_tokens": 397,
+            "queue_time": 0.176171109,
+            "total_time": 0.103134789,
+            "total_tokens": 463
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#6": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to verify alpha code again. Use verify_code tool.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_bf3559ec-e9f7-4a92-b12b-252df5066fd0",
+          "item_id": null,
+          "name": "verify_code",
+          "arguments": {
+            "code": "alpha-code-7431"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 447,
+      "output_tokens": 38,
+      "total_tokens": 485,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-a1efa38d-6e5e-4429-962b-9bee2d18ac34",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbya2e1g87a75k0y9avtj",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 447,
+        "completion_tokens": 38,
+        "total_tokens": 485,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "queue_time": 0.08777886,
+        "prompt_time": 0.026277607,
+        "completion_time": 0.063010169,
+        "total_time": 0.089287776
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-a1efa38d-6e5e-4429-962b-9bee2d18ac34",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_92d51d08e5",
+        "x_groq": {
+          "id": "req_01m36hbya2e1g87a75k0y9avtj",
+          "seed": 466979638,
+          "usage": {
+            "completion_time": 0.063010169,
+            "completion_tokens": 38,
+            "completion_tokens_details": {
+              "reasoning_tokens": 14
+            },
+            "prompt_time": 0.026277607,
+            "prompt_tokens": 447,
+            "queue_time": 0.08777886,
+            "total_time": 0.089287776,
+            "total_tokens": 485
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#7": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "Alpha code verified again – it remains **alpha-code-7431**.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 482,
+      "output_tokens": 19,
+      "total_tokens": 501,
+      "cached_input_tokens": 256
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-9c3eebbd-9c05-4d91-a726-08be1ad3711d",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbyhseypvwnr9sx45r8xr",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 482,
+        "completion_tokens": 19,
+        "total_tokens": 501,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "queue_time": 0.08615528,
+        "prompt_time": 0.099581857,
+        "completion_time": 0.020003585,
+        "total_time": 0.119585442
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-9c3eebbd-9c05-4d91-a726-08be1ad3711d",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_1c0f5282a2",
+        "x_groq": {
+          "id": "req_01m36hbyhseypvwnr9sx45r8xr",
+          "seed": 1162214223,
+          "usage": {
+            "completion_time": 0.020003585,
+            "completion_tokens": 19,
+            "prompt_time": 0.099581857,
+            "prompt_tokens": 482,
+            "prompt_tokens_details": {
+              "cached_tokens": 256
+            },
+            "queue_time": 0.08615528,
+            "total_time": 0.119585442,
+            "total_tokens": 501
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#8": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "User wants: \"Repeat both codes exactly as reported earlier, separated by a comma, and nothing else.\" That means output \"alpha-code-7431,beta-code-2286\". No quotes, no spaces, just comma. Let's output that.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "alpha-code-7431,beta-code-2286",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 524,
+      "output_tokens": 71,
+      "total_tokens": 595,
+      "reasoning_tokens": 51
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-bdc3af83-d037-436f-99b0-133909187764",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbyt3ehdv0pcmfa40406k",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 524,
+        "completion_tokens": 71,
+        "total_tokens": 595,
+        "completion_tokens_details": {
+          "reasoning_tokens": 51
+        },
+        "queue_time": 0.119160228,
+        "prompt_time": 0.034984024,
+        "completion_time": 0.09431385,
+        "total_time": 0.129297874
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-bdc3af83-d037-436f-99b0-133909187764",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_8b41efc9a3",
+        "x_groq": {
+          "id": "req_01m36hbyt3ehdv0pcmfa40406k",
+          "seed": 1449067638,
+          "usage": {
+            "completion_time": 0.09431385,
+            "completion_tokens": 71,
+            "completion_tokens_details": {
+              "reasoning_tokens": 51
+            },
+            "prompt_time": 0.034984024,
+            "prompt_tokens": 524,
+            "queue_time": 0.119160228,
+            "total_time": 0.129297874,
+            "total_tokens": 595
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to use tool functions: lookup_record for alpha and beta. Then verify_code on each code. Possibly transient failures. The instruction: Use tool for lookup and verification, never guess a code. If transient failure, call again once.\n\nThus we must call lookup_record for alpha, then verify_code on code. Then lookup_record for beta, verify_code. Then report both codes with verification status. Likely output: Alpha code: XXX, status: verified. Beta code: YYY, status: verified. We must handle if verify_code fails transiently. We'll attempt call, if failure, retry once.\n\nWe must produce answer. Use the function calls. Let's call functions.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_5f7c1d1d-e709-4983-9000-0c42bfdd3d70",
+          "item_id": null,
+          "name": "lookup_record",
+          "arguments": {
+            "record": "alpha"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 227,
+      "output_tokens": 161,
+      "total_tokens": 388,
+      "reasoning_tokens": 138
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-d7c0d347-a92d-4eea-97fc-c0c9a76a5516",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hbzx3eakrjtz2rfjddf57",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "reasoning": "We need to use tool functions: lookup_record for alpha and beta. Then verify_code on each code. Possibly transient failures. The instruction: Use tool for lookup and verification, never guess a code. If transient failure, call again once.\n\nThus we must call lookup_record for alpha, then verify_code on code. Then lookup_record for beta, verify_code. Then report both codes with verification status. Likely output: Alpha code: XXX, status: verified. Beta code: YYY, status: verified. We must handle if verify_code fails transiently. We'll attempt call, if failure, retry once.\n\nWe must produce answer. Use the function calls. Let's call functions.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"record\":\"alpha\"}",
+                  "name": "lookup_record"
+                },
+                "id": "fc_5f7c1d1d-e709-4983-9000-0c42bfdd3d70",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-d7c0d347-a92d-4eea-97fc-c0c9a76a5516",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_996f667773",
+      "usage": {
+        "completion_time": 0.194271249,
+        "completion_tokens": 161,
+        "completion_tokens_details": {
+          "reasoning_tokens": 138
+        },
+        "prompt_time": 0.013391172,
+        "prompt_tokens": 227,
+        "queue_time": 0.063209111,
+        "total_time": 0.207662421,
+        "total_tokens": 388
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hbzx3eakrjtz2rfjddf57",
+        "seed": 314480354
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We have alpha record code alpha-code-7431. Next, beta.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_4a32caec-2a50-48fb-8530-7c8f70a8858c",
+          "item_id": null,
+          "name": "lookup_record",
+          "arguments": {
+            "record": "beta"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 261,
+      "output_tokens": 35,
+      "total_tokens": 296,
+      "cached_input_tokens": 256,
+      "reasoning_tokens": 16
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-01109fac-231e-44e5-91af-be38c86b41c3",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc08vet8tahjxqgdajz2v",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "reasoning": "We have alpha record code alpha-code-7431. Next, beta.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"record\":\"beta\"}",
+                  "name": "lookup_record"
+                },
+                "id": "fc_4a32caec-2a50-48fb-8530-7c8f70a8858c",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-01109fac-231e-44e5-91af-be38c86b41c3",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_8b41efc9a3",
+      "usage": {
+        "completion_time": 0.035984969,
+        "completion_tokens": 35,
+        "completion_tokens_details": {
+          "reasoning_tokens": 16
+        },
+        "prompt_time": 0.412322482,
+        "prompt_tokens": 261,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "queue_time": 0.119281696,
+        "total_time": 0.448307451,
+        "total_tokens": 296
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc08vet8tahjxqgdajz2v",
+        "seed": 711831647
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#2": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to verify each code. Use verify_code. First alpha-code-7431.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_7ba0e494-1814-4416-b349-362a2a0122f4",
+          "item_id": null,
+          "name": "verify_code",
+          "arguments": {
+            "code": "alpha-code-7431"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 295,
+      "output_tokens": 43,
+      "total_tokens": 338,
+      "cached_input_tokens": 256,
+      "reasoning_tokens": 19
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-3d551424-bf98-44f6-803f-900356cfde7c",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc0y5eyfrkkeyswzvddhm",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "reasoning": "We need to verify each code. Use verify_code. First alpha-code-7431.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\":\"alpha-code-7431\"}",
+                  "name": "verify_code"
+                },
+                "id": "fc_7ba0e494-1814-4416-b349-362a2a0122f4",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-3d551424-bf98-44f6-803f-900356cfde7c",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_e594c51153",
+      "usage": {
+        "completion_time": 0.044540034,
+        "completion_tokens": 43,
+        "completion_tokens_details": {
+          "reasoning_tokens": 19
+        },
+        "prompt_time": 0.502646753,
+        "prompt_tokens": 295,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "queue_time": 0.02464324,
+        "total_time": 0.547186787,
+        "total_tokens": 338
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc0y5eyfrkkeyswzvddhm",
+        "seed": 1998848624
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#3": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need verify beta as well.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_8f74ef4b-08e8-4d62-8f70-9bbbdc030174",
+          "item_id": null,
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 330,
+      "output_tokens": 32,
+      "total_tokens": 362,
+      "reasoning_tokens": 8
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-fae64031-9ecb-4485-b7e0-91afaf75a06f",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc1qye12sttzgpz7vvdj0",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "reasoning": "We need verify beta as well.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\":\"beta-code-2286\"}",
+                  "name": "verify_code"
+                },
+                "id": "fc_8f74ef4b-08e8-4d62-8f70-9bbbdc030174",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-fae64031-9ecb-4485-b7e0-91afaf75a06f",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_228717f27c",
+      "usage": {
+        "completion_time": 0.034063979,
+        "completion_tokens": 32,
+        "completion_tokens_details": {
+          "reasoning_tokens": 8
+        },
+        "prompt_time": 0.026313015,
+        "prompt_tokens": 330,
+        "queue_time": 0.133878673,
+        "total_time": 0.060376994,
+        "total_tokens": 362
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc1qye12sttzgpz7vvdj0",
+        "seed": 564613061
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#4": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to retry once because of transient failure. We should call verify_code again for beta.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_524a841e-bf26-40a1-bd03-4c7a432ede4a",
+          "item_id": null,
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 362,
+      "output_tokens": 44,
+      "total_tokens": 406,
+      "cached_input_tokens": 256,
+      "reasoning_tokens": 20
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-29361ffe-db02-480f-a813-bf946f3a987d",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc207e0ta82xcen36wkfn",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "reasoning": "We need to retry once because of transient failure. We should call verify_code again for beta.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\":\"beta-code-2286\"}",
+                  "name": "verify_code"
+                },
+                "id": "fc_524a841e-bf26-40a1-bd03-4c7a432ede4a",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-29361ffe-db02-480f-a813-bf946f3a987d",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_a12402de73",
+      "usage": {
+        "completion_time": 0.044905493,
+        "completion_tokens": 44,
+        "completion_tokens_details": {
+          "reasoning_tokens": 20
+        },
+        "prompt_time": 0.007186071,
+        "prompt_tokens": 362,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "queue_time": 0.166206715,
+        "total_time": 0.052091564,
+        "total_tokens": 406
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc207e0ta82xcen36wkfn",
+        "seed": 267648768
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#5": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We have performed lookups and verification, including retry for beta. We should output brief answer: codes and verification status.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "Alpha code: **alpha-code-7431** – Verified  \nBeta code: **beta-code-2286** – Verified",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 397,
+      "output_tokens": 59,
+      "total_tokens": 456,
+      "reasoning_tokens": 25
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-d04ab20d-d1ad-449c-a93d-0af771cbe953",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc292ehrv53pqvzz1ejsw",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "Alpha code: **alpha-code-7431** – Verified  \nBeta code: **beta-code-2286** – Verified",
+            "reasoning": "We have performed lookups and verification, including retry for beta. We should output brief answer: codes and verification status.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-d04ab20d-d1ad-449c-a93d-0af771cbe953",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_4f7e7dc26e",
+      "usage": {
+        "completion_time": 0.063919606,
+        "completion_tokens": 59,
+        "completion_tokens_details": {
+          "reasoning_tokens": 25
+        },
+        "prompt_time": 0.020602751,
+        "prompt_tokens": 397,
+        "queue_time": 0.029786655,
+        "total_time": 0.084522357,
+        "total_tokens": 456
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc292ehrv53pqvzz1ejsw",
+        "seed": 555540026
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#6": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to verify the alpha code again. The tool can be called. We must use verify_code. The previous code was alpha-code-7431. We'll call verify_code with that code.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "tool_call": {
+          "id": "fc_1975c888-2d88-461b-85ac-702ff2352337",
+          "item_id": null,
+          "name": "verify_code",
+          "arguments": {
+            "code": "alpha-code-7431"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 445,
+      "output_tokens": 63,
+      "total_tokens": 508,
+      "reasoning_tokens": 40
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-eb013663-8c58-4048-af37-354546d3312a",
+    "finish_reason": "tool_calls",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc2epey4rkb7anamrajwa",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "reasoning": "We need to verify the alpha code again. The tool can be called. We must use verify_code. The previous code was alpha-code-7431. We'll call verify_code with that code.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\":\"alpha-code-7431\"}",
+                  "name": "verify_code"
+                },
+                "id": "fc_1975c888-2d88-461b-85ac-702ff2352337",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-eb013663-8c58-4048-af37-354546d3312a",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_a8c584dda7",
+      "usage": {
+        "completion_time": 0.095146238,
+        "completion_tokens": 63,
+        "completion_tokens_details": {
+          "reasoning_tokens": 40
+        },
+        "prompt_time": 0.027635071,
+        "prompt_tokens": 445,
+        "queue_time": 0.181056646,
+        "total_time": 0.122781309,
+        "total_tokens": 508
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc2epey4rkb7anamrajwa",
+        "seed": 314951776
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#7": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "The alpha code remains **alpha-code-7431** – unchanged and verified.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 480,
+      "output_tokens": 20,
+      "total_tokens": 500,
+      "cached_input_tokens": 256
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-c8208d58-402a-4a31-9322-f0946b8e6856",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc2v1ec5t58btmf1t9jj0",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "The alpha code remains **alpha-code-7431** – unchanged and verified.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-c8208d58-402a-4a31-9322-f0946b8e6856",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_a12402de73",
+      "usage": {
+        "completion_time": 0.020393066,
+        "completion_tokens": 20,
+        "prompt_time": 0.014350984,
+        "prompt_tokens": 480,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "queue_time": 0.166904202,
+        "total_time": 0.03474405,
+        "total_tokens": 500
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc2v1ec5t58btmf1t9jj0",
+        "seed": 1542182827
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#8": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We need to repeat both codes exactly as earlier: alpha-code-7431, beta-code-2286. No other text, no formatting. Just that string.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "alpha-code-7431, beta-code-2286",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 523,
+      "output_tokens": 54,
+      "total_tokens": 577,
+      "cached_input_tokens": 256,
+      "reasoning_tokens": 34
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-313ddaf6-845c-47c0-af84-8857ef532a50",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc34ce25a7scgrf2nv1dt",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "alpha-code-7431, beta-code-2286",
+            "reasoning": "We need to repeat both codes exactly as earlier: alpha-code-7431, beta-code-2286. No other text, no formatting. Just that string.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-313ddaf6-845c-47c0-af84-8857ef532a50",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_e23fc997ca",
+      "usage": {
+        "completion_time": 0.056148423,
+        "completion_tokens": 54,
+        "completion_tokens_details": {
+          "reasoning_tokens": 34
+        },
+        "prompt_time": 0.016447451,
+        "prompt_tokens": 523,
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        },
+        "queue_time": 0.167718565,
+        "total_time": 0.072595874,
+        "total_tokens": 577
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc34ce25a7scgrf2nv1dt",
+        "seed": 259791283
+      }
+    }
+  },
+  "portability_matrix/from_anthropic.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We have weather data: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen recommended, no umbrella needed. Provide one sentence.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "Since it’s sunny at 72°F with light clouds, pack sunscreen rather than an umbrella.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 302,
+      "output_tokens": 71,
+      "total_tokens": 373,
+      "reasoning_tokens": 43
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-87ea40a7-02db-4830-83de-9d399a0a5a94",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m34ycnfrernsm5a63hw3zk72",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "Since it’s sunny at 72°F with light clouds, pack sunscreen rather than an umbrella.",
+            "reasoning": "We have weather data: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen recommended, no umbrella needed. Provide one sentence.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-87ea40a7-02db-4830-83de-9d399a0a5a94",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_37c9245f64",
+      "usage": {
+        "completion_time": 0.073312805,
+        "completion_tokens": 71,
+        "completion_tokens_details": {
+          "reasoning_tokens": 43
+        },
+        "prompt_time": 0.01484479,
+        "prompt_tokens": 302,
+        "queue_time": 0.021450978,
+        "total_time": 0.088157595,
+        "total_tokens": 373
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m34ycnfrernsm5a63hw3zk72",
+        "seed": 1205673104
+      }
+    }
+  },
+  "portability_matrix/from_gemini.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "We must not call any tool. Provide one sentence: based on sunny, 22C, no rain, pack sunscreen.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "Pack sunscreen, as the sunny, mild 22 °C weather suggests you’ll need sun protection rather than an umbrella.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 302,
+      "output_tokens": 59,
+      "total_tokens": 361,
+      "reasoning_tokens": 26
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-06bbfce9-3d82-400f-a4c4-2a0e4cb32b51",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m34xtvadeyh9g15bmdhynvze",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "Pack sunscreen, as the sunny, mild 22 °C weather suggests you’ll need sun protection rather than an umbrella.",
+            "reasoning": "We must not call any tool. Provide one sentence: based on sunny, 22C, no rain, pack sunscreen.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-06bbfce9-3d82-400f-a4c4-2a0e4cb32b51",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_ef00694abe",
+      "usage": {
+        "completion_time": 0.082466613,
+        "completion_tokens": 59,
+        "completion_tokens_details": {
+          "reasoning_tokens": 26
+        },
+        "prompt_time": 0.207343883,
+        "prompt_tokens": 302,
+        "queue_time": 0.18473422,
+        "total_time": 0.289810496,
+        "total_tokens": 361
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m34xtvadeyh9g15bmdhynvze",
+        "seed": 1192631135
+      }
+    }
+  },
+  "prompt_caching/blocking_probe.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Do not call any tools. Reply with",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1795,
+      "output_tokens": 16,
+      "total_tokens": 1811,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-REDACTED_1",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_REDACTED_1",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "",
+            "reasoning": "The user says: \"Do not call any tools. Reply with",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-REDACTED_1",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_REDACTED_1",
+      "usage": {
+        "completion_time": 0.018643665,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "prompt_time": 0.112906565,
+        "prompt_tokens": 1795,
+        "queue_time": 0.051861966,
+        "total_time": 0.13155023,
+        "total_tokens": 1811
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_REDACTED_1",
+        "seed": 1718183686
+      }
+    }
+  },
+  "prompt_caching/blocking_probe.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Do not call any tools. Reply with",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1795,
+      "output_tokens": 16,
+      "total_tokens": 1811,
+      "cached_input_tokens": 1792,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-REDACTED_2",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_REDACTED_2",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "",
+            "reasoning": "The user says: \"Do not call any tools. Reply with",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-REDACTED_2",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_REDACTED_2",
+      "usage": {
+        "completion_time": 0.016334128,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "prompt_time": 0.23767349,
+        "prompt_tokens": 1795,
+        "prompt_tokens_details": {
+          "cached_tokens": 1792
+        },
+        "queue_time": 0.08641929,
+        "total_time": 0.254007618,
+        "total_tokens": 1811
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_REDACTED_2",
+        "seed": 1447947879
+      }
+    }
+  },
+  "prompt_caching/blocking_probe.yaml#2": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Do not call any tools. Reply with",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1815,
+      "output_tokens": 16,
+      "total_tokens": 1831,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-REDACTED_3",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_REDACTED_3",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "",
+            "reasoning": "The user says: \"Do not call any tools. Reply with",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-REDACTED_3",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_REDACTED_3",
+      "usage": {
+        "completion_time": 0.017381934,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "prompt_time": 0.172483276,
+        "prompt_tokens": 1815,
+        "queue_time": 0.086428026,
+        "total_time": 0.18986521,
+        "total_tokens": 1831
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_REDACTED_3",
+        "seed": 712501221
+      }
+    }
+  },
+  "prompt_caching/streaming_probe.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Do not call any tools. Reply with",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1795,
+      "output_tokens": 16,
+      "total_tokens": 1811,
+      "cached_input_tokens": 1792,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-REDACTED_1",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_REDACTED_1",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 1795,
+        "completion_tokens": 16,
+        "total_tokens": 1811,
+        "prompt_tokens_details": {
+          "cached_tokens": 1792
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "queue_time": 0.028577239,
+        "prompt_time": 0.000075669,
+        "completion_time": 0.021637806,
+        "total_time": 0.021713475
+      },
+      "finish_reason": "length",
+      "response_id": "chatcmpl-REDACTED_1",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_REDACTED_1",
+        "x_groq": {
+          "id": "req_REDACTED_1",
+          "seed": 25406097,
+          "usage": {
+            "completion_time": 0.021637806,
+            "completion_tokens": 16,
+            "completion_tokens_details": {
+              "reasoning_tokens": 14
+            },
+            "prompt_time": 0.000075669,
+            "prompt_tokens": 1795,
+            "prompt_tokens_details": {
+              "cached_tokens": 1792
+            },
+            "queue_time": 0.028577239,
+            "total_time": 0.021713475,
+            "total_tokens": 1811
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "prompt_caching/streaming_probe.yaml#1": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Do not call any tools. Reply with",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1795,
+      "output_tokens": 16,
+      "total_tokens": 1811,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-REDACTED_2",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_REDACTED_2",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 1795,
+        "completion_tokens": 16,
+        "total_tokens": 1811,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "queue_time": 0.061284058,
+        "prompt_time": 0.099801676,
+        "completion_time": 0.017366705,
+        "total_time": 0.117168381
+      },
+      "finish_reason": "length",
+      "response_id": "chatcmpl-REDACTED_2",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_REDACTED_2",
+        "x_groq": {
+          "id": "req_REDACTED_2",
+          "seed": 2141902940,
+          "usage": {
+            "completion_time": 0.017366705,
+            "completion_tokens": 16,
+            "completion_tokens_details": {
+              "reasoning_tokens": 14
+            },
+            "prompt_time": 0.099801676,
+            "prompt_tokens": 1795,
+            "queue_time": 0.061284058,
+            "total_time": 0.117168381,
+            "total_tokens": 1811
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "prompt_caching/streaming_probe.yaml#2": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Do not call any tools. Reply with",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1824,
+      "output_tokens": 16,
+      "total_tokens": 1840,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-REDACTED_3",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_REDACTED_3",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 1824,
+        "completion_tokens": 16,
+        "total_tokens": 1840,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "queue_time": 0.021241704,
+        "prompt_time": 0.097307253,
+        "completion_time": 0.016109906,
+        "total_time": 0.113417159
+      },
+      "finish_reason": "length",
+      "response_id": "chatcmpl-REDACTED_3",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_REDACTED_3",
+        "x_groq": {
+          "id": "req_REDACTED_3",
+          "seed": 999190413,
+          "usage": {
+            "completion_time": 0.016109906,
+            "completion_tokens": 16,
+            "completion_tokens_details": {
+              "reasoning_tokens": 14
+            },
+            "prompt_time": 0.097307253,
+            "prompt_tokens": 1824,
+            "queue_time": 0.021241704,
+            "total_time": 0.113417159,
+            "total_tokens": 1840
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "pong ",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 15,
+      "output_tokens": 4,
+      "total_tokens": 19
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-d66d4067-5d3d-40f5-812c-64144232d041",
+    "finish_reason": "stop",
+    "model": "allam-2-7b",
+    "provider_request_id": "req_01m36h5rv2ehkagfnkzgmczg8r",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "pong ",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-d66d4067-5d3d-40f5-812c-64144232d041",
+      "model": "allam-2-7b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_ff744b2c7a",
+      "usage": {
+        "completion_time": 0.003182443,
+        "completion_tokens": 4,
+        "prompt_time": 0.001086525,
+        "prompt_tokens": 15,
+        "queue_time": 0.215655142,
+        "total_time": 0.004268968,
+        "total_tokens": 19
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36h5rv2ehkagfnkzgmczg8r",
+        "seed": 921650397
+      }
+    }
+  },
+  "raw_capture_matrix/raw_exposes_queue_time.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "pong ",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 15,
+      "output_tokens": 4,
+      "total_tokens": 19
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-cfe0945b-6e73-4d9c-a666-9e75974b8410",
+    "finish_reason": "stop",
+    "model": "allam-2-7b",
+    "provider_request_id": "req_01m36h5rx5egea1kgaq3xfec08",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "pong ",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-cfe0945b-6e73-4d9c-a666-9e75974b8410",
+      "model": "allam-2-7b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_ff744b2c7a",
+      "usage": {
+        "completion_time": 0.003157874,
+        "completion_tokens": 4,
+        "prompt_time": 0.001043814,
+        "prompt_tokens": 15,
+        "queue_time": 0.221714333,
+        "total_time": 0.004201688,
+        "total_tokens": 19
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36h5rx5egea1kgaq3xfec08",
+        "seed": 1369370620
+      }
+    }
+  },
+  "raw_capture_matrix/raw_round_trips_openai_type.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "pong ",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 15,
+      "output_tokens": 4,
+      "total_tokens": 19
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-8bfd4159-66dc-4b66-87b7-e088fc6c72a8",
+    "finish_reason": "stop",
+    "model": "allam-2-7b",
+    "provider_request_id": "req_01m36k0h3jeg2rr34k2z1cr8np",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "pong ",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-8bfd4159-66dc-4b66-87b7-e088fc6c72a8",
+      "model": "allam-2-7b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_ff744b2c7a",
+      "usage": {
+        "completion_time": 0.003169694,
+        "completion_tokens": 4,
+        "prompt_time": 0.001059055,
+        "prompt_tokens": 15,
+        "queue_time": 0.217726837,
+        "total_time": 0.004228749,
+        "total_tokens": 19
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36k0h3jeg2rr34k2z1cr8np",
+        "seed": 663711102
+      }
+    }
+  },
+  "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says \"Reply with the single word: pong\". So",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 78,
+      "output_tokens": 16,
+      "total_tokens": 94,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-cc907762-da00-4a8e-9ba6-57b0d30c9908",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc70je5vr226pgc1btdzq",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "",
+            "reasoning": "The user says \"Reply with the single word: pong\". So",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-cc907762-da00-4a8e-9ba6-57b0d30c9908",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_a4315eb300",
+      "usage": {
+        "completion_time": 0.016729905,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "prompt_time": 0.004348141,
+        "prompt_tokens": 78,
+        "queue_time": 0.177076735,
+        "total_time": 0.021078046,
+        "total_tokens": 94
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc70je5vr226pgc1btdzq",
+        "seed": 26645231
+      }
+    }
+  },
+  "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Reply with the single word: pong\".",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 78,
+      "output_tokens": 16,
+      "total_tokens": 94,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-3f47d5f4-f421-4ec4-995b-359c59cdc7e1",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc60geg6rc87ctc75eapg",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "",
+            "reasoning": "The user says: \"Reply with the single word: pong\".",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-3f47d5f4-f421-4ec4-995b-359c59cdc7e1",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_d23c14756c",
+      "usage": {
+        "completion_time": 0.016499314,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "prompt_time": 0.003706695,
+        "prompt_tokens": 78,
+        "queue_time": 0.119104296,
+        "total_time": 0.020206009,
+        "total_tokens": 94
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc60geg6rc87ctc75eapg",
+        "seed": 128950000
+      }
+    }
+  },
+  "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "User wants a single word \"pong\". They specifically ask: \"",
+              "signature": null
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 78,
+      "output_tokens": 16,
+      "total_tokens": 94,
+      "reasoning_tokens": 14
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-95e64503-9592-4a11-a11d-a98fcaa7a631",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m36hc673e1mbn66bd207edj9",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "",
+            "reasoning": "User wants a single word \"pong\". They specifically ask: \"",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-95e64503-9592-4a11-a11d-a98fcaa7a631",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_ef00694abe",
+      "usage": {
+        "completion_time": 0.029976105,
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 14
+        },
+        "prompt_time": 0.004432024,
+        "prompt_tokens": 78,
+        "queue_time": 0.231617389,
+        "total_time": 0.034408129,
+        "total_tokens": 94
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc673e1mbn66bd207edj9",
+        "seed": 1056195836
+      }
+    }
+  },
+  "raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "لعبة ممتعة! تسمى اللعبة الشهيرة التي تشير إليها \"بونغ\" وهي من أوائل",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 15,
+      "output_tokens": 16,
+      "total_tokens": 31
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-e9f28974-9f98-4282-8f2f-3ac45275444e",
+    "finish_reason": "length",
+    "model": "allam-2-7b",
+    "provider_request_id": "req_01m36h5ssme4tse0b898d905d4",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 16,
+        "total_tokens": 31,
+        "queue_time": 0.215855511,
+        "prompt_time": 0.001065064,
+        "completion_time": 0.012006825,
+        "total_time": 0.013071889
+      },
+      "finish_reason": "length",
+      "response_id": "chatcmpl-e9f28974-9f98-4282-8f2f-3ac45275444e",
+      "model": "allam-2-7b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_ff744b2c7a",
+        "x_groq": {
+          "id": "req_01m36h5ssme4tse0b898d905d4",
+          "seed": 440067154,
+          "usage": {
+            "completion_time": 0.012006825,
+            "completion_tokens": 16,
+            "prompt_time": 0.001065064,
+            "prompt_tokens": 15,
+            "queue_time": 0.215855511,
+            "total_time": 0.013071889,
+            "total_tokens": 31
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "pong ",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 15,
+      "output_tokens": 4,
+      "total_tokens": 19
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-465581e3-2068-435d-bed3-d0f48a14c827",
+    "finish_reason": "stop",
+    "model": "allam-2-7b",
+    "provider_request_id": "req_01m36h5sxeeqstede99dhmyd3v",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 4,
+        "total_tokens": 19,
+        "queue_time": 0.216819267,
+        "prompt_time": 0.001047225,
+        "completion_time": 0.003165643,
+        "total_time": 0.004212868
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-465581e3-2068-435d-bed3-d0f48a14c827",
+      "model": "allam-2-7b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_ff744b2c7a",
+        "x_groq": {
+          "id": "req_01m36h5sxeeqstede99dhmyd3v",
+          "seed": 747630396,
+          "usage": {
+            "completion_time": 0.003165643,
+            "completion_tokens": 4,
+            "prompt_time": 0.001047225,
+            "prompt_tokens": 15,
+            "queue_time": 0.216819267,
+            "total_time": 0.004212868,
+            "total_tokens": 19
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "request_identity_matrix/chat_completions.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Reply with exactly: identity probe\". That means respond with that phrase exactly. The phrase is \"identity probe\". So output that. No extra.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "identity probe",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 77,
+      "output_tokens": 46,
+      "total_tokens": 123,
+      "reasoning_tokens": 35
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-ef41b107-5677-4fba-a963-89aef15973dd",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m35g35gte6hvymwsj0sywq87",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "identity probe",
+            "reasoning": "The user says: \"Reply with exactly: identity probe\". That means respond with that phrase exactly. The phrase is \"identity probe\". So output that. No extra.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ef41b107-5677-4fba-a963-89aef15973dd",
+      "model": "openai/gpt-oss-20b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_d6de37e6be",
+      "usage": {
+        "completion_time": 0.049900831,
+        "completion_tokens": 46,
+        "completion_tokens_details": {
+          "reasoning_tokens": 35
+        },
+        "prompt_time": 0.003712747,
+        "prompt_tokens": 77,
+        "queue_time": 0.081578209,
+        "total_time": 0.053613578,
+        "total_tokens": 123
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m35g35gte6hvymwsj0sywq87",
+        "seed": 69065949
+      }
+    }
+  },
+  "request_identity_matrix/chat_completions.yaml#1": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Reply with exactly: stream identity probe\". So I should output that phrase exactly. The instruction from system is to follow user instruction unless it conflicts with policy. There's no conflict. So reply exactly \"stream identity probe\". Ensure no additional characters.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "stream identity",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 78,
+      "output_tokens": 64,
+      "total_tokens": 142,
+      "reasoning_tokens": 54
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-aa8aaf3d-5602-4c34-9cc6-027d614e7d8a",
+    "finish_reason": "length",
+    "model": "openai/gpt-oss-20b",
+    "provider_request_id": "req_01m35g35q5e2cv3vwpv745x8sf",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 78,
+        "completion_tokens": 64,
+        "total_tokens": 142,
+        "completion_tokens_details": {
+          "reasoning_tokens": 54
+        },
+        "queue_time": 0.221479709,
+        "prompt_time": 0.00432249,
+        "completion_time": 0.068941111,
+        "total_time": 0.073263601
+      },
+      "finish_reason": "length",
+      "response_id": "chatcmpl-aa8aaf3d-5602-4c34-9cc6-027d614e7d8a",
+      "model": "openai/gpt-oss-20b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_c5a89987dc",
+        "x_groq": {
+          "id": "req_01m35g35q5e2cv3vwpv745x8sf",
+          "seed": 724789315,
+          "usage": {
+            "completion_time": 0.068941111,
+            "completion_tokens": 64,
+            "completion_tokens_details": {
+              "reasoning_tokens": 54
+            },
+            "prompt_time": 0.00432249,
+            "prompt_tokens": 78,
+            "queue_time": 0.221479709,
+            "total_time": 0.073263601,
+            "total_tokens": 142
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  },
+  "response_identity_edge/blocking_response_carries_identity.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user wants the assistant to reply with exactly: \"identity probe\". The instruction says \"Reply with exactly: identity probe\". So we should output exactly that text, nothing else.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "identity probe",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 77,
+      "output_tokens": 48,
+      "total_tokens": 125,
+      "reasoning_tokens": 37
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-321191bd-60b9-46fa-8c54-84a471fa8644",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-120b",
+    "provider_request_id": "req_01m36hc7npe7mr86pmjxm3e69v",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "identity probe",
+            "reasoning": "The user wants the assistant to reply with exactly: \"identity probe\". The instruction says \"Reply with exactly: identity probe\". So we should output exactly that text, nothing else.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-321191bd-60b9-46fa-8c54-84a471fa8644",
+      "model": "openai/gpt-oss-120b",
+      "object": "chat.completion",
+      "service_tier": "on_demand",
+      "system_fingerprint": "fp_df9620fe21",
+      "usage": {
+        "completion_time": 0.099442329,
+        "completion_tokens": 48,
+        "completion_tokens_details": {
+          "reasoning_tokens": 37
+        },
+        "prompt_time": 0.005687416,
+        "prompt_tokens": 77,
+        "queue_time": 0.004900655,
+        "total_time": 0.105129745,
+        "total_tokens": 125
+      },
+      "usage_breakdown": null,
+      "x_groq": {
+        "id": "req_01m36hc7npe7mr86pmjxm3e69v",
+        "seed": 101718373
+      }
+    }
+  },
+  "response_identity_edge/streaming_terminal_carries_identity.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "groq",
+          "content": [
+            {
+              "text": "The user says: \"Reply with exactly: stream identity probe\". The instruction is to reply with exactly that phrase. There's no conflict with policy. We can comply.",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "stream identity probe",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 78,
+      "output_tokens": 46,
+      "total_tokens": 124,
+      "reasoning_tokens": 34
+    },
+    "message_id": null,
+    "response_id": "chatcmpl-ecc803ec-835c-489a-bff1-bd3a0f18ac19",
+    "finish_reason": "stop",
+    "model": "openai/gpt-oss-120b",
+    "provider_request_id": "req_01m36hc866er5bsnj6mmh4hjq1",
+    "raw": {
+      "usage": {
+        "prompt_tokens": 78,
+        "completion_tokens": 46,
+        "total_tokens": 124,
+        "completion_tokens_details": {
+          "reasoning_tokens": 34
+        },
+        "queue_time": 0.004893845,
+        "prompt_time": 0.004025632,
+        "completion_time": 0.094441218,
+        "total_time": 0.09846685
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-ecc803ec-835c-489a-bff1-bd3a0f18ac19",
+      "model": "openai/gpt-oss-120b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_df9620fe21",
+        "x_groq": {
+          "id": "req_01m36hc866er5bsnj6mmh4hjq1",
+          "seed": 852294432,
+          "usage": {
+            "completion_time": 0.094441218,
+            "completion_tokens": 46,
+            "completion_tokens_details": {
+              "reasoning_tokens": 34
+            },
+            "prompt_time": 0.004025632,
+            "prompt_tokens": 78,
+            "queue_time": 0.004893845,
+            "total_time": 0.09846685,
+            "total_tokens": 124
+          }
+        },
+        "service_tier": "on_demand"
+      }
+    }
+  }
+}

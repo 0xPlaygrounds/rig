@@ -10497,6 +10497,7 @@ dependencies = [
  "bevy_tasks",
  "bytes",
  "futures",
+ "http 1.4.2",
  "httpdate",
  "httpmock",
  "proptest",
