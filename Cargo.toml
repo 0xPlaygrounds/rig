@@ -341,7 +341,8 @@ rig-vertexai = { path = "crates/rig-vertexai", version = "0.42.0", optional = tr
 # reactor and raises a `compile_error!` on wasm), so it is scoped to non-wasm
 # targets. That is what lets `websocket` mean "the protocol, plus the bundled
 # backend where one exists": on wasm the feature still enables
-# `rig-core/websocket`, so `rig::ws_client` is reachable and a browser backend
+# `rig-core/tungstenite`, which there is `rig-core/websocket` alone, so
+# `rig::ws_client` is reachable and a browser backend
 # can be implemented against it — which is the escape hatch the backend's own
 # wasm error message prescribes. Wiring the dependency unconditionally would
 # make that hatch unreachable through the facade.
