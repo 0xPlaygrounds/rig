@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::anthropic;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let provider = anthropic::Anthropic::from_env()?;
 //!
 //! let sonnet = provider.completion(anthropic::completion::CLAUDE_SONNET_4_6);

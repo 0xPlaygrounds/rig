@@ -1,4 +1,3 @@
-use anyhow::Context;
 use fastembed::{
     EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
     TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
@@ -10,6 +9,7 @@ use rig_core::{
         VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
     },
 };
+use rig_core::{RigError, error::ErrorKind};
 use rig_fastembed::Fastembed;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -25,27 +25,35 @@ struct WordDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Get model info
-    let test_model_info = FastembedTextEmbedding::get_model_info(&FastembedModel::AllMiniLML6V2)?;
+    let test_model_info = FastembedTextEmbedding::get_model_info(&FastembedModel::AllMiniLML6V2)
+        .map_err(|error| RigError::other(&*error))?;
 
     // Set up model directory
     let model_dir = Path::new("./models/Qdrant--all-MiniLM-L6-v2-onnx/snapshots");
     println!("Loading model from: {model_dir:?}");
 
     // Load model files
-    let onnx_file = read_file_to_bytes(&model_dir.join("model.onnx"))
-        .context("Could not read model.onnx file")?;
+    let onnx_file = read_model_file(
+        &model_dir.join("model.onnx"),
+        "Could not read model.onnx file",
+    )?;
 
     let tokenizer_files = TokenizerFiles {
-        tokenizer_file: read_file_to_bytes(&model_dir.join("tokenizer.json"))
-            .context("Could not read tokenizer.json")?,
-        config_file: read_file_to_bytes(&model_dir.join("config.json"))
-            .context("Could not read config.json")?,
-        special_tokens_map_file: read_file_to_bytes(&model_dir.join("special_tokens_map.json"))
-            .context("Could not read special_tokens_map.json")?,
-        tokenizer_config_file: read_file_to_bytes(&model_dir.join("tokenizer_config.json"))
-            .context("Could not read tokenizer_config.json")?,
+        tokenizer_file: read_model_file(
+            &model_dir.join("tokenizer.json"),
+            "Could not read tokenizer.json",
+        )?,
+        config_file: read_model_file(&model_dir.join("config.json"), "Could not read config.json")?,
+        special_tokens_map_file: read_model_file(
+            &model_dir.join("special_tokens_map.json"),
+            "Could not read special_tokens_map.json",
+        )?,
+        tokenizer_config_file: read_model_file(
+            &model_dir.join("tokenizer_config.json"),
+            "Could not read tokenizer_config.json",
+        )?,
     };
 
     // Create embedding model
@@ -113,4 +121,10 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Results: {results:?}");
 
     Ok(())
+}
+
+/// Reads one model file; a failure names what could not be read.
+fn read_model_file(path: &std::path::PathBuf, what: &str) -> Result<Vec<u8>, RigError> {
+    read_file_to_bytes(path)
+        .map_err(|error| RigError::new(ErrorKind::Other, format!("{what}: {error}")))
 }

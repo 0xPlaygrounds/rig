@@ -19,7 +19,7 @@ use std::sync::{
 
 use crate::bus::Registrar;
 use indexmap::IndexMap;
-use rig_core::error::{ProviderError, RigError};
+use rig_core::error::RigError;
 use rig_core::serve::adapters::RetrieveAdapter;
 use rig_core::{
     effect::Key,
@@ -711,8 +711,11 @@ impl ToolServerHandle {
 
             futures::future::try_join_all(search_futures)
                 .await
-                .map_err(|e| {
-                    ToolServerError::DefinitionError(ProviderError::Request(Box::new(e)).into())
+                .map_err(|error| {
+                    ToolServerError::DefinitionError(RigError {
+                        kind: rig_core::error::ErrorKind::Request,
+                        ..RigError::other(&error)
+                    })
                 })?
                 .into_iter()
                 .flatten()
@@ -779,6 +782,15 @@ pub enum ToolServerError {
     /// The advertised definitions could not be computed.
     #[error("Failed to retrieve tool definitions: {0}")]
     DefinitionError(RigError),
+}
+
+/// The failure the definitions could not be computed for, unchanged.
+impl From<ToolServerError> for RigError {
+    fn from(error: ToolServerError) -> Self {
+        match error {
+            ToolServerError::DefinitionError(error) => error,
+        }
+    }
 }
 
 impl ManagedToolSink for ToolServerHandle {

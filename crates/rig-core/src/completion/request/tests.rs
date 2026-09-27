@@ -1,5 +1,6 @@
 use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
 use crate::completion::CompletionRequest;
+use crate::error::ProviderError;
 use crate::message::AssistantContent;
 use crate::{http_client, provider_response};
 

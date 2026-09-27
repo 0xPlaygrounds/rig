@@ -2,7 +2,6 @@
 //! Requires `ANTHROPIC_API_KEY`.
 //! Run it to see a multi-step arithmetic task complete without passing `max_turns` per prompt.
 
-use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, Anthropic};
 use rig::tool::Tool;
@@ -88,7 +87,7 @@ impl Tool for Divide {
 const PROMPT: &str = "Calculate (3 + 5) / 4 and describe the result.";
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::new(
         Anthropic::from_env()?.completion(anthropic::completion::CLAUDE_SONNET_4_6),
     )

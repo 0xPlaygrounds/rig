@@ -9,7 +9,7 @@
 //! ```no_run
 //! use rig_core::providers::copilot;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let github = copilot::Copilot::from_env()?;
 //!
 //! let chat = github.completion(copilot::GPT_4O);

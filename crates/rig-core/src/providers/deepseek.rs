@@ -4,7 +4,7 @@
 //! ```no_run
 //! use rig_core::providers::deepseek;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let deepseek_chat = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
 //! # let _ = deepseek_chat;
 //! # Ok(())

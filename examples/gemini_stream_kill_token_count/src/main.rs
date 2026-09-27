@@ -51,7 +51,7 @@ use std::time::Duration;
 use futures::{Stream, StreamExt};
 use rig::completion::CompletionRequest;
 use rig::completion::Usage;
-use rig::error::ProviderError;
+use rig::error::ErrorKind;
 use rig::error::RigError;
 use rig::message::AssistantContent;
 use rig::providers::gemini::Gemini;
@@ -134,11 +134,12 @@ impl Stream for Disrupt {
                     return Poll::Ready(None);
                 }
                 Disruption::TransportError => {
-                    // The same in-band shape a real transport failure takes:
-                    // the provider's error, mapped to the stream's report.
-                    return Poll::Ready(Some(Err(RigError::from(&ProviderError::Provider(
-                        "injected mid-stream transport drop".to_string(),
-                    )))));
+                    // The same in-band shape a real transport failure takes: a
+                    // provider failure, as the stream reports it.
+                    return Poll::Ready(Some(Err(RigError::new(
+                        ErrorKind::Provider,
+                        "injected mid-stream transport drop",
+                    ))));
                 }
                 Disruption::Stall => {
                     // Park forever without scheduling a wake: the consumer's
@@ -208,7 +209,7 @@ async fn drain_with_accounting<S>(
     http: &reqwest::Client,
     api_key: &str,
     prompt_text: &str,
-) -> anyhow::Result<Report>
+) -> Result<Report, RigError>
 where
     S: Stream<Item = Result<StreamEvent, RigError>> + Unpin,
 {
@@ -302,7 +303,7 @@ where
 
 /// Call Gemini's free `countTokens` endpoint on arbitrary text. Returns 0 for
 /// empty input (the endpoint rejects empty `contents`).
-async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyhow::Result<u64> {
+async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> Result<u64, RigError> {
     if text.is_empty() {
         return Ok(0);
     }
@@ -316,9 +317,11 @@ async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyh
         .post(url)
         .json(&body)
         .send()
-        .await?
-        .error_for_status()?;
-    let value: serde_json::Value = resp.json().await?;
+        .await
+        .map_err(RigError::other)?
+        .error_for_status()
+        .map_err(RigError::other)?;
+    let value: serde_json::Value = resp.json().await.map_err(RigError::other)?;
     let total = value
         .get("totalTokens")
         .and_then(serde_json::Value::as_u64)
@@ -330,7 +333,7 @@ async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyh
 /// 2.5-flash spends seconds generating hidden thoughts (no chunks sent), which
 /// is indistinguishable from a stall and would trip the read timeout before any
 /// real partial output — masking the injected disruptions.
-fn no_thinking_params() -> anyhow::Result<serde_json::Value> {
+fn no_thinking_params() -> Result<serde_json::Value, RigError> {
     let params = AdditionalParameters {
         generation_config: Some(GenerationConfig {
             thinking_config: Some(ThinkingConfig {
@@ -342,7 +345,7 @@ fn no_thinking_params() -> anyhow::Result<serde_json::Value> {
         }),
         additional_params: None,
     };
-    Ok(serde_json::to_value(&params)?)
+    serde_json::to_value(&params).map_err(RigError::other)
 }
 
 async fn run_scenario(
@@ -351,7 +354,7 @@ async fn run_scenario(
     prompt: &str,
     http: &reqwest::Client,
     api_key: &str,
-) -> anyhow::Result<Report> {
+) -> Result<Report, RigError> {
     let model = Gemini::from_env()?.completion(MODEL);
 
     let stream = model.stream(
@@ -394,9 +397,9 @@ fn print_report(report: &Report) {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     let api_key = std::env::var("GEMINI_API_KEY")
-        .map_err(|_| anyhow::anyhow!("GEMINI_API_KEY must be set"))?;
+        .map_err(|_| RigError::new(ErrorKind::Other, "GEMINI_API_KEY must be set"))?;
     let http = reqwest::Client::new();
 
     // Short prompt for the clean baseline (completes quickly, real usage).

@@ -20,7 +20,7 @@ struct Document {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), rig::RigError> {
     // Create ScyllaDB session
     let session = create_session("127.0.0.1:9042").await?;
     

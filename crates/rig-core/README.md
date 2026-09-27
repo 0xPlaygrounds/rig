@@ -43,12 +43,13 @@ Node.js 19 or later do. WASI targets are not supported.
 ## Simple example
 ```rust
 use rig_core::{
+    RigError,
     completion::CompletionRequest,
     providers::openai::{self, OpenAI},
 };
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), RigError> {
     // The client reads `OPENAI_API_KEY` and sends through the bundled reqwest
     // client (rig-core's `reqwest` feature). `with_http` swaps the client.
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
@@ -178,9 +179,9 @@ Construct normalized completion responses through their builders so finish
 reasons reconcile with tool output. Preserve unknown terminal reasons in `Other`,
 use the selected descriptor's provider name, and retain the decoded provider
 payload in `raw` for typed inspection without a second request. Preserve error
-bodies through `ProviderError::from_http_response` for failed HTTP responses and
-`ProviderError::from_provider_body` for error envelopes on successful HTTP
-responses.
+bodies through the provider error's `from_http_response` (`rig_core::error`) for
+failed HTTP responses and its `from_provider_body` for error envelopes on
+successful HTTP responses.
 Credentials require redacted debug output. Provider changes need coverage for
 supported streaming, usage, tool and multimodal content, with examples and facade
 exposure matching the configured capabilities.
@@ -241,8 +242,8 @@ preamble. Neither can accompany a cache. Extractors select tool output mode.
 Cache resource paths accept a bare id or a `cachedContents/` handle. Validation
 rejects path separators, query delimiters, fragments, and traversal segments
 rather than escaping them, so lookup, expiry updates, and deletion cannot be
-retargeted by an invalid handle. A 403 or 404 on an existing handle maps to
-`ProviderError::CacheExpired`, preserving the provider's reply because 403 can
+retargeted by an invalid handle. A 403 or 404 on an existing handle carries
+`ErrorDetail::CacheExpired`, preserving the provider's reply because 403 can
 also indicate credential or quota problems. Cache creation does not apply this
 mapping, so authorization failures do not become recreation loops.
 

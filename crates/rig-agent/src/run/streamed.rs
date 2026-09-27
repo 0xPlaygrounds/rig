@@ -15,7 +15,7 @@ use std::collections::{BTreeSet, HashMap};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::FinishReason;
-use rig_core::error::{ProviderError, RigError};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
@@ -608,10 +608,10 @@ impl StreamedTurnAssembler {
     /// tool call is still awaiting resolution.
     pub fn ingest(&mut self, item: &StreamEvent) -> Result<Vec<StreamedTurnEvent>, RigError> {
         if self.pending_invalid.is_some() {
-            return Err(ProviderError::Response(
-                "streamed turn ingested while an invalid tool call awaits resolution".to_string(),
-            )
-            .into());
+            return Err(RigError::new(
+                ErrorKind::Response,
+                "streamed turn ingested while an invalid tool call awaits resolution",
+            ));
         }
 
         match item {
@@ -925,10 +925,10 @@ impl StreamedTurnAssembler {
             .iter()
             .find(|(_, state)| !state.name_validated && !state.buffered_arguments.is_empty())
             .map(|(block_id, state)| {
-                RigError::from(ProviderError::Response(format!(
+                RigError::new(ErrorKind::Response, format!(
                     "streamed tool call arguments received before a validated tool name for block_id `{block_id}` ({} buffered argument delta(s))",
                     state.buffered_arguments.len()
-                )))
+                ))
             })
     }
 

@@ -6,7 +6,7 @@
 //! ```no_run
 //! use rig_core::providers::mistral;
 //! let model = mistral::from_env()?.transcription(mistral::VOXTRAL_MINI);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 
 /// Voxtral Mini model (latest version)

@@ -5,7 +5,7 @@ use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let discord_bot_token = std::env::var("DISCORD_BOT_TOKEN")?;
     // Create the OpenAI provider
     let client = OpenAI::from_env()?;

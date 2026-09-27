@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow};
 use rig::agent::Agent;
 use rig::completion::PromptError;
+use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::anthropic::Anthropic;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
@@ -30,9 +30,9 @@ struct AgentConfig<'a> {
 
 // In production you would likely want to create some sort of `RegistryKey` type instead of
 // allowing arbitrary strings, for improved type safety
-struct ProviderRegistry(HashMap<&'static str, fn(AgentConfig<'_>) -> Result<Agents>>);
+struct ProviderRegistry(HashMap<&'static str, fn(AgentConfig<'_>) -> Result<Agents, RigError>>);
 
-fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
+fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents, RigError> {
     let agent = AgentBuilder::new(Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6))
         .name(name)
         .preamble(preamble)
@@ -41,7 +41,7 @@ fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Ag
     Ok(Agents::Anthropic(agent))
 }
 
-fn openai_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
+fn openai_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents, RigError> {
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(GPT_4O))
         .name(name)
         .preamble(preamble)
@@ -55,26 +55,25 @@ impl ProviderRegistry {
         Self(HashMap::from_iter([
             (
                 "anthropic",
-                anthropic_agent as fn(AgentConfig<'_>) -> Result<Agents>,
+                anthropic_agent as fn(AgentConfig<'_>) -> Result<Agents, RigError>,
             ),
             (
                 "openai",
-                openai_agent as fn(AgentConfig<'_>) -> Result<Agents>,
+                openai_agent as fn(AgentConfig<'_>) -> Result<Agents, RigError>,
             ),
         ]))
     }
 
-    pub fn agent(&self, provider: &str, agent_config: AgentConfig<'_>) -> Result<Agents> {
-        let builder = self
-            .0
-            .get(provider)
-            .ok_or_else(|| anyhow!("unknown provider: {provider}"))?;
+    pub fn agent(&self, provider: &str, agent_config: AgentConfig<'_>) -> Result<Agents, RigError> {
+        let builder = self.0.get(provider).ok_or_else(|| {
+            RigError::new(ErrorKind::Other, format!("unknown provider: {provider}"))
+        })?;
         builder(agent_config)
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let registry = ProviderRegistry::new();
 
     let openai_agent = registry.agent(

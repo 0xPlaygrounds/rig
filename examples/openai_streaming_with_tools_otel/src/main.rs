@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 
@@ -106,11 +105,12 @@ impl Tool for Subtract {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
-        .build()?;
+        .build()
+        .map_err(RigError::other)?;
     // Create a new OpenTelemetry trace pipeline that prints to stdout
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)
@@ -151,7 +151,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mut stream = calculator_agent.prompt("Calculate 2 - 5").stream();
 
-    let res = stream_to_stdout(&mut stream).await?;
+    let res = stream_to_stdout(&mut stream)
+        .await
+        .map_err(RigError::other)?;
 
     println!("Token usage response: {usage:?}", usage = res.usage());
     println!("Final text response: {message:?}", message = res.output());

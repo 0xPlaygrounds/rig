@@ -5,7 +5,7 @@
 //! ```no_run
 //! use rig_core::providers::mira;
 //!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn run() -> Result<(), rig_core::RigError> {
 //! let models = mira::from_env()?.list_models().await?;
 //! # let _ = models;
 //! # Ok(())

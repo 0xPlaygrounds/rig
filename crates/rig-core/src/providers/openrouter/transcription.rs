@@ -9,7 +9,7 @@
 //! ```no_run
 //! use rig_core::providers::openrouter;
 //! let model = openrouter::from_env()?.transcription(openrouter::WHISPER_1);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 
 /// The `openai/whisper-1` model.

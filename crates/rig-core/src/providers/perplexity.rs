@@ -6,7 +6,7 @@
 //! ```no_run
 //! use rig_core::providers::perplexity;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let sonar = perplexity::from_env()?.chat(perplexity::SONAR);
 //! # let _ = sonar;
 //! # Ok(())

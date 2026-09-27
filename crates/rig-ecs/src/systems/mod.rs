@@ -2458,8 +2458,9 @@ pub fn read_turn(
                 .finish_reason()
                 .filter(|reason| reason.truncated_output())
         {
-            let report = rig_core::error::RigError::from(
-                &rig_core::error::ProviderError::Response(reason.no_answer_message()),
+            let report = rig_core::error::RigError::new(
+                rig_core::error::ErrorKind::Response,
+                reason.no_answer_message(),
             );
             commands.entity(run).end(Failed(Failure::Provider(report)));
             continue;

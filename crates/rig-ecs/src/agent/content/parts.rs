@@ -201,6 +201,20 @@ pub enum ContentError {
     Shape,
 }
 
+/// A graph that cannot become a message is a request that could not be
+/// built; a binary failure converts as it does.
+impl From<ContentError> for rig_core::error::RigError {
+    fn from(error: ContentError) -> Self {
+        match error {
+            ContentError::Binary(error) => Self::from(error),
+            other => Self {
+                kind: rig_core::error::ErrorKind::Request,
+                ..Self::other(other)
+            },
+        }
+    }
+}
+
 // Planning before spawning avoids partially written utterances. Only tool
 // results have children, and those children cannot themselves own content.
 type PreparedParts = Vec<(ContentPart, Vec<ContentPart>)>;

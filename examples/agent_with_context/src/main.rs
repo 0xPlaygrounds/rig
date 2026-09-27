@@ -2,7 +2,7 @@
 //! Requires `COHERE_API_KEY`.
 //! Run it to see the model answer from the supplied in-memory facts.
 
-use anyhow::Result;
+use rig::RigError;
 use rig::agent::AgentBuilder;
 use rig::providers::cohere::{COMMAND_A_03_2025, Cohere};
 
@@ -15,7 +15,7 @@ const CONTEXT_DOCS: [&str; 3] = [
 const CONTEXT_PROMPT: &str = "What does \"glarb-glarb\" mean?";
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let cohere = Cohere::from_env()?;
     let model = cohere.completion(COMMAND_A_03_2025);
     let agent = CONTEXT_DOCS

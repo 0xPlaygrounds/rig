@@ -7,7 +7,7 @@
 //! ```no_run
 //! use rig_core::providers::venice;
 //! let model = venice::from_env()?.chat(venice::QWEN3_5_9B);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 
 /// Venice's API root, and the default base URL of

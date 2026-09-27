@@ -7,7 +7,7 @@
 //! ```
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
-use rig_core::error::RigError;
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{AssistantContent, Message};
 use serde::{Deserialize, Serialize};
 
@@ -307,6 +307,26 @@ pub enum PromptError {
         /// Canonical history available at failure.
         chat_history: Vec<Message>,
     },
+}
+
+/// A failure converts unchanged, and a memory failure as memory reports it.
+/// A cancelled run is [`ErrorKind::Cancelled`], a call to a tool the turn did
+/// not offer is [`ErrorKind::Response`], and an exhausted budget is
+/// [`ErrorKind::Other`].
+impl From<PromptError> for RigError {
+    fn from(error: PromptError) -> Self {
+        let kind = match error {
+            PromptError::Failed(error) => return error,
+            PromptError::MemoryError(error) => return Self::from(error),
+            PromptError::PromptCancelled { .. } => ErrorKind::Cancelled,
+            PromptError::UnknownToolCall { .. } => ErrorKind::Response,
+            PromptError::MaxTurnsError { .. } => ErrorKind::Other,
+        };
+        Self {
+            kind,
+            ..Self::other(&error)
+        }
+    }
 }
 
 impl PromptError {

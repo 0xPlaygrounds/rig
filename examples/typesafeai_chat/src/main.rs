@@ -1,6 +1,7 @@
 //! Interactive Jev decisions, optionally followed by an ordinary Rig agent.
 
-use anyhow::{Result, bail};
+use rig::RigError;
+use rig::error::ErrorKind;
 use rig::typesafeai::{
     Choice, ChoiceAnswer, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
@@ -112,7 +113,7 @@ struct State<'a> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let mut with_agent = false;
     for argument in std::env::args().skip(1) {
         match argument.as_str() {
@@ -126,7 +127,12 @@ async fn main() -> Result<()> {
                 );
                 return Ok(());
             }
-            _ => bail!("unknown argument {argument:?}; use --help"),
+            _ => {
+                return Err(RigError::new(
+                    ErrorKind::Other,
+                    format!("unknown argument {argument:?}; use --help"),
+                ));
+            }
         }
     }
 
@@ -143,9 +149,9 @@ async fn main() -> Result<()> {
 
     loop {
         print!("\nyou> ");
-        io::stdout().flush()?;
+        io::stdout().flush().map_err(RigError::other)?;
         let mut input = String::new();
-        if io::stdin().read_line(&mut input)? == 0 {
+        if io::stdin().read_line(&mut input).map_err(RigError::other)? == 0 {
             return Ok(());
         }
         let input = input.trim();

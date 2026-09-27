@@ -4,7 +4,7 @@
 //! ```no_run
 //! use rig_core::providers::openai::{self, OpenAI};
 //!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn example() -> Result<(), rig_core::RigError> {
 //! let model = OpenAI::from_env()?.responses(openai::GPT_5_2);
 //! # let _ = model;
 //! # Ok(())

@@ -1,14 +1,15 @@
 use std::io::Write;
 
-use anyhow::Context;
 use futures::StreamExt;
+use rig::RigError;
 use rig::candle::CandleCompletionResponse;
 use rig::candle::{CandleModel, ModelData};
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 use rig::streaming::{Delta, StreamEvent};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     let project_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let model_dir = match std::env::var_os("MODEL_DIR") {
         Some(directory) => std::path::PathBuf::from(directory),
@@ -22,9 +23,9 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let candle = CandleModel::from_gguf(ModelData {
-        config: std::fs::read(model_dir.join("config.json"))?,
-        tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
-        weights: std::fs::read(model_dir.join("model.gguf"))?,
+        config: std::fs::read(model_dir.join("config.json")).map_err(RigError::other)?,
+        tokenizer: std::fs::read(model_dir.join("tokenizer.json")).map_err(RigError::other)?,
+        weights: std::fs::read(model_dir.join("model.gguf")).map_err(RigError::other)?,
     })?;
     let model = candle.completion();
     let request = CompletionRequest::new(prompt)
@@ -46,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
                 ..
             } => {
                 print!("{text}");
-                std::io::stdout().flush()?;
+                std::io::stdout().flush().map_err(RigError::other)?;
             }
             StreamEvent::Final(final_record) => final_response = Some(final_record),
             _ => {}
@@ -55,9 +56,15 @@ async fn main() -> anyhow::Result<()> {
     println!();
     let raw: CandleCompletionResponse = serde_json::from_value(
         final_response
-            .context("Candle stream ended without final metadata")?
+            .ok_or_else(|| {
+                RigError::new(
+                    ErrorKind::Other,
+                    "Candle stream ended without final metadata",
+                )
+            })?
             .raw,
-    )?;
+    )
+    .map_err(RigError::other)?;
     println!(
         "tokens: prompt={}, generated={}, total={}",
         raw.prompt_tokens,

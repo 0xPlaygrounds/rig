@@ -6,7 +6,7 @@ use aws_sdk_bedrockruntime::operation::converse::ConverseError;
 use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamError;
 use aws_sdk_bedrockruntime::operation::invoke_model::InvokeModelError;
 use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
-use rig_core::error::ProviderError;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::http_client::StatusCode;
 
 /// What a service error said about itself: the provider's message when it
@@ -270,6 +270,34 @@ impl fmt::Display for TypeConversionError {
 }
 
 impl std::error::Error for TypeConversionError {}
+
+/// As the Converse wire reports a response it cannot convert.
+impl From<TypeConversionError> for RigError {
+    fn from(error: TypeConversionError) -> Self {
+        ProviderError::Provider(format!("Type conversion error: {error}")).into()
+    }
+}
+
+/// As the Bedrock transport reports the SDK's failure.
+impl From<AwsSdkInvokeModelError> for RigError {
+    fn from(error: AwsSdkInvokeModelError) -> Self {
+        ProviderError::from(error).into()
+    }
+}
+
+/// As the Bedrock transport reports the SDK's failure.
+impl From<AwsSdkConverseError> for RigError {
+    fn from(error: AwsSdkConverseError) -> Self {
+        ProviderError::from(error).into()
+    }
+}
+
+/// As the Bedrock transport reports the SDK's failure.
+impl From<AwsSdkConverseStreamError> for RigError {
+    fn from(error: AwsSdkConverseStreamError) -> Self {
+        ProviderError::from(error).into()
+    }
+}
 
 impl From<std::convert::Infallible> for TypeConversionError {
     fn from(value: std::convert::Infallible) -> Self {

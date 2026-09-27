@@ -1,4 +1,5 @@
 use rig_agent::prelude::*;
+use rig_core::RigError;
 use rig_core::providers;
 use rig_core::providers::openai::OpenAI;
 use rig_derive::rig_tool;
@@ -26,7 +27,7 @@ fn string_processor(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().pretty().init();
 
     let string_agent = AgentBuilder::new(OpenAI::from_env()?.completion(providers::openai::GPT_4O))
@@ -38,7 +39,8 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "STRINGPROCESSOR: {}",
-        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&StringProcessor))?
+        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&StringProcessor))
+            .map_err(RigError::other)?
     );
 
     for prompt in [

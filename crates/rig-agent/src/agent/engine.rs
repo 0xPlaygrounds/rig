@@ -12,7 +12,6 @@ use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
 
 use crate::bus::{DispatchOptions, MemoryHandle};
-use rig_core::error::ProviderError;
 use rig_core::{
     completion::{FinishReason, ModelRef, ResponseIdentity},
     effect::{EffectId, EffectKind, Outcome},
@@ -132,10 +131,10 @@ pub(crate) trait TurnSource: WasmCompatSend {
 /// Per the emission contract (`rig_core::streaming`) that absence means
 /// truncation, never a successful zero-usage completion, and a truncated
 /// stream has no document to record a completion call from.
-fn truncated_stream_error() -> ProviderError {
-    ProviderError::Response(
-        "provider stream ended without a terminal record; treating the turn as truncated"
-            .to_string(),
+fn truncated_stream_error() -> RigError {
+    RigError::new(
+        ErrorKind::Response,
+        "provider stream ended without a terminal record; treating the turn as truncated",
     )
 }
 
@@ -423,10 +422,10 @@ where
                     }
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
-                        let err = StreamingError::Failed(ProviderError::Response(
-                            "agent requested tool execution without a prepared registry snapshot"
-                                .to_string(),
-                        ).into());
+                        let err = StreamingError::Failed(RigError::new(
+                            ErrorKind::Response,
+                            "agent requested tool execution without a prepared registry snapshot",
+                        ));
                         settle_error!(err);
                         yield Err(err);
                         break 'outer;
@@ -691,10 +690,10 @@ where
         for slot in collected {
             let Some(CollectedToolResult { content, block_id, surface }) = slot else {
                 yield Err(StreamingError::Failed(
-                    ProviderError::Response(
-                        "tool execution finished without producing every result".to_string(),
-                    )
-                    .into(),
+                    RigError::new(
+                        ErrorKind::Response,
+                        "tool execution finished without producing every result",
+                    ),
                 ));
                 return;
             };
@@ -897,7 +896,7 @@ impl TurnSource for StreamingTurnSource {
                         // stream that delivered no terminal is truncated per
                         // the emission contract and has no call to record.
                         match stream.folded().terminal().map(|response| response.raw.clone()) {
-                            None => Err(StreamingError::Failed(truncated_stream_error().into())),
+                            None => Err(StreamingError::Failed(truncated_stream_error())),
                             Some(raw) => match run.record_streamed_completion_call(
                                 usage,
                                 stream.folded().identity(),
@@ -935,11 +934,10 @@ impl TurnSource for StreamingTurnSource {
                             );
                             if provider_final_seen && visible_content {
                                 yield Err(StreamingError::Failed(
-                                    ProviderError::Response(
-                                        "provider stream emitted visible assistant content after its final response"
-                                            .to_string(),
-                                    )
-                                    .into(),
+                                    RigError::new(
+                                        ErrorKind::Response,
+                                        "provider stream emitted visible assistant content after its final response",
+                                    ),
                                 ));
                                 return;
                             }
@@ -999,10 +997,9 @@ impl TurnSource for StreamingTurnSource {
                             {
                                 let Some(aggregated) = assembler.aggregated_reasoning(id) else {
                                     yield Err(StreamingError::Failed(
-                                        ProviderError::Response(format!(
+                                        RigError::new(ErrorKind::Response, format!(
                                             "reasoning delta `{id}` was ingested without a pending aggregate"
-                                        ))
-                                        .into(),
+                                        )),
                                     ));
                                     return;
                                 };
@@ -1210,7 +1207,7 @@ impl TurnSource for StreamingTurnSource {
             // reason and payload are read from it below, never from a
             // previous attempt's stream.
             let Some(terminal) = stream.folded().terminal().cloned() else {
-                yield Err(StreamingError::Failed(truncated_stream_error().into()));
+                yield Err(StreamingError::Failed(truncated_stream_error()));
                 return;
             };
 

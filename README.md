@@ -134,7 +134,7 @@ use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The client reads `OPENAI_API_KEY` and builds the models it serves.
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
     let comedian_agent = AgentBuilder::new(model)

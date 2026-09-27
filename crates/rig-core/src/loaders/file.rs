@@ -67,7 +67,7 @@ impl<'a, T: Readable + 'a> FileLoader<'a, T> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::FileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = FileLoader::with_glob("files/*.txt")?.read();
     /// for result in content {
     ///     match result {
@@ -88,7 +88,7 @@ impl<'a, T: Readable + 'a> FileLoader<'a, T> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::FileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = FileLoader::with_glob("files/*.txt")?.read_with_path();
     /// for result in content {
     ///     match result {

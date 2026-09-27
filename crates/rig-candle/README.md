@@ -8,13 +8,14 @@ itself.
 ```rust,no_run
 use rig_agent::agent::AgentBuilder;
 use rig_candle::{CandleModel, ModelData};
+use rig_core::RigError;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), RigError> {
     let model = CandleModel::from_safetensors_async(ModelData {
-        config: std::fs::read("./model/config.json")?,
-        tokenizer: std::fs::read("./model/tokenizer.json")?,
-        weights: std::fs::read("./model/model.safetensors")?,
+        config: std::fs::read("./model/config.json").map_err(RigError::other)?,
+        tokenizer: std::fs::read("./model/tokenizer.json").map_err(RigError::other)?,
+        weights: std::fs::read("./model/model.safetensors").map_err(RigError::other)?,
     })
     .await?;
     let agent = AgentBuilder::new(model.completion())

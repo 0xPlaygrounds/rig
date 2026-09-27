@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_agent::extractor::ExtractorBuilder;
 //! use rig_core::{Model, providers::openai::{self, OpenAI}};
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn run() -> Result<(), rig_core::RigError> {
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person { name: String, age: u8 }
 //! let model = OpenAI::from_env()?.completion(openai::GPT_4O);

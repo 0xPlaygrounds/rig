@@ -1,7 +1,6 @@
 //! Evaluate three independent questions about one synthetic support ticket.
 //! Requires `JEV_TOKEN`; run with `cargo run -p typesafeai_triage`.
 
-use anyhow::Result;
 use rig::RigError;
 use rig::typesafeai::{
     Choice, ChoiceAnswer, Evaluate, Jev, Noul, NoulAnswer, Query, Score, ScoreAnswer,
@@ -92,7 +91,7 @@ struct Ticket<'a> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = Jev::from_env()?.evaluation();
     let ticket = Ticket {
         message: "My card shows two $49 charges after upgrading. Can you fix this?",

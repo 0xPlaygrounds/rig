@@ -1,3 +1,4 @@
+use rig_core::RigError;
 use rig_core::vector_store::InsertDocuments;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -26,18 +27,18 @@ impl std::fmt::Display for WordDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     let model = openai_client
         .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
         .erase();
 
-    let base_url = std::env::var("MILVUS_BASE_URL")?;
-    let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;
-    let database_name = std::env::var("MILVUS_DATABASE_NAME")?;
-    let milvus_user = std::env::var("MILVUS_USERNAME")?;
-    let milvus_password = std::env::var("MILVUS_PASSWORD")?;
+    let base_url = std::env::var("MILVUS_BASE_URL").map_err(RigError::other)?;
+    let collection_name = std::env::var("MILVUS_COLLECTION_NAME").map_err(RigError::other)?;
+    let database_name = std::env::var("MILVUS_DATABASE_NAME").map_err(RigError::other)?;
+    let milvus_user = std::env::var("MILVUS_USERNAME").map_err(RigError::other)?;
+    let milvus_password = std::env::var("MILVUS_PASSWORD").map_err(RigError::other)?;
 
     let vector_store =
         rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name)

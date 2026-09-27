@@ -16,6 +16,7 @@ use rig_core::{
 };
 
 use neo4rs::*;
+use rig_core::{RigError, error::ErrorKind};
 use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::IndexConfig};
 use serde::{Deserialize, Serialize};
 
@@ -33,14 +34,14 @@ const NODE_LABEL: &str = "Movie";
 const INDEX_NAME: &str = "moviePlots";
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
-    let openai_api_key = env::var("OPENAI_API_KEY")?;
+    let openai_api_key = env::var("OPENAI_API_KEY").map_err(RigError::other)?;
     let openai_client = OpenAI::new(&openai_api_key);
 
-    let neo4j_uri = env::var("NEO4J_URI")?;
-    let neo4j_username = env::var("NEO4J_USERNAME")?;
-    let neo4j_password = env::var("NEO4J_PASSWORD")?;
+    let neo4j_uri = env::var("NEO4J_URI").map_err(RigError::other)?;
+    let neo4j_username = env::var("NEO4J_USERNAME").map_err(RigError::other)?;
+    let neo4j_password = env::var("NEO4J_PASSWORD").map_err(RigError::other)?;
 
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
@@ -54,11 +55,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .execute(Query::new(
             format!("MATCH (m:{NODE_LABEL}) RETURN m.plot AS plot, m.title AS title").to_string(),
         ))
-        .await?;
+        .await
+        .map_err(RigError::other)?;
 
-    while let Some(row) = result.next().await? {
-        let title: Option<BoltString> = row.get("title")?;
-        let plot: Option<BoltString> = row.get("plot")?;
+    while let Some(row) = result.next().await.map_err(RigError::other)? {
+        let title: Option<BoltString> = row.get("title").map_err(RigError::other)?;
+        let plot: Option<BoltString> = row.get("plot").map_err(RigError::other)?;
 
         if let (Some(title), Some(plot)) = (title, plot) {
             movies_batch.push(Movie {
@@ -87,11 +89,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .execute(Query::new(
             format!("MATCH (m:{NODE_LABEL} WHERE m.embedding IS NOT NULL) RETURN count(*) AS countMoviesWithEmbeddings, size(m.embedding) AS embeddingSize").to_string(),
         ))
-        .await?;
+        .await.map_err(RigError::other)?;
 
-    if let Some(row) = result.next().await? {
-        let count: i64 = row.get("countMoviesWithEmbeddings")?;
-        let size: i64 = row.get("embeddingSize")?;
+    if let Some(row) = result.next().await.map_err(RigError::other)? {
+        let count: i64 = row
+            .get("countMoviesWithEmbeddings")
+            .map_err(RigError::other)?;
+        let size: i64 = row.get("embeddingSize").map_err(RigError::other)?;
         println!(
             "Embeddings generated and attached to nodes.\n\
              Movie nodes with embeddings: {count}.\n\
@@ -149,14 +153,14 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn import_batch(graph: &Graph, nodes: &[Movie], batch_n: i32) -> Result<(), anyhow::Error> {
-    let openai_api_key = env::var("OPENAI_API_KEY")?;
+async fn import_batch(graph: &Graph, nodes: &[Movie], batch_n: i32) -> Result<(), RigError> {
+    let openai_api_key = env::var("OPENAI_API_KEY").map_err(RigError::other)?;
     let to_encode_list: Vec<String> = nodes
         .iter()
         .map(|node| {
-            node.to_encode
-                .clone()
-                .ok_or_else(|| anyhow::anyhow!("movie payload missing text to encode"))
+            node.to_encode.clone().ok_or_else(|| {
+                RigError::new(ErrorKind::Other, "movie payload missing text to encode")
+            })
         })
         .collect::<Result<_, _>>()?;
 
@@ -169,7 +173,7 @@ async fn import_batch(graph: &Graph, nodes: &[Movie], batch_n: i32) -> Result<()
         .param("movies", nodes.to_bolt_type())
         .param("to_encode_list", to_encode_list)
         .param("token", openai_api_key)
-    ).await?;
+    ).await.map_err(RigError::other)?;
 
     println!("Processed batch {batch_n}");
     Ok(())

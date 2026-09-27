@@ -1,3 +1,4 @@
+use rig_core::RigError;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -25,7 +26,7 @@ impl std::fmt::Display for WordDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let openai_model = OpenAI::from_env()?
         .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
         .erase();

@@ -928,8 +928,8 @@ fn assert_wire_form(json: &str, report: &RigError) {
 /// One error per kind against JSON written out here. The first four are
 /// copied from effect goldens (`anthropic_cancelled_stream`,
 /// `anthropic_memory_failing_append`, `anthropic_outcome_model_error`,
-/// `gemini_long_loop_output_cap_midway`); the others are `main`'s
-/// serialization of `ErrorReport::new(kind, "m")`.
+/// `gemini_long_loop_output_cap_midway`); the others but `configuration`
+/// are `main`'s serialization of `new(kind, "m")` under the type's old name.
 #[test]
 fn rig_error_json_is_pinned_per_kind() {
     let bare = |kind| RigError::new(kind, "m");
@@ -1030,6 +1030,11 @@ fn rig_error_json_is_pinned_per_kind() {
             r#"{"kind":"other","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
             bare(ErrorKind::Other),
         ),
+        // New in this change: no golden or `main` serialization has it.
+        (
+            r#"{"kind":"configuration","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Configuration),
+        ),
     ];
     for (json, report) in &pins {
         assert_wire_form(json, report);
@@ -1054,7 +1059,8 @@ fn rig_error_json_is_pinned_per_kind() {
             | ErrorKind::HandlerUnavailable
             | ErrorKind::Divergence
             | ErrorKind::Denied
-            | ErrorKind::Other => {}
+            | ErrorKind::Other
+            | ErrorKind::Configuration => {}
         }
     }
 }

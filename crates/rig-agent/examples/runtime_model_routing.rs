@@ -8,7 +8,6 @@
 
 use std::convert::Infallible;
 
-use anyhow::Result;
 use futures::stream;
 use rig_agent::{
     AgentBuilder,
@@ -17,6 +16,7 @@ use rig_agent::{
     streaming::{StreamEvent, StreamFinal},
     tool::{Tool, ToolContext},
 };
+use rig_core::RigError;
 use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
@@ -152,7 +152,7 @@ impl AgentHook for RouteModels {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::named_model("fast", local("fast", 3, fast_research))
         .model_route("strong", local("strong", 5, strong_synthesis))
         .tool(Search)

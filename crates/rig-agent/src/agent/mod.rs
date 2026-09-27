@@ -6,7 +6,7 @@
 //! ```no_run
 //! use rig_agent::prelude::*;
 //! use rig_core::{Model, providers::openai::{self, OpenAI}};
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn run() -> Result<(), rig_core::RigError> {
 //! let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 //! let agent = AgentBuilder::new(model).preamble("Be concise.").build();
 //! let response = agent.prompt("Explain ownership.").await?;

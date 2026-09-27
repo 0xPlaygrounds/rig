@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::gemini::{Gemini, embedding::EMBEDDING_001};
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), rig_core::RigError> {
 //! let model = Gemini::from_env()?.embedding(EMBEDDING_001, None);
 //! # Ok(())
 //! # }

@@ -5,7 +5,7 @@
 //! use rig_core::image_generation::ImageGenerationRequestBuilder;
 //! use rig_core::operation::ImageGeneration;
 //!
-//! # async fn example(model: DynModel<ImageGeneration>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(model: DynModel<ImageGeneration>) -> Result<(), rig_core::RigError> {
 //! let request = ImageGenerationRequestBuilder::new("A mountain lake")
 //!     .width(1024)
 //!     .height(1024)

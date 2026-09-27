@@ -1,9 +1,9 @@
-use anyhow::Result;
+use rig::RigError;
 use rig::image_generation::ImageGenerationRequestBuilder;
 use rig::providers::gemini::{self, Gemini};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = Gemini::from_env()?;
     let model = client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE);
 
@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
         .await?;
 
     let output_path = "/tmp/rig-nanobanana.png";
-    std::fs::write(output_path, response.image)?;
+    std::fs::write(output_path, response.image).map_err(RigError::other)?;
 
     println!("Wrote generated image to {output_path}");
 

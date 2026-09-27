@@ -6,7 +6,7 @@
 //! ```no_run
 //! use rig_core::providers::groq;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let gpt_oss = groq::from_env()?.chat(groq::GPT_OSS_120B);
 //! # let _ = gpt_oss;
 //! # Ok(())

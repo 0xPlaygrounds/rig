@@ -1,4 +1,3 @@
-use rig::error::ProviderError;
 use rig::extractor::ExtractorBuilder;
 use rig::prelude::*;
 use rig::{
@@ -38,7 +37,7 @@ impl ReasoningAgent {
             .await
             .map_err(|e| {
                 tracing::error!("Extraction error: {:?}", e);
-                rig::RigError::from(ProviderError::Provider("".into()))
+                rig::RigError::from(e)
             })?
             .output;
         if extracted.steps.is_empty() {
@@ -67,7 +66,7 @@ impl ReasoningAgent {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)

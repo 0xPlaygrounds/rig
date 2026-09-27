@@ -1,10 +1,13 @@
 //! The Gemini gRPC transport: a tonic channel with the API-key interceptor.
 //!
 //! ```no_run
+//! use rig_core::RigError;
 //! use rig_gemini_grpc::GeminiGrpc;
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let transport = GeminiGrpc::new("API_KEY").await?;
+//! # async fn example() -> Result<(), RigError> {
+//! let transport = GeminiGrpc::new("API_KEY")
+//!     .await
+//!     .map_err(|error| RigError::other(&*error))?;
 //! # let _ = transport;
 //! # Ok(())
 //! # }

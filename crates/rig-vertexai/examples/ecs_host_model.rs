@@ -4,6 +4,7 @@
 //! operation future. No provider construction data is inserted into the world.
 
 use bevy_app::App;
+use rig_core::RigError;
 use rig_core::{
     completion::CompletionRequest,
     effect::{EffectKind, HandlerDescriptor, family},
@@ -35,8 +36,8 @@ impl Serve for Hosted {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let runtime = tokio::runtime::Runtime::new()?;
+fn main() -> Result<(), RigError> {
+    let runtime = tokio::runtime::Runtime::new().map_err(RigError::other)?;
     let client = {
         let _entered = runtime.enter();
         rig_vertexai::VertexAi::from_env()?

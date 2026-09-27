@@ -1,4 +1,4 @@
-use anyhow::Result;
+use rig::RigError;
 use rig::{
     embeddings::EmbeddingsBuilder,
     prelude::*,
@@ -134,7 +134,7 @@ impl ToolEmbedding for Subtract {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // required to enable CloudWatch error logging by the runtime
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -150,8 +150,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .erase();
 
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(Add)?;
-    toolset.add_retrieved_tool(Subtract)?;
+    toolset.add_retrieved_tool(Add).map_err(RigError::other)?;
+    toolset
+        .add_retrieved_tool(Subtract)
+        .map_err(RigError::other)?;
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?

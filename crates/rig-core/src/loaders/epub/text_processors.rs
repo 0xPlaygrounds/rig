@@ -32,6 +32,13 @@ pub enum XmlProcessingError {
     Utf8(#[from] std::string::FromUtf8Error),
 }
 
+/// A chapter's markup could not be stripped.
+impl From<XmlProcessingError> for crate::error::RigError {
+    fn from(error: XmlProcessingError) -> Self {
+        Self::classified(crate::error::ErrorKind::Other, &error)
+    }
+}
+
 /// Strip markup while resolving predefined XML entities and numeric character references.
 /// Unknown references are errors; DTD entity declarations are not expanded.
 pub struct StripXmlProcessor;
@@ -97,3 +104,6 @@ impl TextProcessor for StripXmlProcessor {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod tests;

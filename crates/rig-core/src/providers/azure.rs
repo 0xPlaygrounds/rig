@@ -8,7 +8,7 @@
 //! ```no_run
 //! use rig_core::providers::azure;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let gpt4o = azure::from_env()?.chat(azure::GPT_4O);
 //! # Ok(())
 //! # }

@@ -1,12 +1,14 @@
 //! Audio transcription requests, normalized responses, and model interfaces.
 //!
 //! ```no_run
-//! use rig_core::DynModel;
+//! use rig_core::{DynModel, RigError};
 //! use rig_core::operation::Transcription;
 //! use rig_core::transcription::TranscriptionRequestBuilder;
 //!
-//! # async fn example(model: DynModel<Transcription>) -> Result<(), Box<dyn std::error::Error>> {
-//! let request = TranscriptionRequestBuilder::from_file("audio.wav")?.build();
+//! # async fn example(model: DynModel<Transcription>) -> Result<(), RigError> {
+//! let request = TranscriptionRequestBuilder::from_file("audio.wav")
+//!     .map_err(RigError::other)?
+//!     .build();
 //! let response = model.call(request).await?;
 //! # let _ = response;
 //! # Ok(())

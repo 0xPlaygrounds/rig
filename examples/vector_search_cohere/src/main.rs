@@ -2,6 +2,7 @@
 //! Requires `COHERE_API_KEY` and the `derive` feature.
 //! Run it to see a semantic query retrieve the closest matching document.
 
+use rig::RigError;
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -61,7 +62,7 @@ fn print_matches(matches: &[SearchMatch]) {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let cohere_client = Cohere::from_env()?;
     // Cohere scores a document and a query differently, so the two models
     // differ only in the `input_type` their wires send.

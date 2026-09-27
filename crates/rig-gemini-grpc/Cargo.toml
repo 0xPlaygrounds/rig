@@ -28,7 +28,6 @@ tonic-prost-build = { workspace = true }
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
-anyhow = { workspace = true }
 rig-agent.workspace = true
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
     "test-utils",

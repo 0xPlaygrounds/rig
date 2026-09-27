@@ -6,11 +6,12 @@
 //
 // You can view the data at http://localhost:6333/dashboard
 
-use anyhow::anyhow;
 use qdrant_client::{
     Qdrant,
     qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
 };
+use rig_core::RigError;
+use rig_core::error::ErrorKind;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
@@ -28,21 +29,28 @@ struct Word {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     const COLLECTION_NAME: &str = "rig-collection";
 
-    let client = Qdrant::from_url("http://localhost:6334").build()?;
+    let client = Qdrant::from_url("http://localhost:6334")
+        .build()
+        .map_err(RigError::other)?;
 
     // Create a collection with 1536 dimensions if it doesn't exist
     // Note: Make sure the dimensions match the size of the embeddings returned by the
     // model you are using
-    if !client.collection_exists(COLLECTION_NAME).await? {
+    if !client
+        .collection_exists(COLLECTION_NAME)
+        .await
+        .map_err(RigError::other)?
+    {
         client
             .create_collection(
                 CreateCollectionBuilder::new(COLLECTION_NAME)
                     .vectors_config(VectorParamsBuilder::new(1536, Distance::Cosine)),
             )
-            .await?;
+            .await
+            .map_err(RigError::other)?;
     }
 
     // The OpenAI client, from `OPENAI_API_KEY`.
@@ -75,7 +83,12 @@ async fn main() -> Result<(), anyhow::Error> {
     vector_store
         .insert_documents(documents)
         .await
-        .map_err(|err| anyhow!("Couldn't insert documents: {err}"))?;
+        .map_err(|err| {
+            RigError::new(
+                ErrorKind::Other,
+                format!("Couldn't insert documents: {err}"),
+            )
+        })?;
 
     let query = "What is a linglingdong?";
     let req = VectorSearchRequest::builder()

@@ -13,11 +13,12 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
-        .build()?;
+        .build()
+        .map_err(RigError::other)?;
     // Create a new OpenTelemetry trace pipeline that prints to stdout
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)

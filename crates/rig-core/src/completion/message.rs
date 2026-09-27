@@ -443,21 +443,23 @@ pub struct EmptyToolCallId;
 /// adapters separately assign protocol handles for complete call/result histories.
 ///
 /// ```
-/// use rig_core::message::ToolCallId;
+/// use rig_core::{ErrorKind, RigError, message::ToolCallId};
 ///
-/// let explicit = ToolCallId::new("tool-0").ok_or("empty handle")?;
+/// let explicit = ToolCallId::new("tool-0")
+///     .ok_or_else(|| RigError::new(ErrorKind::Other, "empty handle"))?;
 /// let generated = ToolCallId::minted(0);
 /// assert_ne!(explicit, generated);
 /// assert_eq!(explicit.explicit(), Some("tool-0"));
 /// assert!(generated.is_generated());
+/// let json = serde_json::to_value(&generated).map_err(RigError::other)?;
 /// assert_eq!(
-///     serde_json::to_value(&generated)?,
+///     json,
 ///     serde_json::json!({"origin": "generated", "id": "minted:tool:0"}),
 /// );
-/// let restored: ToolCallId = serde_json::from_value(serde_json::to_value(&generated)?)?;
+/// let restored: ToolCallId = serde_json::from_value(json).map_err(RigError::other)?;
 /// assert_eq!(restored, generated);
 /// assert!(serde_json::from_value::<ToolCallId>(serde_json::json!("tool-0")).is_err());
-/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// # Ok::<(), rig_core::RigError>(())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "ToolCallIdWire", into = "ToolCallIdWire")]
@@ -954,15 +956,16 @@ impl<'de> Deserialize<'de> for AdditionalParams {
 /// are compared individually.
 ///
 /// ```
-/// use rig_core::message;
+/// use rig_core::{RigError, message};
 ///
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # fn main() -> Result<(), RigError> {
 /// let original = serde_json::json!({
 ///     "role": "assistant",
 ///     "content": [{"type": "text", "text": "cited", "citations": ["not re-nested"]}],
 /// });
-/// let loaded: message::Message = serde_json::from_value(original.clone())?;
-/// let round_tripped = serde_json::to_value(&loaded)?;
+/// let loaded: message::Message =
+///     serde_json::from_value(original.clone()).map_err(RigError::other)?;
+/// let round_tripped = serde_json::to_value(&loaded).map_err(RigError::other)?;
 /// let lost = message::keys_lost_in_round_trip(&original, &round_tripped);
 /// assert_eq!(lost, vec!["content.0.citations".to_string()]);
 /// # Ok(())

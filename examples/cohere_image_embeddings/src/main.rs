@@ -7,16 +7,27 @@
 //! ```
 //!
 
-use anyhow::{Context, Result};
+use rig::RigError;
+use rig::error::ErrorKind;
 use rig::providers::cohere::Cohere;
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let path = std::env::args_os()
-        .nth(1)
-        .context("pass the path to a PNG, JPEG, WebP, or GIF image")?;
-    let image = std::fs::read(&path)
-        .with_context(|| format!("failed to read image at {}", path.to_string_lossy()))?;
+async fn main() -> Result<(), RigError> {
+    let path = std::env::args_os().nth(1).ok_or_else(|| {
+        RigError::new(
+            ErrorKind::Other,
+            "pass the path to a PNG, JPEG, WebP, or GIF image",
+        )
+    })?;
+    let image = std::fs::read(&path).map_err(|error| {
+        RigError::new(
+            ErrorKind::Other,
+            format!(
+                "failed to read image at {}: {error}",
+                path.to_string_lossy()
+            ),
+        )
+    })?;
 
     let cohere = Cohere::from_env()?;
     // Embed v3 embeds images with one fixed model at one fixed width, so the
@@ -27,7 +38,7 @@ async fn main() -> Result<()> {
         .embeddings
         .into_iter()
         .next()
-        .context("the provider returned no embedding")?;
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "the provider returned no embedding"))?;
 
     println!(
         "embedded {} bytes into {} dimensions",

@@ -8,6 +8,7 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;
 
+use rig_core::RigError;
 use rig_core::{
     Embed, embeddings::EmbeddingsBuilder, providers::openai::OpenAI, vector_store::VectorStoreIndex,
 };
@@ -46,15 +47,18 @@ where
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
 
     // Initialize MongoDB client
-    let mongodb_connection_string = env::var("MONGODB_CONNECTION_STRING")?;
-    let options = ClientOptions::parse(mongodb_connection_string).await?;
+    let mongodb_connection_string =
+        env::var("MONGODB_CONNECTION_STRING").map_err(RigError::other)?;
+    let options = ClientOptions::parse(mongodb_connection_string)
+        .await
+        .map_err(RigError::other)?;
 
-    let mongodb_client = MongoClient::with_options(options)?;
+    let mongodb_client = MongoClient::with_options(options).map_err(RigError::other)?;
 
     // Initialize MongoDB vector store
     let collection: Collection<bson::Document> = mongodb_client

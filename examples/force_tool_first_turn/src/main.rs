@@ -20,7 +20,6 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
-use anyhow::Result;
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::completion::PromptError;
 use rig::message::ToolChoice;
@@ -120,7 +119,7 @@ impl AgentHook for ForceToolOnFirstTurn {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = OpenAI::from_env()?;
     // A fresh agent per run (both share the same tool and preamble).
     let make_agent = || {

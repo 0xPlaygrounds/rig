@@ -62,7 +62,7 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let openai_client = OpenAI::from_env()?;
     let embedding_model = openai_client
         .embedding(openai::TEXT_EMBEDDING_ADA_002, None)

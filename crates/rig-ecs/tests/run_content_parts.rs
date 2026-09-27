@@ -574,3 +574,17 @@ fn a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass() {
         Some("fine")
     );
 }
+
+/// A graph that cannot become a message is a request that cannot be built;
+/// a binary failure converts as it does.
+#[test]
+fn a_content_failure_converts_as_a_request_or_its_binary_failure() {
+    use rig_core::error::{ErrorKind, RigError};
+    let shape = RigError::from(ContentError::Shape);
+    assert_eq!(shape.kind, ErrorKind::Request);
+    assert!(!shape.retryable);
+    assert_eq!(shape.message, "content part has an invalid type or role");
+    let missing = RigError::from(ContentError::Binary(BinaryError::Missing));
+    assert_eq!(missing.kind, ErrorKind::Internal);
+    assert_eq!(missing.message, "unresolved binary asset");
+}

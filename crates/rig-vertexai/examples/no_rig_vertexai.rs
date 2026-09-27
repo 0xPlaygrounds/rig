@@ -1,20 +1,26 @@
-use anyhow::Context;
 use google_cloud_aiplatform_v1 as vertexai;
+use rig_core::RigError;
+use rig_core::error::ErrorKind;
 
 // Example of using vertexai without Rig in order to put the Rig integration into context
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     const MODEL: &str = "gemini-2.5-flash-lite";
     // google-cloud-auth does not read ~/.config/gcloud/configurations so requiring that
     // project be set by env var for this example
-    let project_id: String = std::env::var("GOOGLE_CLOUD_PROJECT")
-        .context("GOOGLE_CLOUD_PROJECT env var must be set to run this example")?;
+    let project_id: String = std::env::var("GOOGLE_CLOUD_PROJECT").map_err(|error| {
+        RigError::new(
+            ErrorKind::Other,
+            format!("GOOGLE_CLOUD_PROJECT env var must be set to run this example: {error}"),
+        )
+    })?;
 
     // implicit ADC auth here, but builder can include a .with_credentials method
     let client = vertexai::client::PredictionService::builder()
         .build()
-        .await?;
+        .await
+        .map_err(RigError::other)?;
 
     let model = format!("projects/{project_id}/locations/global/publishers/google/models/{MODEL}");
 
@@ -38,18 +44,23 @@ async fn main() -> Result<(), anyhow::Error> {
         .await;
 
     // see response:#? for full response (list of candidates, token usage, etc)
-    let response = response?;
+    let response = response.map_err(RigError::other)?;
     let candidate = response
         .candidates
         .first()
-        .context("No candidates in response")?;
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "No candidates in response"))?;
     let content = candidate
         .content
         .as_ref()
-        .context("No content in candidate")?;
-    let part = content.parts.first().context("No parts in content")?;
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "No content in candidate"))?;
+    let part = content
+        .parts
+        .first()
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "No parts in content"))?;
 
-    let output = part.text().context("Part does not contain text data")?;
+    let output = part
+        .text()
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "Part does not contain text data"))?;
 
     println!("OUTPUT = {output}");
     Ok(())

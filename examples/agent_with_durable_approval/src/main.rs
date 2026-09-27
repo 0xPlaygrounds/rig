@@ -27,10 +27,11 @@
 //!
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_durable_approval`
 
-use anyhow::Result;
+use rig::RigError;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 use rig::message::{ToolResultContent, UserContent};
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
@@ -143,7 +144,7 @@ async fn ask(prompt: &str) -> Option<String> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     // A serializable `AgentRun` is a sans-IO protocol primitive. This example
     // intentionally supplies raw model transport and tool dispatch explicitly;
     // configured `Agent` execution instead always goes through `AgentRunner`.
@@ -203,14 +204,23 @@ async fn main() -> Result<()> {
                 // the file before deciding. The write→reload boundary below could
                 // be a separate process / request / much later — the resumed run
                 // re-emits the pending tool calls purely from serialized state.
-                std::fs::write(&state_path, serde_json::to_vec_pretty(&run)?)?;
+                std::fs::write(
+                    &state_path,
+                    serde_json::to_vec_pretty(&run).map_err(RigError::other)?,
+                )
+                .map_err(RigError::other)?;
                 println!("\n💾 run suspended to {}", state_path.display());
 
                 // ----- imagine the process exits here and resumes later -----
 
-                let mut resumed: AgentRun = serde_json::from_slice(&std::fs::read(&state_path)?)?;
+                let mut resumed: AgentRun =
+                    serde_json::from_slice(&std::fs::read(&state_path).map_err(RigError::other)?)
+                        .map_err(RigError::other)?;
                 let AgentRunStep::CallTools { calls } = resumed.next_step()? else {
-                    anyhow::bail!("resumed run must re-emit the pending tool calls");
+                    return Err(RigError::new(
+                        ErrorKind::Other,
+                        "resumed run must re-emit the pending tool calls",
+                    ));
                 };
 
                 let mut results = Vec::new();

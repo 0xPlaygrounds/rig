@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::together;
 //! let model = together::from_env()?.chat(together::MIXTRAL_8X7B_INSTRUCT_V0_1);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 
 pub const YI_34B_CHAT: &str = "zero-one-ai/Yi-34B-Chat";

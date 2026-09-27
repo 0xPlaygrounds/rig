@@ -1,3 +1,4 @@
+use rig_core::RigError;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -15,7 +16,7 @@ struct Word {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Initialize tracing for logging
     tracing_subscriber::fmt::init();
 

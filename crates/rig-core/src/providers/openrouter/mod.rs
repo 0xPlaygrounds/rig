@@ -8,7 +8,7 @@
 //! use rig_core::completion::CompletionRequest;
 //! use rig_core::providers::openrouter::{self, ProviderPreferences};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let sonar = openrouter::from_env()?.chat(openrouter::PERPLEXITY_SONAR_PRO);
 //!
 //! let request = CompletionRequest::new("What is Rig?")

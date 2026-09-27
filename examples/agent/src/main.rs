@@ -2,7 +2,6 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the provider/client/agent/prompt flow end to end.
 
-use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
@@ -10,7 +9,7 @@ const PREAMBLE: &str = "You are a comedian here to entertain the user using humo
 const PROMPT: &str = "Entertain me!";
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))
         .preamble(PREAMBLE)
         .build();

@@ -76,6 +76,26 @@ pub enum BinaryError {
     Spelling,
 }
 
+/// A source the caller supplied is [`ErrorKind::Request`]; a store that lost
+/// or corrupted a payload is [`ErrorKind::Internal`].
+///
+/// [`ErrorKind::Request`]: rig_core::error::ErrorKind::Request
+/// [`ErrorKind::Internal`]: rig_core::error::ErrorKind::Internal
+impl From<BinaryError> for rig_core::error::RigError {
+    fn from(error: BinaryError) -> Self {
+        let kind = match error {
+            BinaryError::Limit | BinaryError::Base64 | BinaryError::Spelling => {
+                rig_core::error::ErrorKind::Request
+            }
+            BinaryError::Missing | BinaryError::Corrupt => rig_core::error::ErrorKind::Internal,
+        };
+        Self {
+            kind,
+            ..Self::other(error)
+        }
+    }
+}
+
 /// Representation at a particular use of a shared binary payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 pub enum BinaryEncoding {

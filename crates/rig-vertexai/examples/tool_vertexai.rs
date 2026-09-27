@@ -1,6 +1,6 @@
-use anyhow::Result;
 use rig_agent::prelude::*;
 use rig_agent::tool::ToolContext;
+use rig_core::RigError;
 use rig_vertexai::{VertexAi, completion::GEMINI_2_5_FLASH_LITE};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,7 @@ impl Tool for Adder {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().with_target(false).init();
 
     // Create the Vertex AI model using implicit credentials

@@ -31,7 +31,7 @@ use rig::prelude::*;
 use rig_gemini_grpc::Client;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let client = Client::from_env();
 
     let agent = client

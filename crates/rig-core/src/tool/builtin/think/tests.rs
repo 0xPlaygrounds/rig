@@ -27,3 +27,16 @@ async fn test_think_tool_call() {
         "I need to verify the user's identity before proceeding"
     );
 }
+
+/// A failure reports as a failed tool, as the tool runner reports it.
+#[test]
+fn a_think_failure_converts_as_the_tool_runner_reports_it() {
+    let error = crate::error::RigError::from(ThinkError("no thought".to_owned()));
+    assert_eq!(
+        error.kind,
+        crate::error::ErrorKind::Tool(crate::tool::ToolErrorKind::Other)
+    );
+    assert!(!error.retryable);
+    assert_eq!(error.message, "Think tool error: no thought");
+    assert_eq!(error.source_chain, ["Think tool error: no thought"]);
+}

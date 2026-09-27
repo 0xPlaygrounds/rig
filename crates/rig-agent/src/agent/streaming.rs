@@ -6,7 +6,7 @@
 //! # }
 //! ```
 
-use rig_core::error::{ProviderError, RigError};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::streaming::BlockId;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
@@ -251,6 +251,16 @@ pub enum StreamingError {
     /// The run failed for a reason the blocking surface reports the same way.
     #[error("PromptError: {0}")]
     Prompt(PromptError),
+}
+
+/// A failure converts unchanged; a prompt error as it converts.
+impl From<StreamingError> for RigError {
+    fn from(error: StreamingError) -> Self {
+        match error {
+            StreamingError::Failed(error) => error,
+            StreamingError::Prompt(error) => Self::from(error),
+        }
+    }
 }
 
 /// A failure is [`StreamingError::Failed`] on the streamed surface, as it is
@@ -515,12 +525,10 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::Failed(
-                    ProviderError::Response(
-                        "agent run ended without producing a final response".to_string(),
-                    )
-                    .into(),
-                )
+                PromptError::Failed(RigError::new(
+                    ErrorKind::Response,
+                    "agent run ended without producing a final response",
+                ))
             })
         };
         (future, RunEvents { receiver })

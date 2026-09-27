@@ -1,10 +1,11 @@
 use rig_agent::{agent::stream_to_stdout, prelude::*};
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_core::RigError;
 mod common;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
     let agent = AgentBuilder::new(BedrockRuntime::from_env().completion(AMAZON_NOVA_LITE))
@@ -20,6 +21,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Calculate 2 + 5");
     let mut stream = agent.prompt("Calculate 2 + 5").stream();
-    let _ = stream_to_stdout(&mut stream).await?;
+    let _ = stream_to_stdout(&mut stream)
+        .await
+        .map_err(RigError::other)?;
     Ok(())
 }

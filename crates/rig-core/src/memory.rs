@@ -1,7 +1,7 @@
 //! Conversation history storage, filtering, and compaction interfaces.
 //!
 //! ```no_run
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn run() -> Result<(), rig_core::RigError> {
 //! use rig_core::{
 //!     completion::Message,
 //!     memory::{ConversationMemory, InMemoryConversationMemory},

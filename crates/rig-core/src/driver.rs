@@ -9,7 +9,7 @@
 //! use rig_core::driver::Model;
 //! use rig_core::providers::openai::{self, OpenAI};
 //!
-//! # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), rig_core::RigError> {
 //! let model = OpenAI::from_env()?.with_http(http).responses(openai::GPT_5_2);
 //! let response = model.call(CompletionRequest::new("Hello")).await?;
 //! # let _ = response;

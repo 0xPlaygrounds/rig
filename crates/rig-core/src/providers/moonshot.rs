@@ -8,7 +8,7 @@
 //! ```no_run
 //! use rig_core::providers::moonshot;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let kimi = moonshot::from_env()?.chat(moonshot::KIMI_K3);
 //! # let _ = kimi;
 //! # Ok(())

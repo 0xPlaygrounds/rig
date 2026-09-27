@@ -19,10 +19,11 @@
 
 use std::collections::BTreeSet;
 
-use anyhow::Result;
+use rig::RigError;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction};
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 use rig::message::UserContent;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
@@ -89,7 +90,7 @@ impl AgentHook for ToolLoggerHook {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let openai = OpenAI::from_env()?;
     let model = openai.completion(openai::GPT_4O).erase();
     let agent = rig::agent::AgentBuilder::new(model.clone())
@@ -151,10 +152,14 @@ async fn main() -> Result<()> {
                 // persist it here to pause for approval and resume later —
                 // even in a process that never saw this step. The resumed run
                 // re-emits the pending tool calls from its own state.
-                let suspended = serde_json::to_string(&run)?;
-                let mut run_resumed: AgentRun = serde_json::from_str(&suspended)?;
+                let suspended = serde_json::to_string(&run).map_err(RigError::other)?;
+                let mut run_resumed: AgentRun =
+                    serde_json::from_str(&suspended).map_err(RigError::other)?;
                 let AgentRunStep::CallTools { calls } = run_resumed.next_step()? else {
-                    anyhow::bail!("resumed run must re-emit the pending tool calls");
+                    return Err(RigError::new(
+                        ErrorKind::Other,
+                        "resumed run must re-emit the pending tool calls",
+                    ));
                 };
 
                 let mut results = Vec::new();

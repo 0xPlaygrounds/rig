@@ -76,6 +76,10 @@ pub enum ErrorKind {
     Denied,
     /// Anything else.
     Other,
+    /// The caller's setup is invalid: a missing or malformed environment
+    /// variable, an unknown provider reference, an unparseable id. Never
+    /// retryable.
+    Configuration,
 }
 
 impl ErrorKind {
@@ -100,6 +104,7 @@ impl ErrorKind {
             Self::Divergence => "divergence",
             Self::Denied => "denied",
             Self::Other => "other",
+            Self::Configuration => "configuration",
         }
     }
 }
@@ -245,6 +250,33 @@ impl RigError {
     pub const fn is_retryable(&self) -> bool {
         self.retryable
     }
+
+    /// A failure from outside rig, classified [`ErrorKind::Other`], with its
+    /// `Display` as the message and its sources as `source_chain`.
+    ///
+    /// ```
+    /// use rig_core::{ErrorKind, RigError};
+    ///
+    /// fn token() -> Result<String, RigError> {
+    ///     std::env::var("APP_TOKEN").map_err(RigError::other)
+    /// }
+    /// # let _ = token();
+    /// let error = RigError::other(std::io::Error::other("disk full"));
+    /// assert_eq!(error.kind, ErrorKind::Other);
+    /// assert_eq!(error.message, "disk full");
+    /// ```
+    pub fn other(error: impl std::error::Error) -> Self {
+        Self::classified(ErrorKind::Other, &error)
+    }
+
+    /// A report of `kind` for `error`: its `Display` as the message and its
+    /// sources as the chain, not retryable.
+    pub(crate) fn classified(kind: ErrorKind, error: &dyn std::error::Error) -> Self {
+        Self {
+            source_chain: source_chain(error),
+            ..Self::new(kind, error.to_string())
+        }
+    }
 }
 
 impl RigError {
@@ -320,7 +352,7 @@ pub fn transient_transport(error: &http_client::Error) -> bool {
 
 /// Collect the `Display` of each `source()` link below `error`, outermost
 /// first.
-pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
+pub(crate) fn source_chain(error: &dyn std::error::Error) -> Vec<String> {
     let mut chain = Vec::new();
     let mut current = error.source();
     while let Some(source) = current {
@@ -893,6 +925,7 @@ const _: fn() = || {
     assert_wire::<ErrorKind>();
 };
 
+mod convert;
 #[cfg(test)]
 mod encode_tests;
 #[cfg(test)]

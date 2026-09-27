@@ -1,5 +1,5 @@
-use anyhow::Result;
 use futures::StreamExt;
+use rig::RigError;
 use rig::completion::CompletionRequest;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::interactions_api::{
@@ -38,7 +38,7 @@ fn deep_research_request(
     agent: impl Into<String>,
     prompt: impl Into<String>,
     stream: bool,
-) -> Result<CompletionRequest> {
+) -> Result<CompletionRequest, RigError> {
     // Deep Research is selected by `agent`, which suppresses `model` in the
     // outgoing body — matching the official Gemini Deep Research examples.
     let mut params = serde_json::Map::from_iter([
@@ -53,7 +53,8 @@ fn deep_research_request(
             "agent_config".to_owned(),
             serde_json::to_value(AgentConfig::DeepResearch {
                 thinking_summaries: Some(ThinkingSummaries::Auto),
-            })?,
+            })
+            .map_err(RigError::other)?,
         );
     }
 
@@ -103,12 +104,13 @@ async fn poll_until_terminal(
     gemini: &Gemini,
     interaction_id: &str,
     request: &CompletionRequest,
-) -> Result<Interaction> {
+) -> Result<Interaction, RigError> {
     let model = gemini.interaction(interaction_id);
 
     loop {
         let response = model.call(request.clone()).await?;
-        let interaction: Interaction = serde_json::from_value(response.raw)?;
+        let interaction: Interaction =
+            serde_json::from_value(response.raw).map_err(RigError::other)?;
         if interaction.is_terminal() {
             return Ok(interaction);
         }
@@ -182,7 +184,7 @@ fn handle_stream_event(state: &mut StreamState, event: StreamEvent) {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
@@ -250,7 +252,8 @@ async fn main() -> Result<()> {
             // interaction status before reconnecting a dropped/expired stream.
             let probe = gemini.interaction(interaction_id.as_str());
             let interaction: Interaction =
-                serde_json::from_value(probe.call(request.clone()).await?.raw)?;
+                serde_json::from_value(probe.call(request.clone()).await?.raw)
+                    .map_err(RigError::other)?;
             if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
                 print_interaction_result(&interaction);

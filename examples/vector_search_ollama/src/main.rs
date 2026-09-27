@@ -10,6 +10,7 @@ use rig::{
     vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
 };
 
+use rig::RigError;
 use serde::{Deserialize, Serialize};
 
 type SearchMatch = (f64, String, String);
@@ -68,7 +69,7 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let client = OllamaConfig::new()
         .with_base_url("http://localhost:11434")
         .client();

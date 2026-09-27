@@ -10,7 +10,7 @@
 //! ```
 
 use super::message::{AssistantContent, DocumentMediaType, Reasoning, ReasoningContent, ToolCall};
-use crate::error::{ProviderError, RigError};
+use crate::error::{ErrorKind, RigError};
 use crate::message::ToolChoice;
 use crate::{
     json_utils,
@@ -518,22 +518,20 @@ impl CompletionRequest {
     /// here.
     pub fn validate_message_content(&self) -> Result<(), RigError> {
         if self.chat_history.is_empty() {
-            return Err(ProviderError::Request(
-                "request has an empty chat history; providers require at least one message"
-                    .to_owned()
-                    .into(),
-            )
-            .into());
+            return Err(RigError::new(
+                ErrorKind::Request,
+                "request has an empty chat history; providers require at least one message",
+            ));
         }
 
         let empty_message = |role: &str, index: usize| {
-            RigError::from(ProviderError::Request(
+            RigError::new(
+                ErrorKind::Request,
                 format!(
                     "{role} message at index {index} has no content; \
                      providers reject empty content blocks"
-                )
-                .into(),
-            ))
+                ),
+            )
         };
 
         for (index, message) in self.chat_history.iter().enumerate() {
@@ -555,15 +553,14 @@ impl CompletionRequest {
                         match item {
                             UserContent::ToolResult(result) if result.content.is_empty() => {
                                 let name = &result.name;
-                                return Err(ProviderError::Request(
+                                return Err(RigError::new(
+                                    ErrorKind::Request,
                                     format!(
                                         "tool result for `{name}` at index {position} of the \
                                          user message at index {index} has no content; \
                                          providers reject empty content blocks"
-                                    )
-                                    .into(),
-                                )
-                                .into());
+                                    ),
+                                ));
                             }
                             UserContent::ToolResult(_)
                             | UserContent::Text(_)

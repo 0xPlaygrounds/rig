@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -243,16 +242,22 @@ impl ToolEmbedding for Divide {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
 
     // Create dynamic tools embeddings
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(Add)?;
-    toolset.add_retrieved_tool(Subtract)?;
-    toolset.add_retrieved_tool(Multiply)?;
-    toolset.add_retrieved_tool(Divide)?;
+    toolset.add_retrieved_tool(Add).map_err(RigError::other)?;
+    toolset
+        .add_retrieved_tool(Subtract)
+        .map_err(RigError::other)?;
+    toolset
+        .add_retrieved_tool(Multiply)
+        .map_err(RigError::other)?;
+    toolset
+        .add_retrieved_tool(Divide)
+        .map_err(RigError::other)?;
     let embedding_model = openai_client
         .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
         .erase();

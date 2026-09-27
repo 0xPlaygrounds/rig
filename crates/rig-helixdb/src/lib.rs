@@ -61,6 +61,13 @@ pub enum HelixError {
     },
 }
 
+/// As the HelixDB store reports it: a datastore failure.
+impl From<HelixError> for rig_core::error::RigError {
+    fn from(error: HelixError) -> Self {
+        rig_core::vector_store::VectorStoreError::datastore(error).into()
+    }
+}
+
 /// Client interface used by [`HelixDBVectorStore`] to execute HelixDB queries.
 pub trait HelixDBClient {
     /// Error type returned by this client.
@@ -120,7 +127,7 @@ impl HelixDBClient for HelixDB {
 /// use rig_core::providers::openai::OpenAI;
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
-/// # fn example() -> anyhow::Result<()> {
+/// # fn example() -> Result<(), rig_core::RigError> {
 /// let openai_model = OpenAI::from_env()?.embedding("text-embedding-ada-002", None);
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
@@ -314,3 +321,6 @@ where
         Ok(docs)
     }
 }
+
+#[cfg(test)]
+mod tests;

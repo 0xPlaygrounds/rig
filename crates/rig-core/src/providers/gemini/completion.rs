@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), rig_core::RigError> {
 //! let wire = Gemini::from_env()?.completion(GEMINI_2_5_FLASH);
 //! # Ok(())
 //! # }

@@ -1,3 +1,4 @@
+use rig_core::RigError;
 use rig_core::providers::openai::{self, OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -28,7 +29,7 @@ impl std::fmt::Display for WordDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // load environment variables from .env file
     dotenvy::dotenv().ok();
 
@@ -39,15 +40,19 @@ async fn main() -> Result<(), anyhow::Error> {
         .erase();
 
     // setup Postgres
-    let database_url = std::env::var("DATABASE_URL")?;
+    let database_url = std::env::var("DATABASE_URL").map_err(RigError::other)?;
     let pool = PgPoolOptions::new()
         .max_connections(50)
         .idle_timeout(std::time::Duration::from_secs(5))
         .connect(&database_url)
-        .await?;
+        .await
+        .map_err(RigError::other)?;
 
     // make sure database is setup
-    sqlx::migrate!("./examples/migrations").run(&pool).await?;
+    sqlx::migrate!("./examples/migrations")
+        .run(&pool)
+        .await
+        .map_err(RigError::other)?;
 
     // create test documents with mocked embeddings
     let words = vec![
@@ -82,7 +87,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // delete documents from table to have a clean start (optional, not recommended for production)
-    sqlx::query("TRUNCATE documents").execute(&pool).await?;
+    sqlx::query("TRUNCATE documents")
+        .execute(&pool)
+        .await
+        .map_err(RigError::other)?;
 
     // init vector store
     let vector_store = PostgresVectorStore::with_defaults(model, pool);

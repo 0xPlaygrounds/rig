@@ -23,7 +23,7 @@ use crate::{
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
-use rig_core::error::{ProviderError, RigError};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::id::ConversationId;
 
 use super::drive::AgentBus;
@@ -97,7 +97,10 @@ pub(crate) async fn build_prepared_completion_request(
             other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
         })
         .map_err(|report| {
-            ProviderError::Request(format!("Failed to get tool definitions: {report}").into())
+            RigError::new(
+                ErrorKind::Request,
+                format!("Failed to get tool definitions: {report}"),
+            )
         })?;
         dynamic_tool_ids.extend(ids);
     }
@@ -115,8 +118,7 @@ pub(crate) async fn build_prepared_completion_request(
         tool_snapshot.take_definitions(),
         committed_output_tool,
         request_patch,
-    )
-    .map_err(ProviderError::from)?;
+    )?;
 
     // Narrow dispatch to the tools actually advertised this turn (a per-turn
     // `active_tools` allow-list), so the implementation behind every definition
@@ -164,7 +166,7 @@ pub(crate) async fn build_prepared_completion_request(
 /// use rig_agent::prelude::*;
 /// use rig_core::{Model, providers::openai::{self, OpenAI}};
 ///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn run() -> Result<(), rig_core::RigError> {
 /// let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 ///
 /// let comedian_agent = AgentBuilder::new(model)
@@ -575,7 +577,7 @@ impl Agent {
     /// ```rust,no_run
     /// # use rig_agent::Agent;
     /// # use futures::StreamExt;
-    /// # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example(agent: Agent) -> Result<(), rig_core::RigError> {
     /// let response = agent.prompt("What is 2 + 2?").max_turns(3).await?;
     /// println!("{}", response.output);
     ///
@@ -625,8 +627,10 @@ impl Agent {
     ///
     /// ```rust,no_run
     /// # use rig_agent::{Agent, AgentRun};
-    /// # async fn example(agent: Agent, saved: &str) -> Result<(), Box<dyn std::error::Error>> {
-    /// let run: AgentRun = serde_json::from_str(saved)?;
+    /// use rig_core::RigError;
+    ///
+    /// # async fn example(agent: Agent, saved: &str) -> Result<(), RigError> {
+    /// let run: AgentRun = serde_json::from_str(saved).map_err(RigError::other)?;
     /// let response = agent.resume(run).tool_concurrency(4).await?;
     /// # Ok(())
     /// # }
@@ -667,7 +671,7 @@ impl Agent {
     /// outputs constrain the model's response to match it.
     ///
     /// ```no_run
-    /// # async fn example(agent: rig_agent::Agent) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example(agent: rig_agent::Agent) -> Result<(), rig_core::RigError> {
     /// #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
     /// struct WeatherForecast { city: String, temperature_f: f64 }
     /// let forecast = agent

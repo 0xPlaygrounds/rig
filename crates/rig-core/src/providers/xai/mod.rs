@@ -6,7 +6,7 @@
 //! ```no_run
 //! use rig_core::providers::xai;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let grok = xai::from_env()?.completion(xai::GROK_3);
 //! # let _ = grok;
 //! # Ok(())

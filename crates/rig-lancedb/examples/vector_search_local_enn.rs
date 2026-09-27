@@ -1,4 +1,5 @@
 use fixture::{as_record_batch, words};
+use rig_core::RigError;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -10,7 +11,7 @@ use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 mod fixture;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Initialize the OpenAI embeddings endpoint. Use this to generate embeddings (and generate test data for RAG demo).
     let openai_client = OpenAI::from_env()?;
 
@@ -29,25 +30,35 @@ async fn main() -> Result<(), anyhow::Error> {
     let search_params = SearchParams::default();
 
     // Initialize LanceDB locally.
-    let db = lancedb::connect("data/lancedb-store").execute().await?;
+    let db = lancedb::connect("data/lancedb-store")
+        .execute()
+        .await
+        .map_err(RigError::other)?;
 
     let table = if db
         .table_names()
         .execute()
-        .await?
+        .await
+        .map_err(RigError::other)?
         .contains(&"definitions".to_string())
     {
-        db.open_table("definitions").execute().await?
+        db.open_table("definitions")
+            .execute()
+            .await
+            .map_err(RigError::other)?
     } else {
         db.create_table(
             "definitions",
-            vec![as_record_batch(embeddings, model.capabilities().ndims)?],
+            vec![as_record_batch(embeddings, model.capabilities().ndims).map_err(RigError::other)?],
         )
         .execute()
-        .await?
+        .await
+        .map_err(RigError::other)?
     };
 
-    let vector_store = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
+    let vector_store = LanceDbVectorIndex::new(table, model, "id", search_params)
+        .await
+        .map_err(RigError::other)?;
 
     let query = "My boss says I zindle too much, what does that mean?";
     let req = VectorSearchRequest::builder()

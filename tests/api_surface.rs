@@ -1,22 +1,26 @@
 //! The API a user sees, as the quickstart spells it: a model from a provider
 //! client or from a `"provider:model"` string, called with plain values,
-//! continued with its own reply, erased, and streamed as parts. Runs with no
-//! network: the OpenAI client reads its base URL from the environment and
-//! reaches a local server that answers with a recorded reply, and the
-//! Anthropic client sends through a scripted HTTP client. The Bedrock line
-//! needs the `bedrock` feature.
+//! continued with its own reply, erased, and streamed as parts, with every
+//! failure one `RigError`. Runs with no network: the OpenAI client reads its
+//! base URL from the environment and reaches a local server that answers with
+//! a recorded reply, and the Anthropic client sends through a scripted HTTP
+//! client. The Bedrock line needs the `bedrock` feature.
 
 use futures::StreamExt;
 use rig::DynModel;
 #[cfg(feature = "bedrock")]
 use rig::bedrock::{client::BedrockRuntime, completion::AMAZON_NOVA_LITE};
-use rig::completion::{CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message, PromptError};
+use rig::error::{ErrorDetail, ErrorKind};
+use rig::loaders::FileLoader;
 use rig::operation::Completion;
+use rig::prelude::*;
 use rig::providers::anthropic::{self, Anthropic};
 use rig::providers::deepseek;
 use rig::providers::openai::{self, OpenAI};
 use rig::providers::registry::ProviderRef;
 use rig::streaming::Update;
+use rig::{Agent, RigError};
 use rig_core::test_utils::MockStreamingClient;
 
 /// OpenAI's reply to "Reply with exactly: identity probe", from
@@ -44,10 +48,67 @@ const ANTHROPIC_CUT_STREAM: &str = concat!(
     "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
 );
 
+/// Fails the test with `what` unless `condition` holds.
+fn ensure(condition: bool, what: &str) -> Result<(), RigError> {
+    if condition {
+        Ok(())
+    } else {
+        Err(RigError::new(ErrorKind::Other, what))
+    }
+}
+
+/// Stands in for signing in again.
+fn relogin() {}
+
+/// Stands in for waiting before a retry.
+fn back_off() {}
+
+/// A failed call, routed by what failed.
+async fn say_hi(model: &DynModel<Completion>) -> Result<(), RigError> {
+    match model.call("Hi").await {
+        Err(error) if matches!(error.detail, Some(ErrorDetail::InvalidAuthentication)) => relogin(),
+        Err(error) if error.http_status == Some(429) => back_off(),
+        Err(error) => return Err(error),
+        Ok(response) => println!("{}", response.text()),
+    }
+    Ok(())
+}
+
+/// A failed prompt, direct or relayed, in one shape.
+async fn greet(agent: &Agent) -> Result<(), RigError> {
+    match agent.prompt("Hi").await {
+        Err(PromptError::Failed(error)) => return Err(error), // direct or relayed, one shape
+        Err(other) => return Err(other.into()),
+        Ok(response) => println!("{}", response.output),
+    }
+    Ok(())
+}
+
+/// An application function that mixes setup, model and foreign errors in
+/// one `Result`.
+async fn run(agent: &Agent) -> Result<(), RigError> {
+    let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
+    let any = ProviderRef::parse("deepseek:deepseek-chat")?;
+    let docs = FileLoader::with_glob("docs/*.md")?;
+    let answer = agent.prompt("Hi").await?;
+    let key = std::env::var("APP_TOKEN").map_err(RigError::other)?;
+    ensure(model.id() == Some(openai::GPT_5_2), "the model")?;
+    ensure(
+        any.completion_model()?.id() == Some("deepseek-chat"),
+        "the reference",
+    )?;
+    ensure(
+        docs.read().into_iter().count() == 0,
+        "no docs/*.md under the test's directory",
+    )?;
+    ensure(answer.output == "identity probe", "the answer")?;
+    ensure(key == "app-token", "the foreign value")
+}
+
 /// Every model built from the environment, in one test: the variables are
 /// process-wide.
 #[tokio::test]
-async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result<()> {
+async fn models_from_clients_and_strings_hold_a_conversation() -> Result<(), RigError> {
     let server = httpmock::MockServer::start_async().await;
     let responses = server
         .mock_async(|when, then| {
@@ -63,6 +124,7 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result
         std::env::set_var("OPENAI_API_KEY", "test-key");
         std::env::set_var("OPENAI_BASE_URL", server.url("/v1"));
         std::env::set_var("DEEPSEEK_API_KEY", "test-key");
+        std::env::set_var("APP_TOKEN", "app-token");
     }
 
     let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
@@ -70,34 +132,49 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result
         .call(CompletionRequest::new("Capital of France?").temperature(0.2))
         .await?;
     println!("{}", res.text());
-    anyhow::ensure!(res.text() == "identity probe");
+    ensure(res.text() == "identity probe", "the recorded answer")?;
 
     let mut history = vec![Message::user("Capital of France?")];
     history.push(model.call(history.clone()).await?.into());
-    anyhow::ensure!(history.len() == 2);
-    anyhow::ensure!(matches!(history.last(), Some(Message::Assistant { .. })));
+    ensure(history.len() == 2, "the reply continues the history")?;
+    ensure(
+        matches!(history.last(), Some(Message::Assistant { .. })),
+        "the reply is the assistant's message",
+    )?;
     responses.assert_calls_async(2).await;
 
+    say_hi(&model.clone().into()).await?;
+    let agent = AgentBuilder::new(model).build();
+    greet(&agent).await?;
+    run(&agent).await?;
+    responses.assert_calls_async(5).await;
+
     let deepseek = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
-    anyhow::ensure!(deepseek.id() == Some(deepseek::DEEPSEEK_V4_FLASH));
+    ensure(
+        deepseek.id() == Some(deepseek::DEEPSEEK_V4_FLASH),
+        "the DeepSeek model id",
+    )?;
     let any = ProviderRef::parse("deepseek:deepseek-chat")?.completion_model()?;
-    anyhow::ensure!(any.name() == "deepseek" && any.id() == Some("deepseek-chat"));
+    ensure(
+        any.name() == "deepseek" && any.id() == Some("deepseek-chat"),
+        "the model the reference names",
+    )?;
 
     let model = OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
     let width = model.capabilities().ndims;
-    anyhow::ensure!(width == 1536);
+    ensure(width == 1536, "the embedding width")?;
 
     #[cfg(feature = "bedrock")]
     {
         let model = BedrockRuntime::from_env().completion(AMAZON_NOVA_LITE);
-        anyhow::ensure!(model.id() == Some(AMAZON_NOVA_LITE));
+        ensure(model.id() == Some(AMAZON_NOVA_LITE), "the Bedrock model id")?;
     }
     Ok(())
 }
 
 /// A client on another HTTP client, erased, and streamed as parts.
 #[tokio::test]
-async fn an_erased_model_streams_its_parts() -> anyhow::Result<()> {
+async fn an_erased_model_streams_its_parts() -> Result<(), RigError> {
     let key = "test-key";
     let http = MockStreamingClient {
         sse_bytes: bytes::Bytes::from_static(ANTHROPIC_STREAM.as_bytes()),
@@ -116,12 +193,15 @@ async fn an_erased_model_streams_its_parts() -> anyhow::Result<()> {
         match update {
             Update::Delta { text: delta, .. } => text.push_str(&delta),
             Update::Done(response) => done = Some(response),
-            Update::Failed { error, .. } => return Err(error.into()),
+            Update::Failed { error, .. } => return Err(error),
             _ => {}
         }
     }
-    anyhow::ensure!(text == "Paris.");
-    anyhow::ensure!(done.is_some_and(|response| response.text() == "Paris."));
+    ensure(text == "Paris.", "the streamed text")?;
+    ensure(
+        done.is_some_and(|response| response.text() == "Paris."),
+        "the final response",
+    )?;
     Ok(())
 }
 
@@ -129,7 +209,7 @@ async fn an_erased_model_streams_its_parts() -> anyhow::Result<()> {
 async fn tell_a_story(
     model: &DynModel<Completion>,
     history: &mut Vec<Message>,
-) -> anyhow::Result<()> {
+) -> Result<(), RigError> {
     let mut stream = model.stream("Tell me a story.")?;
     let mut updates = stream.updates();
     while let Some(update) = updates.next().await {
@@ -138,7 +218,7 @@ async fn tell_a_story(
             Update::Done(response) => history.push(response.into()),
             Update::Failed { error, partial } => {
                 history.push(partial.into());
-                return Err(error.into());
+                return Err(error);
             }
             _ => {}
         }
@@ -149,7 +229,7 @@ async fn tell_a_story(
 /// A stream cut before its end fails with what arrived: the caller keeps
 /// the partial answer in its history and returns the error.
 #[tokio::test]
-async fn a_failed_stream_ends_with_its_partial_response() -> anyhow::Result<()> {
+async fn a_failed_stream_ends_with_its_partial_response() -> Result<(), RigError> {
     let http = MockStreamingClient {
         sse_bytes: bytes::Bytes::from_static(ANTHROPIC_CUT_STREAM.as_bytes()),
     };
@@ -159,19 +239,20 @@ async fn a_failed_stream_ends_with_its_partial_response() -> anyhow::Result<()> 
         .into();
 
     let mut history = Vec::new();
-    let error = tell_a_story(&model, &mut history)
-        .await
-        .err()
-        .ok_or_else(|| anyhow::anyhow!("the cut stream fails"))?;
-    let error = error
-        .downcast::<rig::RigError>()
-        .map_err(|error| anyhow::anyhow!("a RigError: {error}"))?;
-    anyhow::ensure!(error.kind == rig::error::ErrorKind::Response);
-    anyhow::ensure!(error.message.contains("without a terminal record"));
-    anyhow::ensure!(history.len() == 1);
-    anyhow::ensure!(matches!(
-        history.last(),
-        Some(Message::Assistant { content, .. }) if content.len() == 1
-    ));
-    Ok(())
+    let Err(error) = tell_a_story(&model, &mut history).await else {
+        return Err(RigError::new(ErrorKind::Other, "the cut stream fails"));
+    };
+    ensure(error.kind == ErrorKind::Response, "a truncation")?;
+    ensure(
+        error.message.contains("without a terminal record"),
+        "the truncation error",
+    )?;
+    ensure(history.len() == 1, "the partial answer is kept")?;
+    ensure(
+        matches!(
+            history.last(),
+            Some(Message::Assistant { content, .. }) if content.len() == 1
+        ),
+        "the partial answer holds the text that ended",
+    )
 }

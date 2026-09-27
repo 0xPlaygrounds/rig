@@ -1,11 +1,14 @@
 //! The Gemini text-embedding wire over gRPC: one `EmbedContent` call per text.
 //!
 //! ```no_run
-//! use rig_core::Model;
+//! use rig_core::{Model, RigError};
 //! use rig_gemini_grpc::{GeminiGrpc, embedding::{EMBEDDING_004, Embeddings}};
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let model = GeminiGrpc::new("API_KEY").await?.embedding(EMBEDDING_004, None);
+//! # async fn example() -> Result<(), RigError> {
+//! let model = GeminiGrpc::new("API_KEY")
+//!     .await
+//!     .map_err(|error| RigError::other(&*error))?
+//!     .embedding(EMBEDDING_004, None);
 //! # let _ = model;
 //! # Ok(())
 //! # }

@@ -5,25 +5,26 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
-use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingResult};
+use rig::error::ErrorKind;
 use rig::memory::InMemoryConversationMemory;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
-async fn collect_final(stream: &mut StreamingResult) -> Result<String> {
+async fn collect_final(stream: &mut StreamingResult) -> Result<String, RigError> {
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item? {
             final_response = Some(response.output().to_owned());
         }
     }
-    final_response.ok_or_else(|| anyhow!("stream finished without a final response"))
+    final_response
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "stream finished without a final response"))
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let memory = InMemoryConversationMemory::new();
 
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))

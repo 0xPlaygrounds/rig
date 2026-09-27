@@ -11,6 +11,7 @@
 // 3. Run the example:
 //    cargo run --release --example vectorize_vector_search
 
+use rig_core::RigError;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -28,7 +29,7 @@ struct Word {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let openai_client = OpenAI::from_env()?;
     let model = openai_client
         .embedding(openai::TEXT_EMBEDDING_3_SMALL, None)
@@ -36,9 +37,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let vector_store = VectorizeVectorStore::new(
         model.clone(),
-        std::env::var("CLOUDFLARE_ACCOUNT_ID")?,
+        std::env::var("CLOUDFLARE_ACCOUNT_ID").map_err(RigError::other)?,
         "rig-example",
-        std::env::var("CLOUDFLARE_API_TOKEN")?,
+        std::env::var("CLOUDFLARE_API_TOKEN").map_err(RigError::other)?,
     );
 
     let documents = EmbeddingsBuilder::new(model)

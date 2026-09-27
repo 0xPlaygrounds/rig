@@ -7,6 +7,7 @@ use redis::{
     aio::MultiplexedConnection,
     vector_sets::{VAddOptions, VSimOptions, VectorAddInput, VectorSimilaritySearchInput},
 };
+use rig::RigError;
 use rig::{
     operation::Embedding,
     prelude::*,
@@ -180,7 +181,7 @@ struct Document {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Initialize the OpenAI embeddings provider from the environment
     let openai_client = OpenAI::from_env()?;
     // Pair the embedding wire with the transport
@@ -188,7 +189,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create the Redis vector store
     let mut store =
-        RedisVectorStore::new("redis://127.0.0.1:6379", "test_vectors", embedding_model).await?;
+        RedisVectorStore::new("redis://127.0.0.1:6379", "test_vectors", embedding_model)
+            .await
+            .map_err(RigError::other)?;
 
     // Sample documents to index
     let documents = [

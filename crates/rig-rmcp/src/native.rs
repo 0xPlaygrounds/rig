@@ -440,6 +440,27 @@ pub enum McpClientError {
     ToolFetchTimeout(Duration),
 }
 
+/// A connection that could not be made is [`ErrorKind::Http`], a tool list
+/// the server failed to return is [`ErrorKind::Provider`], and a list that did
+/// not arrive in time is [`ErrorKind::Timeout`].
+///
+/// [`ErrorKind::Http`]: rig_core::error::ErrorKind::Http
+/// [`ErrorKind::Provider`]: rig_core::error::ErrorKind::Provider
+/// [`ErrorKind::Timeout`]: rig_core::error::ErrorKind::Timeout
+impl From<McpClientError> for rig_core::error::RigError {
+    fn from(error: McpClientError) -> Self {
+        let kind = match error {
+            McpClientError::ConnectionError(_) => rig_core::error::ErrorKind::Http,
+            McpClientError::ToolFetchError(_) => rig_core::error::ErrorKind::Provider,
+            McpClientError::ToolFetchTimeout(_) => rig_core::error::ErrorKind::Timeout,
+        };
+        Self {
+            kind,
+            ..Self::other(&error)
+        }
+    }
+}
+
 /// Wrap every tool of an MCP server's list as an [`McpTool`] sharing one
 /// [`ServerSink`](rmcp::service::ServerSink). Each tool carries the same
 /// [`DEFAULT_MCP_TOOL_TIMEOUT`] as [`McpTool::from_mcp_server`]; override it

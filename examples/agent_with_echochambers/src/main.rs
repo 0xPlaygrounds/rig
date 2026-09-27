@@ -1,4 +1,3 @@
-use anyhow::Result;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
 use rig::{
@@ -320,9 +319,9 @@ impl Tool for GetMetricsHistory {
     }
 }
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Get API keys from environment
-    let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY")?;
+    let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY").map_err(RigError::other)?;
 
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;

@@ -2,7 +2,7 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to compare a plain structured extraction with a usage-aware one.
 
-use anyhow::Result;
+use rig::RigError;
 use rig::extractor::ExtractorBuilder;
 use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
@@ -22,15 +22,21 @@ const FIRST_INPUT: &str = "Hello my name is John Doe! I am a software engineer."
 const SECOND_INPUT: &str = "Jane Smith is a data scientist.";
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = OpenAI::from_env()?;
     let extractor = ExtractorBuilder::<Person>::new(client.completion(openai::GPT_4)).build();
 
     let person = extractor.extract(FIRST_INPUT).await?.output;
-    println!("{}", serde_json::to_string_pretty(&person)?);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&person).map_err(RigError::other)?
+    );
 
     let response = extractor.extract(SECOND_INPUT).await?;
-    println!("{}", serde_json::to_string_pretty(&response.output)?);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&response.output).map_err(RigError::other)?
+    );
     println!("total tokens: {}", response.usage.total_tokens.unwrap_or(0));
 
     Ok(())

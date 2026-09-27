@@ -1,3 +1,5 @@
+use rig_core::RigError;
+use rig_core::error::ErrorKind;
 use rig_core::providers::openai::{self, OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -26,16 +28,20 @@ impl std::fmt::Display for TopicDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     let model = openai_client
         .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
         .erase();
 
-    let surreal = Surreal::new::<Mem>(()).await?;
+    let surreal = Surreal::new::<Mem>(()).await.map_err(RigError::other)?;
 
-    surreal.use_ns("example").use_db("example").await?;
+    surreal
+        .use_ns("example")
+        .use_db("example")
+        .await
+        .map_err(RigError::other)?;
 
     let topics = vec![
         TopicDefinition {
@@ -71,19 +77,27 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let results = vector_store.top_n::<TopicDefinition>(req).await?;
 
-    anyhow::ensure!(
-        results.len() == 3,
-        "expected three unfiltered results, got {}",
-        results.len()
-    );
-    let Some(first_result) = results.first() else {
-        return Err(anyhow::anyhow!("expected at least one result"));
+    if results.len() != 3 {
+        return Err(RigError::new(
+            ErrorKind::Other,
+            format!("expected three unfiltered results, got {}", results.len()),
+        ));
     };
-    anyhow::ensure!(
-        first_result.2.topic == "pasta carbonara",
-        "expected first result to be pasta carbonara, got {}",
-        first_result.2.topic
-    );
+    let Some(first_result) = results.first() else {
+        return Err(RigError::new(
+            ErrorKind::Other,
+            "expected at least one result",
+        ));
+    };
+    if first_result.2.topic != "pasta carbonara" {
+        return Err(RigError::new(
+            ErrorKind::Other,
+            format!(
+                "expected first result to be pasta carbonara, got {}",
+                first_result.2.topic
+            ),
+        ));
+    };
 
     println!("{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
@@ -91,7 +105,10 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     let Some(second_result) = results.get(1) else {
-        return Err(anyhow::anyhow!("expected at least two results"));
+        return Err(RigError::new(
+            ErrorKind::Other,
+            "expected at least two results",
+        ));
     };
     let midpoint = (first_result.0 + second_result.0) / 2.0;
 
@@ -107,19 +124,27 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<TopicDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
-    anyhow::ensure!(
-        results.len() == 1,
-        "expected one filtered result, got {}",
-        results.len()
-    );
-    let Some(filtered_result) = results.first() else {
-        return Err(anyhow::anyhow!("expected one filtered result"));
+    if results.len() != 1 {
+        return Err(RigError::new(
+            ErrorKind::Other,
+            format!("expected one filtered result, got {}", results.len()),
+        ));
     };
-    anyhow::ensure!(
-        filtered_result.2.topic == "pasta carbonara",
-        "expected filtered result to be pasta carbonara, got {}",
-        filtered_result.2.topic
-    );
+    let Some(filtered_result) = results.first() else {
+        return Err(RigError::new(
+            ErrorKind::Other,
+            "expected one filtered result",
+        ));
+    };
+    if filtered_result.2.topic != "pasta carbonara" {
+        return Err(RigError::new(
+            ErrorKind::Other,
+            format!(
+                "expected filtered result to be pasta carbonara, got {}",
+                filtered_result.2.topic
+            ),
+        ));
+    };
 
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for topic: {doc}");

@@ -9,6 +9,7 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
     PromptResponse, StreamingResult,
 };
+use rig::error::ErrorKind;
 use rig::message::AssistantContent;
 use rig::message::ToolResultContent;
 use rig::prelude::*;
@@ -362,7 +363,7 @@ async fn run_workspace_canary_attempt(
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     let attempts = canary_attempts();
     let mut successful_attempts = Vec::new();
     let mut repaired_default_api = false;
@@ -370,7 +371,7 @@ async fn main() -> anyhow::Result<()> {
     for attempt in 1..=attempts {
         let observation = run_workspace_canary_attempt(attempt)
             .await
-            .map_err(anyhow::Error::msg)?;
+            .map_err(|error| RigError::new(ErrorKind::Other, error))?;
         let diagnostics = observation.diagnostic_summary();
 
         repaired_default_api |= observation
@@ -383,71 +384,101 @@ async fn main() -> anyhow::Result<()> {
             .iter()
             .any(|result| result.contains("ToolNotFoundError: default_api"))
         {
-            anyhow::bail!(
-                "attempt {attempt}: Rig returned the production ToolNotFoundError symptom. {diagnostics}"
-            );
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!(
+                    "attempt {attempt}: Rig returned the production ToolNotFoundError symptom. {diagnostics}"
+                ),
+            ));
         }
         if !observation
             .tool_calls
             .iter()
             .all(|name| !name.contains("default_api"))
         {
-            anyhow::bail!(
-                "attempt {attempt}: repaired default_api should not reach the public tool-call stream. {diagnostics}"
-            );
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!(
+                    "attempt {attempt}: repaired default_api should not reach the public tool-call stream. {diagnostics}"
+                ),
+            ));
         }
         if observation.reasoning_text.contains("tool_code")
             || observation.streamed_text.contains("tool_code")
         {
-            anyhow::bail!(
-                "attempt {attempt}: Gemini emitted markdown tool_code text instead of a function call. {diagnostics}"
-            );
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!(
+                    "attempt {attempt}: Gemini emitted markdown tool_code text instead of a function call. {diagnostics}"
+                ),
+            ));
         }
         if !observation
             .tool_calls
             .iter()
             .any(|name| name == JavaScript::NAME)
         {
-            anyhow::bail!(
-                "attempt {attempt}: expected live Gemini to call JavaScript. {diagnostics}"
-            );
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!(
+                    "attempt {attempt}: expected live Gemini to call JavaScript. {diagnostics}"
+                ),
+            ));
         }
         if !observation
             .executions
             .iter()
             .any(|execution| execution.code.contains("Workspace.listCollection"))
         {
-            anyhow::bail!(
-                "attempt {attempt}: expected workspace-shaped JavaScript execution. {diagnostics}"
-            );
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!(
+                    "attempt {attempt}: expected workspace-shaped JavaScript execution. {diagnostics}"
+                ),
+            ));
         }
         if observation.executor_results.is_empty() {
-            anyhow::bail!(
-                "attempt {attempt}: expected at least one parsed ExecutorResponse. {diagnostics}"
-            );
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!(
+                    "attempt {attempt}: expected at least one parsed ExecutorResponse. {diagnostics}"
+                ),
+            ));
         }
 
         let Some(final_response) = observation.final_response.as_ref() else {
-            anyhow::bail!("attempt {attempt}: stream should yield a final response. {diagnostics}");
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!("attempt {attempt}: stream should yield a final response. {diagnostics}"),
+            ));
         };
         if final_response.output().trim().is_empty() {
-            anyhow::bail!(
-                "attempt {attempt}: final response should not be empty after the tool roundtrip. {diagnostics}"
-            );
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!(
+                    "attempt {attempt}: final response should not be empty after the tool roundtrip. {diagnostics}"
+                ),
+            ));
         }
         if !final_response.output().contains(JAVASCRIPT_MARKER) {
-            anyhow::bail!(
-                "attempt {attempt}: final response should mention the tool marker. {diagnostics}"
-            );
+            return Err(RigError::new(
+                ErrorKind::Other,
+                format!(
+                    "attempt {attempt}: final response should mention the tool marker. {diagnostics}"
+                ),
+            ));
         }
 
         successful_attempts.push(diagnostics);
     }
 
     if !repaired_default_api {
-        anyhow::bail!(
-            "expected at least one attempt to emit an invalid default_api tool call repaired by the hook. Attempts: {successful_attempts:#?}"
-        );
+        return Err(RigError::new(
+            ErrorKind::Other,
+            format!(
+                "expected at least one attempt to emit an invalid default_api tool call repaired by the hook. Attempts: {successful_attempts:#?}"
+            ),
+        ));
     }
 
     println!("Gemini default_api canary completed {attempts} attempt(s): {successful_attempts:#?}");

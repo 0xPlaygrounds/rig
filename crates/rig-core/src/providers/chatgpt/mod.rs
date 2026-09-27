@@ -8,7 +8,7 @@
 //! ```no_run
 //! use rig_core::providers::chatgpt;
 //!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn example() -> Result<(), rig_core::RigError> {
 //! let model = chatgpt::from_env()?.completion(chatgpt::GPT_5_3_CODEX);
 //! # let _ = model;
 //! # Ok(())

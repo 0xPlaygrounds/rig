@@ -19,10 +19,10 @@
 //! For OpenAI-compatible servers, for example llama.cpp:
 //! `OPENAI_BASE_URL=http://localhost:8080/v1 OPENAI_API_KEY=local OPENAI_MODEL=local-model cargo run --example openai_streaming_per_call_usage`
 
-use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
+use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::openai::OpenAIConfig;
 use rig::providers::openai::{self, Route};
@@ -89,7 +89,7 @@ fn print_usage(label: &str, usage: Usage) {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| openai::GPT_4O_MINI.to_string());
 
     // Chat Completions: the route every OpenAI-compatible server speaks,
@@ -125,7 +125,7 @@ async fn main() -> Result<()> {
                 ..
             }) => {
                 print!("{text}");
-                io::stdout().flush()?;
+                io::stdout().flush().map_err(RigError::other)?;
                 printed_streamed_text = true;
             }
             // The tool call the *model emitted* (reported when the turn commits,
@@ -167,7 +167,8 @@ async fn main() -> Result<()> {
         }
     }
 
-    let response = final_response.ok_or_else(|| anyhow!("stream ended without final response"))?;
+    let response = final_response
+        .ok_or_else(|| RigError::new(ErrorKind::Other, "stream ended without final response"))?;
 
     println!("\n\nfinal response: {}", response.output());
     print_usage("aggregate agent usage", response.usage());

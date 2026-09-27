@@ -98,6 +98,13 @@ pub enum CheckpointError {
     ZeroTurn,
 }
 
+/// The host's request is not one a run can honor.
+impl From<CheckpointError> for rig_core::error::RigError {
+    fn from(error: CheckpointError) -> Self {
+        Self::other(error)
+    }
+}
+
 /// Arm a hold for this owner. Re-arming is idempotent and cannot move an
 /// existing owner's boundary later; release that hold explicitly to replace it.
 /// Returns true when a hold was added or moved earlier. Hosts must arm before

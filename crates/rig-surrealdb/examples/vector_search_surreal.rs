@@ -1,3 +1,5 @@
+use rig_core::RigError;
+use rig_core::error::ErrorKind;
 use rig_core::providers::openai::{self, OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -27,16 +29,20 @@ impl std::fmt::Display for WordDefinition {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     let model = openai_client
         .embedding(openai::TEXT_EMBEDDING_ADA_002, None)
         .erase();
 
-    let surreal = Surreal::new::<Mem>(()).await?;
+    let surreal = Surreal::new::<Mem>(()).await.map_err(RigError::other)?;
 
-    surreal.use_ns("example").use_db("example").await?;
+    surreal
+        .use_ns("example")
+        .use_db("example")
+        .await
+        .map_err(RigError::other)?;
 
     // create test documents with mocked embeddings
     let words = vec![
@@ -81,10 +87,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Use the midpoint as similarity threshold to guarantee exactly one result is returned.
     let Some(first_result) = results.first() else {
-        return Err(anyhow::anyhow!("expected at least one result"));
+        return Err(RigError::new(
+            ErrorKind::Other,
+            "expected at least one result",
+        ));
     };
     let Some(second_result) = results.get(1) else {
-        return Err(anyhow::anyhow!("expected at least two results"));
+        return Err(RigError::new(
+            ErrorKind::Other,
+            "expected at least two results",
+        ));
     };
     let midpoint = (first_result.0 + second_result.0) / 2.0;
 
@@ -100,11 +112,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
-    anyhow::ensure!(
-        results.len() == 1,
-        "expected one result after threshold filtering, got {}",
-        results.len()
-    );
+    if results.len() != 1 {
+        return Err(RigError::new(
+            ErrorKind::Other,
+            format!(
+                "expected one result after threshold filtering, got {}",
+                results.len()
+            ),
+        ));
+    };
 
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for word: {doc}");

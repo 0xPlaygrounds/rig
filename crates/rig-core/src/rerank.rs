@@ -8,7 +8,7 @@
 //! use rig_core::DynModel;
 //! use rig_core::operation::{Rerank, RerankRequest};
 //!
-//! # async fn example(model: &DynModel<Rerank>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(model: &DynModel<Rerank>) -> Result<(), rig_core::RigError> {
 //! let request = RerankRequest {
 //!     query: "Rust".into(),
 //!     documents: vec!["A systems programming language".into()],

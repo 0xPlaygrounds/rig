@@ -20,7 +20,6 @@ unwrap_used = "deny"
 
 [dependencies]
 rig = { path = "../.." }
-anyhow = "1"
 serenity = "0.12"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }

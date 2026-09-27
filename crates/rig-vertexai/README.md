@@ -58,12 +58,14 @@ and never rebuilds the client or reads ADC:
 
 ```rust,no_run
 use google_cloud_aiplatform_v1::client::PredictionService;
+use rig_core::RigError;
 
-# async fn example() -> anyhow::Result<()> {
+# async fn example() -> Result<(), RigError> {
 let service = PredictionService::builder()
     .with_endpoint("https://us-central1-aiplatform.googleapis.com")
     .build()
-    .await?;
+    .await
+    .map_err(RigError::other)?;
 
 let client = rig_vertexai::VertexAi::builder()
     .with_project("my-project")

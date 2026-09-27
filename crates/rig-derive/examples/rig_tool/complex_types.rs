@@ -1,3 +1,4 @@
+use rig_core::RigError;
 use rig_derive::rig_tool;
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -30,9 +31,12 @@ fn list_items(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     let def = rig_agent::tool::tool_definition(&ListItems);
-    println!("Tool definition:\n{}", serde_json::to_string_pretty(&def)?);
+    println!(
+        "Tool definition:\n{}",
+        serde_json::to_string_pretty(&def).map_err(RigError::other)?
+    );
 
     Ok(())
 }

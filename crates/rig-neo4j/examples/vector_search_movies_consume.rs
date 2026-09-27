@@ -20,6 +20,7 @@ use rig_neo4j::Neo4jClient;
 
 use std::env;
 
+use rig_core::RigError;
 use rig_core::{providers::openai::OpenAI, vector_store::VectorStoreIndex};
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,7 @@ use serde::{Deserialize, Serialize};
 mod display;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)
@@ -36,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
     const INDEX_NAME: &str = "moviePlotsEmbedding";
 
     // The OpenAI client, from `OPENAI_API_KEY`.
-    let openai_api_key = env::var("OPENAI_API_KEY")?;
+    let openai_api_key = env::var("OPENAI_API_KEY").map_err(RigError::other)?;
     let openai_client = OpenAI::new(&openai_api_key);
 
     let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
@@ -49,7 +50,8 @@ async fn main() -> Result<(), anyhow::Error> {
             .user(neo4j_username)
             .password(neo4j_password)
             .db("recommendations")
-            .build()?,
+            .build()
+            .map_err(RigError::other)?,
     )
     .await?;
 

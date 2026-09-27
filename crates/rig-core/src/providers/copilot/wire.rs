@@ -5,7 +5,7 @@
 //! ```no_run
 //! use rig_core::providers::copilot::{Copilot, GPT_4O};
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), rig_core::RigError> {
 //! let mut model = Copilot::from_env()?.completion(GPT_4O);
 //! model.wire = model.wire.with_edits_intent();
 //! # Ok(())

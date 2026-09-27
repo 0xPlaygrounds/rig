@@ -9,7 +9,6 @@ workspace = true
 
 [dependencies]
 rig.workspace = true
-anyhow = { workspace = true }
 futures = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 serde_json = { workspace = true }
