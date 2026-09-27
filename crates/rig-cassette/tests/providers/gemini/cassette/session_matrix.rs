@@ -2,9 +2,9 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::super::support::with_gemini_cassette;
+use rig_test_support::cassette_models::GeminiModels;
 
 use crate::history_survival::sessions::{self, Cell};
-use rig::providers::gemini::Gemini;
 
 fn params() -> Option<serde_json::Value> {
     Some(
@@ -20,7 +20,7 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: Gemini,
+    client: GeminiModels,
 ) -> (
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -36,9 +36,9 @@ fn models(
     >,
 ) {
     (
-        rig::model(client.completion("gemini-2.5-flash")),
-        rig::model(client.completion("gemini-2.5-flash")),
-        rig::model(client.completion("gemini-3-flash-preview")),
+        client.completion("gemini-2.5-flash"),
+        client.completion("gemini-2.5-flash"),
+        client.completion("gemini-3-flash-preview"),
     )
 }
 

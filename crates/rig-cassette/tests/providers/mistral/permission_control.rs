@@ -4,8 +4,9 @@ use anyhow::Result;
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
 };
-use rig::providers::openai::wire::{MISTRAL, OpenAI};
+use rig::providers::openai::wire::MISTRAL;
 use rig::tool::Tool;
+use rig_test_support::cassette_models::OpenAiModels;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -155,11 +156,11 @@ impl AgentHook for PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = rig::AgentBuilder::new(rig::model(
-        OpenAI::from_env_with(&MISTRAL)
+    let agent = rig::AgentBuilder::new(
+        OpenAiModels::from_env_with(&MISTRAL)
             .expect("MISTRAL_API_KEY should be set")
             .completion(TOOL_MODEL),
-    ))
+    )
     .preamble("You are a helpful assistant that can read files using different methods.")
     .tool(ReadFileHead)
     .tool(ReadFileTail)
@@ -193,11 +194,11 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = rig::AgentBuilder::new(rig::model(
-        OpenAI::from_env_with(&MISTRAL)
+    let agent = rig::AgentBuilder::new(
+        OpenAiModels::from_env_with(&MISTRAL)
             .expect("MISTRAL_API_KEY should be set")
             .completion(TOOL_MODEL),
-    ))
+    )
     .preamble("You are a helpful assistant that can read files using different methods.")
     .tool(ReadFileHead)
     .tool(ReadFileTail)

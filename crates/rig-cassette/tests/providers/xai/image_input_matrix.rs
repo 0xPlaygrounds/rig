@@ -1,6 +1,7 @@
 //! A generated image fed back as input on xAI: see `common/image_inputs.rs`.
 
 use rig::providers::{openai, xai};
+use rig_test_support::cassette_models::OpenAiModels;
 
 use super::support::with_xai_cassette;
 use crate::image_inputs;
@@ -15,18 +16,14 @@ async fn generated_image_as_user_content() {
             // The images route is OpenAI-shaped, rebuilt from the cassette's
             // credential and base URL as the image smoke test does.
             let responses = client.clone();
-            let generator = rig::model(
-                openai::wire::OpenAI::with_key(&xai::DIALECT, responses.api_key)
-                    .with_base_url(responses.base_url)
-                    .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE),
-            );
-            let bytes = image_inputs::generate(&generator, None, None).await;
-            image_inputs::as_user_content(
-                &rig::model(client.completion(xai::GROK_4)),
-                &bytes,
-                None,
+            let generator = OpenAiModels::new(
+                openai::wire::OpenAI::with_key(&xai::DIALECT, responses.config.api_key)
+                    .with_base_url(responses.config.base_url),
+                responses.http,
             )
-            .await;
+            .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE);
+            let bytes = image_inputs::generate(&generator, None, None).await;
+            image_inputs::as_user_content(&client.completion(xai::GROK_4), &bytes, None).await;
         },
     )
     .await;
@@ -41,14 +38,15 @@ async fn generated_image_as_tool_result() {
         "image_input_matrix/generated_image_as_tool_result",
         |client| async move {
             let responses = client.clone();
-            let generator = rig::model(
-                openai::wire::OpenAI::with_key(&xai::DIALECT, responses.api_key)
-                    .with_base_url(responses.base_url)
-                    .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE),
-            );
+            let generator = OpenAiModels::new(
+                openai::wire::OpenAI::with_key(&xai::DIALECT, responses.config.api_key)
+                    .with_base_url(responses.config.base_url),
+                responses.http,
+            )
+            .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE);
             let bytes = image_inputs::generate(&generator, None, None).await;
             image_inputs::as_tool_result(
-                &rig::model(client.completion(xai::GROK_4)),
+                &client.completion(xai::GROK_4),
                 &bytes,
                 Some(serde_json::json!({ "store": false })),
             )

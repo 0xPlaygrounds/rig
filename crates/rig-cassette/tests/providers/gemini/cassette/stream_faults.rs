@@ -65,7 +65,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MISSING_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MISSING_MODEL))
                 .max_tokens(SETUP_MAX_TOKENS)
                 .record_to(recorder.clone())
                 .build();
@@ -230,9 +230,9 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
 #[tokio::test]
 async fn multi_frame_stream_recording() {
     with_gemini_cassette("stream_faults/multi_frame_stream", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(
+        let agent = rig::AgentBuilder::new(
             client.completion(rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW),
-        ))
+        )
         .preamble(crate::support::STREAMING_PREAMBLE)
         .build();
         let mut stream = agent

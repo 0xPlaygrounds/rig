@@ -14,7 +14,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: rig::model(client.openai.chat(GPT_5_MINI)),
+        model: client.openai.chat(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

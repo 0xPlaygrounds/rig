@@ -16,7 +16,7 @@ async fn streaming() {
     super::super::support::with_gemini_cassette(
         "reasoning_tool_roundtrip/streaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion("gemini-2.5-flash")))
+            let agent = rig::AgentBuilder::new(client.completion("gemini-2.5-flash"))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
@@ -46,7 +46,7 @@ async fn nonstreaming() {
     super::super::support::with_gemini_cassette(
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion("gemini-2.5-flash")))
+            let agent = rig::AgentBuilder::new(client.completion("gemini-2.5-flash"))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))

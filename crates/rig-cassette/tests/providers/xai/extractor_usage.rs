@@ -43,9 +43,9 @@ async fn extract_backward_compatibility() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
                 client.completion(xai::GROK_3_MINI),
-            ))
+            )
             .build();
 
             let person = extractor
@@ -68,9 +68,9 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
                 client.completion(xai::GROK_3_MINI),
-            ))
+            )
             .build();
 
             let response: TypedPromptResponse<Person> = extractor
@@ -95,9 +95,9 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_with_chat_history_with_usage_works",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
+            let extractor = rig::extractor::ExtractorBuilder::<Address>::new(
                 client.completion(xai::GROK_3_MINI),
-            ))
+            )
             .build();
 
             let chat_history = vec![Message::user(
@@ -127,9 +127,9 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
-            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+            let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
                 client.completion(xai::GROK_3_MINI),
-            ))
+            )
             .build();
 
             let text = "Bob Johnson is a 55 year old retired teacher.";
@@ -161,18 +161,18 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/usage_tracking_works_for_different_schemas",
         |client| async move {
-            let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+            let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(
                 client.completion(xai::GROK_3_MINI),
-            ))
+            )
             .build();
             let person_response = person_extractor
                 .extract("Alice is a 25 year old developer.")
                 .await?;
             anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
 
-            let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
+            let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(
                 client.completion(xai::GROK_3_MINI),
-            ))
+            )
             .build();
             let address_response = address_extractor
                 .extract("456 Oak Avenue, Cambridge, MA 02139")

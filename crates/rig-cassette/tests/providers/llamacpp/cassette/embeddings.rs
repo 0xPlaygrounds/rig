@@ -22,7 +22,7 @@ struct Greetings {
 #[tokio::test]
 async fn embeddings_smoke() {
     with_llamacpp_embeddings_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = rig::model(client.embedding(CASSETTE_EMBEDDING_MODEL, None));
+        let model = client.embedding(CASSETTE_EMBEDDING_MODEL, None);
 
         let embeddings = model
             .call(
@@ -45,9 +45,9 @@ async fn derive_document_embeddings() {
     with_llamacpp_embeddings_cassette(
         "embeddings/derive_document_embeddings",
         |client| async move {
-            let embeddings = rig::embeddings::EmbeddingsBuilder::new(rig::model(
+            let embeddings = rig::embeddings::EmbeddingsBuilder::new(
                 client.embedding(CASSETTE_EMBEDDING_MODEL, None),
-            ))
+            )
             .document(Greetings {
                 message: "Hello, world!".to_string(),
             })

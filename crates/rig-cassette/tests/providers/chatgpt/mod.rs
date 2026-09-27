@@ -1,3 +1,4 @@
+use rig_test_support::cassette_models::OpenAiModels;
 mod support;
 
 mod cassette {
@@ -83,9 +84,9 @@ async fn live_provider(http: &DynHttpClient) -> OpenAI {
     provider
 }
 
-pub(crate) async fn live_client() -> OpenAI {
+pub(crate) async fn live_client() -> OpenAiModels {
     let http = rig::rig_reqwest::shared();
-    live_provider(&http).await
+    OpenAiModels::new(live_provider(&http).await, http)
 }
 
 fn has_usable_oauth_cache() -> bool {

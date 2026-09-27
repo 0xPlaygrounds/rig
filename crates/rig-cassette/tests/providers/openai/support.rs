@@ -1,5 +1,6 @@
 use rig::http_client::{DynHttpClient, ReqwestClient};
 use rig::providers::openai::{OpenAI, Route};
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -23,24 +24,30 @@ use crate::cassettes::DirectRecordingHttpClient;
 /// wires serve every other OpenAI REST route (embeddings, transcriptions,
 /// images, speech, model listing, verification). So the same credential is
 /// held here on both routes, and a cell spells the route it drives by the
-/// field it reads: `rig::AgentBuilder::new(rig::model(client.openai.completion(model)))` beside
-/// `rig::AgentBuilder::new(rig::model(client.chat.completion(model)))`, with `.chat(model)` / `.responses(model)`
+/// field it reads: `rig::AgentBuilder::new(client.openai.completion(model))` beside
+/// `rig::AgentBuilder::new(client.chat.completion(model))`, with `.chat(model)` / `.responses(model)`
 /// still naming a typed wire when a cell reads the native reply.
-pub(super) struct OpenAiCassette<H = DynHttpClient> {
-    /// The configuration on its flagship route.
-    pub(super) openai: OpenAI,
-    /// The same configuration routed to Chat Completions.
-    pub(super) chat: OpenAI,
-    /// The transport the cassette's models send through.
-    pub(super) http: H,
+pub(super) struct OpenAiCassette {
+    /// The models of the configuration on its flagship route.
+    pub(super) openai: OpenAiModels,
+    /// The models of the same configuration routed to Chat Completions.
+    pub(super) chat: OpenAiModels,
 }
 
-impl<H: Clone> OpenAiCassette<H> {
+impl OpenAiCassette {
     /// The configuration for `api_key` at `base_url`, over `http`.
-    fn new(api_key: impl Into<String>, base_url: impl Into<String>, http: H) -> Self {
+    fn new(
+        api_key: impl Into<String>,
+        base_url: impl Into<String>,
+        http: impl rig::http_client::HttpClientExt + 'static,
+    ) -> Self {
+        let http = DynHttpClient::new(http);
         let openai = OpenAI::new(api_key).with_base_url(base_url);
         let chat = openai.clone().with_route(Route::Chat);
-        Self { openai, chat, http }
+        Self {
+            openai: OpenAiModels::new(openai, http.clone()),
+            chat: OpenAiModels::new(chat, http),
+        }
     }
 }
 
@@ -61,7 +68,9 @@ async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Op
     (cassette, openai)
 }
 
-async fn openai_completions_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAI) {
+async fn openai_completions_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, OpenAiModels) {
     let (cassette, openai) = openai_cassette(spec).await;
     (cassette, openai.chat)
 }
@@ -184,7 +193,7 @@ pub(super) async fn with_openai_completions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, chat) = openai_completions_cassette(spec).await;
@@ -210,7 +219,7 @@ pub(super) async fn with_openai_completions_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, chat) = openai_completions_cassette(spec).await;
@@ -352,7 +361,7 @@ pub(super) async fn with_openai_transcription_cassette<F, Fut>(
 /// zero bytes. The direct path stores non-UTF-8 bodies as base64.
 pub(super) async fn with_openai_audio_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(OpenAiCassette<DirectRecordingHttpClient>) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start_via(
@@ -525,7 +534,7 @@ pub(super) async fn with_openai_completions_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_completions_cassette(spec, test_body).await;

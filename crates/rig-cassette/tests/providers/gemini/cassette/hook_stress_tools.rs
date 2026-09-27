@@ -31,14 +31,13 @@ async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
     with_gemini_cassette(
         "hook_stress_tools/arg_rewrite_sets_one_key_preserving_rest_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
-            .name("stress-agent")
-            .preamble("You are a calculator assistant. Use the add tool for the addition.")
-            .temperature(0.0)
-            .tool(add)
-            .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .name("stress-agent")
+                    .preamble("You are a calculator assistant. Use the add tool for the addition.")
+                    .temperature(0.0)
+                    .tool(add)
+                    .build();
 
             let response = agent
                 .prompt("Use the add tool to add 3 and 4, then report the tool's result.")
@@ -84,14 +83,13 @@ async fn two_arg_rewrites_chain_blocking() {
     with_gemini_cassette(
         "hook_stress_tools/two_arg_rewrites_chain_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
-            .name("stress-agent")
-            .preamble("You are a calculator assistant. Use the add tool for the addition.")
-            .temperature(0.0)
-            .tool(add)
-            .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .name("stress-agent")
+                    .preamble("You are a calculator assistant. Use the add tool for the addition.")
+                    .temperature(0.0)
+                    .tool(add)
+                    .build();
 
             let response = agent
                 .prompt("Use the add tool to add 1 and 1, then report the tool's result.")
@@ -149,9 +147,9 @@ async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
     with_gemini_cassette(
         "hook_stress_tools/two_result_rewrites_chain_redact_then_wrap_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
+            let agent = rig::AgentBuilder::new(
                 client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            )
             .name("stress-agent")
             .preamble(
                 "You are a calculator assistant. Use the add tool, then report the exact tool \
@@ -204,9 +202,9 @@ async fn result_truncation_reaches_model_blocking() {
     with_gemini_cassette(
         "hook_stress_tools/result_truncation_reaches_model_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
+            let agent = rig::AgentBuilder::new(
                 client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            )
             .name("stress-agent")
             .preamble("Call the fetch_motto tool, then report the exact tool result text verbatim.")
             .temperature(0.0)
@@ -250,14 +248,13 @@ async fn terminate_from_tool_result_cancels_after_execution_blocking() {
     with_gemini_cassette(
         "hook_stress_tools/terminate_from_tool_result_cancels_after_execution_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
-            .name("stress-agent")
-            .preamble("You are a calculator assistant. Use the add tool for the addition.")
-            .temperature(0.0)
-            .tool(add)
-            .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .name("stress-agent")
+                    .preamble("You are a calculator assistant. Use the add tool for the addition.")
+                    .temperature(0.0)
+                    .tool(add)
+                    .build();
 
             let error = agent
                 .prompt("Use the add tool to add 21 and 21, then report the result.")
@@ -303,9 +300,9 @@ async fn tool_error_guidance_drives_model_retry_blocking() {
     with_gemini_cassette(
         "hook_stress_tools/tool_error_guidance_drives_model_retry_blocking",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
+            let agent = rig::AgentBuilder::new(
                 client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
+            )
             .name("stress-agent")
             .preamble(
                 "You look up team codewords with the lookup_codeword tool. If the tool returns \

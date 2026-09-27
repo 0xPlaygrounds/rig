@@ -162,7 +162,7 @@ async fn rich_json_schema_survives_gemini_conversion() {
     with_gemini_cassette(
         "tool_definitions/rich_json_schema_survives_gemini_conversion",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
+            let agent = rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .preamble("You are a travel planner. You must use the plan_trip tool to plan trips, then confirm the booking to the user.")
                 .temperature(0.0)
                 .tool(PlanTrip)
@@ -199,15 +199,14 @@ async fn duplicate_tool_name_uses_last_registration() {
     with_gemini_cassette(
         "tool_definitions/duplicate_tool_name_uses_last_registration",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            ))
-            .preamble("You must use the echo tool, then report its output exactly.")
-            .temperature(0.0)
-            .tool(LegacyEcho)
-            .tool(ModernEcho)
-            .default_max_turns(2)
-            .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .preamble("You must use the echo tool, then report its output exactly.")
+                    .temperature(0.0)
+                    .tool(LegacyEcho)
+                    .tool(ModernEcho)
+                    .default_max_turns(2)
+                    .build();
 
             let mut history = Vec::<Message>::new();
             let response = agent
@@ -268,7 +267,7 @@ mod derive_macro {
         with_gemini_cassette(
             "tool_definitions/rig_tool_macro_schema_round_trips",
             |client| async move {
-                let agent = rig::AgentBuilder::new(rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)))
+                let agent = rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
                     .preamble("You must use the macro_calculator tool for arithmetic, then report the result.")
                     .temperature(0.0)
                     .tool(MacroCalculator)

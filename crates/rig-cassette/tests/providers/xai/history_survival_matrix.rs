@@ -4,6 +4,7 @@
 //! wire-level rule still requires its id back.
 
 use rig::providers::xai;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use super::support::with_xai_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
@@ -12,11 +13,8 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(
-    client: rig::providers::openai::OpenAI,
-    cell: Cell,
-) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
-    rig::model(client.completion(cell.model))
+fn model(client: OpenAiModels, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    client.completion(cell.model)
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

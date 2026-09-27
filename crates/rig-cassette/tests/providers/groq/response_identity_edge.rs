@@ -17,7 +17,7 @@ async fn blocking_response_carries_identity() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/blocking_response_carries_identity",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let response = model
                 .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await?;
@@ -43,7 +43,7 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/streaming_terminal_carries_identity",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let mut stream = model.stream(
                 CompletionRequestBuilder::new("Reply with exactly: stream identity probe").build(),
             )?;
@@ -75,7 +75,7 @@ async fn provider_error_response_carries_request_id() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/provider_error_response_carries_request_id",
         |client| async move {
-            let model = rig::model(client.completion("groq-nonexistent-model-for-identity-edge"));
+            let model = client.completion("groq-nonexistent-model-for-identity-edge");
             let error = model
                 .call(CompletionRequestBuilder::new("Never answered").build())
                 .await
@@ -101,7 +101,7 @@ async fn auth_rejection_classifies_with_contract() -> Result<()> {
     with_groq_cassette_bogus_key_result(
         "response_identity_edge/auth_rejection_classifies_with_contract",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let error = model
                 .call(CompletionRequestBuilder::new("Never authenticated").build())
                 .await

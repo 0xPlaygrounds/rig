@@ -62,6 +62,7 @@
 use rig::completion::{FinishReason, ToolDefinition};
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CompletionResponse;
+use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -145,7 +146,7 @@ async fn raw_normalize_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/raw_normalize_empty_stop_sequence",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
@@ -172,7 +173,7 @@ async fn completion_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/completion_empty_stop_sequence",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
@@ -192,12 +193,11 @@ async fn agent_prompt_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-            ))
-            .max_tokens(32)
-            .additional_params(json!({ "stop_sequences": ["alpha"] }))
-            .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5))
+                    .max_tokens(32)
+                    .additional_params(json!({ "stop_sequences": ["alpha"] }))
+                    .build();
 
             let response = agent
                 .prompt(IMMEDIATE_PROMPT)
@@ -220,7 +220,7 @@ async fn streaming_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/streaming_empty_stop_sequence",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let mut stream = model
                 .stream(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .expect("stream should open");
@@ -256,12 +256,11 @@ async fn agent_stream_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/agent_stream_empty_stop_sequence",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-            ))
-            .max_tokens(32)
-            .additional_params(json!({ "stop_sequences": ["alpha"] }))
-            .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5))
+                    .max_tokens(32)
+                    .additional_params(json!({ "stop_sequences": ["alpha"] }))
+                    .build();
 
             let mut stream = agent.prompt(IMMEDIATE_PROMPT).stream();
             let mut errors = Vec::new();
@@ -312,7 +311,7 @@ async fn nonempty_stop_sequence_control() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/nonempty_stop_sequence_control",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_PHRASE_PROMPT, &["charlie"], 64))
                 .await
@@ -350,7 +349,7 @@ async fn unicode_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/unicode_empty_stop_sequence",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_UNICODE_PROMPT, &["🌊"], 32))
                 .await
@@ -368,7 +367,7 @@ async fn whitespace_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/whitespace_empty_stop_sequence",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_PHRASE_PROMPT, &["alpha bravo"], 32))
                 .await
@@ -386,7 +385,7 @@ async fn punctuation_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/punctuation_empty_stop_sequence",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_PUNCTUATION_PROMPT, &["###"], 32))
                 .await
@@ -404,7 +403,7 @@ async fn two_sequences_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/two_sequences_empty_stop",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_PROMPT, &["zulu", "alpha"], 32))
                 .await
@@ -426,7 +425,7 @@ async fn with_preamble_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/with_preamble_empty_stop",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let request = CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
                 .preamble("You follow formatting instructions exactly.".to_string())
                 .max_tokens(32)
@@ -449,7 +448,7 @@ async fn with_tools_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/with_tools_empty_stop",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let request = CompletionRequestBuilder::new(IMMEDIATE_PROMPT)
                 .max_tokens(32)
                 .tool(weather_tool())
@@ -472,11 +471,9 @@ async fn with_prompt_caching_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/with_prompt_caching_empty_stop",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
-                    .with_prompt_caching(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .map_wire(|wire| wire.with_prompt_caching());
             let response = model
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
@@ -494,7 +491,7 @@ async fn sonnet_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/sonnet_empty_stop_sequence",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
             let response = model
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
@@ -519,7 +516,7 @@ async fn identity_survives_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/identity_survives_empty_stop",
         move |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
@@ -569,7 +566,7 @@ async fn finish_reason_is_stop_on_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/finish_reason_is_stop_on_empty_stop",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
@@ -592,7 +589,7 @@ async fn followup_after_empty_stop_turn() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/followup_after_empty_stop_turn",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
             let first = model
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
@@ -621,7 +618,7 @@ async fn long_sequence_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/long_sequence_empty_stop",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_HAIKU_4_5));
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = model
                 .call(request(
                     IMMEDIATE_PHRASE_PROMPT,

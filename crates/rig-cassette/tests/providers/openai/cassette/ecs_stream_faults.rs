@@ -13,13 +13,13 @@ use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
 use rig::providers::openai::{self, GPT_4O};
 use rig::streaming::{Delta, StreamEvent};
-use rig::test_utils::SequencedStreamingHttpClient;
 use rig_cassette::effect_log::EffectLog;
 use rig_ecs::{
     agent::{Failure, MaxTokens, Preamble, Role},
     bus::{BusSet, EffectOutcome, RigSchedule, Streamed},
     systems::RigSet,
 };
+use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::with_openai_cassette;
 use super::stream_faults::{
@@ -40,11 +40,9 @@ use crate::{
 };
 
 /// A scripted-transport model: one streaming exchange, then EOF.
-fn scripted_model(
-    chunks: Vec<Bytes>,
-) -> Model<openai::wire::OpenAiWire, SequencedStreamingHttpClient> {
+fn scripted_model(chunks: Vec<Bytes>) -> Model<openai::wire::OpenAiWire> {
     let (client, http) = scripted_client(chunks);
-    Model::new(client.completion(GPT_4O), http)
+    OpenAiModels::new(client, http).completion(GPT_4O)
 }
 
 /// The scripted cells' witness check, over this module's credential.
@@ -96,7 +94,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
                 "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
                 |client| async move {
                     let run = native_run(
-                        rig::model(client.openai.completion(MISSING_MODEL)),
+                        client.openai.completion(MISSING_MODEL),
                         "",
                         SETUP_PROMPT,
                         witness,
@@ -383,7 +381,7 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
         for witness in [true, false] {
             let runs = &mut runs;
             with_openai_cassette("streaming/streaming_smoke", |client| async move {
-                let model = rig::model(client.openai.completion(GPT_4O));
+                let model = client.openai.completion(GPT_4O);
                 let run = native_run_serving(
                     |label| crate::ecs_matrix::world::FirstDelta {
                         inner: rig::serve::adapters::ModelAdapter::new(label, model),

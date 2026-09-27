@@ -408,7 +408,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(SESSION_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(SESSION_MODEL))
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -470,7 +470,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_openrouter_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(SESSION_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(SESSION_MODEL))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -516,7 +516,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_openrouter_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(SESSION_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(SESSION_MODEL))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -543,7 +543,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = rig::model(client.completion(SESSION_MODEL));
+            let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = CompletionRequestBuilder::new(
                     "Call inspect_manifest exactly once for project rig-openrouter with critical=true, retries=2, \
@@ -582,7 +582,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_openrouter_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = rig::model(client.completion(SESSION_MODEL));
+            let model = client.completion(SESSION_MODEL);
             let request = CompletionRequestBuilder::new(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
                      and which release lane did I choose? Do not call any tools.",
@@ -675,7 +675,7 @@ async fn nested_structured_output_schema_roundtrip() -> Result<()> {
     with_openrouter_cassette_result(
         "agent_tool_sessions/nested_structured_output_schema_roundtrip",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(STRUCTURED_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(STRUCTURED_MODEL))
                 .preamble(
                     "Return only data that satisfies the requested schema. Use lane canary, risk low, \
                      and checks compile=true and replay=true.",

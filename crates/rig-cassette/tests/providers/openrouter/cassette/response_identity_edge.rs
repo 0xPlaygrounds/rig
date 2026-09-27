@@ -18,7 +18,7 @@ async fn blocking_contract_and_gateway_both_report_none() {
     with_openrouter_cassette(
         "response_identity_edge/blocking_contract_and_gateway_both_report_none",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let response = model
                 .call(CompletionRequestBuilder::new("Reply with exactly: identity probe").build())
                 .await
@@ -41,7 +41,7 @@ async fn streaming_contract_and_gateway_both_report_none() {
     with_openrouter_cassette(
         "response_identity_edge/streaming_contract_and_gateway_both_report_none",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let mut stream = model
                 .stream(
                     CompletionRequestBuilder::new("Reply with exactly: stream identity probe")
@@ -70,7 +70,7 @@ async fn routed_failure_error_shape() {
     with_openrouter_cassette(
         "response_identity_edge/routed_failure_error_shape",
         |client| async move {
-            let model = rig::model(client.completion("openai/gpt-nonexistent-routed-model"));
+            let model = client.completion("openai/gpt-nonexistent-routed-model");
             let error = model
                 .call(CompletionRequestBuilder::new("Never routed").build())
                 .await

@@ -11,7 +11,7 @@ async fn structured_output_smoke() {
         "structured_output/structured_output_smoke",
         |client| async move {
             let response: SmokeStructuredOutput =
-                rig::AgentBuilder::new(rig::model(client.completion(DEFAULT_MODEL)))
+                rig::AgentBuilder::new(client.completion(DEFAULT_MODEL))
                     .build()
                     .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
                     .await

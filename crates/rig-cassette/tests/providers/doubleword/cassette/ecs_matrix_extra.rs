@@ -6,19 +6,19 @@
 //! literals and the wire's models.
 
 use rig::providers::doubleword::{QWEN3_5_9B, QWEN3_5_397B_A17B};
+use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::with_doubleword_cassette;
 use crate::ecs_matrix::{
     Wire, cells,
     extra::{Approval, ErrorProbe, batch_hold, despawn_waits_for_the_stream, error_facts},
 };
-use rig::providers::openai::OpenAI;
 
-fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: rig::model(client.completion(QWEN3_5_397B_A17B)),
-        route: Some(rig::model(client.completion(QWEN3_5_9B))),
+        model: client.completion(QWEN3_5_397B_A17B),
+        route: Some(client.completion(QWEN3_5_9B)),
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
     }
@@ -46,7 +46,7 @@ async fn error_facts_unary() {
     crate::goldens::capture_world_programs(async {
         with_doubleword_cassette("error_matrix/unknown_model_blocking", |client| async move {
             error_facts(
-                rig::model(client.completion("rig/definitely-not-a-doubleword-model")),
+                client.completion("rig/definitely-not-a-doubleword-model"),
                 ErrorProbe {
                     prompt: "Reply with error-probe.",
                     max_tokens: Some(8),
@@ -77,7 +77,7 @@ async fn error_facts_streamed() {
             "error_matrix/unknown_model_streaming",
             |client| async move {
                 error_facts(
-                    rig::model(client.completion("rig/definitely-not-a-doubleword-model")),
+                    client.completion("rig/definitely-not-a-doubleword-model"),
                     ErrorProbe {
                         prompt: "Reply with error-probe.",
                         max_tokens: Some(8),

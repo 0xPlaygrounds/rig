@@ -6,9 +6,9 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn extractor_smoke() {
-    let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(rig::model(
+    let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(
         live_client().await.completion(LIVE_MODEL),
-    ))
+    )
     .build();
 
     let response = extractor

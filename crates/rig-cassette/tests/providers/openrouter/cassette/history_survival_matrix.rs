@@ -3,7 +3,7 @@
 
 use super::super::support::with_openrouter_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
-use rig::providers::openai::OpenAI;
+use rig_test_support::cassette_models::OpenAiModels;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({
@@ -12,8 +12,8 @@ fn params() -> Option<serde_json::Value> {
     }))
 }
 
-fn model(client: OpenAI, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
-    rig::model(client.completion(cell.model))
+fn model(client: OpenAiModels, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
+    client.completion(cell.model)
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

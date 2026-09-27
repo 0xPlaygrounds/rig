@@ -18,12 +18,12 @@
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::doubleword;
+use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::json;
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::{collect_text_and_terminal, zero_arg_tool_definition};
 use rig::completion::CompletionRequestBuilder;
-use rig::providers::openai::OpenAI;
 
 const STOP_PROMPT: &str = "Reply with exactly: done";
 const LENGTH_PROMPT: &str = "Explain every step of how a compiler optimizes a large program.";
@@ -50,8 +50,8 @@ fn recorded_finish_reason(scenario: &str, streaming: bool) -> String {
     }
 }
 
-async fn blocking_stop(client: OpenAI) {
-    let model = rig::model(client.completion(doubleword::QWEN3_5_9B));
+async fn blocking_stop(client: OpenAiModels) {
+    let model = client.completion(doubleword::QWEN3_5_9B);
     let response = model
         .call(
             CompletionRequestBuilder::new(STOP_PROMPT)
@@ -64,8 +64,8 @@ async fn blocking_stop(client: OpenAI) {
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 }
 
-async fn blocking_length(client: OpenAI) {
-    let model = rig::model(client.completion(doubleword::QWEN3_5_9B));
+async fn blocking_length(client: OpenAiModels) {
+    let model = client.completion(doubleword::QWEN3_5_9B);
     let response = model
         .call(
             CompletionRequestBuilder::new(LENGTH_PROMPT)
@@ -77,8 +77,8 @@ async fn blocking_length(client: OpenAI) {
     assert_eq!(response.finish_reason(), Some(FinishReason::Length));
 }
 
-async fn blocking_tool_calls_body(client: OpenAI) {
-    let model = rig::model(client.completion(doubleword::QWEN3_5_397B_A17B));
+async fn blocking_tool_calls_body(client: OpenAiModels) {
+    let model = client.completion(doubleword::QWEN3_5_397B_A17B);
     let response = model
         .call(
             CompletionRequestBuilder::new(TOOL_PROMPT)
@@ -99,12 +99,12 @@ async fn blocking_tool_calls_body(client: OpenAI) {
 }
 
 async fn streaming_reason(
-    client: OpenAI,
+    client: OpenAiModels,
     prompt: &'static str,
     max_tokens: u64,
     stop_probe: bool,
 ) -> FinishReason {
-    let model = rig::model(client.completion(doubleword::QWEN3_5_9B));
+    let model = client.completion(doubleword::QWEN3_5_9B);
     let mut builder = CompletionRequestBuilder::new(prompt).max_tokens(max_tokens);
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
@@ -180,7 +180,7 @@ async fn streaming_tool_calls() {
     with_doubleword_cassette(
         "finish_reason_matrix/streaming_tool_calls",
         |client| async move {
-            let model = rig::model(client.completion(doubleword::QWEN3_5_397B_A17B));
+            let model = client.completion(doubleword::QWEN3_5_397B_A17B);
             let stream = model
                 .stream(
                     CompletionRequestBuilder::new(TOOL_PROMPT)

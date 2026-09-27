@@ -10,6 +10,7 @@ use rig::completion::FinishReason;
 use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Messages;
+use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{
@@ -28,12 +29,11 @@ use crate::support::{
 #[tokio::test]
 async fn max_tokens_truncation_surfaces_as_length() {
     with_anthropic_cassette("regression/stop_reason_max_tokens", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(
-            client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-        ))
-        .preamble(STREAMING_PREAMBLE)
-        .max_tokens(8)
-        .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
+                .preamble(STREAMING_PREAMBLE)
+                .max_tokens(8)
+                .build();
 
         let mut stream = agent
             .prompt("Write a detailed five paragraph essay about the ocean.")
@@ -60,12 +60,11 @@ async fn max_tokens_truncation_surfaces_as_length() {
 #[tokio::test]
 async fn natural_stop_surfaces_as_stop() {
     with_anthropic_cassette("regression/stop_reason_end_turn", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(
-            client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-        ))
-        .preamble(STREAMING_PREAMBLE)
-        .max_tokens(512)
-        .build();
+        let agent =
+            rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
+                .preamble(STREAMING_PREAMBLE)
+                .max_tokens(512)
+                .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let (_response, provider_final): (_, rig::streaming::StreamFinal) =
@@ -105,11 +104,9 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
     with_anthropic_cassette(
         "regression/cache_hit_zero_uncached_input",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching(),
-            );
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_prompt_caching());
 
             // A prefix long enough to clear Anthropic's minimum cacheable size.
             let padding = std::iter::repeat_n(

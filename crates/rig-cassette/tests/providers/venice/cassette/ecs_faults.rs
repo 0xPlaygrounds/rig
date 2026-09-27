@@ -12,6 +12,7 @@
 use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{
@@ -24,10 +25,10 @@ use crate::ecs_matrix::{
 };
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
-fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client.completion(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -35,10 +36,10 @@ fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAi
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn missing(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion("venice-nonexistent-rig-test")),
+        model: client.completion("venice-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -95,7 +96,7 @@ fn scripted_stream(
     let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::Model::new(client.completion(MISTRAL_SMALL_3_2_24B), http.clone()),
+        model: OpenAiModels::new(client, http.clone()).completion(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -106,12 +107,12 @@ fn scripted_stream(
 /// next of `replies`.
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, SequencedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     let client = OpenAI::with_key(&VENICE, SCRIPTED_KEY);
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::Model::new(client.completion(MISTRAL_SMALL_3_2_24B), http.clone()),
+        model: OpenAiModels::new(client, http.clone()).completion(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

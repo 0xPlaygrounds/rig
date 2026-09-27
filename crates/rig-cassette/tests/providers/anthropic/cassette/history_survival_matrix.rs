@@ -7,6 +7,7 @@
 //! signatures in the existing Anthropic recordings.
 
 use rig::providers::anthropic::completion::CLAUDE_HAIKU_4_5;
+use rig_test_support::cassette_models::AnthropicModels;
 
 use super::super::support::with_anthropic_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
@@ -16,10 +17,10 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(
-    client: rig::providers::anthropic::wire::Anthropic,
+    client: AnthropicModels,
     cell: Cell,
 ) -> rig::Model<rig::providers::anthropic::wire::Messages> {
-    rig::model(client.completion(cell.model))
+    client.completion(cell.model)
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

@@ -9,14 +9,14 @@
 //! the grid missing from this file reuses a recording the corpus already
 //! had, whose producer stays where it is.
 
-use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW};
+use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(
-    client: &Gemini,
+    client: &GeminiModels,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -25,8 +25,8 @@ fn wire(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
-        route: Some(rig::model(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW))),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -253,7 +253,7 @@ crate::matrix::case_matrix! {
 
 // Reasoning matrix: the named thinking model, with the shared knob.
 fn reasoning_wire(
-    client: &Gemini,
+    client: &GeminiModels,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -262,7 +262,7 @@ fn reasoning_wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion("gemini-3-flash-preview")),
+        model: client.completion("gemini-3-flash-preview"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

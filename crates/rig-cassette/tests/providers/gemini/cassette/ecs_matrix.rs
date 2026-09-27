@@ -6,16 +6,16 @@
 //! `tests/common/ecs_matrix/world.rs`). This file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
-use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{
     GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW,
 };
+use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn wire(
-    client: &Gemini,
+    client: &GeminiModels,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -24,8 +24,8 @@ fn wire(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
-        route: Some(rig::model(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW))),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -34,7 +34,7 @@ fn wire(
 /// The recording's own model: a cell that reuses a recording the corpus
 /// already had runs under the model and settings that recorded it.
 fn legacy(
-    client: &Gemini,
+    client: &GeminiModels,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -43,7 +43,7 @@ fn legacy(
 > {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion(GEMINI_2_5_FLASH)),
+        model: client.completion(GEMINI_2_5_FLASH),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -307,7 +307,7 @@ crate::matrix::case_matrix! {
 
 // Reasoning matrix: the named thinking model, with the shared knob.
 fn reasoning_wire(
-    client: &Gemini,
+    client: &GeminiModels,
 ) -> Wire<
     rig::Model<
         rig::providers::gemini::completion::GenerateContent,
@@ -316,7 +316,7 @@ fn reasoning_wire(
 > {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: rig::model(client.completion("gemini-3-flash-preview")),
+        model: client.completion("gemini-3-flash-preview"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

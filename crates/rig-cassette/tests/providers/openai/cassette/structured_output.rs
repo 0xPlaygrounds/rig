@@ -72,11 +72,10 @@ async fn structured_output_smoke() {
     with_openai_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-                    .output_schema::<SmokeStructuredOutput>()
-                    .output_mode(OutputMode::Native)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
+                .output_schema::<SmokeStructuredOutput>()
+                .output_mode(OutputMode::Native)
+                .build();
 
             let response: SmokeStructuredOutput = agent
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
@@ -128,12 +127,11 @@ async fn prompt_typed_and_output_schema() {
     with_openai_cassette(
         "structured_output/prompt_typed_and_output_schema",
         |client| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-                    .preamble(
-                        "You are a helpful weather assistant. Respond with realistic weather data.",
-                    )
-                    .build();
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
+                .preamble(
+                    "You are a helpful weather assistant. Respond with realistic weather data.",
+                )
+                .build();
 
             let forecast: WeatherForecast = agent
                 .prompt_typed("What's the weather forecast for New York City today?")
@@ -153,7 +151,7 @@ async fn prompt_typed_and_output_schema() {
             );
 
             let agent_with_schema =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
+                rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                     .preamble(
                         "You are a helpful weather assistant. Respond with realistic weather data.",
                     )

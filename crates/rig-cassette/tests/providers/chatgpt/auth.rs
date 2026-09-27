@@ -4,6 +4,7 @@ use assert_fs::TempDir;
 use rig::http_client::DynHttpClient;
 use rig::providers::chatgpt;
 use rig::providers::openai::OpenAI;
+use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -45,9 +46,9 @@ async fn oauth_provider_with_auth_file(path: &Path, http: &DynHttpClient) -> Ope
 }
 
 /// [`oauth_provider_with_auth_file`], on the shared default transport.
-async fn oauth_client_with_auth_file(path: &Path) -> OpenAI {
+async fn oauth_client_with_auth_file(path: &Path) -> OpenAiModels {
     let http = rig::rig_reqwest::shared();
-    oauth_provider_with_auth_file(path, &http).await
+    OpenAiModels::new(oauth_provider_with_auth_file(path, &http).await, http)
 }
 
 fn seed_refresh_auth_file(path: &Path) {
@@ -86,7 +87,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         "device authorization should populate the auth cache"
     );
 
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL)))
+    let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL))
         .preamble(BASIC_PREAMBLE)
         .build();
     let mut stream = agent.prompt(BASIC_PROMPT).stream();
@@ -98,8 +99,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
 
     let cached_client = oauth_client_with_auth_file(&auth_file).await;
 
-    let cached_agent =
-        rig::AgentBuilder::new(rig::model(cached_client.completion(LIVE_MODEL))).build();
+    let cached_agent = rig::AgentBuilder::new(cached_client.completion(LIVE_MODEL)).build();
     let mut cached_stream = cached_agent
         .prompt("Reply with the single word cached.")
         .stream();
@@ -137,7 +137,7 @@ async fn refresh_token_cache_authorize_and_completion_smoke() {
         "refresh should persist a refresh token"
     );
 
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL))).build();
+    let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL)).build();
     let mut stream = agent
         .prompt("Reply with the single word refreshed.")
         .stream();

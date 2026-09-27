@@ -10,13 +10,14 @@ use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::providers::openai::wire::OpenAI;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::cassette_models::OpenAiModels;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::OpenAiChat;
 
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: rig::model(client.openai.chat("gpt-4.1-mini")),
+        model: client.openai.chat("gpt-4.1-mini"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -58,12 +59,12 @@ const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 /// next of `replies`.
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
-) -> Wire<rig::Model<rig::providers::openai::wire::Chat, SequencedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     let client = OpenAI::new(SCRIPTED_KEY);
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,
-        model: rig::Model::new(client.chat("gpt-4.1-mini"), http.clone()),
+        model: OpenAiModels::new(client, http.clone()).chat("gpt-4.1-mini"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

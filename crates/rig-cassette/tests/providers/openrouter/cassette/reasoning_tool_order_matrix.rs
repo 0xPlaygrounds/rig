@@ -34,6 +34,7 @@
 //! | 4 raw order | `{blocking,streaming}_{single,parallel}.yaml` |
 //! | 2 signed agent loops | `{blocking,streaming}_signed_agent_roundtrip.yaml` |
 
+use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -48,7 +49,6 @@ use serde_json::{Value, json};
 
 use super::super::support::with_openrouter_reasoning_tool_order_cassette_result;
 use rig::completion::CompletionRequestBuilder;
-use rig::providers::openai::OpenAI;
 
 const MODEL: &str = "anthropic/claude-haiku-4.5";
 
@@ -157,8 +157,8 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
     builder.build()
 }
 
-async fn run_cell(client: OpenAI, cell: Cell, observed: SharedChoice) -> Result<()> {
-    let model = rig::model(client.completion(MODEL));
+async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedChoice) -> Result<()> {
+    let model = client.completion(MODEL);
     let choice = match cell.transport {
         Transport::Blocking => model.call(request(cell)).await?.choice,
         Transport::Streaming => {
@@ -176,11 +176,11 @@ async fn run_cell(client: OpenAI, cell: Cell, observed: SharedChoice) -> Result<
 }
 
 async fn run_signed_agent(
-    client: OpenAI,
+    client: OpenAiModels,
     transport: Transport,
     invocations: Arc<AtomicUsize>,
 ) -> Result<()> {
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+    let agent = rig::AgentBuilder::new(client.completion(MODEL))
         .preamble(
             "Reason before the requested first tool call. After its result, answer exactly DONE without calling another tool.",
         )

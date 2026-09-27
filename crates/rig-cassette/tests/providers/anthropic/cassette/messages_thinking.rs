@@ -13,6 +13,7 @@ use rig::completion::Message;
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent};
+use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_anthropic_cassette;
 use rig::completion::CompletionRequestBuilder;
@@ -47,7 +48,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
     with_anthropic_cassette(
         "messages_thinking/redacted_thinking_roundtrip_nonstreaming",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
 
             let first_request = CompletionRequestBuilder::new(redacted_thinking_prompt())
                 .max_tokens(4096)
@@ -106,14 +107,13 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
     with_anthropic_cassette(
         "messages_thinking/static_prefix_ttl_coexists_with_extended_thinking",
         |client| async move {
-            let model = rig::model(
-                client
-                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_automatic_caching()
-                    .with_static_prefix_cache_ttl(
+            let model = client
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| {
+                    wire.with_automatic_caching().with_static_prefix_cache_ttl(
                         rig::providers::anthropic::completion::CacheTtl::OneHour,
-                    ),
-            );
+                    )
+                });
 
             // The preamble must clear the model's minimum cacheable prompt
             // length or the API silently skips caching and the recorded
@@ -150,7 +150,7 @@ async fn redacted_thinking_streaming() {
     with_anthropic_cassette(
         "messages_thinking/redacted_thinking_streaming",
         |client| async move {
-            let model = rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6));
+            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
             let request = CompletionRequestBuilder::new(redacted_thinking_prompt())
                 .max_tokens(4096)
                 .additional_params(thinking_params())

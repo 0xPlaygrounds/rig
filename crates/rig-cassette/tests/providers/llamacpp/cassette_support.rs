@@ -45,6 +45,7 @@
 
 use futures::FutureExt;
 use rig::providers::openai::wire::{LLAMACPP, OpenAI, Route};
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -119,11 +120,16 @@ async fn llamacpp_cassette_on(
 /// Drive a scenario against the default recording server.
 pub(super) async fn with_llamacpp_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = llamacpp_cassette_on(spec, &record_upstream()).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -133,11 +139,16 @@ pub(super) async fn with_llamacpp_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = llamacpp_cassette_on(spec, &record_upstream()).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -152,11 +163,11 @@ macro_rules! server_config_wrapper {
         $(#[$meta])*
         pub(super) async fn $name<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
         where
-            F: FnOnce(OpenAI) -> Fut,
+            F: FnOnce(OpenAiModels) -> Fut,
             Fut: Future<Output = ()>,
         {
             let (cassette, client) = llamacpp_cassette_on(spec, &upstream($var, $port)).await;
-            let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+            let result = AssertUnwindSafe(test_body(OpenAiModels::new(client, rig::rig_reqwest::shared()))).catch_unwind().await;
             cassette.finish_after_test(result).await;
         }
     };
@@ -284,7 +295,7 @@ pub(super) async fn with_llamacpp_api_key_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -296,7 +307,12 @@ pub(super) async fn with_llamacpp_api_key_cassette<F, Fut>(
     .await;
     let llamacpp = OpenAI::with_key(&LLAMACPP, CASSETTE_API_KEY)
         .with_base_url(versioned(&cassette.base_url()));
-    let result = AssertUnwindSafe(test_body(llamacpp)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        llamacpp,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -310,14 +326,19 @@ pub(super) async fn with_llamacpp_missing_api_key_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) =
         llamacpp_cassette_on(spec, &upstream("LLAMACPP_API_KEY_UPSTREAM", 8089)).await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -341,7 +362,7 @@ pub(super) async fn with_llamacpp_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_llamacpp_cassette(spec, test_body).await;
@@ -388,7 +409,7 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -405,6 +426,11 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
     let bare = OpenAI::new("llamacpp-local")
         .with_base_url(versioned(&cassette.base_url()))
         .with_route(Route::Chat);
-    let result = AssertUnwindSafe(test_body(bare)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        bare,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }

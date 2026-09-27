@@ -25,7 +25,7 @@ fn families(log: &rig::cassette::effect_log::EffectLog) -> Vec<EffectFamily> {
 async fn tool_call_turn_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -59,7 +59,7 @@ async fn tool_call_turn_effect_log_is_the_golden_fixture() {
 async fn cancelled_stream_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/cancelled_stream", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
             .preamble("You are a concise assistant. Answer directly.")
             .temperature(0.0)

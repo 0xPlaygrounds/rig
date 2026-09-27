@@ -30,6 +30,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{plain,json}_{auto,any,none}.yaml` |
 
+use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -41,7 +42,6 @@ use serde_json::{Value, json};
 
 use super::support::with_mistral_request_shape_cassette_result;
 use rig::completion::CompletionRequestBuilder;
-use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -146,8 +146,8 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = rig::model(client.completion(model_name(cell.model)));
+async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.completion(model_name(cell.model));
     let observation = match cell.transport {
         Transport::Blocking => {
             let response = model.call(request(cell)).await?;

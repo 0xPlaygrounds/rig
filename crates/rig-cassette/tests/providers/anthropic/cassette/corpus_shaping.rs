@@ -62,7 +62,7 @@ async fn tool_choice_required_first_effect_log_is_the_golden_fixture() {
         "corpus_shaping/tool_choice_required_first",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -91,7 +91,7 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
         "corpus_shaping/tool_choice_none_on_committed_output",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -130,7 +130,7 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
 async fn extra_context_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/extra_context", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)
@@ -160,7 +160,7 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
         "corpus_shaping/extra_context_streamed",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
@@ -193,7 +193,7 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
 async fn merged_three_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/merged_three", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -235,9 +235,9 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/route_on_first_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
-                .model_route("fast", rig::model(client.completion(CLAUDE_HAIKU_4_5)))
+                .model_route("fast", client.completion(CLAUDE_HAIKU_4_5))
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(Adder)
@@ -263,7 +263,7 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
 async fn late_route_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_shaping_cassette("corpus_shaping/late_route", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -271,7 +271,7 @@ async fn late_route_effect_log_is_the_golden_fixture() {
             .add_hook(SelectLate)
             .record_to(recorder.clone())
             .build();
-        agent.register_model(LATE_ROUTE, rig::model(client.completion(CLAUDE_HAIKU_4_5)));
+        agent.register_model(LATE_ROUTE, client.completion(CLAUDE_HAIKU_4_5));
         let output = answer(&agent, ADD_PROMPT).await;
         assert!(output.contains("42"), "{output}");
         let log = agent.stamp(recorder.take());
@@ -302,7 +302,7 @@ async fn max_tokens_second_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/max_tokens_second_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -328,7 +328,7 @@ async fn thinking_second_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/thinking_second_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -356,7 +356,7 @@ async fn preamble_second_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/preamble_second_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -391,7 +391,7 @@ async fn active_tools_none_second_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/active_tools_none_second_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -418,7 +418,7 @@ async fn history_first_turn_effect_log_is_the_golden_fixture() {
         "corpus_shaping/history_first_turn",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)

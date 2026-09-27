@@ -17,8 +17,9 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::providers::openai::wire::{OpenAI, VENICE};
+use rig::providers::openai::wire::VENICE;
 use rig::providers::venice;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -56,7 +57,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_venice_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = rig::model(client.completion(CACHE_MODEL));
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "blocking probe");
     })
@@ -71,7 +72,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_venice_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = rig::model(client.completion(CACHE_MODEL));
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "streaming probe");
     })
@@ -94,7 +95,7 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
     const SCENARIO: &str = "prompt_caching/cache_key_stable";
 
     with_venice_prompt_caching_cassette("prompt_caching/cache_key_stable", |client| async move {
-        let model = rig::model(client.completion(CACHE_MODEL));
+        let model = client.completion(CACHE_MODEL);
         let probe = probe().with_additional_params(serde_json::json!({
             "prompt_cache_key": "rig-cache-conformance-venice",
         }));
@@ -118,8 +119,8 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
 #[tokio::test]
 #[ignore = "requires VENICE_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = OpenAI::from_env_with(&VENICE).expect("VENICE_API_KEY");
-    let model = rig::model(client.completion(CACHE_MODEL));
+    let client = OpenAiModels::from_env_with(&VENICE).expect("VENICE_API_KEY");
+    let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(model, &probe()).await;
     report_and_assert_live(&observation, &VENICE_CACHE_SUPPORT, "live_cache_economics");
 }
@@ -137,7 +138,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
     const SCENARIO: &str = "prompt_caching/agent_loop";
 
     with_venice_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
-        let response = rig::AgentBuilder::new(rig::model(client.completion(CACHE_MODEL)))
+        let response = rig::AgentBuilder::new(client.completion(CACHE_MODEL))
             .preamble(&probe().preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)

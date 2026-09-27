@@ -13,13 +13,13 @@ async fn generated_image_as_user_content() {
         "image_input_matrix/generated_image_as_user_content",
         |client| async move {
             let bytes = image_inputs::generate(
-                &rig::model(client.image_generation(venice::image_generation::Z_IMAGE_TURBO)),
+                &client.image_generation(venice::image_generation::Z_IMAGE_TURBO),
                 None,
                 Some(serde_json::json!({ "format": "png", "seed": 42 })),
             )
             .await;
             image_inputs::as_user_content(
-                &rig::model(client.completion(venice::QWEN3_VL_235B_A22B)),
+                &client.completion(venice::QWEN3_VL_235B_A22B),
                 &bytes,
                 None,
             )

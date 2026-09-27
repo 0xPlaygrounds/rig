@@ -10,6 +10,7 @@
 
 pub mod cache_conformance;
 pub mod cache_prefix;
+pub mod cassette_models;
 pub mod cassettes;
 pub mod comparison_guard;
 pub mod ecs_agent;

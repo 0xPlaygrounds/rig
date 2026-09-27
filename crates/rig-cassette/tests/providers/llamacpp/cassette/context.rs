@@ -10,7 +10,7 @@ async fn context_smoke() {
             .iter()
             .copied()
             .fold(
-                rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL))),
+                rig::AgentBuilder::new(client.completion(CASSETTE_MODEL)),
                 |builder, doc| builder.context(doc),
             )
             .build();

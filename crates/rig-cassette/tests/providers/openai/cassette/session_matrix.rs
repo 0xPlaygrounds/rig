@@ -35,9 +35,9 @@ fn models(
     >,
 ) {
     (
-        rig::model(client.openai.responses("gpt-5-mini")),
-        rig::model(client.openai.responses("gpt-5-mini")),
-        rig::model(client.openai.responses("gpt-5.2")),
+        client.openai.responses("gpt-5-mini"),
+        client.openai.responses("gpt-5-mini"),
+        client.openai.responses("gpt-5.2"),
     )
 }
 

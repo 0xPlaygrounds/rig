@@ -5,17 +5,17 @@
 //! strict cassette match proves the restored request carries the signature
 //! byte for byte (`tests/common/ecs_matrix/world.rs`).
 
-use rig::providers::anthropic::wire::Anthropic;
+use rig_test_support::cassette_models::AnthropicModels;
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn reasoning_wire(
-    client: &Anthropic,
+    client: &AnthropicModels,
 ) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: rig::model(client.completion("claude-haiku-4-5")),
+        model: client.completion("claude-haiku-4-5"),
         route: None,
         // Extended thinking requires the default temperature.
         temperature: None,

@@ -24,6 +24,7 @@
 //! |---|---|
 //! | all 8 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_text.yaml` |
 
+use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -35,7 +36,6 @@ use serde_json::Value;
 
 use super::support::with_mistral_history_roundtrip_cassette_result;
 use rig::completion::CompletionRequestBuilder;
-use rig::providers::openai::OpenAI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -129,8 +129,8 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: OpenAI, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = rig::model(client.completion(model_name(cell.model)));
+async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.completion(model_name(cell.model));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The provider-native surface: the reply's verbatim JSON, which

@@ -13,7 +13,7 @@ const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn streaming_smoke() {
     with_ollama_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .preamble(STREAMING_PREAMBLE)
             .additional_params(serde_json::json!({ "think": false }))
             .build();

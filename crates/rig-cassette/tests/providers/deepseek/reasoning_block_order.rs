@@ -115,7 +115,7 @@ async fn blocking_reasoner_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/blocking_reasoner_tool_turn_leads_with_reasoning",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let normalized = model
                 .call(
                     CompletionRequestBuilder::new(reasoning::TOOL_USER_PROMPT)
@@ -145,7 +145,7 @@ async fn streaming_reasoner_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/streaming_reasoner_tool_turn_leads_with_reasoning",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model.stream(
                     CompletionRequestBuilder::new(reasoning::TOOL_USER_PROMPT)
@@ -180,7 +180,7 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/blocking_reasoner_parallel_tool_turn_leads_with_reasoning",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let normalized = model
                 .call(CompletionRequestBuilder::new(
                             "What is the weather AND the air quality in Tokyo? Call both tools in one turn before answering.",
@@ -222,7 +222,7 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/streaming_reasoner_parallel_tool_turn_leads_with_reasoning",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(CompletionRequestBuilder::new(
@@ -262,7 +262,7 @@ async fn blocking_reasoner_text_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/blocking_reasoner_text_turn_leads_with_reasoning",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let normalized = model
                 .call(
                     CompletionRequestBuilder::new("Is 91 prime? Answer in one short sentence.")
@@ -290,7 +290,7 @@ async fn streaming_reasoner_text_turn_leads_with_reasoning() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/streaming_reasoner_text_turn_leads_with_reasoning",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model.stream(
                     CompletionRequestBuilder::new("Is 91 prime? Answer in one short sentence.")
@@ -323,7 +323,7 @@ async fn blocking_non_thinking_tool_turn_has_no_reasoning_block() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/blocking_non_thinking_tool_turn_has_no_reasoning_block",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let normalized = model
                 .call(
                     CompletionRequestBuilder::new(reasoning::TOOL_USER_PROMPT)
@@ -355,7 +355,7 @@ async fn streaming_non_thinking_tool_turn_has_no_reasoning_block() {
     with_deepseek_block_order_cassette_result(
         "reasoning_block_order/streaming_non_thinking_tool_turn_has_no_reasoning_block",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model.stream(
                     CompletionRequestBuilder::new(reasoning::TOOL_USER_PROMPT)
@@ -397,7 +397,7 @@ async fn agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history() {
         "reasoning_block_order/agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(thinking_params())
@@ -445,7 +445,7 @@ async fn agent_streaming_reasoner_roundtrip_streams_reasoning_first() {
         "reasoning_block_order/agent_streaming_reasoner_roundtrip_streams_reasoning_first",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(thinking_params())

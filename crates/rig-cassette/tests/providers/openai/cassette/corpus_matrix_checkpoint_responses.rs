@@ -7,7 +7,7 @@ use crate::ecs_matrix::{Wire, cells, checkpoint};
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion("gpt-4.1-mini")),
+        model: client.openai.completion("gpt-4.1-mini"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -3,9 +3,9 @@
 use anyhow::Result;
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::support::assert_nonempty_response;
 use rig::completion::CompletionRequestBuilder;
@@ -24,8 +24,8 @@ fn extract_text(choice: &[AssistantContent]) -> String {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn websocket_session_roundtrip() -> Result<()> {
-    let client = OpenAI::from_env().expect("config should build from env");
-    let model = rig::model(client.responses(openai::GPT_4O_MINI));
+    let client = OpenAiModels::from_env().expect("config should build from env");
+    let model = client.responses(openai::GPT_4O_MINI);
     let mut session = model.responses_websocket().connect().await?;
 
     let warmup_request =

@@ -7,7 +7,6 @@ use crate::goldens::{
     Nesting, Note, NoteAck, RELAY_KEY, RelayNote, families, parent_positions,
 };
 use bevy_ecs::prelude::*;
-use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::{EffectFamily, HandlerKey},
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
@@ -17,6 +16,7 @@ use rig_ecs::{
     agent::{Grant, PolicyVersion, Temperature},
     bus::{EffectOutcome, Handlers, PendingEffect, Policy},
 };
+use rig_test_support::cassette_models::AnthropicModels;
 // Reuse the existing native graph-producing systems, not recorded leaf handlers.
 // Here their model child is served by the real provider adapter through cassettes.
 // The matrix's corpus (`crate::ecs_matrix::corpus`) includes the same file
@@ -28,9 +28,9 @@ struct Host {
     serial: bool,
     streamed: bool,
 }
-async fn over_host(client: Anthropic, host: Host) -> rig::cassette::effect_log::EffectLog {
+async fn over_host(client: AnthropicModels, host: Host) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
-        rig::model(client.completion(CLAUDE_SONNET_4_6)),
+        client.completion(CLAUDE_SONNET_4_6),
         TOOLS_PREAMBLE,
         host.streamed,
     );

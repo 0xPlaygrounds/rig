@@ -29,9 +29,9 @@ async fn default_instructions_fill_required_instructions() {
     // the transport.
     let client = live_client()
         .await
-        .with_instructions("Always answer with the single word cedar.");
+        .map_config(|config| config.with_instructions("Always answer with the single word cedar."));
 
-    let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_MODEL))).build();
+    let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL)).build();
     let mut stream = agent
         .prompt("Reply with the exact word from the instructions.")
         .stream();
@@ -45,7 +45,7 @@ async fn default_instructions_fill_required_instructions() {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn system_messages_are_lifted_into_instructions() {
-    let model = rig::model(live_client().await.completion(LIVE_MODEL));
+    let model = live_client().await.completion(LIVE_MODEL);
 
     let request =
         CompletionRequestBuilder::new("Reply with the exact word from the system message.")

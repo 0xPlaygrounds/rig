@@ -30,7 +30,7 @@ async fn nonstreaming() {
     with_ollama_cassette(
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(think_params())
@@ -69,7 +69,7 @@ async fn nonstreaming() {
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     with_ollama_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(MODEL)))
+        let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .tool(WeatherTool::new(call_count.clone()))
             .additional_params(think_params())

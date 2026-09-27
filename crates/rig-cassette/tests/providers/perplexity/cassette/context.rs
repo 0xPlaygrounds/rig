@@ -13,7 +13,7 @@ async fn context_smoke() {
             .iter()
             .copied()
             .fold(
-                rig::AgentBuilder::new(rig::model(client.completion(perplexity::SONAR))),
+                rig::AgentBuilder::new(client.completion(perplexity::SONAR)),
                 |builder, doc| builder.context(doc),
             )
             .preamble(

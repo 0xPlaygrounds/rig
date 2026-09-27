@@ -11,7 +11,7 @@ use super::super::support::with_perplexity_cassette;
 #[tokio::test]
 async fn streaming_smoke() {
     with_perplexity_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(perplexity::SONAR)))
+        let agent = rig::AgentBuilder::new(client.completion(perplexity::SONAR))
             .preamble(STREAMING_PREAMBLE)
             .max_tokens(16)
             .build();

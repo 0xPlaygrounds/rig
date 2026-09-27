@@ -52,7 +52,7 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/caller_supplies_the_v1_prefix",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble("You are a concise assistant.")
                 .max_tokens(256)
                 .build();
@@ -141,7 +141,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/authorization_header_is_always_sent",
         |client| async move {
-            let model = rig::model(client.chat(CASSETTE_MODEL));
+            let model = client.chat(CASSETTE_MODEL);
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Reply with the single word: ok")
@@ -199,7 +199,7 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -256,7 +256,7 @@ async fn agent_prompt_through_completions_api() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/agent_prompt_through_completions_api",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble("You are a helpful assistant.")
                 .build();
 
@@ -278,7 +278,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let model = rig::model(client.chat(CASSETTE_MODEL));
+            let model = client.chat(CASSETTE_MODEL);
             let request = CompletionRequestBuilder::new(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .build();

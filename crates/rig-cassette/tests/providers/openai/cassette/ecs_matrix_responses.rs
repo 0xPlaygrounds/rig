@@ -14,8 +14,8 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion(GPT_5_MINI)),
-        route: Some(rig::model(client.openai.completion(GPT_5_NANO))),
+        model: client.openai.completion(GPT_5_MINI),
+        route: Some(client.openai.completion(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
     }
@@ -26,7 +26,7 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
 fn legacy(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion(GPT_4O)),
+        model: client.openai.completion(GPT_4O),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -323,7 +323,7 @@ fn reasoning_wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: rig::model(client.openai.completion(rig::providers::openai::GPT_5_MINI)),
+        model: client.openai.completion(rig::providers::openai::GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

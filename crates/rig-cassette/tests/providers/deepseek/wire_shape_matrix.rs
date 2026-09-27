@@ -116,7 +116,7 @@ async fn blocking_image_base64_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_base64_part_reaches_the_wire",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let error = model
                 .call(
                     CompletionRequestBuilder::new(multimodal_prompt(red_png()))
@@ -146,7 +146,7 @@ async fn blocking_image_url_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_url_part_reaches_the_wire",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let error = model
                 .call(
                     CompletionRequestBuilder::new(multimodal_prompt(UserContent::image_url(
@@ -179,7 +179,7 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_pdf_document_part_reaches_the_wire",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let error = model
                 .call(
                     CompletionRequestBuilder::new(multimodal_prompt(UserContent::Document(
@@ -214,7 +214,7 @@ async fn blocking_audio_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_audio_part_reaches_the_wire",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let error = model
                 .call(
                     CompletionRequestBuilder::new(multimodal_prompt(UserContent::audio(
@@ -246,7 +246,7 @@ async fn blocking_video_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_video_part_reaches_the_wire",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let error = model
                 .call(
                     CompletionRequestBuilder::new(multimodal_prompt(UserContent::Video(
@@ -287,7 +287,7 @@ async fn blocking_image_only_message_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_image_only_message_reaches_the_wire",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let error = model
                 .call(
                     CompletionRequestBuilder::new(Message::User {
@@ -319,7 +319,7 @@ async fn streaming_image_part_reaches_the_wire() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/streaming_image_part_reaches_the_wire",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             // The SSE connect may surface the rejection as a connect error or
             // as the stream's first item, depending on how the transport
             // reports a 400 on an event-stream request; both are the provider
@@ -367,7 +367,7 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_all_text_parts_still_flatten_to_a_string",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let response = model
                 .call(
                     CompletionRequestBuilder::new(Message::User {
@@ -411,7 +411,7 @@ async fn blocking_text_document_still_flattens_to_a_string() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_text_document_still_flattens_to_a_string",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let response = model
                 .call(
                     CompletionRequestBuilder::new(
@@ -449,7 +449,7 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_assistant_and_tool_history_still_flattens",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let response = model
                 .call(
                     CompletionRequestBuilder::new("Now say: history-ok")
@@ -518,7 +518,10 @@ async fn forced_tool_choice_under_thinking_is_rejected_upstream() {
             // The wire's `encode` rewrites any forced `tool_choice` rig
             // itself would send, so the only way to learn what DeepSeek does
             // with one is to hand-build the body.
-            let url = format!("{}/chat/completions", client.base_url.trim_end_matches('/'));
+            let url = format!(
+                "{}/chat/completions",
+                client.config.base_url.trim_end_matches('/')
+            );
             let api_key =
                 std::env::var("DEEPSEEK_API_KEY").unwrap_or_else(|_| "[REDACTED]".to_owned());
             let tools = json!([{
@@ -586,7 +589,7 @@ async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/rig_suppresses_a_forced_tool_choice_while_thinking_is_on",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let response = model
                 .call(
                     CompletionRequestBuilder::new("ping")
@@ -620,7 +623,7 @@ async fn rig_keeps_a_forced_tool_choice_when_thinking_is_disabled() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/rig_keeps_a_forced_tool_choice_when_thinking_is_disabled",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let response = model
                 .call(
                     CompletionRequestBuilder::new("ping")
@@ -656,7 +659,7 @@ async fn chat_completion_rejects_an_unknown_model_with_the_provider_body() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/chat_completion_rejects_an_unknown_model_with_the_provider_body",
         |client| async move {
-            let model = rig::model(client.completion("deepseek-v9-nonexistent"));
+            let model = client.completion("deepseek-v9-nonexistent");
             let error = model
                 .call(CompletionRequestBuilder::new("hi")
                         .additional_params(non_thinking_params())
@@ -680,7 +683,7 @@ async fn chat_completion_rejects_a_bogus_key_with_the_provider_body() {
     with_deepseek_cassette_bogus_key_result(
         "wire_shape_matrix/chat_completion_rejects_a_bogus_key_with_the_provider_body",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let error = model
                 .call(CompletionRequestBuilder::new("hi")
                         .additional_params(non_thinking_params())
@@ -716,7 +719,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/blocking_repeated_prompt_reports_the_cache_split",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let build = || {
                 CompletionRequestBuilder::new(cache_probe_prompt())
                     .additional_params(non_thinking_params())
@@ -774,7 +777,7 @@ async fn streaming_repeated_prompt_reports_the_cache_split() {
     with_deepseek_wire_shape_cassette_result(
         "wire_shape_matrix/streaming_repeated_prompt_reports_the_cache_split",
         |client| async move {
-            let model = rig::model(client.completion(MODEL));
+            let model = client.completion(MODEL);
             let build = || {
                 CompletionRequestBuilder::new(cache_probe_prompt())
                     .additional_params(non_thinking_params())

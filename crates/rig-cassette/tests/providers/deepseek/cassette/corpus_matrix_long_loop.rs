@@ -6,12 +6,12 @@
 
 use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop};
-use rig::providers::openai::OpenAI;
+use rig_test_support::cassette_models::OpenAiModels;
 
-fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-flash")),
+        model: client.completion("deepseek-flash"),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),

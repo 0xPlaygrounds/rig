@@ -60,7 +60,7 @@ async fn structured_output_smoke() {
     with_anthropic_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .output_schema::<SmokeStructuredOutput>()
                 .build();
 

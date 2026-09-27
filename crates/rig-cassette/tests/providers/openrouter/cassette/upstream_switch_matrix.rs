@@ -14,10 +14,10 @@
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::{Value, json};
 
 use super::super::support::with_openrouter_cassette;
-use rig::providers::openai::OpenAI;
 
 const CLAUDE: &str = "anthropic/claude-haiku-4.5";
 const CLAUDE_SONNET: &str = "anthropic/claude-sonnet-4.6";
@@ -64,7 +64,7 @@ enum Route {
 }
 
 async fn turn(
-    client: &OpenAI,
+    client: &OpenAiModels,
     route: Route,
     model: &str,
     history: Vec<Message>,
@@ -72,8 +72,8 @@ async fn turn(
 ) -> Vec<AssistantContent> {
     let request = request(route, history);
     match route {
-        Route::Chat => run(rig::model(client.completion(model)), request, streamed).await,
-        Route::Responses => run(rig::model(client.responses(model)), request, streamed).await,
+        Route::Chat => run(client.completion(model), request, streamed).await,
+        Route::Responses => run(client.responses(model), request, streamed).await,
     }
 }
 
@@ -112,7 +112,7 @@ fn text(choice: &[AssistantContent]) -> String {
 }
 
 /// A Claude tool turn answered: the prompt, the reply, and the result.
-async fn claude_tool_turn(client: &OpenAI, route: Route, streamed: bool) -> Vec<Message> {
+async fn claude_tool_turn(client: &OpenAiModels, route: Route, streamed: bool) -> Vec<Message> {
     let prompt = Message::user("Think it through, then call lookup_code for record alpha.");
     let first = turn(client, route, CLAUDE, vec![prompt.clone()], streamed).await;
     let call = first
@@ -143,7 +143,7 @@ async fn claude_tool_turn(client: &OpenAI, route: Route, streamed: bool) -> Vec<
     ]
 }
 
-async fn switch(client: OpenAI, route: Route, streamed: bool) {
+async fn switch(client: OpenAiModels, route: Route, streamed: bool) {
     let mut history = claude_tool_turn(&client, route, streamed).await;
     history.push(Message::user(
         "Without calling any tool, repeat the code you were given, exactly.",
@@ -164,7 +164,7 @@ async fn switch(client: OpenAI, route: Route, streamed: bool) {
     );
 }
 
-async fn same_family(client: OpenAI, route: Route, streamed: bool) {
+async fn same_family(client: OpenAiModels, route: Route, streamed: bool) {
     let mut history = claude_tool_turn(&client, route, streamed).await;
     history.push(Message::user(
         "Now report the code, without calling any tool.",

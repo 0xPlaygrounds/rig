@@ -18,7 +18,7 @@ async fn context_smoke() {
             .iter()
             .copied()
             .fold(
-                rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_4))),
+                rig::AgentBuilder::new(client.completion(xai::GROK_4)),
                 |builder, doc| builder.context(doc),
             )
             .preamble(

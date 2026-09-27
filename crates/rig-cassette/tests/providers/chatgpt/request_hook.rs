@@ -71,7 +71,7 @@ impl AgentHook for SessionIdHook<'_> {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_MODEL)))
+    let agent = rig::AgentBuilder::new(live_client().await.completion(LIVE_MODEL))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

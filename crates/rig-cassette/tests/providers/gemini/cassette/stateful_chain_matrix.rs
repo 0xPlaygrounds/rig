@@ -5,6 +5,8 @@
 //! committed chain replays but cannot seed a live call later. Record a chain
 //! in one session.
 
+use rig_test_support::cassette_models::GeminiModels;
+use rig_test_support::cassette_models::MapWire;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::sync::{Arc, Mutex};
@@ -27,7 +29,6 @@ use super::super::support::{
     with_gemini_prompt_caching_cassette,
 };
 use rig::completion::CompletionRequestBuilder;
-use rig::providers::gemini::Gemini;
 
 const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
@@ -103,8 +104,8 @@ async fn cached_content_lifecycle_chain() {
     const SCENARIO: &str = "stateful_chain_matrix/cached_content_lifecycle_chain";
     with_gemini_prompt_caching_cassette(
         "stateful_chain_matrix/cached_content_lifecycle_chain",
-        |client: Gemini| async move {
-            let caches = rig::model(client.cached_contents());
+        |client: GeminiModels| async move {
+            let caches = client.cached_contents();
             let created = caches
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
@@ -138,12 +139,10 @@ async fn cached_content_lifecycle_chain() {
                 if let Err(error) = &sibling {
                     panic!("creating the sibling cache: {error}");
                 }
-                let model = rig::model(
-                    generator
-                        .clone()
-                        .completion(CACHE_MODEL)
-                        .with_cached_content(name.clone()),
-                );
+                let model = generator
+                    .clone()
+                    .completion(CACHE_MODEL)
+                    .map_wire(|wire| wire.with_cached_content(name.clone()));
                 let reply = model
                     .call(ask(
                         "What is the code of record alpha? Reply with the code only.",
@@ -170,13 +169,11 @@ async fn cached_content_lifecycle_chain() {
             })
             .await;
 
-            let refused = rig::model(
-                client
-                    .completion(CACHE_MODEL)
-                    .with_cached_content(created.name.clone()),
-            )
-            .call(ask("What is the code of record alpha?"))
-            .await;
+            let refused = client
+                .completion(CACHE_MODEL)
+                .map_wire(|wire| wire.with_cached_content(created.name.clone()))
+                .call(ask("What is the code of record alpha?"))
+                .await;
             let refused = refused.expect_err("a deleted cache handle must be refused");
             let report = rig::error::ErrorReport::from(&refused);
             assert!(
@@ -289,7 +286,7 @@ fn only_call(choice: &[AssistantContent]) -> ToolCall {
 /// session, whether it passed or panicked. Every delete is attempted;
 /// failures are reported after the body's own panic, which is never hidden.
 async fn deleting_interactions<F: Future<Output = ()>>(
-    client: &Gemini,
+    client: &GeminiModels,
     stored: &Arc<Mutex<Vec<String>>>,
     body: F,
 ) {
@@ -305,9 +302,9 @@ async fn deleting_interactions<F: Future<Output = ()>>(
         let sent = http
             .delete(format!(
                 "{}/v1beta/interactions/{id}",
-                client.base_url.trim_end_matches('/')
+                client.config.base_url.trim_end_matches('/')
             ))
-            .header("x-goog-api-key", client.api_key.expose())
+            .header("x-goog-api-key", client.config.api_key.expose())
             .send()
             .await;
         match sent {
@@ -346,7 +343,7 @@ async fn interactions_chain_with_tool_call() {
                     .push(id.to_owned());
             };
             deleting_interactions(&client, &stored, async {
-                let model = rig::model(client.clone().interactions(INTERACTIONS_MODEL));
+                let model = client.clone().interactions(INTERACTIONS_MODEL);
                 let params = |previous: Option<String>| {
                     serde_json::to_value(AdditionalParameters {
                         store: Some(true),
@@ -447,8 +444,8 @@ async fn file_uri_chain() {
     with_gemini_interactions_cassette(
         "stateful_chain_matrix/file_uri_chain",
         |client| async move {
-            let base = client.base_url.trim_end_matches('/').to_owned();
-            let key = client.api_key.expose().to_owned();
+            let base = client.config.base_url.trim_end_matches('/').to_owned();
+            let key = client.config.api_key.expose().to_owned();
             let http = reqwest::Client::new();
             let uploaded: Value = http
                 .post(format!("{base}/upload/v1beta/files?uploadType=media"))
@@ -483,7 +480,7 @@ async fn file_uri_chain() {
                         ),
                     ],
                 };
-                let model = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH));
+                let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
                 let first = model
                     .call(ask_with(vec![document.clone()]))
                     .await

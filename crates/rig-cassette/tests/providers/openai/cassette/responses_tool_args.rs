@@ -158,7 +158,7 @@ async fn zero_argument_tool_call_streaming() {
     with_openai_cassette(
         "responses_tool_args/zero_argument_tool_call_streaming",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client.openai.completion(openai::GPT_4O);
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
                 .tool(zero_arg_tool_definition("ping"))
@@ -179,7 +179,7 @@ async fn zero_argument_tool_call_nonstreaming() {
     with_openai_cassette(
         "responses_tool_args/zero_argument_tool_call_nonstreaming",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client.openai.completion(openai::GPT_4O);
             let request = CompletionRequestBuilder::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
                 .tool(zero_arg_tool_definition("ping"))
@@ -214,12 +214,11 @@ async fn nested_arguments_roundtrip_nonstreaming() {
     with_openai_cassette(
         "responses_tool_args/nested_arguments_roundtrip_nonstreaming",
         |client| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O)))
-                    .preamble(NESTED_ARGS_PREAMBLE)
-                    .tool(PlanTrip)
-                    .default_max_turns(4)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
+                .preamble(NESTED_ARGS_PREAMBLE)
+                .tool(PlanTrip)
+                .default_max_turns(4)
+                .build();
             let mut history = Vec::<Message>::new();
 
             let result = agent
@@ -260,7 +259,7 @@ async fn nested_arguments_streaming() {
     with_openai_cassette(
         "responses_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client.openai.completion(openai::GPT_4O);
             let request = CompletionRequestBuilder::new(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&PlanTrip))
@@ -294,7 +293,7 @@ async fn unicode_arguments_streaming() {
     with_openai_cassette(
         "responses_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O));
+            let model = client.openai.completion(openai::GPT_4O);
             let request = CompletionRequestBuilder::new(
                 "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",

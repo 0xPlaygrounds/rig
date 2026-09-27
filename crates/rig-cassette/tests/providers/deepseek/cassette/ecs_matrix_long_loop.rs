@@ -10,13 +10,14 @@ use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::cassette_models::OpenAiModels;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::DeepSeek;
 
-fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-flash")),
+        model: client.completion("deepseek-flash"),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),
@@ -49,12 +50,12 @@ const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 /// next of `replies`.
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, SequencedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     let client = OpenAI::with_key(&DEEPSEEK, SCRIPTED_KEY);
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,
-        model: rig::Model::new(client.completion("deepseek-flash"), http.clone()),
+        model: OpenAiModels::new(client, http.clone()).completion("deepseek-flash"),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),

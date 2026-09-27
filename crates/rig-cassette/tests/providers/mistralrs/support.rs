@@ -1,3 +1,4 @@
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -73,11 +74,16 @@ async fn mistralrs_raw_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCasse
 
 pub(super) async fn with_mistralrs_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, responses) = mistralrs_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(responses)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        responses,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -90,13 +96,16 @@ pub(super) async fn with_mistralrs_completions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(OpenAI) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, completions) = mistralrs_completions_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(completions))
-        .catch_unwind()
-        .await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        completions,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 

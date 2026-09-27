@@ -2,9 +2,9 @@
 //! `rig_test_support::history_survival::sessions`.
 
 use super::support::with_deepseek_cassette;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::history_survival::sessions::{self, Cell};
-use rig::providers::openai::OpenAI;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "thinking": { "type": "enabled" } }))
@@ -18,16 +18,16 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: OpenAI,
+    client: OpenAiModels,
 ) -> (
     rig::Model<rig::providers::openai::wire::OpenAiWire>,
     rig::Model<rig::providers::openai::wire::OpenAiWire>,
     rig::Model<rig::providers::openai::wire::OpenAiWire>,
 ) {
     (
-        rig::model(client.completion("deepseek-v4-flash")),
-        rig::model(client.completion("deepseek-v4-flash")),
-        rig::model(client.completion("deepseek-v4-pro")),
+        client.completion("deepseek-v4-flash"),
+        client.completion("deepseek-v4-flash"),
+        client.completion("deepseek-v4-pro"),
     )
 }
 

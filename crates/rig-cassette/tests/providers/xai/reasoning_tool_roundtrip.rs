@@ -16,7 +16,7 @@ use crate::reasoning::{self, WeatherTool};
 async fn streaming() {
     with_xai_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_3_MINI)))
+        let agent = rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI))
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))
@@ -40,7 +40,7 @@ async fn nonstreaming() {
         "reasoning_tool_roundtrip/nonstreaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(xai::GROK_3_MINI)))
+            let agent = rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))

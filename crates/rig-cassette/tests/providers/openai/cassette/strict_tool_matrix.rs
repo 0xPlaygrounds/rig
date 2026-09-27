@@ -34,6 +34,7 @@
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::openai;
+use rig_test_support::cassette_models::MapWire;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
@@ -124,7 +125,7 @@ async fn non_strict_tool_omits_optional_argument_blocking() {
     with_openai_cassette(
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_blocking",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O_MINI));
+            let model = client.openai.completion(openai::GPT_4O_MINI);
             let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .tool(record_fact_tool())
@@ -151,7 +152,7 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
     with_openai_cassette(
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_streaming",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O_MINI));
+            let model = client.openai.completion(openai::GPT_4O_MINI);
             let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .tool(record_fact_tool())
@@ -188,12 +189,10 @@ async fn strict_tools_opt_in_sends_strict_true() {
     with_openai_cassette(
         "strict_tool_matrix/strict_tools_opt_in_sends_strict_true",
         |client| async move {
-            let model = rig::model(
-                client
-                    .openai
-                    .completion(openai::GPT_4O_MINI)
-                    .with_strict_tools(),
-            );
+            let model = client
+                .openai
+                .completion(openai::GPT_4O_MINI)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = CompletionRequestBuilder::new(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
                 .tool(record_fact_tool())
@@ -234,12 +233,11 @@ async fn agent_tool_turn_sends_strict_false() {
     with_openai_cassette(
         "strict_tool_matrix/agent_tool_turn_sends_strict_false",
         |client| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.openai.completion(openai::GPT_4O_MINI)))
-                    .preamble("You are a calculator. Use the add tool for arithmetic, then answer.")
-                    .tool(Adder)
-                    .default_max_turns(4)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O_MINI))
+                .preamble("You are a calculator. Use the add tool for arithmetic, then answer.")
+                .tool(Adder)
+                .default_max_turns(4)
+                .build();
 
             let answer = agent
                 .prompt("What is 17 + 25? Use the add tool.")

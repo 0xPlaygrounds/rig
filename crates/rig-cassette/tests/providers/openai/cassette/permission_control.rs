@@ -174,17 +174,18 @@ async fn permission_control_prompt_example() -> Result<()> {
         |client| async move {
             let cleanup = FileCleanup::new("blocking")?;
 
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.openai.completion(providers::openai::GPT_4O_MINI),
-            ))
-            .preamble("You are a helpful assistant that can read files using different methods.")
-            .tool(ReadFileHead {
-                path: cleanup.path().to_path_buf(),
-            })
-            .tool(ReadFileTail {
-                path: cleanup.path().to_path_buf(),
-            })
-            .build();
+            let agent =
+                rig::AgentBuilder::new(client.openai.completion(providers::openai::GPT_4O_MINI))
+                    .preamble(
+                        "You are a helpful assistant that can read files using different methods.",
+                    )
+                    .tool(ReadFileHead {
+                        path: cleanup.path().to_path_buf(),
+                    })
+                    .tool(ReadFileTail {
+                        path: cleanup.path().to_path_buf(),
+                    })
+                    .build();
 
             let call_count = Arc::new(AtomicUsize::new(0));
             let last_result = Arc::new(Mutex::new(None));
@@ -218,17 +219,18 @@ async fn permission_control_streaming_example() -> Result<()> {
         |client| async move {
             let cleanup = FileCleanup::new("streaming")?;
 
-            let agent = rig::AgentBuilder::new(rig::model(
-                client.openai.completion(providers::openai::GPT_4O_MINI),
-            ))
-            .preamble("You are a helpful assistant that can read files using different methods.")
-            .tool(ReadFileHead {
-                path: cleanup.path().to_path_buf(),
-            })
-            .tool(ReadFileTail {
-                path: cleanup.path().to_path_buf(),
-            })
-            .build();
+            let agent =
+                rig::AgentBuilder::new(client.openai.completion(providers::openai::GPT_4O_MINI))
+                    .preamble(
+                        "You are a helpful assistant that can read files using different methods.",
+                    )
+                    .tool(ReadFileHead {
+                        path: cleanup.path().to_path_buf(),
+                    })
+                    .tool(ReadFileTail {
+                        path: cleanup.path().to_path_buf(),
+                    })
+                    .build();
 
             let call_count = Arc::new(AtomicUsize::new(0));
             let last_result = Arc::new(Mutex::new(None));

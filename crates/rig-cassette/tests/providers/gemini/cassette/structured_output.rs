@@ -63,11 +63,10 @@ async fn structured_output_smoke() {
     with_gemini_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent =
-                rig::AgentBuilder::new(rig::model(client.completion("gemini-3-flash-preview")))
-                    .output_schema::<SmokeStructuredOutput>()
-                    .output_mode(OutputMode::Native)
-                    .build();
+            let agent = rig::AgentBuilder::new(client.completion("gemini-3-flash-preview"))
+                .output_schema::<SmokeStructuredOutput>()
+                .output_mode(OutputMode::Native)
+                .build();
 
             let response = agent
                 .prompt(STRUCTURED_OUTPUT_PROMPT)

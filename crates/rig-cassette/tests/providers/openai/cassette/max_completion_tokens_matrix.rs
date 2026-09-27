@@ -92,7 +92,7 @@ async fn reasoning_gpt5_nano_blocking_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_gpt5_nano_blocking_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat("gpt-5-nano"));
+            let model = client.openai.chat("gpt-5-nano");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -115,7 +115,7 @@ async fn reasoning_gpt5_nano_streaming_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_gpt5_nano_streaming_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat("gpt-5-nano"));
+            let model = client.openai.chat("gpt-5-nano");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -136,7 +136,7 @@ async fn reasoning_o4_mini_blocking_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_o4_mini_blocking_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat("o4-mini"));
+            let model = client.openai.chat("o4-mini");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -159,7 +159,7 @@ async fn reasoning_o4_mini_streaming_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_o4_mini_streaming_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat("o4-mini"));
+            let model = client.openai.chat("o4-mini");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -180,7 +180,7 @@ async fn reasoning_gpt5_nano_agent_blocking_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_gpt5_nano_agent_blocking_cap",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.chat.completion("gpt-5-nano")))
+            let agent = rig::AgentBuilder::new(client.chat.completion("gpt-5-nano"))
                 .preamble(PREAMBLE)
                 .max_tokens(CAP)
                 .build();
@@ -202,7 +202,7 @@ async fn reasoning_gpt5_nano_agent_streaming_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_gpt5_nano_agent_streaming_cap",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.chat.completion("gpt-5-nano")))
+            let agent = rig::AgentBuilder::new(client.chat.completion("gpt-5-nano"))
                 .preamble(PREAMBLE)
                 .max_tokens(CAP)
                 .build();
@@ -222,7 +222,7 @@ async fn reasoning_gpt5_nano_tool_turn_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_gpt5_nano_tool_turn_cap",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.chat.completion("gpt-5-nano")))
+            let agent = rig::AgentBuilder::new(client.chat.completion("gpt-5-nano"))
                 .preamble("Use the add tool to answer arithmetic questions.")
                 .max_tokens(TOOL_CAP)
                 .tool(Adder)
@@ -246,7 +246,7 @@ async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/reasoning_gpt5_nano_tool_turn_streaming_cap",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.chat.completion("gpt-5-nano")))
+            let agent = rig::AgentBuilder::new(client.chat.completion("gpt-5-nano"))
                 .preamble("Use the add tool to answer arithmetic questions.")
                 .max_tokens(TOOL_CAP)
                 .tool(Adder)
@@ -272,7 +272,7 @@ async fn legacy_gpt_4o_mini_blocking_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/legacy_gpt_4o_mini_blocking_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
+            let model = client.openai.chat(openai::GPT_4O_MINI);
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -295,7 +295,7 @@ async fn legacy_gpt_4o_mini_streaming_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/legacy_gpt_4o_mini_streaming_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
+            let model = client.openai.chat(openai::GPT_4O_MINI);
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -314,7 +314,7 @@ async fn legacy_gpt_4_1_nano_blocking_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/legacy_gpt_4_1_nano_blocking_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat(openai::GPT_4_1_NANO));
+            let model = client.openai.chat(openai::GPT_4_1_NANO);
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -335,7 +335,7 @@ async fn legacy_gpt_3_5_turbo_blocking_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/legacy_gpt_3_5_turbo_blocking_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat("gpt-3.5-turbo"));
+            let model = client.openai.chat("gpt-3.5-turbo");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -358,7 +358,7 @@ async fn legacy_gpt_3_5_turbo_streaming_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/legacy_gpt_3_5_turbo_streaming_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat("gpt-3.5-turbo"));
+            let model = client.openai.chat("gpt-3.5-turbo");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -383,7 +383,7 @@ async fn uncapped_blocking_sends_neither_spelling() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/uncapped_blocking_sends_neither_spelling",
         |client| async move {
-            let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
+            let model = client.openai.chat(openai::GPT_4O_MINI);
             let request = CompletionRequestBuilder::new(PROMPT).build();
 
             let response = model.call(request).await.expect("uncapped turn");
@@ -401,7 +401,7 @@ async fn uncapped_streaming_sends_neither_spelling() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/uncapped_streaming_sends_neither_spelling",
         |client| async move {
-            let model = rig::model(client.openai.chat(openai::GPT_4O_MINI));
+            let model = client.openai.chat(openai::GPT_4O_MINI);
             let request = CompletionRequestBuilder::new(PROMPT).build();
 
             let stream = model.stream(request).expect("stream should connect");
@@ -424,7 +424,7 @@ async fn caller_modern_spelling_wins_over_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/caller_modern_spelling_wins_over_cap",
         |client| async move {
-            let model = rig::model(client.openai.chat("gpt-5-nano"));
+            let model = client.openai.chat("gpt-5-nano");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(16)
                 .additional_params(json!({ "max_completion_tokens": CAP }))
@@ -446,7 +446,7 @@ async fn caller_modern_spelling_alone_survives() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/caller_modern_spelling_alone_survives",
         |client| async move {
-            let model = rig::model(client.openai.chat("gpt-5-nano"));
+            let model = client.openai.chat("gpt-5-nano");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .additional_params(json!({ "max_completion_tokens": CAP }))
                 .build();
@@ -469,7 +469,7 @@ async fn caller_legacy_spelling_is_upgraded() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/caller_legacy_spelling_is_upgraded",
         |client| async move {
-            let model = rig::model(client.openai.chat("gpt-5-nano"));
+            let model = client.openai.chat("gpt-5-nano");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .additional_params(json!({ "max_tokens": CAP }))
                 .build();
@@ -496,7 +496,7 @@ async fn responses_surface_keeps_max_output_tokens() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/responses_surface_keeps_max_output_tokens",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O_MINI));
+            let model = client.openai.completion(openai::GPT_4O_MINI);
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -516,7 +516,7 @@ async fn responses_surface_reasoning_model_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/responses_surface_reasoning_model_cap",
         |client| async move {
-            let model = rig::model(client.openai.completion("gpt-5-nano"));
+            let model = client.openai.completion("gpt-5-nano");
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -536,7 +536,7 @@ async fn responses_surface_streaming_cap() {
     with_openai_max_tokens_cassette(
         "max_completion_tokens_matrix/responses_surface_streaming_cap",
         |client| async move {
-            let model = rig::model(client.openai.completion(openai::GPT_4O_MINI));
+            let model = client.openai.completion(openai::GPT_4O_MINI);
             let request = CompletionRequestBuilder::new(PROMPT)
                 .max_tokens(CAP)
                 .build();
@@ -558,7 +558,7 @@ async fn capped_extractor_turn_on_reasoning_model() {
         "max_completion_tokens_matrix/capped_extractor_turn_on_reasoning_model",
         |client| async move {
             let extractor: rig::extractor::Extractor<SmokePerson> =
-                ExtractorBuilder::new(rig::model(client.openai.chat("gpt-5-nano")))
+                ExtractorBuilder::new(client.openai.chat("gpt-5-nano"))
                     .max_tokens(TOOL_CAP)
                     .build();
 

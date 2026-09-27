@@ -1,6 +1,7 @@
 use futures::FutureExt;
 use rig::providers::cohere::wire::Cohere;
 use rig::tool::Tool;
+use rig_test_support::cassette_models::CohereModels;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -25,12 +26,17 @@ async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Co
 
 pub(super) async fn with_cohere_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Cohere) -> Fut,
+    F: FnOnce(CohereModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
     let (cassette, client) = cohere_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(CohereModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     crate::cassettes::checkpoint_attempt(&cassette, "cohere", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
@@ -117,7 +123,7 @@ pub(super) async fn with_cohere_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Cohere) -> Fut,
+    F: FnOnce(CohereModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_cohere_cassette(spec, test_body).await;

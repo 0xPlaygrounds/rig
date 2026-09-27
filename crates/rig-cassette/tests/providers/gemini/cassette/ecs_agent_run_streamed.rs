@@ -11,7 +11,7 @@ use bevy_ecs::prelude::*;
 use rig::{
     effect::EffectKind,
     message::{Message, ToolChoice},
-    providers::gemini::{self, Gemini},
+    providers::gemini::{self},
 };
 use rig_ecs::{
     agent::{
@@ -20,6 +20,7 @@ use rig_ecs::{
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::RunCommands,
 };
+use rig_test_support::cassette_models::GeminiModels;
 
 #[derive(Resource)]
 struct InvalidPolicy {
@@ -392,9 +393,9 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
 }, |log| rig_test_support::goldens::world_golden_effects("gemini_agent_run_streamed_streamed_hand_driven_multi_turn_run_completes", log)).await
 }
 
-fn setup(client: &Gemini) -> EcsAgent {
+fn setup(client: &GeminiModels) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH)),
+        client.completion(gemini::completion::GEMINI_2_5_FLASH),
         FORCE_TOOLS_PREAMBLE,
         1,
     );

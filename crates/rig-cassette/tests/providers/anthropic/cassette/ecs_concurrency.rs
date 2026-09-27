@@ -18,13 +18,13 @@ use crate::{
     },
 };
 use bevy_ecs::prelude::*;
-use rig::providers::anthropic::wire::Anthropic;
 use rig::{message::UserContent, providers::anthropic};
 use rig_ecs::{
     agent::{MessageParts, ToolCallSlot, ToolPolicy, Utterance},
     bus::{EffectOutcome, Policy, RigSchedule},
     systems::{RigSet, RunCommands},
 };
+use rig_test_support::cassette_models::AnthropicModels;
 
 #[derive(Resource, Default)]
 struct Published(Vec<Vec<String>>);
@@ -84,9 +84,9 @@ fn observe_publication(
     }
 }
 
-async fn run(client: Anthropic, serial: bool) -> EcsAgent {
+async fn run(client: AnthropicModels, serial: bool) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        rig::model(client.completion(anthropic::completion::CLAUDE_SONNET_4_6)),
+        client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
         TWO_TOOL_STREAM_PREAMBLE,
         1,
     );

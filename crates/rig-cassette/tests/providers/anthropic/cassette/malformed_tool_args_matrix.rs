@@ -62,8 +62,8 @@ use rig::agent::{
 };
 use rig::completion::PromptError;
 use rig::providers::anthropic;
-use rig::providers::anthropic::wire::Anthropic;
 use rig::streaming::StreamedUserContent;
+use rig_test_support::cassette_models::AnthropicModels;
 use serde_json::Value;
 
 use super::super::support::with_anthropic_cassette;
@@ -153,15 +153,13 @@ impl AgentHook for OnMalformed {
     }
 }
 
-fn agent(client: Anthropic) -> rig::agent::Agent {
-    rig::AgentBuilder::new(rig::model(
-        client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-    ))
-    .preamble(STREAMING_TOOLS_PREAMBLE)
-    .tool(Adder)
-    .tool(Subtract)
-    .default_max_turns(2)
-    .build()
+fn agent(client: AnthropicModels) -> rig::agent::Agent {
+    rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
+        .preamble(STREAMING_TOOLS_PREAMBLE)
+        .tool(Adder)
+        .tool(Subtract)
+        .default_max_turns(2)
+        .build()
 }
 
 #[tokio::test]

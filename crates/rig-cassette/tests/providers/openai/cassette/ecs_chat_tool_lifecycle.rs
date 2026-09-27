@@ -6,12 +6,13 @@ use super::chat_tool_lifecycle_matrix::{
 };
 use crate::ecs_agent::EcsAgent;
 use anyhow::Result;
-use rig::{providers::openai, tool::Tool};
+use rig::tool::Tool;
 use rig_ecs::{
     agent::{AdditionalParams, Failure, MaxTokens, ToolCallSlot},
     bus::{PendingEffect, Streamed},
     systems::RunCommands,
 };
+use rig_test_support::cassette_models::OpenAiModels;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -86,14 +87,10 @@ impl_matrix_tool!(RecordPayload, "record_payload", PayloadArgs);
 impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
-async fn run_cell(
-    client: openai::wire::OpenAI,
-    cell: Cell,
-    observed: SharedObservation,
-) -> Result<()> {
+async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     assert_eq!(cell.surface, Surface::Agent);
     let invocations = InvocationLog::default();
-    let mut ecs = EcsAgent::new(rig::model(client.chat(model_name(cell.model))), PREAMBLE, 1);
+    let mut ecs = EcsAgent::new(client.chat(model_name(cell.model)), PREAMBLE, 1);
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         MaxTokens(Some(128)),
         AdditionalParams(Some(

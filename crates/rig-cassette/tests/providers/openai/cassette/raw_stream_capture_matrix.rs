@@ -184,13 +184,7 @@ async fn chat_stream_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed",
-        |client| {
-            capture_terminal(
-                rig::model(client.openai.chat(MODEL)),
-                request(),
-                observed.clone(),
-            )
-        },
+        |client| capture_terminal(client.openai.chat(MODEL), request(), observed.clone()),
     )
     .await
     .expect("chat_stream_raw_round_trips_typed should replay from its cassette");
@@ -240,13 +234,7 @@ async fn chat_stream_raw_exposes_service_tier() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier",
-        |client| {
-            capture_terminal(
-                rig::model(client.openai.chat(MODEL)),
-                request(),
-                observed.clone(),
-            )
-        },
+        |client| capture_terminal(client.openai.chat(MODEL), request(), observed.clone()),
     )
     .await
     .expect("chat_stream_raw_exposes_service_tier should replay from its cassette");
@@ -284,13 +272,7 @@ async fn responses_stream_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_round_trips_typed",
-        |client| {
-            capture_terminal(
-                rig::model(client.openai.completion(MODEL)),
-                request(),
-                observed.clone(),
-            )
-        },
+        |client| capture_terminal(client.openai.completion(MODEL), request(), observed.clone()),
     )
     .await
     .expect("responses_stream_raw_round_trips_typed should replay from its cassette");
@@ -336,13 +318,7 @@ async fn responses_stream_raw_exposes_status() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_exposes_status",
-        |client| {
-            capture_terminal(
-                rig::model(client.openai.completion(MODEL)),
-                request(),
-                observed.clone(),
-            )
-        },
+        |client| capture_terminal(client.openai.completion(MODEL), request(), observed.clone()),
     )
     .await
     .expect("responses_stream_raw_exposes_status should replay from its cassette");
@@ -401,7 +377,7 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
         "raw_stream_capture_matrix/responses_reasoning_stream_raw_round_trips_typed",
         |client| {
             capture_terminal(
-                rig::model(client.openai.completion(REASONING_MODEL)),
+                client.openai.completion(REASONING_MODEL),
                 reasoning_request(),
                 observed.clone(),
             )
@@ -501,13 +477,7 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/chat_tool_call_stream_raw_round_trips_typed",
-        |client| {
-            capture_terminal(
-                rig::model(client.openai.chat(MODEL)),
-                tool_request(),
-                observed.clone(),
-            )
-        },
+        |client| capture_terminal(client.openai.chat(MODEL), tool_request(), observed.clone()),
     )
     .await
     .expect("chat_tool_call_stream_raw_round_trips_typed should replay from its cassette");

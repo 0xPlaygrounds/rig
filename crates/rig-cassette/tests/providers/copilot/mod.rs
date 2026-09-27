@@ -1,3 +1,4 @@
+use rig_test_support::cassette_models::CopilotModels;
 mod agent;
 mod auth;
 #[path = "cassette/ecs_completion.rs"]
@@ -128,10 +129,13 @@ pub(crate) fn live_source() -> AuthSource {
     }
 }
 
-pub(crate) async fn live_client() -> Copilot {
-    authorize(live_source(), None, true)
-        .await
-        .expect("Copilot credential should resolve")
+pub(crate) async fn live_client() -> CopilotModels {
+    CopilotModels::new(
+        authorize(live_source(), None, true)
+            .await
+            .expect("Copilot credential should resolve"),
+        rig::rig_reqwest::shared(),
+    )
 }
 
 async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Copilot) {
@@ -181,11 +185,16 @@ async fn copilot_noninteractive_oauth_cassette(
 
 pub(crate) async fn with_copilot_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Copilot) -> Fut,
+    F: FnOnce(CopilotModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = copilot_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(CopilotModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -194,11 +203,16 @@ pub(crate) async fn with_copilot_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(Copilot) -> Fut,
+    F: FnOnce(CopilotModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = copilot_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(CopilotModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -206,10 +220,15 @@ pub(crate) async fn with_copilot_noninteractive_oauth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Copilot) -> Fut,
+    F: FnOnce(CopilotModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client, _temp) = copilot_noninteractive_oauth_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(CopilotModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }

@@ -5,15 +5,15 @@
 //! cell's own test.
 
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
-use rig::providers::openai::OpenAI;
 
-fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion(MISTRAL_SMALL_3_2_24B)),
+        model: client.completion(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -21,10 +21,10 @@ fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAi
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn missing(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: rig::model(client.completion("venice-nonexistent-rig-test")),
+        model: client.completion("venice-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -1,9 +1,10 @@
 //! Groq live coverage for batch multi-extract pipelines.
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::IntoFuture;
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig::providers::openai::wire::GROQ;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -30,22 +31,21 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let names_extractor = rig::extractor::ExtractorBuilder::<Names>::new(rig::model(
-        groq.completion(MULTI_EXTRACT_NAMES_MODEL),
-    ))
-    .append_preamble("Extract names from the given text.")
-    .retries(2)
-    .build();
-    let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(rig::model(
+    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let names_extractor =
+        rig::extractor::ExtractorBuilder::<Names>::new(groq.completion(MULTI_EXTRACT_NAMES_MODEL))
+            .append_preamble("Extract names from the given text.")
+            .retries(2)
+            .build();
+    let topics_extractor = rig::extractor::ExtractorBuilder::<Topics>::new(
         groq.completion(MULTI_EXTRACT_TOPICS_MODEL),
-    ))
+    )
     .append_preamble("Extract topics from the given text.")
     .retries(2)
     .build();
-    let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(rig::model(
+    let sentiment_extractor = rig::extractor::ExtractorBuilder::<Sentiment>::new(
         groq.completion(MULTI_EXTRACT_SENTIMENT_MODEL),
-    ))
+    )
     .append_preamble("Extract sentiment and confidence from the given text.")
     .retries(2)
     .build();

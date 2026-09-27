@@ -94,13 +94,9 @@ async fn raw_roundtrips_cohere_completion_response() {
     with_cohere_cassette(
         "raw_capture_matrix/raw_roundtrips_cohere_completion_response",
         |client| async move {
-            capture_completion(
-                rig::model(client.completion(CASSETTE_MODEL)),
-                request(),
-                sink,
-            )
-            .await
-            .expect("completion should succeed");
+            capture_completion(client.completion(CASSETTE_MODEL), request(), sink)
+                .await
+                .expect("completion should succeed");
         },
     )
     .await;
@@ -164,13 +160,9 @@ async fn raw_exposes_billing_metadata() {
     with_cohere_cassette(
         "raw_capture_matrix/raw_exposes_billing_metadata",
         |client| async move {
-            capture_completion(
-                rig::model(client.completion(CASSETTE_MODEL)),
-                request(),
-                sink,
-            )
-            .await
-            .expect("completion should succeed");
+            capture_completion(client.completion(CASSETTE_MODEL), request(), sink)
+                .await
+                .expect("completion should succeed");
         },
     )
     .await;

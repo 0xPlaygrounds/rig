@@ -3,7 +3,7 @@
 use axum::http;
 use rig::error::ProviderError;
 use rig::providers::chatgpt;
-use rig::providers::openai::OpenAI;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::with_chatgpt_cassette;
 use rig::completion::CompletionRequestBuilder;
@@ -28,11 +28,11 @@ async fn nonstreaming_unauthorized_preserves_status_and_body() {
 }
 
 async fn assert_nonstreaming_http_error(
-    client: OpenAI,
+    client: OpenAiModels,
     expected_status: http::StatusCode,
     expected_message: &str,
 ) {
-    let model = rig::model(client.completion(chatgpt::GPT_5_4));
+    let model = client.completion(chatgpt::GPT_5_4);
     let request = CompletionRequestBuilder::new("hello").build();
 
     let error = model

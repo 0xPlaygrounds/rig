@@ -45,7 +45,8 @@ async fn generate_content_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_cassette(
         "document_ordering/generate_content_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = rig::model(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+            let response = client
+                .completion(gemini::completion::GEMINI_2_5_FLASH)
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
                         .message(Message::system(SYSTEM_INSTRUCTION))
@@ -83,7 +84,8 @@ async fn interactions_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_interactions_cassette(
         "document_ordering/interactions_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = rig::model(client.interactions("gemini-3-flash-preview"))
+            let response = client
+                .interactions("gemini-3-flash-preview")
                 .call(
                     CompletionRequestBuilder::new(PROMPT)
                         .message(Message::system(SYSTEM_INSTRUCTION))

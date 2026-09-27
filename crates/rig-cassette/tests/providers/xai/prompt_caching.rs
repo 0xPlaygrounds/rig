@@ -31,8 +31,8 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::providers::openai::OpenAI;
 use rig::providers::xai;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::cache_conformance::{
     CacheAccounting, CacheProbe, CacheSupport, assert_cache_conformance, assert_prefix_stable,
@@ -62,7 +62,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_xai_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = rig::model(client.completion(CACHE_MODEL));
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &XAI_CACHE_SUPPORT, "blocking probe");
     })
@@ -76,7 +76,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_xai_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = rig::model(client.completion(CACHE_MODEL));
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &XAI_CACHE_SUPPORT, "streaming probe");
     })
@@ -95,8 +95,8 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = OpenAI::from_env_with(&xai::DIALECT).expect("XAI_API_KEY");
-    let model = rig::model(client.completion(CACHE_MODEL));
+    let client = OpenAiModels::from_env_with(&xai::DIALECT).expect("XAI_API_KEY");
+    let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(model, &probe()).await;
     report_and_assert_live(&observation, &XAI_CACHE_SUPPORT, "live_cache_economics");
 }

@@ -176,7 +176,7 @@ async fn permission_control_prompt_example() -> Result<()> {
         |client| async move {
             let cleanup = FileCleanup::new("blocking")?;
 
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: cleanup.path().to_path_buf(),
@@ -219,7 +219,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         |client| async move {
             let cleanup = FileCleanup::new("streaming")?;
 
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: cleanup.path().to_path_buf(),

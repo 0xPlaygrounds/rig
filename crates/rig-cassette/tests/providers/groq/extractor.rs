@@ -1,6 +1,7 @@
 //! Groq extractor smoke test.
 
-use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig::providers::openai::wire::GROQ;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
@@ -9,11 +10,10 @@ use super::EXTRACTOR_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extractor_smoke() {
-    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let extractor = rig::extractor::ExtractorBuilder::<SmokePerson>::new(rig::model(
-        groq.completion(EXTRACTOR_MODEL),
-    ))
-    .build();
+    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor =
+        rig::extractor::ExtractorBuilder::<SmokePerson>::new(groq.completion(EXTRACTOR_MODEL))
+            .build();
 
     let response = extractor
         .extract(EXTRACTOR_TEXT)

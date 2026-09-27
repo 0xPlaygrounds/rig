@@ -1,5 +1,6 @@
 use futures::FutureExt;
 use rig::providers::ollama::wire::Ollama;
+use rig_test_support::cassette_models::OllamaModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -24,12 +25,17 @@ async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Ol
 
 pub(super) async fn with_ollama_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Ollama) -> Fut,
+    F: FnOnce(OllamaModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
     let (cassette, client) = ollama_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OllamaModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     crate::cassettes::checkpoint_attempt(&cassette, "ollama", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }

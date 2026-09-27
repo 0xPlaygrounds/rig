@@ -70,13 +70,7 @@ async fn raw_round_trips_responses_type() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/raw_round_trips_responses_type",
-        |client| {
-            capture_completion(
-                rig::model(client.completion(MODEL)),
-                request(),
-                sink.clone(),
-            )
-        },
+        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
     )
     .await
     .expect("raw_round_trips_responses_type should replay from its cassette");
@@ -112,13 +106,7 @@ async fn raw_exposes_status_and_service_tier() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/raw_exposes_status_and_service_tier",
-        |client| {
-            capture_completion(
-                rig::model(client.completion(MODEL)),
-                request(),
-                sink.clone(),
-            )
-        },
+        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
     )
     .await
     .expect("raw_exposes_status_and_service_tier should replay from its cassette");
@@ -161,13 +149,7 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| {
-            capture_completion(
-                rig::model(client.completion(MODEL)),
-                request(),
-                sink.clone(),
-            )
-        },
+        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");

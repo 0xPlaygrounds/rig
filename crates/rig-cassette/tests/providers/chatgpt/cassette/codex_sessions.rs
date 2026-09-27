@@ -98,7 +98,7 @@ async fn sequential_tool_calls_nonstreaming() {
     with_chatgpt_cassette(
         "codex_sessions/sequential_tool_calls_nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -169,7 +169,7 @@ async fn sequential_tool_calls_streaming() {
     with_chatgpt_cassette(
         "codex_sessions/sequential_tool_calls_streaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
                 .preamble(SEQUENTIAL_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -215,7 +215,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
     with_chatgpt_cassette(
         "codex_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -275,7 +275,7 @@ async fn parallel_tool_calls_single_turn_streaming() {
     with_chatgpt_cassette(
         "codex_sessions/parallel_tool_calls_single_turn_streaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -299,7 +299,7 @@ async fn long_history_replay_nonstreaming() {
     with_chatgpt_cassette(
         "codex_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = rig::model(client.completion(chatgpt::GPT_5_4));
+            let model = client.completion(chatgpt::GPT_5_4);
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool call so the follow-up can echo
@@ -398,7 +398,7 @@ async fn reasoning_session_two_tool_calls_streaming() {
         "codex_sessions/reasoning_session_two_tool_calls_streaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(6000)
                 .tool(WeatherTool::new(call_count.clone()))
@@ -468,7 +468,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
     with_chatgpt_cassette(
         "codex_sessions/usage_accumulates_across_streaming_multi_turn",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(chatgpt::GPT_5_4)))
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .build();

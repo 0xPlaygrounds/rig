@@ -16,8 +16,8 @@ use rig::providers::gemini::{
         gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel},
     },
 };
-use rig::test_utils::SequencedStreamingHttpClient;
 use rig_ecs::agent::{AdditionalParams, MaxTokens, Preamble, Role};
+use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_cassette;
 use super::stream_faults::{
@@ -34,11 +34,9 @@ use crate::{
 };
 
 /// A scripted-transport model: one streaming exchange, then EOF.
-fn scripted_model(
-    chunks: Vec<Bytes>,
-) -> Model<gemini::completion::GenerateContent, SequencedStreamingHttpClient> {
+fn scripted_model(chunks: Vec<Bytes>) -> Model<gemini::completion::GenerateContent> {
     let (client, http) = scripted_client(chunks);
-    Model::new(client.completion(GEMINI_2_5_FLASH), http)
+    GeminiModels::new(client, http).completion(GEMINI_2_5_FLASH)
 }
 
 /// The scripted cells' witness check, over this module's credential.
@@ -80,7 +78,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 let run = native_run(
-                    rig::model(client.completion(MISSING_MODEL)),
+                    client.completion(MISSING_MODEL),
                     "",
                     SETUP_PROMPT,
                     witness,
@@ -388,7 +386,7 @@ async fn witnessed_success_matches_the_unwitnessed_run() {
             let runs = &mut runs;
             with_gemini_cassette("streaming/streaming_smoke", |client| async move {
                 let run = native_run(
-                    rig::model(client.completion(GEMINI_3_FLASH_PREVIEW)),
+                    client.completion(GEMINI_3_FLASH_PREVIEW),
                     STREAMING_PREAMBLE,
                     STREAMING_PROMPT,
                     witness,

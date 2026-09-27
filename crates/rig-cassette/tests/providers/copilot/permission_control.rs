@@ -155,7 +155,7 @@ async fn permission_control_prompt_example() -> Result<()> {
         |client| async move {
             let _cleanup = FileCleanup::new()?;
 
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(LIVE_LIGHT_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(LIVE_LIGHT_MODEL))
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",
                 )
@@ -196,12 +196,11 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent =
-        rig::AgentBuilder::new(rig::model(live_client().await.completion(LIVE_LIGHT_MODEL)))
-            .preamble("You are a helpful assistant that can read files using different methods.")
-            .tool(ReadFileHead)
-            .tool(ReadFileTail)
-            .build();
+    let agent = rig::AgentBuilder::new(live_client().await.completion(LIVE_LIGHT_MODEL))
+        .preamble("You are a helpful assistant that can read files using different methods.")
+        .tool(ReadFileHead)
+        .tool(ReadFileTail)
+        .build();
 
     let call_count = Arc::new(AtomicUsize::new(0));
     let last_result = Arc::new(Mutex::new(None));

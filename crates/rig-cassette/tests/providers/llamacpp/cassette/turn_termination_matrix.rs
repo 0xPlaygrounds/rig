@@ -119,7 +119,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/blocking_truncated_turn",
         |client| async move {
-            rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
                 .max_tokens(TINY_CAP)
@@ -164,7 +164,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/streaming_truncated_turn",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
                 .max_tokens(TINY_CAP)
@@ -197,7 +197,7 @@ async fn blocking_completed_turn_reports_stop() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/blocking_completed_turn",
         |client| async move {
-            rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
                 .max_tokens(ROOMY_CAP)
@@ -235,7 +235,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/blocking_tool_turn",
         |client| async move {
-            rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble(TOOL_PREAMBLE)
                 .temperature(0.0)
                 .max_tokens(ROOMY_CAP)
@@ -275,7 +275,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
     with_llamacpp_competent_cassette(
         "turn_termination_matrix/escalating_retry",
         |client| async move {
-            rig::AgentBuilder::new(rig::model(client.completion(CASSETTE_MODEL)))
+            rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble(CONCISE_PREAMBLE)
                 .temperature(0.0)
                 // The agent baseline. Neither attempt should report it: the

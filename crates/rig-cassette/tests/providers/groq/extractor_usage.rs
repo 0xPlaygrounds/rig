@@ -3,7 +3,8 @@
 use anyhow::{Result, anyhow};
 use rig::TypedPromptResponse;
 use rig::message::Message;
-use rig::providers::openai::wire::{GROQ, OpenAI};
+use rig::providers::openai::wire::GROQ;
+use rig_test_support::cassette_models::OpenAiModels;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -45,10 +46,10 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
         groq.completion(EXTRACTOR_USAGE_BACKWARD_MODEL),
-    ))
+    )
     .build();
 
     let person = extractor
@@ -66,10 +67,10 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
         groq.completion(EXTRACTOR_USAGE_WITH_USAGE_MODEL),
-    ))
+    )
     .build();
 
     let response: TypedPromptResponse<Person> = extractor
@@ -89,10 +90,10 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
-    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
+    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<Address>::new(
         groq.completion(EXTRACTOR_USAGE_CHAT_HISTORY_MODEL),
-    ))
+    )
     .build();
 
     let chat_history = vec![Message::user(
@@ -117,10 +118,10 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
-    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let extractor = rig::extractor::ExtractorBuilder::<Person>::new(
         groq.completion(EXTRACTOR_USAGE_SAME_DATA_MODEL),
-    ))
+    )
     .build();
 
     let text = "Bob Johnson is a 55 year old retired teacher.";
@@ -144,20 +145,20 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    let groq = OpenAI::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
+    let groq = OpenAiModels::from_env_with(&GROQ).expect("GROQ_API_KEY should be set");
 
-    let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(rig::model(
+    let person_extractor = rig::extractor::ExtractorBuilder::<Person>::new(
         groq.completion(EXTRACTOR_USAGE_TRACKING_MODEL),
-    ))
+    )
     .build();
     let person_response = person_extractor
         .extract("Alice is a 25 year old developer.")
         .await?;
     anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
 
-    let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(rig::model(
+    let address_extractor = rig::extractor::ExtractorBuilder::<Address>::new(
         groq.completion(EXTRACTOR_USAGE_TRACKING_MODEL),
-    ))
+    )
     .build();
     let address_response = address_extractor
         .extract("456 Oak Avenue, Cambridge, MA 02139")

@@ -11,7 +11,7 @@ async fn streaming_tools_smoke() {
     with_venice_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(TOOL_MODEL)))
+            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL))
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)

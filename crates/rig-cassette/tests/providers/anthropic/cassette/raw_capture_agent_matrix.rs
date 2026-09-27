@@ -264,7 +264,7 @@ async fn hooks_observe_raw_blocking() {
     with_anthropic_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_HAIKU_4_5)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_HAIKU_4_5))
                 .max_tokens(32)
                 .add_hook(hook)
                 .build();
@@ -309,7 +309,7 @@ async fn hooks_observe_raw_streamed() {
     with_anthropic_cassette(
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_HAIKU_4_5)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_HAIKU_4_5))
                 .max_tokens(32)
                 .add_hook(hook)
                 .build();
@@ -365,7 +365,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     with_anthropic_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_HAIKU_4_5)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_HAIKU_4_5))
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
                 .tool(Adder)
@@ -412,7 +412,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     with_anthropic_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_HAIKU_4_5)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_HAIKU_4_5))
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
                 .tool(Adder)
@@ -467,7 +467,7 @@ async fn streamed_final_carries_final_turn_raw() {
     with_anthropic_cassette(
         "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_HAIKU_4_5)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_HAIKU_4_5))
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
                 .tool(Adder)
@@ -524,7 +524,7 @@ async fn retried_turn_records_retried_attempt_raw_blocking() {
     with_anthropic_cassette(
         "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_HAIKU_4_5)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_HAIKU_4_5))
                 .max_tokens(32)
                 .add_hook(hook)
                 .build();
@@ -571,7 +571,7 @@ async fn retried_turn_records_retried_attempt_raw_streamed() {
     with_anthropic_cassette(
         "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed",
         move |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_HAIKU_4_5)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_HAIKU_4_5))
                 .max_tokens(32)
                 .add_hook(hook)
                 .build();

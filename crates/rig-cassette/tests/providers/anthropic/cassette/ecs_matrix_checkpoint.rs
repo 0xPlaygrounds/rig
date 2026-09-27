@@ -3,12 +3,12 @@
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, checkpoint};
-use rig::providers::anthropic::wire::Anthropic;
+use rig_test_support::cassette_models::AnthropicModels;
 
-fn wire(client: &Anthropic) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
+fn wire(client: &AnthropicModels) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: rig::model(client.completion("claude-haiku-4-5-20251001")),
+        model: client.completion("claude-haiku-4-5-20251001"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

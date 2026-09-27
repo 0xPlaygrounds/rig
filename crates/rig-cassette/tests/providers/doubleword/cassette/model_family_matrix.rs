@@ -23,18 +23,18 @@
 //! compliance; the finish-reason matrix tests termination semantics directly.
 
 use rig::providers::{doubleword, openai};
+use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize as _;
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_text_and_terminal;
 use rig::completion::CompletionRequestBuilder;
-use rig::providers::openai::OpenAI;
 
 const PROMPT: &str = "Reply with the single word: family-ok";
 const CAP: u64 = 96;
 
-async fn exercise_blocking(client: OpenAI, model_name: &'static str) {
-    let model = rig::model(client.completion(model_name));
+async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
+    let model = client.completion(model_name);
     let response = model
         .call(
             CompletionRequestBuilder::new(PROMPT)
@@ -186,7 +186,7 @@ async fn default_qwen_family_streaming() {
     with_doubleword_cassette(
         "model_family_matrix/default_qwen_family_streaming",
         |client| async move {
-            let model = rig::model(client.completion(doubleword::QWEN3_5_9B));
+            let model = client.completion(doubleword::QWEN3_5_9B);
             let stream = model
                 .stream(
                     CompletionRequestBuilder::new(PROMPT)

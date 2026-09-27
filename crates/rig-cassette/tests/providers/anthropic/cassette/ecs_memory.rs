@@ -10,12 +10,12 @@ use crate::support::{
 };
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, MemoryOp};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-use rig::providers::anthropic::wire::Anthropic;
 use rig_ecs::{
     agent::MessageParts,
     bus::{EffectOutcome, Policy},
     systems::RunCommands,
 };
+use rig_test_support::cassette_models::AnthropicModels;
 #[path = "ecs_memory/runtime.rs"]
 mod runtime;
 use runtime::*;
@@ -218,7 +218,7 @@ async fn host_bus_memory_effect_log() {
             "corpus_memory/host_bus_memory",
             |client| async move {
                 let mut ecs = EcsAgent::for_golden(
-                    rig::model(client.completion(CLAUDE_SONNET_4_6)),
+                    client.completion(CLAUDE_SONNET_4_6),
                     BASIC_PREAMBLE,
                     false,
                 );
@@ -307,7 +307,10 @@ async fn serial_two_tools_effect_log() {
 
 /// An `Append` that fails: the record holds the error and the run ends
 /// in its answer regardless.
-async fn append_fails(client: Anthropic, streamed: bool) -> rig::cassette::effect_log::EffectLog {
+async fn append_fails(
+    client: AnthropicModels,
+    streamed: bool,
+) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = agent(
         &client,
         FailingMemory::append_fails(),

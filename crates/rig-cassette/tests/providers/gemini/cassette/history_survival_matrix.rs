@@ -3,7 +3,7 @@
 
 use super::super::support::with_gemini_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
-use rig::providers::gemini::Gemini;
+use rig_test_support::cassette_models::GeminiModels;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({
@@ -14,11 +14,11 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(
-    client: Gemini,
+    client: GeminiModels,
     cell: Cell,
 ) -> rig::Model<rig::providers::gemini::completion::GenerateContent, rig::http_client::DynHttpClient>
 {
-    rig::model(client.completion(cell.model))
+    client.completion(cell.model)
 }
 
 const fn cell(transport: Transport, expect: Expect) -> Cell {

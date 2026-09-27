@@ -96,7 +96,7 @@ async fn plaintext_document_prompt() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/plaintext_document_prompt",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .preamble("You are a helpful assistant that analyzes documents.")
                 .temperature(0.5)
                 .build();
@@ -124,7 +124,7 @@ async fn plaintext_document_with_instruction() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/plaintext_document_with_instruction",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .preamble("You are a helpful assistant that analyzes documents.")
                 .temperature(0.5)
                 .build();
@@ -153,7 +153,7 @@ async fn streaming_document_citations_accepts_null_citation_start() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/streaming_document_citations_accepts_null_citation_start",
         |client| async move {
-            let agent = rig::AgentBuilder::new(rig::model(client.completion(CLAUDE_SONNET_4_6)))
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .preamble("Answer using the supplied document and citation metadata.")
                 .temperature(0.0)
                 .build();
@@ -174,7 +174,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/document_citations_followup_preserves_history",
         |client| async move {
-            let model = rig::model(client.completion(CLAUDE_SONNET_4_6));
+            let model = client.completion(CLAUDE_SONNET_4_6);
             let prompt = citation_prompt();
 
             let first_request = CompletionRequestBuilder::new(prompt.clone())

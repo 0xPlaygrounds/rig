@@ -10,7 +10,7 @@ fn params() -> Option<serde_json::Value> {
 }
 
 fn model(client: OpenAiCassette, cell: Cell) -> rig::Model<rig::providers::openai::wire::Chat> {
-    rig::model(client.openai.chat(cell.model))
+    client.openai.chat(cell.model)
 }
 
 const fn cell(source: Source) -> Cell {

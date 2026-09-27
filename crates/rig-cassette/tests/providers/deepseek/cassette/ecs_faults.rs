@@ -11,6 +11,7 @@
 
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{
@@ -28,10 +29,10 @@ fn thinking_disabled() -> serde_json::Value {
     serde_json::json!({ "thinking": { "type": "disabled" } })
 }
 
-fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-chat")),
+        model: client.completion("deepseek-chat"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -39,10 +40,10 @@ fn wire(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAi
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &OpenAI) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+fn missing(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::model(client.completion("deepseek-v9-nonexistent")),
+        model: client.completion("deepseek-v9-nonexistent"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -105,7 +106,7 @@ fn scripted_stream(
     let http = rig::http_client::DynHttpClient::new(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::Model::new(client.completion("deepseek-chat"), http.clone()),
+        model: OpenAiModels::new(client, http.clone()).completion("deepseek-chat"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -116,12 +117,12 @@ fn scripted_stream(
 /// next of `replies`.
 fn scripted_unary(
     replies: Vec<MockHttpResponse>,
-) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire, SequencedHttpClient>> {
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     let client = OpenAI::with_key(&DEEPSEEK, SCRIPTED_KEY);
     let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: rig::Model::new(client.completion("deepseek-chat"), http.clone()),
+        model: OpenAiModels::new(client, http.clone()).completion("deepseek-chat"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
