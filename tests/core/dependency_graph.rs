@@ -21,11 +21,19 @@ const ECS_LEAF: &str = "rig-agent rig-cassette rig-effect-log rig-rmcp rmcp bevy
 
 const GRAPHS: &[Graph] = &[
     ("rig-core", "", "tokio reqwest rig-cassette", ""),
+    // The `reqwest` and `tungstenite` features bring in the bundled transports,
+    // and with them reqwest and tokio: only through those two crates.
     (
         "rig-core",
         "--all-features",
-        "tokio reqwest rig-agent rig-cassette rig-effect-log rig-ecs",
-        "",
+        "rig-agent rig-cassette rig-effect-log rig-ecs",
+        "rig-reqwest rig-tungstenite",
+    ),
+    (
+        "rig-core",
+        "--no-default-features --features derive,rustls,audio,image,pdf,epub,websocket",
+        "tokio reqwest rig-reqwest rig-tungstenite rig-cassette",
+        "rig-http",
     ),
     (
         "rig-agent",
