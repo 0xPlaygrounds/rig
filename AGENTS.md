@@ -18,9 +18,9 @@ signatures, module paths, and feature flags.
 
 ## Fast Loop
 
-- After an edit, run `cargo xtask verify --quick`; leave workspace-wide and
-  facade `--all-features` runs to CI.
-- Keep incremental compilation and each worktree's own target directory.
+- Iterate with `cargo nextest run --locked --profile local -p <crate> [filter]`;
+  leave workspace-wide and facade `--all-features` runs to CI.
+- Keep incremental compilation on.
 
 ## Efficient Investigation
 

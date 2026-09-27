@@ -6,7 +6,7 @@
 required = "0.9.77"
 recommended = "0.9.91"
 
-# These two nested-Cargo tests are the slowest in the
+# The two tests that shell out to a nested Cargo build are the slowest in the
 # tree by an order of magnitude (the facade feature-forwarding guard runs
 # four `cargo check`s over the facade's dependency graph). In lexicographic
 # order they start late and finish minutes after every other test, so the

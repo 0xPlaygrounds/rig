@@ -122,30 +122,6 @@ fn provider_owner<'a>(packages: &'a [Value], name: &str) -> Option<&'a str> {
             })
     })
 }
-/// Build and verification inputs every package reads. `--changed` broadens to
-/// the full plan on them; `--quick` leaves them to CI.
-fn shared_input(path: &str) -> bool {
-    path == "Cargo.lock"
-        || path.ends_with("Cargo.toml")
-        || path == "rust-toolchain.toml"
-        || [
-            ".cargo/",
-            ".config/",
-            ".github/",
-            "xtask/",
-            "scripts/",
-            "test-support/",
-            "src/",
-            "crates/rig-cassette/tests/common/",
-            "tests/integrations/",
-        ]
-        .iter()
-        .any(|p| path.starts_with(p))
-}
-fn documentation(path: &str) -> bool {
-    ["README.md", "CONTRIBUTING.md", "AGENTS.md", "DEVELOPING.md"].contains(&path)
-        || path.starts_with("docs/")
-}
 fn package<'a>(root: &Path, packages: &'a [Value], path: &str) -> Option<&'a Value> {
     let absolute = root.join(path);
     packages
@@ -326,7 +302,23 @@ pub(super) fn plan(
             )?;
             continue;
         }
-        if shared_input(path) {
+        if path == "Cargo.lock"
+            || path.ends_with("Cargo.toml")
+            || path == "rust-toolchain.toml"
+            || [
+                ".cargo/",
+                ".config/",
+                ".github/",
+                "xtask/",
+                "scripts/",
+                "test-support/",
+                "src/",
+                "crates/rig-cassette/tests/common/",
+                "tests/integrations/",
+            ]
+            .iter()
+            .any(|p| path.starts_with(p))
+        {
             // Shared inputs broaden to every runtime check. Dependency floors
             // join only for resolver inputs: nextest configuration, shared
             // test support or facade source cannot change what Cargo resolves.
@@ -414,7 +406,9 @@ pub(super) fn plan(
         {
             affected.insert("rig-cassette-minimal".to_owned());
         }
-        if documentation(path) {
+        if ["README.md", "CONTRIBUTING.md", "AGENTS.md", "DEVELOPING.md"].contains(&path.as_str())
+            || path.starts_with("docs/")
+        {
             add(&mut out, all, "docs", "documentation edit")?;
             add(
                 &mut out,
@@ -497,78 +491,4 @@ pub(super) fn plan(
         ));
     }
     Ok(out)
-}
-
-/// `--quick`: the `local` nextest profile for each owning package, or for a
-/// provider source or cassette that provider's test target. It never
-/// escalates: it returns the paths it leaves to CI instead. Everything runs
-/// with all features, as `--changed` does, except the facade, where that
-/// would build every companion crate.
-pub(super) fn quick(
-    root: &Path,
-    metadata: &Value,
-    paths: &BTreeSet<String>,
-) -> Result<(Vec<Check>, Vec<String>)> {
-    let packages = metadata["packages"]
-        .as_array()
-        .ok_or_else(|| invalid("Cargo metadata missing packages"))?;
-    let mut deferred = Vec::new();
-    let mut owned = BTreeSet::new();
-    let mut targets = BTreeSet::new();
-    for path in paths {
-        // nextest runs no doctests, so a Markdown edit has nothing to run.
-        if shared_input(path) || documentation(path) || path.ends_with(".md") {
-            deferred.push(path.clone());
-        } else if let Some(name) = provider(path)
-            && let Some(owner) = provider_owner(packages, name)
-        {
-            targets.insert((owner, name));
-        } else if let Some(name) = package(root, packages, path)
-            .and_then(|p| p["name"].as_str())
-            .filter(|n| *n != "rig")
-        {
-            owned.insert(name);
-        } else {
-            deferred.push(path.clone());
-        }
-    }
-    let run = |id: String, selection: &[&str], reason: &str| {
-        let args = [
-            "nextest",
-            "run",
-            "--locked",
-            "--profile",
-            "local",
-            "--no-tests=warn",
-        ];
-        dynamic(
-            id,
-            args.iter().chain(selection).map(|s| (*s).into()).collect(),
-            reason,
-        )
-    };
-    let mut plan: Vec<Check> = owned
-        .iter()
-        .map(|name| {
-            run(
-                format!("package-{name}"),
-                &["-p", name, "--all-features"],
-                "package edit",
-            )
-        })
-        .collect();
-    for (owner, name) in targets.into_iter().filter(|(o, _)| !owned.contains(o)) {
-        let features: &[&str] = if owner == "rig" {
-            &[]
-        } else {
-            &["--all-features"]
-        };
-        let selection = [&["-p", owner, "--test", name][..], features].concat();
-        plan.push(run(
-            format!("provider-{name}"),
-            &selection,
-            "provider source or cassette",
-        ));
-    }
-    Ok((plan, deferred))
 }

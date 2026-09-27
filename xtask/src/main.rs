@@ -13,7 +13,6 @@
 //! parser rather than a text search.
 //!
 //! ```console
-//! cargo xtask verify --quick      # test what the edit owns
 //! cargo xtask check-packaging     # fail on stowaways, bloat and unused deps
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! cargo xtask check-wires         # fail if a provider is not a wire
@@ -60,10 +59,6 @@ const USAGE: &str = "\
 usage: cargo xtask <task>
 
 tasks:
-  verify --quick [--base REF] [--dry-run]
-                              the inner loop: the `local` nextest profile for
-                              the packages and test targets the change set
-                              owns; never escalates
   verify --changed|--pr|--full|--lanes [--base REF] [--dry-run]  plan and run verification
   verify --check ID           run one check by id (CI runs one per job)
   check-packaging             fail if the published facade carries files that

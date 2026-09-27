@@ -1,7 +1,6 @@
 //! Verification: one list of check definitions (`checks.rs`) that CI runs one
 //! per job and that the local planner selects from by what changed. Every
 //! selected check executes; nothing is reused or certified across runs.
-//! `--quick` is the inner loop: only what the change set owns, never escalated.
 mod checks;
 mod execute;
 mod preflight;
@@ -27,8 +26,6 @@ fn invalid(message: impl Into<String>) -> Error {
 use checks::{Check, Step};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
-    /// Test only the packages and targets the change set owns.
-    Quick,
     Changed,
     Pr,
     Full,
@@ -52,14 +49,13 @@ impl Options {
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
             match arg.as_str() {
-                "--quick" | "--changed" | "--pr" | "--full" | "--check" | "--lanes" => {
+                "--changed" | "--pr" | "--full" | "--check" | "--lanes" => {
                     if mode.is_some() {
                         return Err(invalid(
-                            "select exactly one of --quick, --changed, --pr, --full, --lanes, --check ID",
+                            "select exactly one of --changed, --pr, --full, --lanes, --check ID",
                         ));
                     }
                     mode = Some(match arg.as_str() {
-                        "--quick" => Mode::Quick,
                         "--changed" => Mode::Changed,
                         "--pr" => Mode::Pr,
                         "--full" => Mode::Full,
@@ -84,7 +80,7 @@ impl Options {
             }
         }
         let mode = mode.ok_or_else(|| {
-            invalid("verify requires --quick, --changed, --pr --base REF, --full, --lanes --base REF, or --check ID")
+            invalid("verify requires --changed, --pr --base REF, --full, --lanes --base REF, or --check ID")
         })?;
         if matches!(mode, Mode::Pr | Mode::Lanes) && base.is_none() {
             return Err(invalid(
@@ -122,14 +118,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
     )?)?;
     let changes = selection::changes(root, &opts)?;
     let all = checks::all();
-    let (plan, deferred) = if opts.mode == Mode::Quick {
-        selection::quick(root, &metadata, &changes)?
-    } else {
-        (
-            selection::plan(root, &metadata, &opts, &changes, &all)?,
-            Vec::new(),
-        )
-    };
+    let plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
     if opts.mode == Mode::Lanes {
         let has = |id: &str| plan.iter().any(|c| c.id == id);
         println!(
@@ -151,29 +140,14 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
             println!("  {} {} {:?}", step.program, step.args.join(" "), step.env);
         }
     }
-    // A quick run never selects from `all`; listing every check as skipped
-    // would bury what it does run.
-    if opts.mode != Mode::Quick {
-        for check in &all {
-            if !plan.iter().any(|c| c.id == check.id) {
-                println!("SKIP {}: outside {:?} selection", check.id, opts.mode);
-            }
+    for check in &all {
+        if !plan.iter().any(|c| c.id == check.id) {
+            println!("SKIP {}: outside {:?} selection", check.id, opts.mode);
         }
     }
-    let result = if opts.dry_run {
+    if opts.dry_run {
         println!("Dry run only; nothing executed.");
-        Ok(())
-    } else {
-        execute::run(root, &metadata, &plan)
-    };
-    // Printed after the run, where it is read, whether or not the run passed.
-    if opts.mode == Mode::Quick {
-        for path in &deferred {
-            println!("NOT CHECKED {path}: shared input, documentation or unowned; CI covers it");
-        }
-        println!(
-            "Also left to CI: reverse dependencies, fmt, Clippy, doctests, WASM, the service suites and nested-Cargo guards. `verify --pr --base REF --dry-run` lists the CI checks."
-        );
+        return Ok(());
     }
-    result
+    execute::run(root, &metadata, &plan)
 }

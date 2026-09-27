@@ -41,7 +41,6 @@ fn pr_requires_explicit_base() {
 #[test]
 fn conflicting_modes_fail() {
     assert!(Options::parse(vec!["--changed".into(), "--full".into()]).is_err());
-    assert!(Options::parse(vec!["--quick".into(), "--changed".into()]).is_err());
 }
 
 #[test]
@@ -892,104 +891,4 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     for flag in ["--features", "--all-features", "--no-default-features"] {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
     }
-}
-
-/// The quick plan's `(id, args)` and deferred paths. Every step is the local
-/// nextest profile on named packages, never a workspace run.
-fn quick(paths: &[&str]) -> (Vec<(String, Vec<String>)>, Vec<String>) {
-    let paths = paths.iter().map(|s| (*s).into()).collect();
-    let (plan, deferred) = selection::quick(Path::new("/repo"), &metadata(), &paths).unwrap();
-    let plan = plan
-        .into_iter()
-        .map(|mut c| {
-            assert_eq!(c.steps.len(), 1, "{}", c.id);
-            let args = c.steps.remove(0).args;
-            assert_eq!(
-                args[..6],
-                [
-                    "nextest",
-                    "run",
-                    "--locked",
-                    "--profile",
-                    "local",
-                    "--no-tests=warn"
-                ]
-            );
-            assert!(args.contains(&"-p".into()) && !args.contains(&"--workspace".into()));
-            (c.id, args[6..].to_vec())
-        })
-        .collect();
-    (plan, deferred)
-}
-
-#[test]
-fn quick_tests_the_owning_package_with_all_features() {
-    let (plan, deferred) = quick(&["crates/rig-ecs/src/lib.rs", "crates/rig-sqlite/src/lib.rs"]);
-    assert_eq!(
-        plan,
-        [
-            (
-                "package-rig-ecs".into(),
-                vec!["-p".into(), "rig-ecs".into(), "--all-features".into()]
-            ),
-            (
-                "package-rig-sqlite".into(),
-                vec!["-p".into(), "rig-sqlite".into(), "--all-features".into()]
-            ),
-        ]
-    );
-    // Nothing is deferred by path; the consumer `example` is not built.
-    assert!(deferred.is_empty());
-}
-
-#[test]
-fn quick_runs_only_the_edited_provider_target() {
-    let (plan, _) = quick(&[
-        "crates/rig-cassette/fixtures/cassettes/openai/a.yaml",
-        "crates/rig-cassette/tests/providers/openai/mod.rs",
-    ]);
-    let args = ["-p", "rig-cassette", "--test", "openai", "--all-features"];
-    assert_eq!(
-        plan,
-        [("provider-openai".into(), args.map(String::from).to_vec())]
-    );
-}
-
-#[test]
-fn quick_runs_a_facade_target_under_default_features() {
-    // `--all-features` on the facade would build every companion crate.
-    let (plan, _) = quick(&["tests/azure.rs"]);
-    let args = ["-p", "rig", "--test", "azure"];
-    assert_eq!(
-        plan,
-        [("provider-azure".into(), args.map(String::from).to_vec())]
-    );
-}
-
-#[test]
-fn quick_leaves_a_package_target_to_the_package_run() {
-    let (plan, _) = quick(&[
-        "crates/rig-cassette/src/lib.rs",
-        "crates/rig-cassette/fixtures/cassettes/openai/a.yaml",
-    ]);
-    assert_eq!(plan.len(), 1);
-    assert_eq!(plan[0].0, "package-rig-cassette");
-}
-
-#[test]
-fn quick_never_escalates() {
-    // Sorted, as the change set iterates: a shared input, documentation, and
-    // a facade test module no target owns.
-    let paths = [
-        "Cargo.toml",
-        "README.md",
-        "crates/rig-ecs/README.md",
-        "tests/core/mod.rs",
-        "xtask/src/main.rs",
-    ];
-    let (plan, deferred) = quick(&paths);
-    assert!(plan.is_empty());
-    assert_eq!(deferred, paths);
-    // `--changed` broadens to the full plan on the same inputs.
-    assert!(ids("--changed", &paths).contains("full-tests"));
 }

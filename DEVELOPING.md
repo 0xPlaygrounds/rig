@@ -17,12 +17,11 @@ Workspace-wide tests, all-features builds, every provider/example, full
 docs/doctests, WASM matrices, Docker suites, and dependency-floor checks belong
 in CI by default. Explain the concrete need before an expensive local check;
 do not invent hypothetical risks to justify a full local gate. Install only the
-prerequisites the small local checks you choose need. After an edit, run
-`--quick`; the other planner commands remain available for explicit requests or
-deliberate debugging:
+prerequisites the small local checks you choose need. Iterate on one package
+with the `local` nextest profile ([Local builds](#local-builds)). The planner
+commands remain available for explicit requests or deliberate debugging:
 
 ```sh
-cargo xtask verify --quick                         # inner loop: test what the edit owns
 cargo xtask verify --changed --dry-run             # optional selection preview
 cargo xtask verify --changed                       # optional; only if selection is suitably small
 cargo xtask verify --pr --base origin/feat/effect-bus   # optional broad plan; use actual base
@@ -69,13 +68,6 @@ failed job's ID. A truncated log is not evidence that later errors are absent.
 
 ## What each mode selects
 
-`--quick` takes the same change set as `--changed` and runs the `local` nextest
-profile for each owning package, or a provider source or cassette's test
-target, with all features (default features for facade targets). It never
-escalates: shared inputs, documentation and files no package owns are listed
-as not checked, and reverse dependencies, doctests, fmt and Clippy are left to
-CI.
-
 `--changed` compares the working tree (staged, unstaged and untracked files)
 to `HEAD`, or to the merge base of `--base REF`. Provider source or cassette
 edits run that provider's complete test target with all facade features.
@@ -111,21 +103,31 @@ than on its own PR; that tradeoff is deliberate.
 
 ## Local builds
 
-- The `local` nextest profile (`--profile local`) has no retries, stops at the
-  first failure, and skips the service suites and tests that launch a nested
-  Cargo build or trybuild. Add `--ignore-default-filter` to run them.
+- `cargo nextest run --locked --profile local -p <crate> [filter]` is the inner
+  loop. The `local` profile has no retries, stops at the first failure, and
+  skips the service suites and tests that launch a nested Cargo build or
+  trybuild. Add `--ignore-default-filter` to run them.
 - The dev profile keeps line tables for workspace code and no debuginfo for
   dependencies. For a debugger, add `--config 'profile.dev.debug=true' --config
   'profile.dev.package."*".debug=true'`; `CARGO_PROFILE_DEV_DEBUG` alone does
   not reach dependencies.
 - Keep incremental compilation on; CI sets `CARGO_INCREMENTAL=0` because its
   runners start fresh.
+- Worktrees of this repository can share one target directory: set
+  `build.target-dir` in a `.cargo/config.toml` above them. Dependencies then
+  build once instead of once per worktree; builds that run at the same time
+  wait on the directory's lock.
+- Give rust-analyzer its own target directory
+  (`rust-analyzer.cargo.targetDir: true`) so it does not hold that lock while
+  you build.
+- On macOS, add your terminal to System Settings > Privacy & Security >
+  Developer Tools; otherwise each new test binary is scanned on its first run.
 
 ## Prerequisites
 
-The repository toolchain (`rust-toolchain.toml`), nextest (0.9.77 or newer; from 0.9.91
-it honours the test priorities in `.config/nextest.toml`, which earlier
-versions ignore with a warning), Clippy, rustfmt, protoc, Docker for the
+The repository toolchain (`rust-toolchain.toml`), nextest (0.9.77 or newer;
+from 0.9.91 it honours the test priorities in `.config/nextest.toml`, which
+earlier versions ignore with a warning), Clippy, rustfmt, protoc, Docker for the
 storage suites, Node, wasm-bindgen-test-runner at the lock file's
 `wasm-bindgen` version, and Python 3.12+ for the floor checker and its
 isolation tests. The planner probes for what the selected checks need before
