@@ -579,3 +579,170 @@ fn typed_thinking_and_effort_serialize_to_the_documented_wire_values() {
         serde_json::json!({"type": "adaptive"})
     );
 }
+
+// Progress-update thinking blocks. The fixtures follow the documented shapes
+// for a turn that answers a `tool_result` on Claude Opus 5.5 and Fable 5.1: a
+// reasoning block, then a progress-update block, then the `tool_use` it
+// introduces. Under `display: "omitted"` both thinking blocks are empty; under
+// `"updates"` the progress update carries text. No Opus 5.5 recording exists
+// in the corpus yet, so these are fixtures rather than cassettes.
+// Source: <https://platform.claude.com/docs/en/build-with-claude/thinking#progress-updates>
+
+const PROGRESS_UPDATE_TEXT: &str = "Confirmed the retry path never refreshes the expired token. Editing auth.py to add the refresh call.";
+
+fn progress_update_content(update_text: &str) -> serde_json::Value {
+    serde_json::json!([
+        {"type": "thinking", "thinking": "", "signature": "EqMBCkYICxIM-reasoning"},
+        {"type": "thinking", "thinking": update_text, "signature": "Es8CCkYICxIM-update"},
+        {
+            "type": "tool_use",
+            "id": "toolu_01D7FLrfh4GYq7yT1ULFeyMV",
+            "name": "edit_file",
+            "input": {"path": "auth.py", "content": "..."}
+        }
+    ])
+}
+
+fn progress_update_unary(update_text: &str) -> String {
+    serde_json::json!({
+        "type": "message",
+        "id": "msg_progress",
+        "model": "claude-opus-5-5",
+        "role": "assistant",
+        "content": progress_update_content(update_text),
+        "stop_reason": "tool_use",
+        "stop_sequence": null,
+        "usage": {"input_tokens": 120, "output_tokens": 80}
+    })
+    .to_string()
+}
+
+/// The streamed form: each thinking block opens empty, streams one
+/// `thinking_delta` (empty unless it is a progress update under `"updates"`),
+/// then its `signature_delta`.
+fn progress_update_streamed(update_text: &str) -> String {
+    let events = [
+        serde_json::json!({"type": "message_start", "message": {
+            "type": "message", "id": "msg_progress", "model": "claude-opus-5-5",
+            "role": "assistant", "content": [], "stop_reason": null, "stop_sequence": null,
+            "usage": {"input_tokens": 120, "output_tokens": 1}
+        }}),
+        serde_json::json!({"type": "content_block_start", "index": 0,
+            "content_block": {"type": "thinking", "thinking": "", "signature": ""}}),
+        serde_json::json!({"type": "content_block_delta", "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": ""}}),
+        serde_json::json!({"type": "content_block_delta", "index": 0,
+            "delta": {"type": "signature_delta", "signature": "EqMBCkYICxIM-reasoning"}}),
+        serde_json::json!({"type": "content_block_stop", "index": 0}),
+        serde_json::json!({"type": "content_block_start", "index": 1,
+            "content_block": {"type": "thinking", "thinking": "", "signature": ""}}),
+        serde_json::json!({"type": "content_block_delta", "index": 1,
+            "delta": {"type": "thinking_delta", "thinking": update_text}}),
+        serde_json::json!({"type": "content_block_delta", "index": 1,
+            "delta": {"type": "signature_delta", "signature": "Es8CCkYICxIM-update"}}),
+        serde_json::json!({"type": "content_block_stop", "index": 1}),
+        serde_json::json!({"type": "content_block_start", "index": 2, "content_block": {
+            "type": "tool_use", "id": "toolu_01D7FLrfh4GYq7yT1ULFeyMV", "name": "edit_file",
+            "input": {}
+        }}),
+        serde_json::json!({"type": "content_block_delta", "index": 2, "delta": {
+            "type": "input_json_delta",
+            "partial_json": "{\"path\": \"auth.py\", \"content\": \"...\"}"
+        }}),
+        serde_json::json!({"type": "content_block_stop", "index": 2}),
+        serde_json::json!({"type": "message_delta",
+            "delta": {"stop_reason": "tool_use", "stop_sequence": null},
+            "usage": {"output_tokens": 80}}),
+        serde_json::json!({"type": "message_stop"}),
+    ];
+    events
+        .iter()
+        .map(|event| {
+            format!(
+                "event: {}\ndata: {event}\n\n",
+                event["type"].as_str().unwrap_or("message")
+            )
+        })
+        .collect()
+}
+
+fn assert_progress_update_choice(choice: &[AssistantContent], update_text: &str) {
+    let blocks: Vec<(String, Option<String>)> = choice
+        .iter()
+        .take(2)
+        .map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => match reasoning.content.as_slice() {
+                [crate::message::ReasoningContent::Text { text, signature }] => {
+                    (text.clone(), signature.clone())
+                }
+                other => panic!("one signed text block per thinking block, got {other:?}"),
+            },
+            other => panic!("expected a thinking block first, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        blocks,
+        [
+            (String::new(), Some("EqMBCkYICxIM-reasoning".to_owned())),
+            (
+                update_text.to_owned(),
+                Some("Es8CCkYICxIM-update".to_owned())
+            ),
+        ],
+        "both thinking blocks survive, unmerged and in order"
+    );
+    match choice.get(2) {
+        Some(AssistantContent::ToolCall(call)) => {
+            assert_eq!(call.function.name, "edit_file");
+            assert_eq!(call.function.arguments["path"], "auth.py");
+        }
+        other => panic!("the tool call follows its progress update, got {other:?}"),
+    }
+    assert_eq!(choice.len(), 3);
+}
+
+/// Replay the decoded turn with its tool result and return the assistant
+/// message's content blocks as the next request sends them.
+fn replayed_assistant_content(choice: Vec<AssistantContent>) -> serde_json::Value {
+    let mut request = request();
+    request.chat_history = vec![
+        crate::message::Message::user("The login test fails after an hour of uptime."),
+        crate::message::Message::Assistant {
+            id: Some("msg_progress".to_owned()),
+            content: choice,
+        },
+        crate::message::Message::User {
+            content: vec![crate::message::UserContent::tool_result_from_wire(
+                "toolu_01D7FLrfh4GYq7yT1ULFeyMV",
+                "edit_file",
+                vec![crate::message::ToolResultContent::text("saved")],
+            )],
+        },
+    ];
+    let wire = AnthropicConfig::new("sk-test")
+        .completion(crate::providers::anthropic::completion::CLAUDE_OPUS_5_5);
+    let body = body_of(
+        &wire
+            .encode(request, Mode::Unary)
+            .expect("the replay encodes"),
+    );
+    body["messages"][1]["content"].clone()
+}
+
+#[test]
+fn progress_update_blocks_survive_decoding_and_replay_under_every_display() {
+    for update_text in ["", PROGRESS_UPDATE_TEXT] {
+        for (body, mode) in [
+            (progress_update_unary(update_text), Mode::Unary),
+            (progress_update_streamed(update_text), Mode::Streaming),
+        ] {
+            let response = fold(&body, mode);
+            assert_progress_update_choice(&response.choice, update_text);
+            assert_eq!(
+                replayed_assistant_content(response.choice),
+                progress_update_content(update_text),
+                "the {mode:?} turn replays exactly as received"
+            );
+        }
+    }
+}
