@@ -14,7 +14,7 @@ use bevy_ecs::{
 };
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
-    error::ErrorReport,
+    error::RigError,
     serve::{Origin, Recorder, cancelled},
     streaming::StreamEvent,
 };
@@ -75,7 +75,7 @@ impl Recording {
     }
 
     /// An error item at its original position in a kept stream.
-    pub fn stream_error(&self, id: EffectId, error: &ErrorReport) {
+    pub fn stream_error(&self, id: EffectId, error: &RigError) {
         self.0.stream_error(id, error);
     }
 
@@ -86,7 +86,7 @@ impl Recording {
     }
 
     /// The outcome of `id`.
-    pub fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
+    pub fn resolve(&self, id: EffectId, outcome: Result<Outcome, RigError>) {
         self.0.resolve(id, outcome);
     }
 
@@ -163,7 +163,7 @@ pub struct ObservedState {
 
 #[derive(Default)]
 struct Observation {
-    outcome: Option<Result<Outcome, ErrorReport>>,
+    outcome: Option<Result<Outcome, RigError>>,
     discarded: bool,
     closed: bool,
 }
@@ -177,7 +177,7 @@ impl ObservedState {
 
     /// Close observation and take the original answer. No later worker callback
     /// can modify recording after this boundary, even if its poll was in progress.
-    pub fn take_outcome(&self) -> Option<Result<Outcome, ErrorReport>> {
+    pub fn take_outcome(&self) -> Option<Result<Outcome, RigError>> {
         let mut state = self.lock();
         state.closed = true;
         state.outcome.take()
@@ -213,7 +213,7 @@ pub struct WorldObserver {
 }
 
 impl WorldObserver {
-    fn record_answer(&self, state: &mut Observation, outcome: &Result<Outcome, ErrorReport>) {
+    fn record_answer(&self, state: &mut Observation, outcome: &Result<Outcome, RigError>) {
         if let (Some(recording), Some(output)) = (
             &self.recording,
             self.published
@@ -225,7 +225,7 @@ impl WorldObserver {
         state.outcome = Some(outcome.clone());
     }
 
-    fn record_item(&self, item: &Result<StreamEvent, ErrorReport>) {
+    fn record_item(&self, item: &Result<StreamEvent, RigError>) {
         if let Some(recording) = &self.recording
             && recording.keep_events()
         {
@@ -252,7 +252,7 @@ impl rig_core::serve::Observe for WorldObserver {
         ))
     }
 
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Outcome, RigError>) {
         let mut state = self.observed.lock();
         if !state.closed {
             self.record_answer(&mut state, outcome);
@@ -265,8 +265,8 @@ impl rig_core::serve::Observe for WorldObserver {
 
     fn stream_item(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
-        outcome: Option<&Result<Outcome, ErrorReport>>,
+        item: &Result<StreamEvent, RigError>,
+        outcome: Option<&Result<Outcome, RigError>>,
     ) {
         // Source polling and folding happen before this lock. Only observation
         // is atomic with cancellation, so arbitrary handler work cannot hold it.
@@ -289,7 +289,7 @@ impl rig_core::serve::Observe for WorldObserver {
         }
     }
 
-    fn stream_error(&mut self, error: &ErrorReport) {
+    fn stream_error(&mut self, error: &RigError) {
         let state = self.observed.lock();
         if !state.closed
             && let Some(recording) = &self.recording

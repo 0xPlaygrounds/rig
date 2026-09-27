@@ -7,7 +7,7 @@ use rig_core::{
     effect::{
         EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome, family,
     },
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, DocumentSourceKind, Image},
     serve::{Decision, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve, Verdict},
     streaming::{StreamEvent, StreamFinal},
@@ -34,7 +34,7 @@ struct Seen {
 }
 struct Observer(Arc<Mutex<Seen>>);
 impl Observe for Observer {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Outcome, RigError>) {
         self.0
             .lock()
             .unwrap()
@@ -51,7 +51,7 @@ impl Observe for Observer {
             .events
             .push(serde_json::to_value(event).unwrap());
     }
-    fn stream_error(&mut self, error: &ErrorReport) {
+    fn stream_error(&mut self, error: &RigError) {
         self.0
             .lock()
             .unwrap()
@@ -124,12 +124,7 @@ impl Intercept for Policy {
     async fn before(&self, _: EffectId, _: &EffectKind) -> Decision {
         self.decision.clone()
     }
-    async fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Outcome, ErrorReport>,
-    ) -> Verdict {
+    async fn after(&self, _: EffectId, _: &EffectKind, _: &Result<Outcome, RigError>) -> Verdict {
         *self.calls.lock().unwrap() += 1;
         let gate = self.gate.lock().unwrap().take();
         if let Some(gate) = gate {
@@ -164,7 +159,7 @@ fn nested_patches_and_verdicts_preserve_the_innermost_answer() {
     ));
     assert_eq!(
         serde_json::to_value(block_on(answer.into_outcome())).unwrap(),
-        serde_json::to_value(Ok::<_, ErrorReport>(Outcome::Custom {
+        serde_json::to_value(Ok::<_, RigError>(Outcome::Custom {
             payload: json!("replacement")
         }))
         .unwrap()
@@ -174,7 +169,7 @@ fn nested_patches_and_verdicts_preserve_the_innermost_answer() {
     assert_eq!(
         seen.outcomes,
         vec![
-            serde_json::to_value(Ok::<_, ErrorReport>(Outcome::Custom {
+            serde_json::to_value(Ok::<_, RigError>(Outcome::Custom {
                 payload: json!("inner")
             }))
             .unwrap()
@@ -215,7 +210,7 @@ fn original_answer_survives_suspended_verdict_resume_and_cancellation() {
             let (release, gate) = oneshot::channel();
             let mut intercept = policy(
                 Decision::Proceed,
-                Verdict::Replace(Err(ErrorReport::new(ErrorKind::Denied, "replacement"))),
+                Verdict::Replace(Err(RigError::new(ErrorKind::Denied, "replacement"))),
             );
             intercept.gate = Mutex::new(Some(gate));
             let calls = intercept.calls.clone();
@@ -279,7 +274,7 @@ fn unary_image_recording_survives_stream_projection_and_replacement() {
     let seen = Arc::default();
     let handler = ErasedHandler::new(ImageAnswer).layered(policy(
         Decision::Proceed,
-        Verdict::Replace(Err(ErrorReport::new(ErrorKind::Denied, "replacement"))),
+        Verdict::Replace(Err(RigError::new(ErrorKind::Denied, "replacement"))),
     ));
     let items = block_on(
         block_on(handler.handle(kind(json!(null)), dispatch(true, &seen)))
@@ -363,7 +358,7 @@ fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
         }
         async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
             Reply::Stream(Box::pin(futures::stream::unfold((), |_| async {
-                None::<(Result<StreamEvent, ErrorReport>, ())>
+                None::<(Result<StreamEvent, RigError>, ())>
             })))
         }
     }
@@ -379,7 +374,7 @@ fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
             &self,
             _: EffectId,
             _: &EffectKind,
-            _: &Result<Outcome, ErrorReport>,
+            _: &Result<Outcome, RigError>,
         ) -> Verdict {
             Verdict::Keep
         }

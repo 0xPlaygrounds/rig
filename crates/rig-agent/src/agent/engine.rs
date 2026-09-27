@@ -16,7 +16,7 @@ use rig_core::error::ProviderError;
 use rig_core::{
     completion::{FinishReason, ModelRef, ResponseIdentity},
     effect::{EffectId, EffectKind, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, Message, ToolCall, UserContent},
     streaming::BlockId,
     telemetry::SpanCombinator,
@@ -834,7 +834,7 @@ impl TurnSource for StreamingTurnSource {
                 Ok(CompletionDispatch::Stream { id, kind, stream }) => (id, kind, stream),
                 Ok(CompletionDispatch::Response { .. }) => {
                     yield Err(StreamingError::Report(
-                        ErrorReport::new(
+                        RigError::new(
                             ErrorKind::Internal,
                             "a streaming completion dispatch answered unary",
                         ),
@@ -1471,7 +1471,7 @@ pub(crate) async fn settle_model_turn(
     folded.message_id = turn.identity.message_id.clone();
     folded.response_id = turn.identity.response_id.clone();
     folded.provider_request_id = turn.identity.provider_request_id.clone();
-    let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));
+    let outcome: Result<Outcome, RigError> = Ok(Outcome::Completion(folded));
     let mut replaced: Option<Vec<AssistantContent>> = None;
     match hooks
         .on_outcome(
@@ -1616,7 +1616,7 @@ pub(crate) async fn dispatch_effect(
     dispatcher: &crate::bus::Dispatcher,
     key: &rig_core::effect::HandlerKey,
     kind: EffectKind,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Outcome, RigError> {
     let id = dispatcher.mint_id();
     let family = kind.family();
     let kind = match hooks
@@ -1659,8 +1659,8 @@ pub(crate) async fn dispatch_effect(
     }
 }
 
-pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> ErrorReport {
-    ErrorReport::new(
+pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> RigError {
+    RigError::new(
         ErrorKind::Internal,
         format!(
             "expected {expected}, the handler answered with a {} outcome",
@@ -1888,7 +1888,7 @@ impl TurnSource for UnaryTurnSource {
                 Ok(CompletionDispatch::Response { id, kind, response }) => (id, kind, response),
                 Ok(CompletionDispatch::Stream { .. }) => {
                     yield Err(StreamingError::Report(
-                        ErrorReport::new(
+                        RigError::new(
                             ErrorKind::Internal,
                             "a unary completion dispatch answered with a stream",
                         ),
@@ -2063,11 +2063,11 @@ pub(crate) enum CompletionDispatchError {
     Cancelled(String),
     /// The dispatch failed (a denial with any other kind, a bus or handler
     /// failure, a wrong-family patch).
-    Failed(ErrorReport),
+    Failed(RigError),
 }
 
-fn wrong_family_patch(expected: &str, kind: &EffectKind) -> ErrorReport {
-    ErrorReport::new(
+fn wrong_family_patch(expected: &str, kind: &EffectKind) -> RigError {
+    RigError::new(
         ErrorKind::Internal,
         format!(
             "a hook patched a {expected} dispatch into a `{}` effect",
@@ -2147,7 +2147,7 @@ pub(crate) async fn dispatch_completion(
         Ok(Outcome::Completion(response)) => {
             Ok(CompletionDispatch::Response { id, kind, response })
         }
-        Ok(other) => Err(CompletionDispatchError::Failed(ErrorReport::new(
+        Ok(other) => Err(CompletionDispatchError::Failed(RigError::new(
             ErrorKind::Internal,
             format!(
                 "the completion handler answered with a {} outcome",
@@ -2179,7 +2179,7 @@ pub(crate) struct ToolCallDispatch {
 /// handler gone). This is a failure of the run, not of the tool.
 pub(crate) enum ToolDispatchAbort {
     Cancelled(String),
-    Failed(ErrorReport),
+    Failed(RigError),
 }
 
 pub(crate) async fn dispatch_tool_call(
@@ -2242,7 +2242,7 @@ pub(crate) async fn dispatch_tool_call(
     };
     let mut published: Option<crate::tool::ToolContext> = None;
     let mut executed = false;
-    let outcome: Result<Outcome, ErrorReport> = match denied {
+    let outcome: Result<Outcome, RigError> = match denied {
         Some(report) => Ok(Outcome::ToolResult {
             result: ToolResult::skipped(report.message),
         }),

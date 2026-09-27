@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use rig_core::effect::{EffectId, EffectRecord, EffectRow, HandlerDescriptor};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::serve::ServingPolicy;
 use serde::{Deserialize, Serialize};
 
@@ -82,7 +82,7 @@ pub struct RecordedStreamError {
     /// Zero-based position among successful events and error items together.
     pub item: usize,
     /// The original error item; it need not be the stream's folded outcome.
-    pub error: ErrorReport,
+    pub error: RigError,
 }
 
 impl Default for LogHeader {
@@ -163,9 +163,9 @@ impl EffectLog {
 
     /// Validate and return `tail`, or an error if the checkpoint format or next
     /// record ID does not match. An ending checkpoint requires an empty tail.
-    pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, ErrorReport> {
+    pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, RigError> {
         if checkpoint.format != CHECKPOINT_FORMAT {
-            return Err(ErrorReport::new(
+            return Err(RigError::new(
                 ErrorKind::Internal,
                 format!(
                     "resume refused: the checkpoint is format {}, this rig reads format {}",
@@ -175,7 +175,7 @@ impl EffectLog {
         }
         let first = tail.records.first().map(|record| record.id);
         if first != checkpoint.next {
-            return Err(ErrorReport::new(
+            return Err(RigError::new(
                 ErrorKind::Internal,
                 match (checkpoint.next, first) {
                     (Some(next), Some(first)) => format!(

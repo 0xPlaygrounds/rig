@@ -137,7 +137,7 @@ pub enum MemoryAppend {
     /// original answer rather than any hook replacement.
     Failed {
         /// Why the append failed.
-        report: rig_core::error::ErrorReport,
+        report: rig_core::error::RigError,
     },
 }
 
@@ -148,7 +148,7 @@ impl MemoryAppend {
     }
 
     /// The failure report, when the append failed.
-    pub fn failure(&self) -> Option<&rig_core::error::ErrorReport> {
+    pub fn failure(&self) -> Option<&rig_core::error::RigError> {
         match self {
             Self::Acknowledged => None,
             Self::Failed { report } => Some(report),
@@ -271,7 +271,7 @@ pub enum PromptError {
 
     /// Structured effect failure from the bus, a handler, a hook, or a stream item.
     #[error("{0}")]
-    Report(#[from] rig_core::error::ErrorReport),
+    Report(#[from] rig_core::error::RigError),
 
     /// Conversation memory failed to load or persist history.
     #[error("MemoryError: {0}")]

@@ -2,7 +2,7 @@ use super::*;
 use futures::{FutureExt, Stream};
 use rig::{
     completion::Usage,
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     streaming::{BlockClose, BlockId, BlockKind, StreamFinal},
 };
 use std::{
@@ -13,13 +13,13 @@ use std::{
 };
 
 struct Tracked {
-    items: VecDeque<Result<StreamEvent, ErrorReport>>,
+    items: VecDeque<Result<StreamEvent, RigError>>,
     polls: Arc<AtomicUsize>,
     dropped: Arc<AtomicBool>,
 }
 
 impl Stream for Tracked {
-    type Item = Result<StreamEvent, ErrorReport>;
+    type Item = Result<StreamEvent, RigError>;
     fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.polls.fetch_add(1, Ordering::SeqCst);
         Poll::Ready(self.items.pop_front())
@@ -32,14 +32,14 @@ impl Drop for Tracked {
     }
 }
 
-fn items() -> Vec<Result<StreamEvent, ErrorReport>> {
+fn items() -> Vec<Result<StreamEvent, RigError>> {
     let id = BlockId::Wire("real-call".into());
     vec![
         Ok(StreamEvent::BlockStart {
             id: id.clone(),
             kind: BlockKind::ToolCall,
         }),
-        Err(ErrorReport::new(ErrorKind::Provider, "preserved error")),
+        Err(RigError::new(ErrorKind::Provider, "preserved error")),
         Ok(StreamEvent::BlockDelta {
             id: id.clone(),
             delta: Delta::ToolName {
@@ -114,7 +114,7 @@ async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() 
                 text: "first".into(),
             },
         }),
-        Err(ErrorReport::new(ErrorKind::Provider, "error after text")),
+        Err(RigError::new(ErrorKind::Provider, "error after text")),
         Ok(StreamEvent::BlockDelta {
             id: id.clone(),
             delta: Delta::Text {

@@ -250,7 +250,7 @@ pub enum StreamingError {
     Completion(#[from] ProviderError),
     /// Structured failure from the bus, a handler, a hook, or a stream item.
     #[error("{0}")]
-    Report(#[from] rig_core::error::ErrorReport),
+    Report(#[from] rig_core::error::RigError),
     /// The run failed for a reason the blocking surface reports the same way.
     #[error("PromptError: {0}")]
     Prompt(#[from] PromptError),

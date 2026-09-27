@@ -5,7 +5,7 @@
 //! let mut app = bevy_app::App::new();
 //! app.add_plugins(RigPlugin::default());
 //! load_world(&Checkpoint::default(), app.world_mut(), RestoreMode::Strict, [])?;
-//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! # Ok::<(), rig_core::error::RigError>(())
 //! ```
 
 use std::collections::{BTreeMap, HashSet};
@@ -14,7 +14,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::TypePath;
 use rig_core::{
     effect::{HandlerDescriptor, HandlerKey},
-    error::ErrorReport,
+    error::RigError,
     serve::ErasedHandler,
 };
 
@@ -41,7 +41,7 @@ impl Checkpoint {
     /// Return original advertised contracts in key order, before destination aliasing.
     /// Returns an error for malformed descriptors, inconsistent keys, or duplicates;
     /// performs no credential lookup or provider construction.
-    pub fn requirements(&self) -> Result<Vec<HandlerDescriptor>, ErrorReport> {
+    pub fn requirements(&self) -> Result<Vec<HandlerDescriptor>, RigError> {
         let mut keys = HashSet::new();
         let mut requirements = Vec::new();
         for row in &self.entities {
@@ -85,7 +85,7 @@ pub fn load_world(
     world: &mut World,
     mode: RestoreMode,
     handlers: impl IntoIterator<Item = (HandlerKey, ErasedHandler)>,
-) -> Result<Loaded, ErrorReport> {
+) -> Result<Loaded, RigError> {
     let requirements = checkpoint.requirements()?;
     let (assets, aliases) = super::validated_state(checkpoint, world)?;
     let mut supplied = BTreeMap::new();

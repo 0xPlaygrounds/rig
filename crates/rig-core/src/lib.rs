@@ -76,7 +76,7 @@ pub use rig_http::ws_client;
 pub use completion::message;
 pub use driver::{DynModel, Model};
 pub use embeddings::Embed;
-pub use error::{ErrorKind, ErrorReport, ProviderError};
+pub use error::{ErrorKind, RigError};
 pub use provider_response::ProviderResponseError;
 // `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
 // code (and downstream crates) can resolve them through Rig instead of

@@ -14,7 +14,7 @@ use std::{
 use rig_core::serve::{Origin, Recorder};
 use rig_core::{
     effect::{EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome},
-    error::ErrorReport,
+    error::RigError,
     streaming::StreamEvent,
 };
 
@@ -43,7 +43,7 @@ struct RecordSlot {
     origin: Origin,
     key: HandlerKey,
     kind: EffectKind,
-    outcome: Option<Result<Outcome, ErrorReport>>,
+    outcome: Option<Result<Outcome, RigError>>,
     events: Option<Vec<StreamEvent>>,
 }
 
@@ -258,7 +258,7 @@ impl EffectLogRecorder {
         }
     }
 
-    fn resolve_slot(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
+    fn resolve_slot(&self, id: EffectId, outcome: Result<Outcome, RigError>) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id) {
             slot.outcome = Some(outcome);
@@ -289,7 +289,7 @@ impl Recorder for EffectLogRecorder {
         }
     }
 
-    fn stream_error(&self, id: EffectId, error: &ErrorReport) {
+    fn stream_error(&self, id: EffectId, error: &RigError) {
         let slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         let Some(events) = slots
             .iter()
@@ -365,7 +365,7 @@ impl Recorder for EffectLogRecorder {
         self.event_slot(id, event);
     }
 
-    fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
+    fn resolve(&self, id: EffectId, outcome: Result<Outcome, RigError>) {
         self.resolve_slot(id, outcome);
     }
 }

@@ -28,7 +28,7 @@ use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::observations::{Comparison, compare};
 use rig_core::{
     effect::{EffectFamily, EffectId, EffectKind, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     observe::{
         Action, Emitter, HostAction, ObservationLog, ObservationTrace, OutcomeSummary, Stage,
         Subject,
@@ -68,10 +68,7 @@ impl Serve for EmptyStream {
         Reply::written(move |mut out| async move {
             if error {
                 let _ = out
-                    .error(ErrorReport::new(
-                        ErrorKind::Response,
-                        "first item is an error",
-                    ))
+                    .error(RigError::new(ErrorKind::Response, "first item is an error"))
                     .await;
             }
         })
@@ -297,7 +294,7 @@ fn deny_model_calls(
         if effect.key.as_str() == "model" {
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Err(ErrorReport::new(
+                .insert(EffectOutcome(Err(RigError::new(
                     ErrorKind::Denied,
                     "no models today",
                 )
@@ -369,7 +366,7 @@ fn hold_release_and_hold_deny_are_distinct_sequences() {
     app.world_mut().entity_mut(released).remove::<Held>();
     app.world_mut()
         .entity_mut(denied)
-        .insert(EffectOutcome(Err(ErrorReport::new(
+        .insert(EffectOutcome(Err(RigError::new(
             ErrorKind::Denied,
             "reviewer said no",
         ))))
@@ -692,7 +689,7 @@ fn named_holds_do_not_emit_releases_for_denial_or_despawn() {
         } else {
             app.world_mut()
                 .entity_mut(entity)
-                .insert(EffectOutcome(Err(ErrorReport::new(
+                .insert(EffectOutcome(Err(RigError::new(
                     ErrorKind::Denied,
                     "denied",
                 ))));
@@ -720,7 +717,7 @@ fn replace_answers(
         if outcome.0.is_ok() {
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Err(ErrorReport::new(
+                .insert(EffectOutcome(Err(RigError::new(
                     ErrorKind::Internal,
                     "judged unfit",
                 ))));
@@ -795,12 +792,7 @@ impl Intercept for Warmer {
         })
     }
 
-    async fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Outcome, ErrorReport>,
-    ) -> Verdict {
+    async fn after(&self, _: EffectId, _: &EffectKind, _: &Result<Outcome, RigError>) -> Verdict {
         Verdict::Keep
     }
 }
@@ -817,13 +809,8 @@ impl Intercept for Withdrawer {
         Decision::Proceed
     }
 
-    async fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Outcome, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Replace(Err(ErrorReport::new(ErrorKind::Denied, "withdrawn")))
+    async fn after(&self, _: EffectId, _: &EffectKind, _: &Result<Outcome, RigError>) -> Verdict {
+        Verdict::Replace(Err(RigError::new(ErrorKind::Denied, "withdrawn")))
     }
 }
 
@@ -838,12 +825,7 @@ impl Intercept for Bouncer {
         Decision::deny("not on the list")
     }
 
-    async fn after(
-        &self,
-        _: EffectId,
-        _: &EffectKind,
-        _: &Result<Outcome, ErrorReport>,
-    ) -> Verdict {
+    async fn after(&self, _: EffectId, _: &EffectKind, _: &Result<Outcome, RigError>) -> Verdict {
         Verdict::Keep
     }
 }

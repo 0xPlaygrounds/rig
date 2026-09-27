@@ -45,7 +45,7 @@ async fn test_generate_content_response_deserializes_without_candidates_or_respo
         matches!(&error, ProviderError::ProviderResponse(response) if response.body.contains("blocked the prompt") && response.body.contains("SAFETY") && response.refusal && response.code.as_deref() == Some("SAFETY")),
         "{error}"
     );
-    let report = crate::error::ErrorReport::from(&error);
+    let report = crate::error::RigError::from(&error);
     assert!(
         report.refusal,
         "the verdict is a refusal on the report: {report:?}"
@@ -1719,7 +1719,7 @@ async fn block_reasons_split_into_final_refusals_and_transient_blocks() {
         .await
         .expect_err(reason);
         assert_eq!(error.is_retryable(), retryable, "{reason}: {error:?}");
-        let report = crate::error::ErrorReport::from(&error);
+        let report = crate::error::RigError::from(&error);
         assert_eq!(report.retryable, retryable, "{reason}: {report:?}");
         assert!(
             report.message.contains(&format!("block_reason={reason}")),

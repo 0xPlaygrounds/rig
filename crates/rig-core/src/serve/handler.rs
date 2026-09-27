@@ -16,7 +16,7 @@ use futures::{StreamExt, channel::oneshot};
 
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     operation::CompletionFold,
     streaming::{StreamEvent, StreamEvents},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
@@ -197,21 +197,21 @@ pub trait Observe: Send + Sync {
     /// The completed handler response, or the fold of a streaming handler's
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>);
+    fn outcome(&mut self, outcome: &Result<Outcome, RigError>);
     /// Whether streamed events are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
     /// One event pulled from the original handler stream. This is recording
     /// evidence, not acknowledgement that a consumer received the item.
     fn event(&mut self, event: &StreamEvent);
     /// An error item in a kept stream, including errors after `Final`.
-    fn stream_error(&mut self, _error: &ErrorReport) {}
+    fn stream_error(&mut self, _error: &RigError) {}
     /// Observe one stream item together with its first folded outcome, if any.
     /// Drivers that snapshot recording concurrently with cancellation can override
     /// this operation to make the item and its answer one observation boundary.
     fn stream_item(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
-        outcome: Option<&Result<Outcome, ErrorReport>>,
+        item: &Result<StreamEvent, RigError>,
+        outcome: Option<&Result<Outcome, RigError>>,
     ) {
         if self.keep_events() {
             match item {
@@ -267,8 +267,8 @@ impl StreamTap {
     /// item needs no canonicalizing.
     pub fn observe(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
-    ) -> Option<Result<Outcome, ErrorReport>> {
+        item: &Result<StreamEvent, RigError>,
+    ) -> Option<Result<Outcome, RigError>> {
         if self.finished {
             return None;
         }
@@ -279,8 +279,8 @@ impl StreamTap {
 
     fn fold_item(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
-    ) -> Option<Result<Outcome, ErrorReport>> {
+        item: &Result<StreamEvent, RigError>,
+    ) -> Option<Result<Outcome, RigError>> {
         let event = match item {
             Err(report) => return Some(Err(report.clone())),
             Ok(event) => event.clone(),
@@ -291,10 +291,10 @@ impl StreamTap {
         for item in canonical {
             let event = match item {
                 Ok(event) => event,
-                Err(error) => return Some(Err(ErrorReport::from(&error))),
+                Err(error) => return Some(Err(RigError::from(&error))),
             };
             if let Err(error) = self.fold.absorb(&event) {
-                return Some(Err(ErrorReport::from(&error)));
+                return Some(Err(RigError::from(&error)));
             }
             if matches!(event, StreamEvent::Final(_)) {
                 // A relayed stream's reply is its terminal record; the tap saw
@@ -308,7 +308,7 @@ impl StreamTap {
                 return Some(
                     fold.finish(reply)
                         .map(Outcome::Completion)
-                        .map_err(|error| ErrorReport::from(&error)),
+                        .map_err(|error| RigError::from(&error)),
                 );
             }
         }
@@ -318,8 +318,8 @@ impl StreamTap {
 
 /// Returns a retryable response error for a stream that ended before its terminal
 /// record. Retryability does not guarantee a subsequent attempt will succeed.
-pub fn stream_truncated() -> ErrorReport {
-    ErrorReport::new(
+pub fn stream_truncated() -> RigError {
+    RigError::new(
         ErrorKind::Response,
         "the stream ended before its terminal record",
     )
@@ -329,21 +329,18 @@ pub fn stream_truncated() -> ErrorReport {
 /// An answer, or an owned stream whose execution belongs to the driver.
 pub enum Reply {
     /// The completed unary answer or a setup error.
-    Outcome(Result<Outcome, ErrorReport>),
+    Outcome(Result<Outcome, RigError>),
     /// Events, including any frames after the first terminal record.
     Stream(StreamEvents),
 }
 
 impl Reply {
     /// Fold a stream to its first outcome, or return the unary answer.
-    pub async fn into_outcome(self) -> Result<Outcome, ErrorReport> {
+    pub async fn into_outcome(self) -> Result<Outcome, RigError> {
         self.folded_outcome(None).await
     }
 
-    pub(crate) async fn folded_outcome(
-        self,
-        folded: Option<Folded>,
-    ) -> Result<Outcome, ErrorReport> {
+    pub(crate) async fn folded_outcome(self, folded: Option<Folded>) -> Result<Outcome, RigError> {
         match self {
             Self::Outcome(outcome) => outcome,
             Self::Stream(mut stream) => {
@@ -373,7 +370,7 @@ impl Reply {
                     // An item that failed to re-emit (an image that did not
                     // serialize) is delivered as the error it is, not dropped.
                     out.drain()
-                        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
+                        .map(|item| item.map_err(|error| RigError::from(&error)))
                         .collect()
                 }
                 Ok(other) => vec![Err(wrong_stream_answer(&other))],
@@ -449,7 +446,7 @@ impl Reply {
 
 // A layer and the recorder at its immediate inner boundary use the same fold.
 // Each outer boundary gets its own slot: a verdict can change that view.
-pub(crate) type Folded = Arc<Mutex<Option<Result<Outcome, ErrorReport>>>>;
+pub(crate) type Folded = Arc<Mutex<Option<Result<Outcome, RigError>>>>;
 
 fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     value
@@ -611,7 +608,7 @@ struct Observed {
 }
 
 impl Observed {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Outcome, RigError>) {
         if !self.told {
             self.told = true;
             self.observer.outcome(outcome);
@@ -620,8 +617,8 @@ impl Observed {
 
     fn item(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
-        outcome: Option<&Result<Outcome, ErrorReport>>,
+        item: &Result<StreamEvent, RigError>,
+        outcome: Option<&Result<Outcome, RigError>>,
     ) {
         let outcome = outcome.filter(|_| !self.told);
         self.told |= outcome.is_some();
@@ -635,8 +632,8 @@ impl Drop for Observed {
     }
 }
 
-fn wrong_stream_answer(other: &Outcome) -> ErrorReport {
-    ErrorReport::new(
+fn wrong_stream_answer(other: &Outcome) -> RigError {
+    RigError::new(
         ErrorKind::Internal,
         format!(
             "a streaming dispatch was answered with a {} outcome",
@@ -646,8 +643,8 @@ fn wrong_stream_answer(other: &Outcome) -> ErrorReport {
 }
 
 /// The consumer stopped listening before an answer was observed.
-pub fn cancelled() -> ErrorReport {
-    ErrorReport::new(
+pub fn cancelled() -> RigError {
+    RigError::new(
         ErrorKind::Cancelled,
         "the consumer cancelled the dispatch before it was answered",
     )
@@ -660,19 +657,19 @@ pub fn cancelled() -> ErrorReport {
 pub struct SinkClosed;
 
 /// A single-use answer owned by an external responder.
-pub struct Resolver(oneshot::Sender<Result<Outcome, ErrorReport>>);
+pub struct Resolver(oneshot::Sender<Result<Outcome, RigError>>);
 
 /// Return a resolver and the answer future a handler must await.
 /// Dropping the resolver without answering reports the established
 /// unanswered-handler error; dropping the future closes the resolver.
 pub fn deferred() -> (
     Resolver,
-    impl Future<Output = Result<Outcome, ErrorReport>> + Send + 'static,
+    impl Future<Output = Result<Outcome, RigError>> + Send + 'static,
 ) {
     let (sender, receiver) = oneshot::channel();
     (Resolver(sender), async move {
         receiver.await.unwrap_or_else(|_| {
-            Err(ErrorReport::new(
+            Err(RigError::new(
                 ErrorKind::Internal,
                 "the handler dropped its outcome sink without answering",
             ))
@@ -682,7 +679,7 @@ pub fn deferred() -> (
 
 impl Resolver {
     /// Answer once. A late answer is discarded and reports closure.
-    pub fn resolve(self, outcome: Result<Outcome, ErrorReport>) -> Result<(), SinkClosed> {
+    pub fn resolve(self, outcome: Result<Outcome, RigError>) -> Result<(), SinkClosed> {
         self.0.send(outcome).map_err(|_| SinkClosed)
     }
 
@@ -693,10 +690,7 @@ impl Resolver {
 }
 
 /// Serve an effect inline, using the same reply conversions as a driver.
-pub async fn serve_inline(
-    handler: &ErasedHandler,
-    kind: EffectKind,
-) -> Result<Outcome, ErrorReport> {
+pub async fn serve_inline(handler: &ErasedHandler, kind: EffectKind) -> Result<Outcome, RigError> {
     serve_inline_with(handler, kind, Vec::new()).await
 }
 
@@ -705,7 +699,7 @@ pub async fn serve_inline_with(
     handler: &ErasedHandler,
     kind: EffectKind,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Outcome, RigError> {
     let mut dispatch = Dispatch::new(EffectId::from_raw(0), false);
     for scope in scopes {
         dispatch = dispatch.with_scope(scope);

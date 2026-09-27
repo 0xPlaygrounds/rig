@@ -11,7 +11,7 @@
 //! app.add_plugins(RigPlugin::default());
 //! let checkpoint = save_world(app.world_mut())?;
 //! load_world(&checkpoint, app.world_mut(), RestoreMode::Strict, [])?;
-//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! # Ok::<(), rig_core::error::RigError>(())
 //! ```
 
 mod restore;
@@ -32,7 +32,7 @@ use bevy_reflect::{
         TypedReflectDeserializer,
     },
 };
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use serde::{Deserialize, Serialize, de::DeserializeSeed};
 
 use crate::{
@@ -126,8 +126,8 @@ impl Loaded {
     }
 }
 
-fn refused(message: impl Into<String>) -> ErrorReport {
-    ErrorReport::new(ErrorKind::Request, message)
+fn refused(message: impl Into<String>) -> RigError {
+    RigError::new(ErrorKind::Request, message)
 }
 
 /// The relationship targets: rebuilt by their sources' hooks, never saved.
@@ -175,7 +175,7 @@ fn ordered_entities(world: &mut World) -> Vec<Entity> {
 /// Save registered reflected components, binary assets, and execution counters.
 /// Returns an error if the type registry is absent or reflection serialization fails.
 #[must_use = "saving a checkpoint does not remove anything from the world"]
-pub fn save_world(world: &mut World) -> Result<Checkpoint, ErrorReport> {
+pub fn save_world(world: &mut World) -> Result<Checkpoint, RigError> {
     let registry = world
         .get_resource::<AppTypeRegistry>()
         .ok_or_else(|| refused("the world has no type registry: install RigPlugin first"))?
@@ -234,7 +234,7 @@ fn reflect_to_json(
     value: &dyn PartialReflect,
     registry: &TypeRegistry,
     indexed: &Indexed,
-) -> Result<serde_json::Value, ErrorReport> {
+) -> Result<serde_json::Value, RigError> {
     let path = value
         .get_represented_type_info()
         .map(|info| info.type_path().to_owned())
@@ -303,7 +303,7 @@ impl ReflectDeserializerProcessor for Remapped<'_> {
 
 /// Reuse destination entities for matching dispatch keys. Implementation
 /// selection and original-descriptor validation belong to restoration preflight.
-fn aliases(checkpoint: &Checkpoint, world: &World) -> Result<HashMap<usize, Entity>, ErrorReport> {
+fn aliases(checkpoint: &Checkpoint, world: &World) -> Result<HashMap<usize, Entity>, RigError> {
     let Some(index) = world.get_resource::<HandlerIndex>() else {
         return Ok(HashMap::new());
     };
@@ -337,7 +337,7 @@ fn spawn_into(
     checkpoint: &Checkpoint,
     world: &mut World,
     aliases: &HashMap<usize, Entity>,
-) -> Result<Vec<Entity>, ErrorReport> {
+) -> Result<Vec<Entity>, RigError> {
     let registry = world
         .get_resource::<AppTypeRegistry>()
         .ok_or_else(|| refused("the world has no type registry: install RigPlugin first"))?
@@ -428,7 +428,7 @@ fn spawn_into(
 }
 
 /// Every invariant a loaded graph must hold, checked in the scratch world.
-fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
+fn validate(world: &mut World, entities: &[Entity]) -> Result<(), RigError> {
     for &entity in entities {
         // Resuming requires a saved handler contract, but advertised families
         // cannot restrict world handlers that accept arbitrary effects.
@@ -529,7 +529,7 @@ fn validate(world: &mut World, entities: &[Entity]) -> Result<(), ErrorReport> {
 }
 
 /// Every binary reference in the graph resolves in the store.
-fn wire_expansion(world: &mut World) -> Result<(), ErrorReport> {
+fn wire_expansion(world: &mut World) -> Result<(), RigError> {
     let ids: Vec<Entity> = world
         .query_filtered::<Entity, With<Utterance>>()
         .iter(world)
@@ -545,7 +545,7 @@ fn wire_expansion(world: &mut World) -> Result<(), ErrorReport> {
 fn validated_state(
     checkpoint: &Checkpoint,
     world: &World,
-) -> Result<(BinaryAssets, HashMap<usize, Entity>), ErrorReport> {
+) -> Result<(BinaryAssets, HashMap<usize, Entity>), RigError> {
     if checkpoint.format != CHECKPOINT_FORMAT {
         return Err(refused(format!(
             "load refused: the checkpoint is format {}, this rig reads format {CHECKPOINT_FORMAT}",
@@ -603,7 +603,7 @@ fn load_state(
     world: &mut World,
     assets: BinaryAssets,
     aliases: HashMap<usize, Entity>,
-) -> Result<Loaded, ErrorReport> {
+) -> Result<Loaded, RigError> {
     world.insert_resource(assets);
     let entities = spawn_into(checkpoint, world, &aliases)?;
     Ok(Loaded { entities })
@@ -615,18 +615,18 @@ impl Checkpoint {
     /// Returns an error for invalid saved contracts, graphs, or binaries, or missing
     /// destination registry/counters. [`load_world`] checks handler compatibility
     /// and completeness.
-    pub fn validate(&self, world: &World) -> Result<(), ErrorReport> {
+    pub fn validate(&self, world: &World) -> Result<(), RigError> {
         self.requirements()?;
         validated_state(self, world).map(|_| ())
     }
 
     /// Serialize the checkpoint to JSON, returning serialization failures as reports.
-    pub fn to_json(&self) -> Result<String, ErrorReport> {
+    pub fn to_json(&self) -> Result<String, RigError> {
         serde_json::to_string(self).map_err(|error| refused(error.to_string()))
     }
 
     /// Parse checkpoint JSON, rejecting invalid data, unknown fields, or unsupported formats.
-    pub fn from_json(json: &str) -> Result<Self, ErrorReport> {
+    pub fn from_json(json: &str) -> Result<Self, RigError> {
         serde_json::from_str(json).map_err(|error| refused(error.to_string()))
     }
 }

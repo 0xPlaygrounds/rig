@@ -17,7 +17,7 @@ use rig_cassette::{
     effect_log::EffectLog,
 };
 use rig_core::{
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     serve::{ErasedHandler, adapters::ModelAdapter},
 };
 use rig_ecs::{
@@ -36,8 +36,8 @@ const KEY: &str = "host/model";
 const TOKEN: &str = "explicit-gateway-sentinel";
 const BODY: &str = r#"{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}"#;
 
-fn refused() -> ErrorReport {
-    ErrorReport::new(ErrorKind::Request, "invalid explicit gateway settings")
+fn refused() -> RigError {
+    RigError::new(ErrorKind::Request, "invalid explicit gateway settings")
 }
 
 /// Application policy, not an ECS/provider construction API. Errors never echo
@@ -46,7 +46,7 @@ fn gateway(
     endpoint: &str,
     token: &str,
     client: reqwest::ClientBuilder,
-) -> Result<ErasedHandler, ErrorReport> {
+) -> Result<ErasedHandler, RigError> {
     let url = reqwest::Url::parse(endpoint).map_err(|_| refused())?;
     if !matches!(url.scheme(), "http" | "https")
         || url.host_str().is_none()
@@ -77,8 +77,8 @@ fn gateway(
 /// secrets, SDK initialization and client construction. Replay never calls it.
 fn start(
     replay: Option<&EffectLog>,
-    live: impl FnOnce() -> Result<ErasedHandler, ErrorReport>,
-) -> Result<bevy_app::App, ErrorReport> {
+    live: impl FnOnce() -> Result<ErasedHandler, RigError>,
+) -> Result<bevy_app::App, RigError> {
     let mut app = bus_support::app();
     match replay {
         Some(log) => Replay::default().register(app.world_mut(), log)?,
@@ -161,7 +161,7 @@ fn server(status: &str, extra: &str, body: &str) -> (String, mpsc::Receiver<Stri
     (endpoint, rx)
 }
 
-fn request(app: &mut bevy_app::App) -> Result<(), ErrorReport> {
+fn request(app: &mut bevy_app::App) -> Result<(), RigError> {
     let effect = app
         .world_mut()
         .spawn(PendingEffect::new(KEY, bus_support::completion()))

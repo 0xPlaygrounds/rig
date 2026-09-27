@@ -73,7 +73,7 @@ fn main() -> anyhow::Result<()> {
             break outcome.0.as_ref().map(|_| ()).map_err(Clone::clone);
         }
         if started.elapsed() > std::time::Duration::from_secs(60) {
-            break Err(rig_core::error::ErrorReport::new(
+            break Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Internal,
                 "host deadline exceeded",
             ));

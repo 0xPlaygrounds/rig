@@ -388,7 +388,7 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
                 query: RetrieveQuery::TopN { .. },
             } = kind
             else {
-                return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+                return rig_core::serve::Reply::Outcome(Err(rig_core::error::RigError::new(
                     rig_core::error::ErrorKind::Internal,
                     "the handler dropped its outcome sink without answering",
                 )));

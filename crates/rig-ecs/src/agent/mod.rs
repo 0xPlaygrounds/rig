@@ -21,7 +21,7 @@ use rig_core::{
         Usage as WireUsage,
         message::{AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, UserContent},
     },
-    error::ErrorReport,
+    error::RigError,
     tool::ToolContext,
 };
 use serde::{Deserialize, Serialize};
@@ -709,10 +709,10 @@ pub enum Failure {
         name: String,
     },
     /// The completion failed.
-    Provider(ErrorReport),
+    Provider(RigError),
     /// The run was cancelled: the effect in flight was despawned or its
     /// stream dropped.
-    Cancelled(ErrorReport),
+    Cancelled(RigError),
     /// The run needs what a later stage brings (a tool dispatch, a
     /// resolution kind); named, never silent.
     Unsupported(String),
@@ -723,10 +723,10 @@ pub enum Failure {
     },
     /// A tool dispatch failed at the bus or replay boundary. The run fails with
     /// this report instead of sending a tool-execution error to the model.
-    Tool(ErrorReport),
+    Tool(RigError),
     /// The conversation could not be loaded: the run fails at the memory
     /// record, before any completion.
-    Memory(ErrorReport),
+    Memory(RigError),
 }
 
 /// The run's answer.

@@ -27,7 +27,7 @@ use rig_core::serve::{
 use rig_core::{
     completion::{CompletionRequest, Message},
     effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::AssistantContent,
     streaming::StreamEvent,
     test_utils::{MockCompletionModel, MockStreamEvent},
@@ -38,7 +38,7 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
-    struct Items(Vec<Result<StreamEvent, ErrorReport>>);
+    struct Items(Vec<Result<StreamEvent, RigError>>);
     impl Serve for Items {
         type Family = rig_core::effect::family::Completion;
         fn descriptor(&self) -> HandlerDescriptor {
@@ -56,7 +56,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
         }
     }
     for error_first in [false, true] {
-        let error = Err(ErrorReport::new(ErrorKind::Response, "first error"));
+        let error = Err(RigError::new(ErrorKind::Response, "first error"));
         let terminal = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
             "test",
             rig_core::completion::Usage::default(),
@@ -67,7 +67,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
         } else {
             vec![terminal, error]
         };
-        items.push(Err(ErrorReport::new(ErrorKind::Provider, "late error")));
+        items.push(Err(RigError::new(ErrorKind::Provider, "late error")));
         let key = HandlerKey::from("model");
         let (dispatcher, _, mut driver) = Bus::channel();
         let recorder = EffectLogRecorder::keeping_stream_events();
@@ -315,7 +315,7 @@ impl Serve for Echo {
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
                 EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
-                other => Err(ErrorReport::new(
+                other => Err(RigError::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
                 )),
@@ -998,7 +998,7 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     let events = log.records[0].events.as_mut().expect("events kept");
     events.truncate(1);
     let first = events[0].clone();
-    log.records[0].outcome = Err(ErrorReport::new(ErrorKind::Cancelled, "dropped mid-stream"));
+    log.records[0].outcome = Err(RigError::new(ErrorKind::Cancelled, "dropped mid-stream"));
 
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     super::register_all(&log, &mut driver).expect("fresh keys");
@@ -1172,7 +1172,7 @@ async fn a_record_names_the_scope_of_the_program_that_made_it() {
 async fn kept_events_replay_a_malformed_call_as_the_items_that_carried_it() {
     use rig_core::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
 
-    struct Items(Vec<Result<StreamEvent, ErrorReport>>);
+    struct Items(Vec<Result<StreamEvent, RigError>>);
     impl Serve for Items {
         type Family = rig_core::effect::family::Completion;
         fn descriptor(&self) -> HandlerDescriptor {
@@ -1200,9 +1200,9 @@ async fn kept_events_replay_a_malformed_call_as_the_items_that_carried_it() {
         rig_core::completion::Usage::default(),
         serde_json::json!({}),
     ));
-    let items: Vec<Result<StreamEvent, ErrorReport>> = sink
+    let items: Vec<Result<StreamEvent, RigError>> = sink
         .drain()
-        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
+        .map(|item| item.map_err(|error| RigError::from(&error)))
         .collect();
     assert!(
         items.iter().any(Result::is_err),

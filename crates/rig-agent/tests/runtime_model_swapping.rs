@@ -1897,7 +1897,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
             .build();
 
         // The bus carries a provider failure across the hop as a
-        // provider-kind `ErrorReport` whose message is the provider's own.
+        // provider-kind `RigError` whose message is the provider's own.
         let failed_with_provider_error = if streaming {
             matches!(
                 drain_stream(agent.prompt("boom").stream()).await,

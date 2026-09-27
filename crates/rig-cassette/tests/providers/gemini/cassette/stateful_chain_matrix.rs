@@ -174,7 +174,7 @@ async fn cached_content_lifecycle_chain() {
                 .call(ask("What is the code of record alpha?"))
                 .await;
             let refused = refused.expect_err("a deleted cache handle must be refused");
-            let report = rig::error::ErrorReport::from(&refused);
+            let report = rig::error::RigError::from(&refused);
             assert!(
                 matches!(refused, rig::error::ProviderError::ProviderResponse(_))
                     && report.http_status == Some(403),

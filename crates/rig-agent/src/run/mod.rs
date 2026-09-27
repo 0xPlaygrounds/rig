@@ -109,8 +109,8 @@ impl InvalidToolCallDiagnostic<'_> {
 }
 
 /// Reconstruct a malformed-input response report from the diagnostic call.
-fn malformed_tool_input_report(tool_call: &ToolCall, error: &str) -> rig_core::error::ErrorReport {
-    rig_core::error::ErrorReport::new(
+fn malformed_tool_input_report(tool_call: &ToolCall, error: &str) -> rig_core::error::RigError {
+    rig_core::error::RigError::new(
         rig_core::error::ErrorKind::Response,
         format!(
             "tool call `{}` arrived with malformed JSON input: {error}",

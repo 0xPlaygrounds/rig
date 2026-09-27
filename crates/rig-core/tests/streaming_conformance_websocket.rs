@@ -169,7 +169,7 @@ async fn drain_openai_responses_websocket_events(
     let stream = rig_core::streaming::CompletionStream::relay(
         provider,
         Box::pin(futures::stream::iter(out.into_items().into_iter().map(
-            |item| item.map_err(|error| rig_core::error::ErrorReport::from(&error)),
+            |item| item.map_err(|error| rig_core::error::RigError::from(&error)),
         ))),
     );
     conformance::fixtures::drain(stream).await

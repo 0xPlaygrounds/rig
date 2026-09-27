@@ -10,7 +10,7 @@ use bevy_ecs::prelude::*;
 
 use rig_cassette::effect_log::EffectLog;
 
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 
 use rig_core::streaming::StreamEvent;
 
@@ -19,7 +19,7 @@ use serde::Serialize;
 
 use super::cells::Cell;
 
-type Item = Result<StreamEvent, ErrorReport>;
+type Item = Result<StreamEvent, RigError>;
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct Batch {
@@ -119,7 +119,7 @@ fn durable_items(streamed: &Streamed) -> Vec<Item> {
 
 fn merge_items<'a>(
     events: &[StreamEvent],
-    errors: impl Iterator<Item = (usize, &'a ErrorReport)>,
+    errors: impl Iterator<Item = (usize, &'a RigError)>,
 ) -> Vec<Item> {
     let errors: BTreeMap<_, _> = errors.collect();
     let mut events_iter = events.iter();

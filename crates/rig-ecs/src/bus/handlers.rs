@@ -21,7 +21,7 @@ use bevy_ecs::{
 };
 use rig_core::{
     effect::{EffectKind, Family, FamilyDescriptor, HandlerDescriptor, HandlerKey, Key, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     serve::{ErasedHandler, Serve},
 };
 use serde::{Deserialize, Serialize};
@@ -146,12 +146,12 @@ pub struct WorldServe {
     /// payload and insert `Asked<E>` on the effect entity (or say why the
     /// payload is not an `E`); for an open key, nothing is inserted and the effect
     /// entity itself is the question.
-    pub ask: fn(&mut EntityCommands<'_>, &EffectKind) -> Result<(), ErrorReport>,
+    pub ask: fn(&mut EntityCommands<'_>, &EffectKind) -> Result<(), RigError>,
 }
 
 /// The `ask` of an open key: the effect entity is the question, nothing
 /// is added to it.
-fn open(_entity: &mut EntityCommands<'_>, _kind: &EffectKind) -> Result<(), ErrorReport> {
+fn open(_entity: &mut EntityCommands<'_>, _kind: &EffectKind) -> Result<(), RigError> {
     Ok(())
 }
 
@@ -186,16 +186,13 @@ impl<E: WorldEffect> WorldHandler<E> {
     }
 }
 
-fn ask<E: WorldEffect>(
-    entity: &mut EntityCommands<'_>,
-    kind: &EffectKind,
-) -> Result<(), ErrorReport> {
+fn ask<E: WorldEffect>(entity: &mut EntityCommands<'_>, kind: &EffectKind) -> Result<(), RigError> {
     let EffectKind::Custom {
         kind: label,
         payload,
     } = kind
     else {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Request,
             format!(
                 "`{}` is served by a system for `{}` effects; a {} effect cannot be asked of it",
@@ -206,7 +203,7 @@ fn ask<E: WorldEffect>(
         ));
     };
     if &**label != E::KIND {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Request,
             format!(
                 "a `{label}` effect reached the system serving `{}`",
@@ -215,7 +212,7 @@ fn ask<E: WorldEffect>(
         ));
     }
     let effect: E = serde_json::from_value(payload.clone()).map_err(|error| {
-        ErrorReport::new(
+        RigError::new(
             ErrorKind::Request,
             format!("the payload of `{}` did not deserialize: {error}", E::KIND),
         )
@@ -240,7 +237,7 @@ pub fn answered<E: WorldEffect>(
     let outcome = serde_json::to_value(&answer.0)
         .map(|payload| Outcome::Custom { payload })
         .map_err(|error| {
-            ErrorReport::new(
+            RigError::new(
                 ErrorKind::Response,
                 format!("the answer to `{}` did not serialize: {error}", E::KIND),
             )
@@ -319,12 +316,12 @@ impl Handlers<'_, '_> {
     pub fn with<T>(
         world: &mut World,
         f: impl FnOnce(&mut Handlers<'_, '_>) -> T,
-    ) -> Result<T, ErrorReport> {
+    ) -> Result<T, RigError> {
         let mut state = bevy_ecs::system::SystemState::<Handlers>::new(world);
         let out = match state.get_mut(world) {
             Ok(mut handlers) => f(&mut handlers),
             Err(error) => {
-                return Err(ErrorReport::new(
+                return Err(RigError::new(
                     ErrorKind::Internal,
                     format!("the world has no bus: {error}"),
                 ));
@@ -341,7 +338,7 @@ impl Handlers<'_, '_> {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<Entity, ErrorReport> {
+    ) -> Result<Entity, RigError> {
         self.register_erased(key, ErasedHandler::new(handler))
     }
 
@@ -351,7 +348,7 @@ impl Handlers<'_, '_> {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
-    ) -> Result<Entity, ErrorReport> {
+    ) -> Result<Entity, RigError> {
         let key = key.into();
         let described = handler.descriptor();
         let descriptor = HandlerDescriptor {
@@ -368,12 +365,12 @@ impl Handlers<'_, '_> {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<Key<F>, ErrorReport> {
+    ) -> Result<Key<F>, RigError> {
         let key = key.into();
         let handler = ErasedHandler::new(handler);
         let descriptor = handler.descriptor();
         if descriptor.family.family() != F::FAMILY {
-            return Err(ErrorReport::new(
+            return Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!(
                     "`{key}` was registered as {} but the handler serves {}",
@@ -392,7 +389,7 @@ impl Handlers<'_, '_> {
     pub fn register_world<E: WorldEffect>(
         &mut self,
         key: impl Into<HandlerKey>,
-    ) -> Result<Entity, ErrorReport> {
+    ) -> Result<Entity, RigError> {
         let key = key.into();
         let descriptor = WorldHandler::<E>::descriptor(key.clone());
         let entity = self.bind(key, descriptor, WorldHandler::<E>::served())?;
@@ -410,7 +407,7 @@ impl Handlers<'_, '_> {
         &mut self,
         key: impl Into<HandlerKey>,
         family: FamilyDescriptor,
-    ) -> Result<Entity, ErrorReport> {
+    ) -> Result<Entity, RigError> {
         let key = key.into();
         let descriptor = HandlerDescriptor {
             key: key.clone(),
@@ -429,7 +426,7 @@ impl Handlers<'_, '_> {
         key: HandlerKey,
         descriptor: HandlerDescriptor,
         served: Served,
-    ) -> Result<Entity, ErrorReport> {
+    ) -> Result<Entity, RigError> {
         let family = descriptor.family.family();
         let entity = match self.index.keys.get(&key).copied() {
             Some((entity, bound)) if bound == family => {
@@ -443,7 +440,7 @@ impl Handlers<'_, '_> {
                 entity
             }
             Some((_, bound)) => {
-                return Err(ErrorReport::new(
+                return Err(RigError::new(
                     ErrorKind::HandlerUnavailable,
                     format!(
                         "`{key}` is bound to a {bound} handler; a {family} handler cannot take its place while it is bound — deregister it first"

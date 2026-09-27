@@ -23,7 +23,7 @@ use rig_core::effect::HandlerKey;
 
 use rig_core::error::ErrorKind;
 
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 
 use rig_core::serve::ErasedHandler;
 
@@ -58,7 +58,7 @@ enum RunFailure {
     Cancelled(String),
     MaxTurns,
     MemoryError,
-    Report(ErrorReport),
+    Report(RigError),
 }
 
 fn classify_prompt(error: PromptError) -> RunFailure {
@@ -67,7 +67,7 @@ fn classify_prompt(error: PromptError) -> RunFailure {
         PromptError::MaxTurnsError { .. } => RunFailure::MaxTurns,
         PromptError::MemoryError(_) => RunFailure::MemoryError,
         PromptError::Report(report) => RunFailure::Report(report),
-        PromptError::CompletionError(error) => RunFailure::Report(ErrorReport::from(&error)),
+        PromptError::CompletionError(error) => RunFailure::Report(RigError::from(&error)),
         other => panic!("the run fails as one of the program's endings, not {other:?}"),
     }
 }
@@ -76,7 +76,7 @@ fn classify_stream(error: StreamingError) -> RunFailure {
     match error {
         StreamingError::Prompt(error) => classify_prompt(error),
         StreamingError::Report(report) => RunFailure::Report(report),
-        StreamingError::Completion(error) => RunFailure::Report(ErrorReport::from(&error)),
+        StreamingError::Completion(error) => RunFailure::Report(RigError::from(&error)),
     }
 }
 

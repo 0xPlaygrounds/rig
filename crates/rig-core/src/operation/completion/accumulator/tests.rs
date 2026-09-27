@@ -1,5 +1,5 @@
 use super::*;
-use crate::error::{ErrorDetail, ErrorKind, ErrorReport, ProviderError};
+use crate::error::{ErrorDetail, ErrorKind, ProviderError, RigError};
 use crate::message::AdditionalParams;
 use crate::message::ToolCallId;
 use crate::streaming::{MintKind, non_empty_id};
@@ -826,7 +826,7 @@ fn error_mode_surfaces_malformed_input_as_a_typed_error() {
     let err = tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Error))
         .expect_err("malformed complete input must error");
     assert!(err.to_string().contains("get_weather"));
-    let err = ErrorReport::from(&err);
+    let err = RigError::from(&err);
     assert_eq!(err.kind, ErrorKind::Response);
 
     let Some(ErrorDetail::MalformedToolInput(detail)) = err.detail else {
@@ -854,12 +854,12 @@ fn malformed_input_detail_round_trips_through_serde() {
     let mut accumulator = BlockAccumulator::new();
     tool_name_delta(&mut accumulator, "call_1", "get_weather");
     tool_args_delta(&mut accumulator, "call_1", "{\"a\": \x01 \"b\"");
-    let err = ErrorReport::from(
+    let err = RigError::from(
         &tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Error))
             .expect_err("malformed complete input must error"),
     );
     let json = serde_json::to_string(&err).expect("report serializes");
-    let back: ErrorReport = serde_json::from_str(&json).expect("report deserializes");
+    let back: RigError = serde_json::from_str(&json).expect("report deserializes");
     assert_eq!(back, err);
 }
 

@@ -28,7 +28,7 @@ use futures::{
 
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     streaming::StreamEvent,
     tool::{PublishedContext, ToolContext},
 };
@@ -286,7 +286,7 @@ impl Shared {
         &self,
         key: HandlerKey,
         descriptor: HandlerDescriptor,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         let family = descriptor.family.family();
         let mut descriptors = self
             .descriptors
@@ -295,7 +295,7 @@ impl Shared {
         if let Some(current) = descriptors.get(&key) {
             let current_family = current.family.family();
             if current_family != family {
-                return Err(ErrorReport::new(
+                return Err(RigError::new(
                     ErrorKind::HandlerUnavailable,
                     format!(
                         "key `{key}` serves the {current_family:?} family; a {family:?} handler cannot replace it"
@@ -633,13 +633,13 @@ pub(super) struct Command {
 }
 
 pub(super) enum Reply {
-    Unary(oneshot::Sender<Result<Outcome, ErrorReport>>),
-    Stream(mpsc::Sender<Result<StreamEvent, ErrorReport>>),
+    Unary(oneshot::Sender<Result<Outcome, RigError>>),
+    Stream(mpsc::Sender<Result<StreamEvent, RigError>>),
 }
 
 impl Reply {
     /// Answer without a handler (unknown key, closed bus).
-    pub(super) fn fail(self, report: ErrorReport) {
+    pub(super) fn fail(self, report: RigError) {
         match self {
             Self::Unary(sender) => {
                 let _ = sender.send(Err(report));
@@ -847,7 +847,7 @@ impl Dispatcher {
 
     /// Create an identified reply that resolves to `report` on first poll without
     /// reaching the command queue, handler, or recorder.
-    pub(crate) fn refused(&self, report: ErrorReport) -> Pending {
+    pub(crate) fn refused(&self, report: RigError) -> Pending {
         let (_reply, receiver) = oneshot::channel();
         let (cancel_guard, _cancel) = oneshot::channel();
         Pending {
@@ -904,7 +904,7 @@ impl Dispatcher {
                 _cancel_guard: None,
                 id,
                 parent: self.parent,
-                state: StreamState::Failed(Some(ErrorReport::new(
+                state: StreamState::Failed(Some(RigError::new(
                     ErrorKind::Request,
                     format!(
                         "invalid dispatch: `{}` is a unary effect and cannot be dispatched as a stream",
@@ -979,12 +979,12 @@ impl Dispatcher {
     }
 }
 
-pub(super) fn bus_closed() -> ErrorReport {
-    ErrorReport::new(ErrorKind::BusClosed, "the bus driver is gone").with_retryable(false)
+pub(super) fn bus_closed() -> RigError {
+    RigError::new(ErrorKind::BusClosed, "the bus driver is gone").with_retryable(false)
 }
 
-fn reentrant(key: &HandlerKey) -> ErrorReport {
-    ErrorReport::new(
+fn reentrant(key: &HandlerKey) -> RigError {
+    RigError::new(
         ErrorKind::Request,
         format!(
             "re-entrant dispatch: the handler serving `{key}` dispatched to its own key under serial serving and would wait on itself"
@@ -996,23 +996,23 @@ fn reentrant(key: &HandlerKey) -> ErrorReport {
 /// A stream that ended before its `Final`: the returned stream ended
 /// mid-stream (the provider stream ended early, or the handler failed
 /// without reporting).
-pub(super) fn stream_truncated() -> ErrorReport {
+pub(super) fn stream_truncated() -> RigError {
     rig_core::serve::stream_truncated()
 }
 
-pub(super) fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
-    ErrorReport::new(
+pub(super) fn handler_unavailable(key: &HandlerKey) -> RigError {
+    RigError::new(
         ErrorKind::HandlerUnavailable,
         format!("no handler serves key `{key}`"),
     )
     .with_retryable(false)
 }
 
-fn reply_dropped(shared: &Shared) -> ErrorReport {
+fn reply_dropped(shared: &Shared) -> RigError {
     if shared.is_closed() {
         bus_closed()
     } else {
-        ErrorReport::new(
+        RigError::new(
             ErrorKind::Internal,
             "the handler dropped its outcome sink without answering",
         )
@@ -1027,7 +1027,7 @@ enum PendingState {
     /// Refused before any send: the request had no wire form
     /// ([`rig_core::effect::Family::wrap`] failed). Resolves the report on
     /// the first poll; nothing reaches a handler or a recorder.
-    Failed(Option<ErrorReport>),
+    Failed(Option<RigError>),
 }
 
 /// Optional dispatch identity, tool inputs, and adapter observation context.
@@ -1074,7 +1074,7 @@ pub struct Pending {
     /// The dispatch this one was made from, if a handler made it.
     parent: Option<EffectId>,
     state: PendingState,
-    receiver: oneshot::Receiver<Result<Outcome, ErrorReport>>,
+    receiver: oneshot::Receiver<Result<Outcome, RigError>>,
     shared: Arc<Shared>,
     /// This value's one slot in the bus's parked-sender list while it waits
     /// on a full buffer; holds the latest waker it was polled with.
@@ -1113,7 +1113,7 @@ impl fmt::Debug for Pending {
 }
 
 impl Future for Pending {
-    type Output = Result<Outcome, ErrorReport>;
+    type Output = Result<Outcome, RigError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
@@ -1124,7 +1124,7 @@ impl Future for Pending {
                         return Poll::Ready(Err(bus_closed()));
                     }
                     let Some(taken) = command.take() else {
-                        return Poll::Ready(Err(ErrorReport::new(
+                        return Poll::Ready(Err(RigError::new(
                             ErrorKind::Internal,
                             "a dispatch was sent twice",
                         )));
@@ -1147,7 +1147,7 @@ impl Future for Pending {
                 }
                 PendingState::Failed(report) => {
                     return Poll::Ready(Err(report.take().unwrap_or_else(|| {
-                        ErrorReport::new(ErrorKind::Internal, "a refused dispatch was polled twice")
+                        RigError::new(ErrorKind::Internal, "a refused dispatch was polled twice")
                     })));
                 }
                 PendingState::Waiting => {
@@ -1167,14 +1167,14 @@ impl Future for Pending {
 enum StreamState {
     Sending {
         command: Option<Command>,
-        receiver: Option<mpsc::Receiver<Result<StreamEvent, ErrorReport>>>,
+        receiver: Option<mpsc::Receiver<Result<StreamEvent, RigError>>>,
     },
     Receiving {
-        receiver: mpsc::Receiver<Result<StreamEvent, ErrorReport>>,
+        receiver: mpsc::Receiver<Result<StreamEvent, RigError>>,
         saw_terminal: bool,
     },
     /// Rejected before any send (an invalid dispatch): yields the report once.
-    Failed(Option<ErrorReport>),
+    Failed(Option<RigError>),
     Done,
 }
 
@@ -1215,7 +1215,7 @@ impl fmt::Debug for EffectStream {
 }
 
 impl Stream for EffectStream {
-    type Item = Result<StreamEvent, ErrorReport>;
+    type Item = Result<StreamEvent, RigError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -1234,7 +1234,7 @@ impl Stream for EffectStream {
                     }
                     let Some(taken) = command.take() else {
                         this.state = StreamState::Done;
-                        return Poll::Ready(Some(Err(ErrorReport::new(
+                        return Poll::Ready(Some(Err(RigError::new(
                             ErrorKind::Internal,
                             "a stream dispatch was sent twice",
                         ))));
@@ -1261,7 +1261,7 @@ impl Stream for EffectStream {
                     }
                     let Some(receiver) = receiver.take() else {
                         this.state = StreamState::Done;
-                        return Poll::Ready(Some(Err(ErrorReport::new(
+                        return Poll::Ready(Some(Err(RigError::new(
                             ErrorKind::Internal,
                             "a stream dispatch was sent twice",
                         ))));

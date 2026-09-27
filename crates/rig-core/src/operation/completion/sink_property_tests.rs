@@ -2,7 +2,7 @@ use proptest::prelude::*;
 
 use super::*;
 use crate::completion::{FinishReason, Usage};
-use crate::error::ErrorReport;
+use crate::error::RigError;
 use crate::message::{Reasoning, ReasoningContent};
 use crate::streaming::UnparseableToolInput;
 
@@ -191,7 +191,7 @@ fn comparable(items: &[Result<StreamEvent, ProviderError>]) -> serde_json::Value
     serde_json::to_value(
         items
             .iter()
-            .map(|item| item.as_ref().map_err(ErrorReport::from))
+            .map(|item| item.as_ref().map_err(RigError::from))
             .collect::<Vec<_>>(),
     )
     .unwrap_or_default()
@@ -210,7 +210,7 @@ fn copied(
             Err(ProviderError::MalformedToolInput(input)) if !relayed => {
                 Err(ProviderError::MalformedToolInput(input.clone()))
             }
-            Err(error) => Err(ProviderError::Relayed(Box::new(ErrorReport::from(error)))),
+            Err(error) => Err(ProviderError::Relayed(Box::new(RigError::from(error)))),
         })
         .collect()
 }
@@ -504,7 +504,7 @@ fn a_report_of_empty_input_does_not_end_a_call_without_arguments() {
 /// Raw events a relay or a tap may receive, canonical or not: deltas, starts
 /// and ends under reused keys, ends that carry their block, terminals,
 /// unknown frames and failures.
-fn raw_event() -> impl Strategy<Value = Result<StreamEvent, ErrorReport>> {
+fn raw_event() -> impl Strategy<Value = Result<StreamEvent, RigError>> {
     let key = 0u8..3;
     let delta = |id: BlockId, delta: Delta| Ok(StreamEvent::BlockDelta { id, delta });
     let fragment = prop_oneof![
@@ -593,7 +593,7 @@ fn raw_event() -> impl Strategy<Value = Result<StreamEvent, ErrorReport>> {
         Just(Ok(StreamEvent::Unknown(UnknownPayload::new(
             serde_json::json!({"type": "extra"})
         )))),
-        Just(Err(ErrorReport::new(
+        Just(Err(RigError::new(
             crate::error::ErrorKind::Provider,
             "relayed failure"
         ))),
@@ -609,9 +609,9 @@ fn carried_tool_call(id: &BlockId) -> AssistantContent {
 
 /// What a relay yields for `items`, and the response its fold finishes to.
 fn relay(
-    items: Vec<Result<StreamEvent, ErrorReport>>,
+    items: Vec<Result<StreamEvent, RigError>>,
 ) -> (
-    Vec<Result<StreamEvent, ErrorReport>>,
+    Vec<Result<StreamEvent, RigError>>,
     crate::streaming::CompletionStream,
 ) {
     use futures::StreamExt;
@@ -628,7 +628,7 @@ fn relay(
     (yielded, stream)
 }
 
-fn reported(items: &[Result<StreamEvent, ErrorReport>]) -> serde_json::Value {
+fn reported(items: &[Result<StreamEvent, RigError>]) -> serde_json::Value {
     serde_json::to_value(items).unwrap_or_default()
 }
 
@@ -636,7 +636,7 @@ fn reported(items: &[Result<StreamEvent, ErrorReport>]) -> serde_json::Value {
 /// finished at the end of the stream. The sink and the relay share
 /// `Canonical`, so this pins the relay's plumbing: its drain order, errors
 /// passing as they arrive, and the closes it adds at the end.
-fn sink_over(items: &[Result<StreamEvent, ErrorReport>]) -> Vec<Result<StreamEvent, ErrorReport>> {
+fn sink_over(items: &[Result<StreamEvent, RigError>]) -> Vec<Result<StreamEvent, RigError>> {
     let mut out = AdapterOutput::new();
     let mut drained = Vec::new();
     for item in items {
@@ -650,7 +650,7 @@ fn sink_over(items: &[Result<StreamEvent, ErrorReport>]) -> Vec<Result<StreamEve
     drained.extend(out.drain());
     drained
         .iter()
-        .map(|item| item.as_ref().cloned().map_err(ErrorReport::from))
+        .map(|item| item.as_ref().cloned().map_err(RigError::from))
         .collect()
 }
 
@@ -679,7 +679,7 @@ proptest! {
     ) {
         let items: Vec<_> = once(self_closing, steps)
             .iter()
-            .map(|item| item.as_ref().cloned().map_err(ErrorReport::from))
+            .map(|item| item.as_ref().cloned().map_err(RigError::from))
             .collect();
         let (yielded, _) = relay(items.clone());
         prop_assert_eq!(reported(&yielded), reported(&items));
@@ -766,7 +766,7 @@ proptest! {
                 }
             }
             (Some(Err(tapped)), None) => {
-                let relayed = stream.finish().map_err(|error| ErrorReport::from(&error));
+                let relayed = stream.finish().map_err(|error| RigError::from(&error));
                 prop_assert_eq!(relayed.err(), Some(tapped));
             }
             (None, None) => prop_assert!(stream.finish().is_err(), "no terminal, truncated"),
@@ -812,24 +812,20 @@ fn a_truncated_relay_closes_its_open_blocks_at_its_end() {
             text: "half".to_owned(),
         },
     });
-    let failure = Err(ErrorReport::new(
-        crate::error::ErrorKind::Provider,
-        "cut off",
-    ));
-    let closes =
-        |yielded: &[Result<StreamEvent, ErrorReport>]| -> Vec<(BlockId, AssistantContent)> {
-            yielded
-                .iter()
-                .filter_map(|item| match item {
-                    Ok(StreamEvent::BlockEnd {
-                        id,
-                        block: Some(block),
-                        ..
-                    }) => Some((id.clone(), block.clone())),
-                    _ => None,
-                })
-                .collect()
-        };
+    let failure = Err(RigError::new(crate::error::ErrorKind::Provider, "cut off"));
+    let closes = |yielded: &[Result<StreamEvent, RigError>]| -> Vec<(BlockId, AssistantContent)> {
+        yielded
+            .iter()
+            .filter_map(|item| match item {
+                Ok(StreamEvent::BlockEnd {
+                    id,
+                    block: Some(block),
+                    ..
+                }) => Some((id.clone(), block.clone())),
+                _ => None,
+            })
+            .collect()
+    };
 
     let (truncated, _) = relay(vec![text.clone(), reasoning.clone()]);
     assert_eq!(

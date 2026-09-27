@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use rig_core::{
     completion::{ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     serve::{Dispatch, Reply, Serve},
     streaming::{StreamEvent, StreamFinal},
 };
@@ -55,13 +55,13 @@ impl Serve for WithErrors {
     }
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
         Reply::Stream(Box::pin(futures::stream::iter([
-            Err(ErrorReport::new(ErrorKind::Response, "before final")),
+            Err(RigError::new(ErrorKind::Response, "before final")),
             Ok(StreamEvent::Final(StreamFinal::new(
                 "mock",
                 Usage::default(),
                 serde_json::json!({}),
             ))),
-            Err(ErrorReport::new(ErrorKind::Provider, "after final")),
+            Err(RigError::new(ErrorKind::Provider, "after final")),
         ])))
     }
 }
@@ -198,7 +198,7 @@ fn terminal_delivery_remains_readable_when_an_observer_despawns_the_effect() {
     assert!(flattened(&traces[0]).len() >= 2);
 }
 
-type Item = Result<StreamEvent, ErrorReport>;
+type Item = Result<StreamEvent, RigError>;
 
 struct Controlled(Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Item>>>);
 
@@ -467,7 +467,7 @@ impl Serve for RetryingStream {
     }
     async fn serve(&self, kind: EffectKind, _: Dispatch) -> Reply {
         let EffectKind::Completion { request, .. } = kind else {
-            return Reply::Outcome(Err(ErrorReport::new(
+            return Reply::Outcome(Err(RigError::new(
                 ErrorKind::Request,
                 "expected completion",
             )));

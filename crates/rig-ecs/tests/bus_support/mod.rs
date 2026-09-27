@@ -18,7 +18,7 @@ use rig_core::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
     },
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::AssistantContent,
     serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
@@ -187,7 +187,7 @@ impl Serve for MockModel {
                     }
                 })
             }
-            other => Reply::Outcome(Err(ErrorReport::new(
+            other => Reply::Outcome(Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!("mock model cannot serve {}", other.name()),
             ))),
@@ -297,7 +297,7 @@ pub fn tick(app: &mut App, n: usize) {
 }
 
 /// The text of a unary completion outcome.
-pub fn text_of(outcome: &Result<Outcome, ErrorReport>) -> String {
+pub fn text_of(outcome: &Result<Outcome, RigError>) -> String {
     match outcome {
         Ok(Outcome::Completion(response)) => response
             .choice

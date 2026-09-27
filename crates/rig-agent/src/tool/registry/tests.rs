@@ -209,7 +209,7 @@ impl rig_core::serve::Serve for Refusing {
         _kind: EffectKind,
         _dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Err(ErrorReport::new(ErrorKind::Other, "refused")))
+        rig_core::serve::Reply::Outcome(Err(RigError::new(ErrorKind::Other, "refused")))
     }
 }
 

@@ -16,7 +16,7 @@ use bevy_ecs::prelude::*;
 use rig_core::serve::Reply;
 use rig_core::{
     effect::{EffectId, HandlerKey},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     serve::{Dispatch, Origin},
 };
 
@@ -152,7 +152,7 @@ pub fn dispatch(
 
         let raw_id = reserved.map_or(ids.0, |Reserved(id)| id.as_u64());
         let Some(next_id) = raw_id.checked_add(1) else {
-            let report = ErrorReport::new(ErrorKind::Request, "effect ID allocator exhausted");
+            let report = RigError::new(ErrorKind::Request, "effect ID allocator exhausted");
             if let Some(witness) = &witness {
                 let mut subject = subjects.of(entity);
                 subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
@@ -329,8 +329,8 @@ fn nearest_scope(
 }
 
 /// The report for a dispatch to a key with no bound handler.
-pub fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
-    ErrorReport::new(
+pub fn handler_unavailable(key: &HandlerKey) -> RigError {
+    RigError::new(
         ErrorKind::HandlerUnavailable,
         format!("no handler is bound to `{key}`"),
     )
@@ -339,8 +339,8 @@ pub fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
 
 /// The report for an effect whose ancestor is in flight on its own serial
 /// key: served, it would wait for itself.
-pub fn reentrant(key: &HandlerKey) -> ErrorReport {
-    ErrorReport::new(
+pub fn reentrant(key: &HandlerKey) -> RigError {
+    RigError::new(
         ErrorKind::Request,
         format!(
             "`{key}` is served one at a time and an ancestor of this effect is in flight on it: served, it would wait for itself"

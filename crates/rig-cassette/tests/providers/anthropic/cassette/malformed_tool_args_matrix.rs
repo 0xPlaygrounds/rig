@@ -4,7 +4,7 @@
 //! **Bug.** Anthropic streams tool input as `input_json_delta` fragments and
 //! closes the block with `content_block_stop`, so rig's accumulator treats a
 //! close as "the wire promised a complete block" and, when the assembled
-//! fragments are not JSON, raised a bare `ErrorReport`. The agent engine
+//! fragments are not JSON, raised a bare `RigError`. The agent engine
 //! turned any stream error into a fatal `StreamingError` before the
 //! invalid-tool recovery seam saw it: one bad byte from the model ended the
 //! run, the model never learned why, and the application got a string.

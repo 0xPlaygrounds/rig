@@ -27,7 +27,7 @@ pub trait AgentReplayExt {
     fn stamp(&self, log: EffectLog) -> EffectLog;
 
     /// Refuse logs whose identity or required handlers differ from this agent.
-    fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::ErrorReport>;
+    fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::RigError>;
 }
 
 impl AgentReplayExt for Agent {
@@ -49,12 +49,12 @@ impl AgentReplayExt for Agent {
     }
     /// Validate the log header, run-spec hash, hook stack, serving policy, and
     /// required handlers against this agent. Return an error for any mismatch.
-    fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::ErrorReport> {
+    fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::RigError> {
         crate::effect_log::EffectLogReplayer::check_header(log)?;
         if let Some(recorded) = log.header.run_spec {
             let mine = self.run_spec_hash();
             if recorded != mine {
-                return Err(rig_core::error::ErrorReport::new(
+                return Err(rig_core::error::RigError::new(
                     rig_core::error::ErrorKind::Internal,
                     format!(
                         "replay refused: the log was recorded under run spec {recorded:#018x}, this agent runs under {mine:#018x}"
@@ -65,7 +65,7 @@ impl AgentReplayExt for Agent {
         // Hooks and bus layers execute again during replay, so their identities must match.
         let mine = self.program_names();
         if log.header.hooks != mine {
-            return Err(rig_core::error::ErrorReport::new(
+            return Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Internal,
                 format!(
                     "replay refused: the log was recorded under the hook stack {:?}, this agent runs under {mine:?}",
@@ -76,7 +76,7 @@ impl AgentReplayExt for Agent {
         if let (Some(recorded), Some(mine)) = (log.header.bus, self.bus_config())
             && recorded != mine
         {
-            return Err(rig_core::error::ErrorReport::new(
+            return Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Internal,
                 format!(
                     "replay refused: the log was recorded under bus policy {recorded:?}, this agent runs under {mine:?}"
@@ -87,7 +87,7 @@ impl AgentReplayExt for Agent {
             match self.handler_descriptor(key) {
                 Some(descriptor) if descriptor.family.family() == *family => {}
                 Some(descriptor) => {
-                    return Err(rig_core::error::ErrorReport::new(
+                    return Err(rig_core::error::RigError::new(
                         rig_core::error::ErrorKind::HandlerUnavailable,
                         format!(
                             "replay refused: `{key}` serves {} on this bus, the log needs {family}",
@@ -96,7 +96,7 @@ impl AgentReplayExt for Agent {
                     ));
                 }
                 None => {
-                    return Err(rig_core::error::ErrorReport::new(
+                    return Err(rig_core::error::RigError::new(
                         rig_core::error::ErrorKind::HandlerUnavailable,
                         format!("replay refused: nothing serves `{key}`, which the log needs"),
                     ));
@@ -104,7 +104,7 @@ impl AgentReplayExt for Agent {
             }
         }
         if let Err(gap) = self.required_row().is_subset_of(&log.header.handlers) {
-            return Err(rig_core::error::ErrorReport::new(
+            return Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::HandlerUnavailable,
                 format!(
                     "replay refused: this agent needs `{}` ({}), which the log never served: {gap}",
@@ -116,7 +116,7 @@ impl AgentReplayExt for Agent {
         let diffs = log.header.required.diff(&mine);
         if !diffs.is_empty() {
             let diffs: Vec<String> = diffs.iter().map(ToString::to_string).collect();
-            return Err(rig_core::error::ErrorReport::new(
+            return Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::HandlerUnavailable,
                 format!(
                     "replay refused: the log was recorded by a program requiring {:?}, this agent requires {mine:?}: {}",

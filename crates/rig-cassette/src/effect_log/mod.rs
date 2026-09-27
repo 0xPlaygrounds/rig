@@ -12,7 +12,7 @@
 //! let (checkpoint, tail) = log.checkpoint(0, ());
 //! let resumed = EffectLog::from_checkpoint(&checkpoint, tail)?;
 //! assert!(resumed.is_empty());
-//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! # Ok::<(), rig_core::error::RigError>(())
 //! ```
 
 mod log;

@@ -21,8 +21,8 @@
 //! that as the streaming contract and proves the body/status match blocking.
 
 use futures::StreamExt;
-use rig::error::ErrorReport;
 use rig::error::ProviderError;
+use rig::error::RigError;
 use rig::providers::doubleword;
 use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::json;
@@ -47,12 +47,12 @@ fn assert_nested_error_envelope(json: &serde_json::Value) {
 }
 
 fn assert_preserved_client_error(error: &ProviderError, expected_status: u16) {
-    assert_preserved_client_error_report(&ErrorReport::from(error), expected_status);
+    assert_preserved_client_error_report(&RigError::from(error), expected_status);
 }
 
-/// The streaming twin: an in-band stream failure is an `ErrorReport`, which
+/// The streaming twin: an in-band stream failure is a `RigError`, which
 /// carries the same preserved provider response as the `ProviderError`.
-fn assert_preserved_client_error_report(report: &ErrorReport, expected_status: u16) {
+fn assert_preserved_client_error_report(report: &RigError, expected_status: u16) {
     let status = report
         .provider_response_status()
         .expect("provider status should be preserved");

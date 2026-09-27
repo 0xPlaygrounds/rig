@@ -232,7 +232,7 @@ impl rig_core::serve::Serve for GatedTool {
         gate.await.unwrap();
         self.completed.lock().unwrap().push(index);
         let outcome = if index == 1 {
-            Err(rig_core::error::ErrorReport::new(
+            Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Internal,
                 "expected tool failure",
             ))
@@ -462,7 +462,7 @@ impl rig_core::serve::Serve for RetryModel {
         use rig_core::{
             completion::{CompletionResponse, Usage},
             effect::{EffectKind, Outcome},
-            error::{ErrorKind, ErrorReport},
+            error::{ErrorKind, RigError},
             serve::Reply,
         };
         let EffectKind::Completion { request, .. } = kind else {
@@ -480,7 +480,7 @@ impl rig_core::serve::Serve for RetryModel {
                 "retry-model",
                 serde_json::json!({}),
             ))),
-            2 => Err(ErrorReport::new(ErrorKind::ProviderResponse, "transient")
+            2 => Err(RigError::new(ErrorKind::ProviderResponse, "transient")
                 .with_http_status(503)
                 .with_retryable(true)),
             3 => Ok(Outcome::Completion(CompletionResponse::new(

@@ -613,7 +613,7 @@ mod prompt_tests;
 
 /// A memory report back into the memory error the run surface names.
 pub(crate) fn memory_error_from_report(
-    report: rig_core::error::ErrorReport,
+    report: rig_core::error::RigError,
 ) -> rig_core::memory::MemoryError {
     match report.kind {
         rig_core::error::ErrorKind::MemoryPolicy => {

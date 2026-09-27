@@ -51,8 +51,8 @@ use std::time::Duration;
 use futures::{Stream, StreamExt};
 use rig::completion::CompletionRequest;
 use rig::completion::Usage;
-use rig::error::ErrorReport;
 use rig::error::ProviderError;
+use rig::error::RigError;
 use rig::message::AssistantContent;
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
@@ -111,7 +111,7 @@ impl Disrupt {
 }
 
 impl Stream for Disrupt {
-    type Item = Result<StreamEvent, ErrorReport>;
+    type Item = Result<StreamEvent, RigError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -136,7 +136,7 @@ impl Stream for Disrupt {
                 Disruption::TransportError => {
                     // The same in-band shape a real transport failure takes:
                     // the provider's error, mapped to the stream's report.
-                    return Poll::Ready(Some(Err(ErrorReport::from(&ProviderError::Provider(
+                    return Poll::Ready(Some(Err(RigError::from(&ProviderError::Provider(
                         "injected mid-stream transport drop".to_string(),
                     )))));
                 }
@@ -210,7 +210,7 @@ async fn drain_with_accounting<S>(
     prompt_text: &str,
 ) -> anyhow::Result<Report>
 where
-    S: Stream<Item = Result<StreamEvent, ErrorReport>> + Unpin,
+    S: Stream<Item = Result<StreamEvent, RigError>> + Unpin,
 {
     let mut output = String::new();
     let mut authoritative: Option<Usage> = None;

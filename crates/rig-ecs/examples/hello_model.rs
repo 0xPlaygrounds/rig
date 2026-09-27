@@ -105,7 +105,7 @@ impl Serve for Mock {
     }
 }
 
-fn text(outcome: &Result<Outcome, rig_core::error::ErrorReport>) -> String {
+fn text(outcome: &Result<Outcome, rig_core::error::RigError>) -> String {
     match outcome {
         Ok(Outcome::Completion(response)) => response
             .choice

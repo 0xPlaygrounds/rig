@@ -1,6 +1,6 @@
 //! Ordered stream errors bound invalid-name discovery, including buffered EOF.
 use super::*;
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 
 struct ErrorAndName {
     error_first: bool,
@@ -16,10 +16,7 @@ impl Serve for ErrorAndName {
 
         Reply::written(move |mut writer| async move {
             let id = BlockId::Wire("failed-stream".into());
-            let error = Err(ErrorReport::new(
-                ErrorKind::Provider,
-                "first provider failure",
-            ));
+            let error = Err(RigError::new(ErrorKind::Provider, "first provider failure"));
             let name = Ok(StreamEvent::BlockDelta {
                 id: id.clone(),
                 delta: Delta::ToolName {

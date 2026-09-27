@@ -15,8 +15,8 @@ mod update;
 
 use crate::completion::{CompletionResponse, Usage};
 use crate::driver::{Progress, Source, record_request_id};
-use crate::error::ErrorReport;
 use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::message::{AssistantContent, ToolResult};
 use crate::operation::{Completion, CompletionReply};
 use crate::wire::{End, Fold, Operation, Ready, Reply};
@@ -292,8 +292,7 @@ mod unknown_payload_tests;
 
 /// The one completion stream item type: what a [`CompletionStream`]
 /// yields, what a [`CompletionFold`](crate::operation::CompletionFold) collects, what the bus carries.
-pub type StreamEvents =
-    crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, ErrorReport>>;
+pub type StreamEvents = crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, RigError>>;
 
 /// One reply as it arrives: its canonical events, and the fold that has
 /// seen each of them. It is what [`Model::stream`](crate::Model::stream)
@@ -502,7 +501,7 @@ impl Streamed<Completion> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn updates(&mut self) -> impl Stream<Item = Result<Update, ErrorReport>> + '_ {
+    pub fn updates(&mut self) -> impl Stream<Item = Result<Update, RigError>> + '_ {
         futures::stream::poll_fn(move |cx| {
             if std::mem::take(&mut self.projection.stale) {
                 self.projection
@@ -525,9 +524,7 @@ impl Streamed<Completion> {
                     ),
                     Poll::Ready(Some(Err(error))) => {
                         self.projection.failed = true;
-                        self.projection
-                            .queue
-                            .push_back(Err(ErrorReport::from(&error)));
+                        self.projection.queue.push_back(Err(RigError::from(&error)));
                     }
                     Poll::Ready(None) => {
                         self.projection.ended = true;
@@ -539,9 +536,7 @@ impl Streamed<Completion> {
                                 self.projection.queue.push_back(Ok(Update::Done(response)));
                             }
                             Err(error) if !self.projection.failed => {
-                                self.projection
-                                    .queue
-                                    .push_back(Err(ErrorReport::from(&error)));
+                                self.projection.queue.push_back(Err(RigError::from(&error)));
                             }
                             Err(_) => {}
                         }
@@ -553,7 +548,7 @@ impl Streamed<Completion> {
 
     /// The text deltas of the response, in order; [`Self::updates`] without
     /// reasoning, tool calls or the parts' boundaries.
-    pub fn text(&mut self) -> impl Stream<Item = Result<String, ErrorReport>> + '_ {
+    pub fn text(&mut self) -> impl Stream<Item = Result<String, RigError>> + '_ {
         let mut text_parts = std::collections::HashSet::new();
         self.updates().filter_map(move |update| {
             std::future::ready(match update {
@@ -583,7 +578,7 @@ impl Streamed<Completion> {
 impl<Op: Operation> Unpin for Streamed<Op> {}
 
 impl<Op: Operation> Stream for Streamed<Op> {
-    type Item = Result<Op::Event, ErrorReport>;
+    type Item = Result<Op::Event, RigError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -591,7 +586,7 @@ impl<Op: Operation> Stream for Streamed<Op> {
         if matches!(item, Poll::Ready(Some(_))) {
             this.projection.stale = true;
         }
-        item.map(|item| item.map(|item| item.map_err(|error| ErrorReport::from(&error))))
+        item.map(|item| item.map(|item| item.map_err(|error| RigError::from(&error))))
     }
 }
 

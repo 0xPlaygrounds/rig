@@ -9,7 +9,7 @@
 //! ```
 
 use bevy_ecs::prelude::*;
-use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
+use rig_core::{effect::EffectId, error::RigError, streaming::StreamEvent};
 
 /// Newly collected items from one streaming effect, in their delivery order.
 ///
@@ -67,5 +67,5 @@ pub struct StreamItemsDelivered {
     /// Zero-based item offset within this effect, counting events and errors.
     pub start: usize,
     /// Actual newly delivered items, preserving event/error interleaving.
-    pub items: Vec<Result<StreamEvent, ErrorReport>>,
+    pub items: Vec<Result<StreamEvent, RigError>>,
 }

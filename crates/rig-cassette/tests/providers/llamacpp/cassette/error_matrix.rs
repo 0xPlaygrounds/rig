@@ -189,7 +189,7 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
             // this matrix is concerned, so the cell accepts either and asserts
             // on the error it gets.
             let error = match model.stream(request) {
-                Err(error) => rig::ErrorReport::from(&error),
+                Err(error) => rig::RigError::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
                     other => panic!("expected a preserved error, got {other:?}"),

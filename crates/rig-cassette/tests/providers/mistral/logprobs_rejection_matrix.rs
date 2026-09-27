@@ -68,7 +68,7 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedError) -> Re
         .max_tokens(8);
 
     // The blocking path fails with the provider's `ProviderError`; a stream
-    // fails in-band with the `ErrorReport` it was mapped to. Both display the
+    // fails in-band with the `RigError` it was mapped to. Both display the
     // preserved Mistral body, which is what the matrix asserts on.
     let error = match cell.transport {
         Transport::Blocking => match model.call(request).await {

@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 use futures::StreamExt;
-use rig::error::ErrorReport;
+use rig::error::RigError;
 
 use super::super::support::with_openai_cassette;
 use rig::completion::CompletionRequest;
@@ -59,7 +59,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
             // The SSE connection opens lazily, so the HTTP error may surface
             // either from `stream()` itself or as the first stream item.
             let error = match model.stream(request) {
-                Err(error) => ErrorReport::from(&error),
+                Err(error) => RigError::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
                     Some(Ok(item)) => {

@@ -4,7 +4,7 @@
 use std::collections::VecDeque;
 
 use crate::completion::CompletionResponse;
-use crate::error::ErrorReport;
+use crate::error::RigError;
 use crate::message::AssistantContent;
 use crate::operation::CompletionFold;
 
@@ -94,7 +94,7 @@ struct Slot {
 pub(crate) struct Projection {
     pub(crate) projector: Projector,
     /// Updates projected and not yet read.
-    pub(crate) queue: VecDeque<Result<Update, ErrorReport>>,
+    pub(crate) queue: VecDeque<Result<Update, RigError>>,
     /// The stream ended and its last updates are queued.
     pub(crate) ended: bool,
     /// An error was queued, so a missing terminal record is not reported
@@ -131,7 +131,7 @@ impl Projector {
         &mut self,
         event: &StreamEvent,
         fold: &CompletionFold,
-        out: &mut VecDeque<Result<Update, ErrorReport>>,
+        out: &mut VecDeque<Result<Update, RigError>>,
     ) {
         match event {
             StreamEvent::BlockStart {
@@ -210,7 +210,7 @@ impl Projector {
     pub(crate) fn catch_up(
         &mut self,
         fold: &CompletionFold,
-        out: &mut VecDeque<Result<Update, ErrorReport>>,
+        out: &mut VecDeque<Result<Update, RigError>>,
     ) {
         for (index, slot) in self.slots.iter_mut().enumerate() {
             match (
@@ -248,7 +248,7 @@ impl Projector {
     pub(crate) fn finish(
         &mut self,
         fold: &CompletionFold,
-        out: &mut VecDeque<Result<Update, ErrorReport>>,
+        out: &mut VecDeque<Result<Update, RigError>>,
     ) {
         for (index, slot) in self.slots.iter_mut().enumerate() {
             if slot.certain {
@@ -295,7 +295,7 @@ impl Projector {
 
     /// Emit what every slot whose position is known has waiting, in slot
     /// order, stopping at the first slot not yet known to be in `choice`.
-    fn flush(&mut self, out: &mut VecDeque<Result<Update, ErrorReport>>) {
+    fn flush(&mut self, out: &mut VecDeque<Result<Update, RigError>>) {
         let mut index = 0;
         let issuer = self.issuer.clone();
         for slot in &mut self.slots {

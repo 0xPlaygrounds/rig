@@ -23,10 +23,10 @@ fn retrieval_wrapping_preserves_embedding_error_classification() {
             StatusCode::from_u16(status).expect("valid status"),
             "embedding request failed",
         ));
-        let direct = ErrorReport::from(&inner);
+        let direct = RigError::from(&inner);
         assert_eq!(direct.retryable, retryable);
         let error = VectorStoreError::EmbeddingError(inner);
-        let wrapped = ErrorReport::from(&error);
+        let wrapped = RigError::from(&error);
         assert_eq!(wrapped.kind, direct.kind);
         assert_eq!(wrapped.http_status, direct.http_status);
         assert_eq!(
@@ -60,7 +60,7 @@ fn vector_http_reports_preserve_response_details() {
     );
     let chain = vec![transport.to_string()];
     let error = VectorStoreError::from(transport);
-    let report = ErrorReport::from(&error);
+    let report = RigError::from(&error);
     assert_eq!(report.kind, ErrorKind::ProviderResponse);
     assert_eq!(report.http_status, Some(429));
     assert_eq!(
@@ -88,7 +88,7 @@ fn vector_http_reports_preserve_response_details() {
     );
     assert_eq!(report.message, error.to_string());
     assert_eq!(report.source_chain, chain);
-    assert_eq!(ErrorReport::from(error), report);
+    assert_eq!(RigError::from(error), report);
 }
 
 /// Both store reply paths must use the existing response code and status policy.
@@ -155,7 +155,7 @@ fn vector_reply_reports_preserve_machine_codes_and_status_retryability() {
                     transport_chain,
                 ),
             ] {
-                let report = ErrorReport::from(&error);
+                let report = RigError::from(&error);
                 assert_eq!(report.kind, ErrorKind::ProviderResponse, "{error}");
                 assert_eq!(report.http_status, Some(status.as_u16()));
                 assert_eq!(report.provider_response_status(), Some(status));
@@ -171,7 +171,7 @@ fn vector_reply_reports_preserve_machine_codes_and_status_retryability() {
                 assert_eq!(report.provider_request_id(), None);
                 assert_eq!(report.message, error.to_string());
                 assert_eq!(report.source_chain, chain);
-                assert_eq!(ErrorReport::from(error), report);
+                assert_eq!(RigError::from(error), report);
             }
         }
     }
@@ -221,7 +221,7 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
         let mut chain = vec![transport.to_string()];
         chain.extend(sources);
         let error = VectorStoreError::from(transport);
-        let report = ErrorReport::from(&error);
+        let report = RigError::from(&error);
         assert_eq!(report.kind, ErrorKind::Http, "{error}");
         assert_eq!(report.retryable, retryable, "{error}");
         assert_eq!(report.http_status, None);
@@ -231,7 +231,7 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
         assert!(!report.refusal);
         assert_eq!(report.message, error.to_string());
         assert_eq!(report.source_chain, chain);
-        assert_eq!(ErrorReport::from(error), report);
+        assert_eq!(RigError::from(error), report);
     }
 }
 
@@ -439,12 +439,12 @@ fn memory_error_kinds() {
 
 #[test]
 fn report_round_trips_through_serde() {
-    let report = ErrorReport::new(ErrorKind::Tool(ToolErrorKind::RateLimited), "slow down")
+    let report = RigError::new(ErrorKind::Tool(ToolErrorKind::RateLimited), "slow down")
         .with_retryable(true)
         .with_code("429")
         .with_http_status(429);
     let json = serde_json::to_string(&report).expect("serialize");
-    let back: ErrorReport = serde_json::from_str(&json).expect("deserialize");
+    let back: RigError = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back, report);
     assert_eq!(report.to_string(), "slow down");
 }
@@ -461,7 +461,7 @@ fn a_provider_response_travels_with_the_report() {
             .with_provider_request_id(Some("req-9".to_owned()))
             .with_headers(Some(headers)),
     );
-    let report = ErrorReport::from(&error);
+    let report = RigError::from(&error);
     assert_eq!(report.kind, ErrorKind::ProviderResponse);
     assert_eq!(
         report.provider_response_status(),
@@ -491,7 +491,7 @@ fn a_provider_response_travels_with_the_report() {
     // Through serde the report keeps the response's identity and drops
     // its headers, which are the transport's and never the same twice.
     let json = serde_json::to_string(&report).expect("serialize");
-    let back: ErrorReport = serde_json::from_str(&json).expect("deserialize");
+    let back: RigError = serde_json::from_str(&json).expect("deserialize");
     assert!(back.provider_response_headers().is_none());
     let mut without_headers = report.clone();
     without_headers.provider_response = without_headers
@@ -501,13 +501,13 @@ fn a_provider_response_travels_with_the_report() {
 
     // A non-success reply the transport rejected carries its status and body
     // the same way; a diagnostic with no provider response carries nothing.
-    let http = ErrorReport::from(&http_error(503));
+    let http = RigError::from(&http_error(503));
     assert_eq!(
         http.provider_response_status(),
         Some(StatusCode::SERVICE_UNAVAILABLE)
     );
     assert_eq!(http.provider_response_body(), Some("body"));
-    let plain = ErrorReport::from(&ProviderError::Provider("oops".to_owned()));
+    let plain = RigError::from(&ProviderError::Provider("oops".to_owned()));
     assert!(plain.provider_response.is_none());
     assert_eq!(plain.provider_response_body(), None);
 }
@@ -519,14 +519,14 @@ fn provider_reports_retain_structured_provider_metadata() {
     let direct = ProviderError::ProviderResponse(response.clone());
     let wrapped =
         VectorStoreError::EmbeddingError(ProviderError::ProviderResponse(response.clone()));
-    for report in [ErrorReport::from(&direct), ErrorReport::from(&wrapped)] {
+    for report in [RigError::from(&direct), RigError::from(&wrapped)] {
         assert_eq!(report.request_id.as_deref(), Some("req-retained"));
         assert_eq!(
             serde_json::to_value(report.provider_response.as_ref()).unwrap(),
             serde_json::to_value(Some(&response)).unwrap()
         );
         assert!(report.retryable);
-        let restored: ErrorReport =
+        let restored: RigError =
             serde_json::from_value(serde_json::to_value(&report).unwrap()).unwrap();
         assert_eq!(restored.request_id, report.request_id);
         assert!(restored.provider_response.is_some());
@@ -539,7 +539,7 @@ fn provider_reports_retain_structured_provider_metadata() {
 /// one has no provider response.
 #[test]
 fn http_reports_retain_body_and_headers() {
-    let report = ErrorReport::from(ProviderError::Http(http_client::Error::StreamEnded));
+    let report = RigError::from(ProviderError::Http(http_client::Error::StreamEnded));
     assert_eq!(report.kind, ErrorKind::Http);
     assert_eq!(report.http_status, None);
     assert!(report.provider_response.is_none());
@@ -553,7 +553,7 @@ fn http_reports_retain_body_and_headers() {
             headers,
         }
     };
-    let report = ErrorReport::from(ProviderError::from(error()));
+    let report = RigError::from(ProviderError::from(error()));
     assert_eq!(report.kind, ErrorKind::ProviderResponse);
     let response = report.provider_response.expect("structured HTTP response");
     assert_eq!(response.body, "temporary outage");
@@ -581,7 +581,7 @@ fn wrapped_memory_error_retains_nested_sources() {
     assert!(
         std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
     );
-    let report = ErrorReport::from(&error);
+    let report = RigError::from(&error);
     assert_eq!(report.source_chain, vec!["backend failed", "disk"]);
     assert_eq!(report.message, error.to_string());
 }
@@ -594,7 +594,7 @@ fn wrapped_document_error_retains_nested_sources() {
     assert!(
         std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
     );
-    let report = ErrorReport::from(&error);
+    let report = RigError::from(&error);
     assert_eq!(report.source_chain, vec!["backend failed", "document"]);
     assert_eq!(report.message, error.to_string());
 }
@@ -814,7 +814,7 @@ fn request_building_failures_share_one_shape() {
 /// the relayed report unchanged.
 #[test]
 fn a_relayed_report_keeps_its_provider_response() {
-    let report = ErrorReport::from(&http_error(503));
+    let report = RigError::from(&http_error(503));
     let relayed = ProviderError::Relayed(Box::new(report.clone()));
     assert_eq!(
         relayed.provider_response(),
@@ -827,7 +827,7 @@ fn a_relayed_report_keeps_its_provider_response() {
     );
     assert_eq!(relayed.kind(), ErrorKind::ProviderResponse);
     assert!(relayed.is_retryable());
-    assert_eq!(ErrorReport::from(&relayed), report);
+    assert_eq!(RigError::from(&relayed), report);
 }
 
 /// The transport's facts reach a relayed report as they reach the reply it
@@ -835,7 +835,7 @@ fn a_relayed_report_keeps_its_provider_response() {
 /// report reads them back.
 #[test]
 fn a_relayed_report_takes_the_transport_s_request_id_and_headers() {
-    let report = ErrorReport::from(&ProviderError::ProviderResponse(
+    let report = RigError::from(&ProviderError::ProviderResponse(
         ProviderResponseError::new(StatusCode::SERVICE_UNAVAILABLE, "body"),
     ));
     assert_eq!(report.request_id, None);
@@ -853,12 +853,12 @@ fn a_relayed_report_takes_the_transport_s_request_id_and_headers() {
         Some(&http::HeaderValue::from_static("7"))
     );
     assert_eq!(
-        ErrorReport::from(&relayed).request_id.as_deref(),
+        RigError::from(&relayed).request_id.as_deref(),
         Some("req_1")
     );
 
     // A captured id is kept.
-    let kept = ProviderError::Relayed(Box::new(ErrorReport::from(&relayed)))
+    let kept = ProviderError::Relayed(Box::new(RigError::from(&relayed)))
         .with_provider_request_id(Some("req_2".to_owned()));
     assert_eq!(kept.provider_request_id(), Some("req_1"));
 }
@@ -868,7 +868,7 @@ fn a_relayed_report_takes_the_transport_s_request_id_and_headers() {
 /// report keeps the origin's retry verdict.
 #[test]
 fn a_relayed_report_takes_the_transport_s_status_and_code() {
-    let report = ErrorReport::from(&ProviderError::ProviderResponse(
+    let report = RigError::from(&ProviderError::ProviderResponse(
         ProviderResponseError::without_status("throttled"),
     ));
     assert_eq!((report.http_status, report.code.as_deref()), (None, None));
@@ -880,8 +880,279 @@ fn a_relayed_report_takes_the_transport_s_status_and_code() {
         relayed.provider_response_status(),
         Some(StatusCode::TOO_MANY_REQUESTS)
     );
-    let filled = ErrorReport::from(&relayed);
+    let filled = RigError::from(&relayed);
     assert_eq!(filled.http_status, Some(429));
     assert_eq!(filled.code.as_deref(), Some("ThrottlingException"));
     assert_eq!(relayed.is_retryable(), retryable);
+}
+
+/// `json` is `report`'s wire form both ways: serializing `report` gives it,
+/// and it deserializes back to `report`.
+fn assert_wire_form(json: &str, report: &RigError) {
+    let expected: serde_json::Value = serde_json::from_str(json).expect("pinned JSON parses");
+    assert_eq!(
+        serde_json::to_value(report).expect("serialize"),
+        expected,
+        "{report:?} serializes to its pinned JSON"
+    );
+    assert_eq!(
+        &serde_json::from_str::<RigError>(json).expect("deserialize"),
+        report,
+        "{json} deserializes to its report"
+    );
+}
+
+/// One error per kind against JSON written out here. The first four are
+/// copied from effect goldens (`anthropic_cancelled_stream`,
+/// `anthropic_memory_failing_append`, `anthropic_outcome_model_error`,
+/// `gemini_long_loop_output_cap_midway`); the others are `main`'s
+/// serialization of `ErrorReport::new(kind, "m")`.
+#[test]
+fn rig_error_json_is_pinned_per_kind() {
+    let bare = |kind| RigError::new(kind, "m");
+    let reply = "{\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}";
+    let pins = [
+        (
+            r#"{"kind": "cancelled", "retryable": false, "message": "the consumer cancelled the dispatch before it was answered", "code": null, "http_status": null, "refusal": false, "source_chain": []}"#,
+            RigError::new(
+                ErrorKind::Cancelled,
+                "the consumer cancelled the dispatch before it was answered",
+            ),
+        ),
+        (
+            r#"{"kind": "memory_backend", "retryable": false, "message": "Memory backend error: the store refused the append", "code": null, "http_status": null, "refusal": false, "source_chain": ["the store refused the append"]}"#,
+            RigError {
+                source_chain: vec!["the store refused the append".to_owned()],
+                ..RigError::new(
+                    ErrorKind::MemoryBackend,
+                    "Memory backend error: the store refused the append",
+                )
+            },
+        ),
+        (
+            r#"{"kind": "provider_response", "retryable": false, "message": "ProviderResponseError: status 401 Unauthorized: {\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}", "code": "authentication_error", "http_status": 401, "refusal": false, "source_chain": [], "provider_response": {"status": 401, "body": "{\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}", "provider_request_id": null}}"#,
+            RigError {
+                provider_response: Some(ProviderResponseError::new(
+                    StatusCode::UNAUTHORIZED,
+                    reply,
+                )),
+                ..RigError::new(
+                    ErrorKind::ProviderResponse,
+                    format!("ProviderResponseError: status 401 Unauthorized: {reply}"),
+                )
+                .with_code("authentication_error")
+                .with_http_status(401)
+            },
+        ),
+        (
+            r#"{"kind": "response", "retryable": false, "message": "ResponseError: Gemini stopped with finish_reason=MalformedFunctionCall: Malformed function call: tool", "code": null, "http_status": null, "refusal": false, "source_chain": []}"#,
+            RigError::new(
+                ErrorKind::Response,
+                "ResponseError: Gemini stopped with finish_reason=MalformedFunctionCall: Malformed function call: tool",
+            ),
+        ),
+        (
+            r#"{"kind":"http","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Http),
+        ),
+        (
+            r#"{"kind":"json","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Json),
+        ),
+        (
+            r#"{"kind":"url","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Url),
+        ),
+        (
+            r#"{"kind":"request","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Request),
+        ),
+        (
+            r#"{"kind":"provider","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Provider),
+        ),
+        (
+            r#"{"kind":{"tool":"invalid_args"},"retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Tool(ToolErrorKind::InvalidArgs)),
+        ),
+        (
+            r#"{"kind":"memory_policy","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::MemoryPolicy),
+        ),
+        (
+            r#"{"kind":"internal","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Internal),
+        ),
+        (
+            r#"{"kind":"timeout","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Timeout),
+        ),
+        (
+            r#"{"kind":"bus_closed","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::BusClosed),
+        ),
+        (
+            r#"{"kind":"handler_unavailable","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::HandlerUnavailable),
+        ),
+        (
+            r#"{"kind":"divergence","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Divergence),
+        ),
+        (
+            r#"{"kind":"denied","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Denied),
+        ),
+        (
+            r#"{"kind":"other","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[]}"#,
+            bare(ErrorKind::Other),
+        ),
+    ];
+    for (json, report) in &pins {
+        assert_wire_form(json, report);
+    }
+    // Every kind is pinned: a new kind fails to compile here until it is.
+    for (_, report) in &pins {
+        match report.kind {
+            ErrorKind::Http
+            | ErrorKind::Json
+            | ErrorKind::Url
+            | ErrorKind::Request
+            | ErrorKind::Response
+            | ErrorKind::Provider
+            | ErrorKind::ProviderResponse
+            | ErrorKind::Tool(_)
+            | ErrorKind::MemoryBackend
+            | ErrorKind::MemoryPolicy
+            | ErrorKind::Internal
+            | ErrorKind::Cancelled
+            | ErrorKind::Timeout
+            | ErrorKind::BusClosed
+            | ErrorKind::HandlerUnavailable
+            | ErrorKind::Divergence
+            | ErrorKind::Denied
+            | ErrorKind::Other => {}
+        }
+    }
+}
+
+/// One error per detail against JSON written out here. The
+/// `malformed_tool_input` JSON is `main`'s serialization; the other three
+/// details are new and appear in no golden.
+#[test]
+fn rig_error_json_is_pinned_per_detail() {
+    let with = |kind, detail| RigError::new(kind, "m").with_detail(detail);
+    let pins = [
+        (
+            r#"{"kind":"response","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[],"detail":{"detail":"malformed_tool_input","name":"lookup","id":{"origin":"explicit","id":"toolu_1"},"provider":{"call_id":"toolu_1"},"raw":"{\"q\":","error":"EOF while parsing an object at line 1 column 5"}}"#,
+            with(
+                ErrorKind::Response,
+                ErrorDetail::MalformedToolInput(MalformedToolInput {
+                    name: "lookup".to_owned(),
+                    id: crate::message::ToolCallId::new("toolu_1").expect("nonempty id"),
+                    provider: crate::message::ProviderCallId::new("toolu_1"),
+                    raw: "{\"q\":".to_owned(),
+                    error: "EOF while parsing an object at line 1 column 5".to_owned(),
+                }),
+            ),
+        ),
+        (
+            r#"{"kind":"provider_response","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[],"detail":{"detail":"invalid_authentication"}}"#,
+            with(
+                ErrorKind::ProviderResponse,
+                ErrorDetail::InvalidAuthentication,
+            ),
+        ),
+        (
+            r#"{"kind":"provider_response","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[],"detail":{"detail":"cache_expired","name":"cachedContents/abc"}}"#,
+            with(
+                ErrorKind::ProviderResponse,
+                ErrorDetail::CacheExpired {
+                    name: "cachedContents/abc".to_owned(),
+                },
+            ),
+        ),
+        (
+            r#"{"kind":"response","retryable":false,"message":"m","code":null,"http_status":null,"refusal":false,"source_chain":[],"detail":{"detail":"mismatched_dimensions","requested":256,"returned":1536}}"#,
+            with(
+                ErrorKind::Response,
+                ErrorDetail::MismatchedDimensions {
+                    requested: 256,
+                    returned: 1536,
+                },
+            ),
+        ),
+    ];
+    for (json, report) in &pins {
+        assert_wire_form(json, report);
+    }
+}
+
+#[test]
+fn rejected_credentials_report_the_invalid_authentication_detail() {
+    let error = ProviderError::InvalidAuthentication(ProviderResponseError::new(
+        StatusCode::UNAUTHORIZED,
+        "bad key",
+    ));
+    let report = RigError::from(&error);
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
+    assert!(!report.retryable);
+    assert_eq!(
+        report.message,
+        "invalid authentication: status 401 Unauthorized: bad key"
+    );
+    assert_eq!(report.http_status, Some(401));
+    assert_eq!(
+        report.provider_response_body(),
+        Some("bad key"),
+        "the reply is still preserved"
+    );
+    assert_eq!(report.detail, Some(ErrorDetail::InvalidAuthentication));
+}
+
+#[test]
+fn an_expired_cache_reports_its_name_as_the_detail() {
+    let error = ProviderError::CacheExpired {
+        name: "cachedContents/abc".to_owned(),
+        response: ProviderResponseError::new(StatusCode::NOT_FOUND, "not found"),
+    };
+    let report = RigError::from(&error);
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
+    assert!(!report.retryable);
+    assert_eq!(
+        report.message,
+        "cached content `cachedContents/abc` is expired or was deleted: not found"
+    );
+    assert_eq!(report.http_status, Some(404));
+    assert_eq!(
+        report.detail,
+        Some(ErrorDetail::CacheExpired {
+            name: "cachedContents/abc".to_owned()
+        })
+    );
+}
+
+#[test]
+fn mismatched_dimensions_report_both_widths_as_the_detail() {
+    let error = ProviderError::MismatchedDimensions {
+        provider: "openai".to_owned(),
+        requested: 256,
+        returned: 1536,
+    };
+    let report = RigError::from(&error);
+    assert_eq!(report.kind, ErrorKind::Response);
+    assert!(!report.retryable);
+    assert_eq!(
+        report.message,
+        "openai embedding response returned 1536-dimension vectors, but the model was created \
+         with 256 dimensions; this provider does not resize embeddings"
+    );
+    assert_eq!(report.http_status, None);
+    assert_eq!(
+        report.detail,
+        Some(ErrorDetail::MismatchedDimensions {
+            requested: 256,
+            returned: 1536
+        })
+    );
 }

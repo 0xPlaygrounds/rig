@@ -192,7 +192,7 @@ fn ordered_live_with_error(reverse: bool, recorded_divergence: bool) -> (EffectL
             .entity_mut(entities[index])
             .insert(rig_ecs::bus::WorldOutcome::new(
                 if recorded_divergence && index == 1 {
-                    Err(rig_core::error::ErrorReport::new(
+                    Err(rig_core::error::RigError::new(
                         rig_core::error::ErrorKind::Divergence,
                         "nested replay failed",
                     ))
@@ -534,7 +534,7 @@ fn direct_in_flight_outcomes_refuse_policy_delivery_claims() {
 struct BatchedStream {
     gates: Mutex<VecDeque<oneshot::Receiver<Vec<&'static str>>>>,
     produced: Arc<AtomicUsize>,
-    error: Option<rig_core::error::ErrorReport>,
+    error: Option<rig_core::error::RigError>,
 }
 
 impl Serve for BatchedStream {
@@ -1184,7 +1184,7 @@ fn interleaved_app() -> bevy_app::App {
 
 #[test]
 fn interleaved_streams_preserve_partial_states_and_provider_errors() {
-    use rig_core::error::{ErrorKind, ErrorReport};
+    use rig_core::error::{ErrorKind, RigError};
 
     for fail_second in [false, true] {
         let mut live = interleaved_app();
@@ -1202,9 +1202,8 @@ fn interleaved_streams_preserve_partial_states_and_provider_errors() {
                 BatchedStream {
                     gates: Mutex::new(vec![first, last].into()),
                     produced: produced.clone(),
-                    error: (fail_second && key == "b").then(|| {
-                        ErrorReport::new(ErrorKind::Provider, "scripted provider failure")
-                    }),
+                    error: (fail_second && key == "b")
+                        .then(|| RigError::new(ErrorKind::Provider, "scripted provider failure")),
                 },
             );
             controls.push((VecDeque::from([first_send, last_send]), produced));
@@ -1275,7 +1274,7 @@ impl Serve for TerminalErrors {
         completion_descriptor("model", "terminal-errors")
     }
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        let error = rig_core::error::ErrorReport::new(self.error_kind, "original error");
+        let error = rig_core::error::RigError::new(self.error_kind, "original error");
         let terminal = rig_core::streaming::StreamEvent::Final(StreamFinal::new(
             "test",
             Usage::default(),
@@ -1286,12 +1285,10 @@ impl Serve for TerminalErrors {
         } else {
             vec![Ok(terminal), Err(error)]
         };
-        let mut items = first
-            .into_iter()
-            .chain([Err(rig_core::error::ErrorReport::new(
-                rig_core::error::ErrorKind::Provider,
-                "late error",
-            ))]);
+        let mut items = first.into_iter().chain([Err(rig_core::error::RigError::new(
+            rig_core::error::ErrorKind::Provider,
+            "late error",
+        ))]);
         let produced = self.produced.clone();
         Reply::Stream(Box::pin(futures::stream::poll_fn(move |_| {
             let item = items.next();
@@ -1484,7 +1481,7 @@ impl rig_core::serve::Intercept for AwaitVerdict {
         &self,
         _: rig_core::effect::EffectId,
         _: &EffectKind,
-        _: &Result<Outcome, rig_core::error::ErrorReport>,
+        _: &Result<Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         self.0.store(true, Ordering::SeqCst);
         std::future::pending().await
@@ -1688,7 +1685,7 @@ fn a_streamed_verdict_resumes_only_when_the_host_collects_again() {
             &self,
             _: rig_core::effect::EffectId,
             _: &EffectKind,
-            _: &Result<Outcome, rig_core::error::ErrorReport>,
+            _: &Result<Outcome, rig_core::error::RigError>,
         ) -> rig_core::serve::Verdict {
             self.entered.store(true, Ordering::SeqCst);
             let release = self.release.lock().unwrap().take().unwrap();

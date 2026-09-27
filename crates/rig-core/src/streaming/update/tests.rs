@@ -13,12 +13,12 @@ fn relayed(items: Vec<Result<StreamEvent, ProviderError>>) -> CompletionStream {
     let events = futures::stream::iter(
         items
             .into_iter()
-            .map(|item| item.map_err(|error| ErrorReport::from(&error))),
+            .map(|item| item.map_err(|error| RigError::from(&error))),
     );
     CompletionStream::relay("test", Box::pin(events))
 }
 
-fn updates_of(items: Vec<Result<StreamEvent, ProviderError>>) -> Vec<Result<Update, ErrorReport>> {
+fn updates_of(items: Vec<Result<StreamEvent, ProviderError>>) -> Vec<Result<Update, RigError>> {
     let mut stream = relayed(items);
     futures::executor::block_on(stream.updates().collect::<Vec<_>>())
 }
@@ -30,7 +30,7 @@ fn updates_of(items: Vec<Result<StreamEvent, ProviderError>>) -> Vec<Result<Upda
 fn updates_in_turns(
     items: Vec<Result<StreamEvent, ProviderError>>,
     plan: &[bool],
-) -> Vec<Result<Update, ErrorReport>> {
+) -> Vec<Result<Update, RigError>> {
     let mut stream = relayed(items);
     let mut updates = Vec::new();
     futures::executor::block_on(async {
@@ -85,7 +85,7 @@ fn expected_kind(part: &AssistantContent) -> PartKind {
 /// part of `choice` starts first with its kind, its deltas concatenate to
 /// its finished text, its last end is the part, and nothing names an index
 /// past `choice`. Returns the response.
-fn assert_contract(updates: &[Result<Update, ErrorReport>]) -> CompletionResponse {
+fn assert_contract(updates: &[Result<Update, RigError>]) -> CompletionResponse {
     let done = updates
         .iter()
         .find_map(|update| match update {

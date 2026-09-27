@@ -4,7 +4,7 @@
 
 use futures::StreamExt;
 use rig::error::ProviderError;
-use rig::error::{ErrorKind, ErrorReport};
+use rig::error::{ErrorKind, RigError};
 use rig::providers::openai;
 
 use super::super::support::{
@@ -109,7 +109,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
                 .completion("gpt-nonexistent-model-for-error-edge");
             let result = model.stream(CompletionRequest::new("Never streamed"));
             let error = match result {
-                Err(error) => ErrorReport::from(&error),
+                Err(error) => RigError::from(&error),
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {

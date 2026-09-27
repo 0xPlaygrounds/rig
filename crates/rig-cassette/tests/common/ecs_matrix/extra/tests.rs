@@ -10,7 +10,7 @@ fn after_terminal_cut_waits_for_completed_collection() {
     app.add_systems(bevy_app::Update, cancel_at_cut);
     let run = app.world_mut().spawn_empty().id();
     let turn = app.world_mut().spawn((Turn, ChildOf(run))).id();
-    let outcome = Err(rig_core::error::ErrorReport::new(
+    let outcome = Err(rig_core::error::RigError::new(
         ErrorKind::ProviderResponse,
         "terminal",
     ));

@@ -226,7 +226,7 @@ fn a_layered_program_replays_under_the_same_layer_and_refuses_another() {
             &self,
             _id: rig_core::effect::EffectId,
             _kind: &EffectKind,
-            _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+            _outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
         ) -> Verdict {
             Verdict::Keep
         }

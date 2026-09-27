@@ -16,7 +16,7 @@ use rig_cassette::ecs::EffectLogResource;
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, Message},
     serve::{Dispatch, Reply, Serve},
     tool::{ToolExecutionError, ToolOutput, ToolResult},
@@ -37,7 +37,7 @@ const PROBE: &str = "t/tool:probe#0";
 
 /// A tool whose answer is scripted per call by the call's `n` argument.
 struct Probe {
-    replies: Mutex<BTreeMap<i64, Result<Outcome, ErrorReport>>>,
+    replies: Mutex<BTreeMap<i64, Result<Outcome, RigError>>>,
 }
 
 impl Serve for Probe {
@@ -77,7 +77,7 @@ fn probe_call(n: i64) -> AssistantContent {
 
 fn tooling(
     turns: Vec<Vec<AssistantContent>>,
-    replies: BTreeMap<i64, Result<Outcome, ErrorReport>>,
+    replies: BTreeMap<i64, Result<Outcome, RigError>>,
 ) -> (bevy_app::App, Entity, RequestsSeen) {
     let mut app = app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
@@ -126,7 +126,7 @@ fn results(world: &mut World) -> Vec<(Entity, String, Option<ToolResultStatus>)>
 
 #[test]
 fn every_outcome_lands_as_its_status_and_the_dto_is_unchanged() {
-    let replies: BTreeMap<i64, Result<Outcome, ErrorReport>> = [
+    let replies: BTreeMap<i64, Result<Outcome, RigError>> = [
         (
             1,
             Ok(Outcome::ToolResult {
@@ -151,17 +151,14 @@ fn every_outcome_lands_as_its_status_and_the_dto_is_unchanged() {
                 result: ToolResult::skipped("skipped by policy"),
             }),
         ),
-        (5, Err(ErrorReport::new(ErrorKind::Denied, "not today"))),
+        (5, Err(RigError::new(ErrorKind::Denied, "not today"))),
         (
             6,
             Ok(Outcome::Custom {
                 payload: serde_json::json!({"not": "a tool result"}),
             }),
         ),
-        (
-            7,
-            Err(ErrorReport::new(ErrorKind::Internal, "a layer broke")),
-        ),
+        (7, Err(RigError::new(ErrorKind::Internal, "a layer broke"))),
     ]
     .into_iter()
     .collect();
@@ -260,7 +257,7 @@ fn an_invalid_call_skipped_by_a_system_lands_skipped_results() {
 
 #[test]
 fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
-    let replies: BTreeMap<i64, Result<Outcome, ErrorReport>> = [
+    let replies: BTreeMap<i64, Result<Outcome, RigError>> = [
         (
             1,
             Ok(Outcome::ToolResult {

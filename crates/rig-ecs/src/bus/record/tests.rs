@@ -102,7 +102,7 @@ fn a_despawn_from_the_outcome_observer_still_closes_the_record() {
     let record = log.first().unwrap();
     assert_eq!(
         serde_json::to_value(&record.outcome).unwrap(),
-        serde_json::to_value(Ok::<_, ErrorReport>(answer)).unwrap(),
+        serde_json::to_value(Ok::<_, RigError>(answer)).unwrap(),
         "the record holds the handler's answer, not a cancellation"
     );
 }

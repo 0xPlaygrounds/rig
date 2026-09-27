@@ -151,7 +151,7 @@ retrieved documents or advertise retrieved tools.
 
 ## Handler replies and host polling
 
-`Serve::serve` returns `Reply::Outcome(Result<Outcome, ErrorReport>)` or an
+`Serve::serve` returns `Reply::Outcome(Result<Outcome, RigError>)` or an
 owned `Reply::Stream(StreamEvents)`. `Dispatch` carries the effect ID, requested
 delivery mode and scopes. Adapters retain their domain traits. `Reply::written`
 provides a writer whose future and bounded private receiver are polled together;
@@ -194,7 +194,7 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 | the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a checkpoint's or a log's id |
 | taken, in flight | `InFlight { key }` plus `Serving` (initial task) or `Streaming { events, fold, delivered }`, the task a row in the non-send `Executions` (`Tasks` is the `SystemParam` over it); `ServedBy(Entity)` → the handler entity (its `Serves` the inverse) |
 | a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by submitting `WorldOutcome` |
-| the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, errors, text, outcome }`, with every error and its item position retained independently of recording |
+| the answer | `EffectOutcome(Result<Outcome, RigError>)`; a stream's per-tick fold in `Streamed { events, errors, text, outcome }`, with every error and its item position retained independently of recording |
 | the record closed | `Landed { entity, id }`, an entity event `settle` triggers on the effect; it bubbles up `ChildOf` (effect → turn → run → agent), `original_event_target()` the effect |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |

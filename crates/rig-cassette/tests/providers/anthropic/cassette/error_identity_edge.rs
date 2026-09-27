@@ -98,7 +98,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
             let model = client.completion("claude-nonexistent-model-for-error-edge");
             let result = model.stream(CompletionRequest::new("Never streamed").max_tokens(16));
             let error = match result {
-                Err(error) => rig::ErrorReport::from(&error),
+                Err(error) => rig::RigError::from(&error),
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {
@@ -143,7 +143,7 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
             let model = client.completion(CLAUDE_SONNET_4_6);
             let result = model.stream(CompletionRequest::new("Never streamed").max_tokens(16));
             let error = match result {
-                Err(error) => rig::ErrorReport::from(&error),
+                Err(error) => rig::RigError::from(&error),
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {

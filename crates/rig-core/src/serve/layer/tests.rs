@@ -42,7 +42,7 @@ impl Serve for Echo {
         self.served.fetch_add(1, Ordering::SeqCst);
         let outcome = match kind {
             EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
-            other => Err(ErrorReport::new(
+            other => Err(RigError::new(
                 ErrorKind::Internal,
                 format!("echo received {}", other.name()),
             )),
@@ -84,7 +84,7 @@ impl Serve for Streamer {
 }
 
 type Before = Box<dyn Fn(&EffectKind) -> Decision + Send + Sync>;
-type After = Box<dyn Fn(&Result<Outcome, ErrorReport>) -> Verdict + Send + Sync>;
+type After = Box<dyn Fn(&Result<Outcome, RigError>) -> Verdict + Send + Sync>;
 
 /// Records what it saw, in order, and decides as configured.
 struct Policy {
@@ -122,7 +122,7 @@ impl Intercept for Policy {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        outcome: &Result<Outcome, ErrorReport>,
+        outcome: &Result<Outcome, RigError>,
     ) -> Verdict {
         self.seen
             .lock()
@@ -136,14 +136,14 @@ impl Intercept for Policy {
 /// would deliver them.
 #[derive(Default)]
 struct Tapped {
-    outcomes: Mutex<Vec<Result<Outcome, ErrorReport>>>,
+    outcomes: Mutex<Vec<Result<Outcome, RigError>>>,
     events: Mutex<Vec<StreamEvent>>,
     discarded: AtomicUsize,
     patched: Mutex<Vec<EffectKind>>,
 }
 
 impl super::super::Observe for Arc<Tapped> {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Outcome, RigError>) {
         self.outcomes
             .lock()
             .expect("outcomes")
@@ -186,7 +186,7 @@ fn echo() -> (ErasedHandler, Arc<AtomicUsize>) {
 async fn unary(
     handler: &ErasedHandler,
     kind: EffectKind,
-) -> (Result<Outcome, ErrorReport>, Arc<Tapped>) {
+) -> (Result<Outcome, RigError>, Arc<Tapped>) {
     let tap = Arc::new(Tapped::default());
     let dispatch = tapped(Dispatch::new(EffectId::from_raw(7), false), &tap);
     let outcome = handler.handle(kind, dispatch).await.into_outcome().await;
@@ -303,7 +303,7 @@ async fn a_denial_never_reaches_the_handler_and_leaves_no_record() {
     let (handler, _) = echo();
     let mut policy = Policy::observing("stop", &seen);
     policy.before =
-        Box::new(|_| Decision::Deny(ErrorReport::new(ErrorKind::Cancelled, "the program stops")));
+        Box::new(|_| Decision::Deny(RigError::new(ErrorKind::Cancelled, "the program stops")));
     let (outcome, _) = unary(&handler.layered(policy), custom(json!(1))).await;
     assert_eq!(outcome.expect_err("cancelled").kind, ErrorKind::Cancelled);
 }
@@ -375,7 +375,7 @@ async fn an_error_replacing_a_streamed_answer_follows_its_events() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mut policy = Policy::observing("cut", &seen);
     policy.after = Box::new(|_| {
-        Verdict::Replace(Err(ErrorReport::new(
+        Verdict::Replace(Err(RigError::new(
             ErrorKind::Cancelled,
             "the program stops",
         )))
@@ -474,7 +474,7 @@ async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming
         let mut inner = Policy::observing("inner", &seen);
         inner.before = Box::new(|kind| match kind {
             EffectKind::ToolCall { name, .. } if name == "allowed" => Decision::Proceed,
-            _ => Decision::Deny(ErrorReport::new(ErrorKind::Denied, "original is forbidden")),
+            _ => Decision::Deny(RigError::new(ErrorKind::Denied, "original is forbidden")),
         });
         let mut outer = Policy::observing("outer", &seen);
         outer.before = Box::new(|_| {
@@ -611,7 +611,7 @@ fn a_dropped_layer_resolves_its_record_exactly_once() {
             &self,
             _: EffectId,
             _: &EffectKind,
-            _: &Result<Outcome, ErrorReport>,
+            _: &Result<Outcome, RigError>,
         ) -> Verdict {
             let (decide, decided) = futures::channel::oneshot::channel();
             *self.0.lock().expect("slot") = Some(decide);

@@ -124,7 +124,7 @@ fn a_listing_route_is_a_diagnostic_and_is_not_serialized() {
         "/v1/models",
     );
     let report = error.report();
-    let restored: crate::error::ErrorReport =
+    let restored: crate::error::RigError =
         serde_json::from_str(&serde_json::to_string(&report).expect("serialize"))
             .expect("deserialize");
     let response = restored.provider_response.expect("reply is preserved");

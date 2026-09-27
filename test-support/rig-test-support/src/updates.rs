@@ -5,7 +5,7 @@
 
 use futures::StreamExt;
 use rig_core::completion::CompletionResponse;
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 use rig_core::message::{AssistantContent, ReasoningContent};
 use rig_core::streaming::{CompletionStream, PartKind, Update};
 
@@ -21,7 +21,7 @@ pub struct DeliveredPart {
 }
 
 /// Every update of `stream`, read to its end.
-pub async fn collect_updates(stream: &mut CompletionStream) -> Vec<Result<Update, ErrorReport>> {
+pub async fn collect_updates(stream: &mut CompletionStream) -> Vec<Result<Update, RigError>> {
     stream.updates().collect().await
 }
 
@@ -29,7 +29,7 @@ pub async fn collect_updates(stream: &mut CompletionStream) -> Vec<Result<Update
 /// carries, and return that response with each part as delivered. Panics
 /// on any violation or on an error item.
 pub fn assert_update_contract(
-    updates: &[Result<Update, ErrorReport>],
+    updates: &[Result<Update, RigError>],
 ) -> (CompletionResponse, Vec<DeliveredPart>) {
     let updates: Vec<&Update> = updates
         .iter()

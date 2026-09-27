@@ -694,7 +694,7 @@ impl ToolServerHandle {
                         ) => ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>(),
                         other => {
                             return Err(rig_core::vector_store::VectorStoreError::DatastoreError(
-                                Box::new(rig_core::error::ErrorReport::new(
+                                Box::new(rig_core::error::RigError::new(
                                     rig_core::error::ErrorKind::Internal,
                                     format!(
                                         "tool retrieval answered with a {} outcome",

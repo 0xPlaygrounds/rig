@@ -19,7 +19,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
         ),
     ] {
         let error = ProviderError::Http(native);
-        let report = crate::error::ErrorReport::from(&error);
+        let report = crate::error::RigError::from(&error);
         assert_eq!(report.kind, crate::error::ErrorKind::Http);
         let log = Arc::new(ObservationLog::default());
         let context = AdapterContext::new(log.clone(), Subject::default(), "call");
@@ -36,7 +36,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
                 boundary, kind: "http".into(), status: None, retryable: report.is_retryable(),
             }})
         );
-        assert_eq!(crate::error::ErrorReport::from(&error), report);
+        assert_eq!(crate::error::RigError::from(&error), report);
     }
 }
 

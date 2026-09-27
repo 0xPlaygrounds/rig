@@ -13,7 +13,7 @@
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::error::ErrorReport;
+use rig::error::RigError;
 use rig::providers::mistral;
 
 use crate::support::collect_stream_final_response_and_provider_final;
@@ -41,9 +41,9 @@ fn assert_error_keeps_id_and_body(error: &rig::error::ProviderError) {
     );
 }
 
-/// The streaming twin: an in-band stream failure is an `ErrorReport`, which
+/// The streaming twin: an in-band stream failure is a `RigError`, which
 /// carries the same preserved id and body as the `ProviderError`.
-fn assert_report_keeps_id_and_body(report: &ErrorReport) {
+fn assert_report_keeps_id_and_body(report: &RigError) {
     assert_is_request_id(report.provider_request_id());
     assert!(
         report.provider_response_body().is_some(),
@@ -139,7 +139,7 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
                 .completion("definitely-not-a-model")
                 .stream(CompletionRequest::new("Reply with exactly: identity probe"))
             {
-                Err(error) => ErrorReport::from(&error),
+                Err(error) => RigError::from(&error),
                 Ok(mut stream) => {
                     let mut failure = None;
                     while let Some(item) = stream.next().await {

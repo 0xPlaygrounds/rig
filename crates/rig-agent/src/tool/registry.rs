@@ -17,7 +17,7 @@ use rig_core::{
         EffectKind, FamilyDescriptor, Key, Outcome, ToolEmbeddingDescriptor, family, tool_key,
     },
     embeddings::{embed::EmbedError, tool::ToolSchema},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     tool::{
         DynamicTool, LivenessFn, Tool, ToolContext, ToolEmbedding, ToolExecutionError, ToolResult,
         tool_definition,
@@ -91,7 +91,7 @@ impl RegisteredTool {
 
     /// Register a handler under its descriptor's key.
     /// Returns `HandlerUnavailable` if the descriptor is not tool-family.
-    pub fn from_handler(handler: impl Serve + 'static) -> Result<Self, ErrorReport> {
+    pub fn from_handler(handler: impl Serve + 'static) -> Result<Self, RigError> {
         let descriptor = handler.descriptor();
         let FamilyDescriptor::Tool {
             name,
@@ -100,7 +100,7 @@ impl RegisteredTool {
             embedding,
         } = descriptor.family
         else {
-            return Err(ErrorReport::new(
+            return Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!(
                     "handler `{}` serves the {} family, not tool_call",

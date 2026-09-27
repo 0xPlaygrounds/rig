@@ -18,7 +18,7 @@ use bevy_ecs::prelude::*;
 use rig_core::{
     completion::{CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::AssistantContent,
     serve::{Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
@@ -113,7 +113,7 @@ impl Serve for Scripted {
                         .await;
                 })
             }
-            other => Reply::Outcome(Err(ErrorReport::new(
+            other => Reply::Outcome(Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!("a model cannot serve {}", other.name()),
             ))),
@@ -171,7 +171,7 @@ impl Serve for Tool {
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::ToolCall { args, .. } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(RigError::new(
                 ErrorKind::Internal,
                 "not a call",
             )));

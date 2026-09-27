@@ -20,7 +20,7 @@ use bevy_app::Startup;
 use bevy_ecs::prelude::*;
 use rig_core::{
     effect::EffectKind,
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::AssistantContent,
 };
 use rig_ecs::{
@@ -83,7 +83,7 @@ fn approve(
                 println!("denied");
                 commands
                     .entity(call)
-                    .insert(EffectOutcome(Err(ErrorReport::new(
+                    .insert(EffectOutcome(Err(RigError::new(
                         ErrorKind::Denied,
                         "denied by the human reviewer",
                     ))));

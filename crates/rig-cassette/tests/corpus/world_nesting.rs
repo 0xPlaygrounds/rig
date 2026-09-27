@@ -242,7 +242,7 @@ fn finish_relay(
     }
 }
 
-fn ack(outcome: &Result<Outcome, rig_core::error::ErrorReport>) -> NoteAck {
+fn ack(outcome: &Result<Outcome, rig_core::error::RigError>) -> NoteAck {
     match outcome {
         Ok(Outcome::Custom { payload: value }) => {
             serde_json::from_value(value.clone()).expect("an ack")

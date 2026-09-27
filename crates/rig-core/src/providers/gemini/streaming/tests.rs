@@ -909,7 +909,7 @@ mod terminal_emission {
 async fn collect_stream(
     frames: &[&str],
 ) -> (
-    Vec<Result<crate::streaming::StreamEvent, crate::error::ErrorReport>>,
+    Vec<Result<crate::streaming::StreamEvent, crate::error::RigError>>,
     bool,
 ) {
     use futures::StreamExt;
@@ -1054,7 +1054,7 @@ async fn in_band_http_errors_match_unary_classification_and_preserve_the_envelop
             .collect();
         assert_eq!(errors.len(), 1, "{items:?}");
         assert!(!finished);
-        let unary = crate::error::ErrorReport::from(ProviderError::from_http_response(
+        let unary = crate::error::RigError::from(ProviderError::from_http_response(
             http::StatusCode::from_u16(code).expect("HTTP error status"),
             body.clone(),
         ));

@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     effect::{EffectFamily, EffectId, HandlerKey, Outcome},
-    error::ErrorReport,
+    error::RigError,
     streaming::StreamEvent,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -204,7 +204,7 @@ impl Reason {
 
     /// The reason an error report carries: its kind's stable code
     /// ([`crate::error::ErrorKind::code`]), its message as the detail.
-    pub fn from_report(report: &ErrorReport) -> Self {
+    pub fn from_report(report: &RigError) -> Self {
         Self::with_detail(report.kind.code(), report.message.clone())
     }
 
@@ -235,7 +235,7 @@ pub enum OutcomeSummary {
 
 impl OutcomeSummary {
     /// The summary of an outcome.
-    pub fn of(outcome: &Result<Outcome, ErrorReport>) -> Self {
+    pub fn of(outcome: &Result<Outcome, RigError>) -> Self {
         match outcome {
             Ok(outcome) => Self::Ok {
                 family: outcome.family(),

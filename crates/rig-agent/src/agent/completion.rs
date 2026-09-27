@@ -267,7 +267,7 @@ impl AgentConfig {
     }
 
     /// Bind the default model's typed view.
-    pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::ErrorReport> {
+    pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::RigError> {
         self.bus.dispatcher().bind(&self.model_key)
     }
 
@@ -299,7 +299,7 @@ impl AgentConfig {
     pub(crate) fn model_by_ref(
         &self,
         label: &ModelRef,
-    ) -> Result<ModelHandle, rig_core::error::ErrorReport> {
+    ) -> Result<ModelHandle, rig_core::error::RigError> {
         self.bus
             .dispatcher()
             .bind(&self.bus.model_key(label.as_str()))
@@ -308,7 +308,7 @@ impl AgentConfig {
     /// Bind the memory handle, when memory is configured.
     pub(crate) fn memory_handle(
         &self,
-    ) -> Option<Result<crate::bus::MemoryHandle, rig_core::error::ErrorReport>> {
+    ) -> Option<Result<crate::bus::MemoryHandle, rig_core::error::RigError>> {
         self.memory_key
             .as_ref()
             .map(|key| self.bus.dispatcher().bind(key))

@@ -1496,7 +1496,7 @@ async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
 #[tokio::test]
 async fn a_relayed_stream_comes_out_canonical() {
     let text = BlockId::minted(MintKind::Text, 0);
-    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
+    let raw: Vec<Result<StreamEvent, RigError>> = vec![
         Ok(StreamEvent::BlockStart {
             id: text.clone(),
             kind: BlockKind::Text {
@@ -1545,7 +1545,7 @@ async fn a_relayed_stream_comes_out_canonical() {
 #[tokio::test]
 async fn a_truncated_relayed_stream_closes_its_open_text() {
     let text = BlockId::minted(MintKind::Text, 0);
-    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![Ok(StreamEvent::text(text, "partial"))];
+    let raw: Vec<Result<StreamEvent, RigError>> = vec![Ok(StreamEvent::text(text, "partial"))];
     let mut stream = CompletionStream::relay("label", Box::pin(futures::stream::iter(raw)));
     let mut items = Vec::new();
     while let Some(item) = stream.next().await {
@@ -1567,7 +1567,7 @@ async fn a_truncated_relayed_stream_closes_its_open_text() {
 #[tokio::test]
 async fn a_relayed_end_that_carries_its_block_keeps_it() {
     let text = BlockId::minted(MintKind::Text, 0);
-    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
+    let raw: Vec<Result<StreamEvent, RigError>> = vec![
         Ok(StreamEvent::BlockEnd {
             id: text,
             end: BlockClose::Text,
