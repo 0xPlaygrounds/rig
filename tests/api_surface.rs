@@ -34,6 +34,16 @@ const ANTHROPIC_STREAM: &str = concat!(
     "data: {\"type\":\"message_stop\"}\n\n",
 );
 
+/// The same answer, cut after its text: no `message_delta`, no
+/// `message_stop`.
+const ANTHROPIC_CUT_STREAM: &str = concat!(
+    "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-6\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+    "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+    "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Par\"}}\n\n",
+    "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"is.\"}}\n\n",
+    "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+);
+
 /// Every model built from the environment, in one test: the variables are
 /// process-wide.
 #[tokio::test]
@@ -103,13 +113,65 @@ async fn an_erased_model_streams_its_parts() -> anyhow::Result<()> {
     let mut text = String::new();
     let mut done = None;
     while let Some(update) = updates.next().await {
-        match update? {
+        match update {
             Update::Delta { text: delta, .. } => text.push_str(&delta),
             Update::Done(response) => done = Some(response),
+            Update::Failed { error, .. } => return Err(error.into()),
             _ => {}
         }
     }
     anyhow::ensure!(text == "Paris.");
     anyhow::ensure!(done.is_some_and(|response| response.text() == "Paris."));
+    Ok(())
+}
+
+/// Streams a story, keeping what arrived when the stream fails.
+async fn tell_a_story(
+    model: &DynModel<Completion>,
+    history: &mut Vec<Message>,
+) -> anyhow::Result<()> {
+    let mut stream = model.stream("Tell me a story.")?;
+    let mut updates = stream.updates();
+    while let Some(update) = updates.next().await {
+        match update {
+            Update::Delta { text, .. } => print!("{text}"),
+            Update::Done(response) => history.push(response.into()),
+            Update::Failed { error, partial } => {
+                history.push(partial.into());
+                return Err(error.into());
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// A stream cut before its end fails with what arrived: the caller keeps
+/// the partial answer in its history and returns the error.
+#[tokio::test]
+async fn a_failed_stream_ends_with_its_partial_response() -> anyhow::Result<()> {
+    let http = MockStreamingClient {
+        sse_bytes: bytes::Bytes::from_static(ANTHROPIC_CUT_STREAM.as_bytes()),
+    };
+    let model: DynModel<Completion> = Anthropic::new("test-key")
+        .with_http(http)
+        .completion(anthropic::CLAUDE_SONNET_4_6)
+        .into();
+
+    let mut history = Vec::new();
+    let error = tell_a_story(&model, &mut history)
+        .await
+        .err()
+        .ok_or_else(|| anyhow::anyhow!("the cut stream fails"))?;
+    let error = error
+        .downcast::<rig::RigError>()
+        .map_err(|error| anyhow::anyhow!("a RigError: {error}"))?;
+    anyhow::ensure!(error.kind == rig::error::ErrorKind::Response);
+    anyhow::ensure!(error.message.contains("without a terminal record"));
+    anyhow::ensure!(history.len() == 1);
+    anyhow::ensure!(matches!(
+        history.last(),
+        Some(Message::Assistant { content, .. }) if content.len() == 1
+    ));
     Ok(())
 }

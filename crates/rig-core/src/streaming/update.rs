@@ -11,7 +11,8 @@ use crate::operation::CompletionFold;
 use super::{BlockKind, Delta, StreamEvent};
 
 /// What a streaming consumer reads, in the order the parts of the response
-/// start, grow and finish.
+/// start, grow and finish, then exactly one of [`Update::Done`] and
+/// [`Update::Failed`], last.
 ///
 /// `index` is the part's position in [`Update::Done`]'s `choice`. For every
 /// index, `Start` comes first, the `Delta`s concatenate to the finished text,
@@ -21,6 +22,15 @@ use super::{BlockKind, Delta, StreamEvent};
 /// arrive together then; text and reasoning stream as they arrive. A part the
 /// provider extends after it ended (more text under a reused block) ends
 /// again with the whole part.
+///
+/// A failed stream ends with [`Update::Failed`] at its first error. Every
+/// part that ended before it has its `End`, and its `partial` holds those
+/// parts in index order. A part still open at the failure gets no `End` and
+/// is not in `partial`; a part after it keeps the index it was given, which
+/// counts the open part. A failure the driver reads from the transport
+/// closes the open text and reasoning first, so they end and are in
+/// `partial`. A relayed stream receives the origin's closes after its error,
+/// so its open parts do not end.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Update {
@@ -45,8 +55,19 @@ pub enum Update {
         /// The finished part.
         part: AssistantContent,
     },
-    /// The response, once the stream completed.
+    /// The response, once the stream completed. Last.
     Done(CompletionResponse),
+    /// The reply failed. `partial` is what arrived before the failure: every
+    /// part that ended, and the usage reported so far. Last, like `Done`.
+    Failed {
+        /// Why the reply failed: the first error the stream carried, or the
+        /// truncation of a stream that ended without its terminal record.
+        error: RigError,
+        /// What arrived before the failure, as
+        /// [`CompletionStream::partial`](super::CompletionStream::partial)
+        /// returned it then.
+        partial: CompletionResponse,
+    },
 }
 
 /// What kind of part an [`Update::Start`] began.
@@ -94,12 +115,13 @@ struct Slot {
 pub(crate) struct Projection {
     pub(crate) projector: Projector,
     /// Updates projected and not yet read.
-    pub(crate) queue: VecDeque<Result<Update, RigError>>,
-    /// The stream ended and its last updates are queued.
+    pub(crate) queue: VecDeque<Update>,
+    /// The terminal update is queued or read: nothing follows it.
     pub(crate) ended: bool,
-    /// An error was queued, so a missing terminal record is not reported
-    /// again.
-    pub(crate) failed: bool,
+    /// The reply's first error, read by the projection or from the stream
+    /// itself: the projection ends with it as [`Update::Failed`] once what
+    /// it holds is sent.
+    pub(crate) failure: Option<RigError>,
     /// Events were read from the stream itself since the last projection.
     pub(crate) stale: bool,
 }
@@ -131,7 +153,7 @@ impl Projector {
         &mut self,
         event: &StreamEvent,
         fold: &CompletionFold,
-        out: &mut VecDeque<Result<Update, RigError>>,
+        out: &mut VecDeque<Update>,
     ) {
         match event {
             StreamEvent::BlockStart {
@@ -207,11 +229,7 @@ impl Projector {
 
     /// Catch up with events read from the stream itself: every part the
     /// fold placed that is not finished here is sent whole at its end.
-    pub(crate) fn catch_up(
-        &mut self,
-        fold: &CompletionFold,
-        out: &mut VecDeque<Result<Update, RigError>>,
-    ) {
+    pub(crate) fn catch_up(&mut self, fold: &CompletionFold, out: &mut VecDeque<Update>) {
         for (index, slot) in self.slots.iter_mut().enumerate() {
             match (
                 slot.end.as_ref().or(slot.ended_as.as_ref()),
@@ -241,15 +259,11 @@ impl Projector {
         self.flush(out);
     }
 
-    /// The stream ended: emit what is held, stamping reasoning with the
-    /// issuer the fold names when no terminal record arrived. A slot still
+    /// The stream ended or failed: emit what is held, stamping reasoning
+    /// with the issuer the fold names when no terminal record arrived. A slot still
     /// in doubt is settled by the fold: it is in `choice` exactly when it
     /// ended with content.
-    pub(crate) fn finish(
-        &mut self,
-        fold: &CompletionFold,
-        out: &mut VecDeque<Result<Update, RigError>>,
-    ) {
+    pub(crate) fn finish(&mut self, fold: &CompletionFold, out: &mut VecDeque<Update>) {
         for (index, slot) in self.slots.iter_mut().enumerate() {
             if slot.certain {
                 continue;
@@ -295,7 +309,7 @@ impl Projector {
 
     /// Emit what every slot whose position is known has waiting, in slot
     /// order, stopping at the first slot not yet known to be in `choice`.
-    fn flush(&mut self, out: &mut VecDeque<Result<Update, RigError>>) {
+    fn flush(&mut self, out: &mut VecDeque<Update>) {
         let mut index = 0;
         let issuer = self.issuer.clone();
         for slot in &mut self.slots {
@@ -317,7 +331,7 @@ impl Projector {
                     }
                     _ => kind,
                 };
-                out.push_back(Ok(Update::Start { index, part }));
+                out.push_back(Update::Start { index, part });
                 slot.started = true;
             }
             if slot.whole {
@@ -325,7 +339,7 @@ impl Projector {
             }
             for text in slot.pending.drain(..) {
                 slot.emitted.push_str(&text);
-                out.push_back(Ok(Update::Delta { index, text }));
+                out.push_back(Update::Delta { index, text });
             }
             let issuer = issuer.as_deref();
             let held = matches!(slot.end, Some(AssistantContent::Reasoning(_))) && issuer.is_none();
@@ -342,10 +356,10 @@ impl Projector {
                 if let Some(finished) = finished_text(&part) {
                     match finished.strip_prefix(slot.emitted.as_str()) {
                         Some(rest) if !rest.is_empty() => {
-                            out.push_back(Ok(Update::Delta {
+                            out.push_back(Update::Delta {
                                 index,
                                 text: rest.to_owned(),
-                            }));
+                            });
                             slot.emitted = finished;
                         }
                         Some(_) => {}
@@ -355,7 +369,7 @@ impl Projector {
                         ),
                     }
                 }
-                out.push_back(Ok(Update::End { index, part }));
+                out.push_back(Update::End { index, part });
             }
             index += 1;
         }

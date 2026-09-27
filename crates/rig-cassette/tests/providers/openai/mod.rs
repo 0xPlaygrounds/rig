@@ -106,6 +106,7 @@ mod cassette {
     mod truncated_turn_matrix;
     mod turn_termination_matrix;
     mod typed_prompt_tools;
+    mod updates_failed;
     mod url_pdf_document;
     mod vllm;
     mod websocket_error_identity_matrix;

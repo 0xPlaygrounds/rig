@@ -104,7 +104,8 @@ async fn program_1_a_chat_model_calls_unary_then_streams_with_tools() {
     let mut text = String::new();
     let mut updates = stream.updates();
     while let Some(update) = updates.next().await {
-        if let Update::Delta { text: delta, .. } = update.expect("an update") {
+        assert!(!matches!(update, Update::Failed { .. }), "{update:?}");
+        if let Update::Delta { text: delta, .. } = update {
             text.push_str(&delta);
         }
     }

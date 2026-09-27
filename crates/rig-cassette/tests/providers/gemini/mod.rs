@@ -105,6 +105,7 @@ mod cassette {
     mod tool_server;
     mod transcription;
     mod turn_termination_matrix;
+    mod updates_failed;
 }
 
 mod live {
