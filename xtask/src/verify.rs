@@ -165,7 +165,8 @@ fn print_plan(mode: Mode, changes: usize, plan: &[Check]) {
     }
 }
 /// Runs the quick plan, then lists what it did not build, whether or not the
-/// plan passed.
+/// plan passed. The `--pr` preview comes last, so a PR policy error (such as
+/// a frozen release document) is reported without blocking the local run.
 fn quick(
     root: &Path,
     metadata: &Value,
@@ -173,7 +174,7 @@ fn quick(
     changes: &BTreeSet<String>,
     all: &[Check],
 ) -> Result<()> {
-    let quick = selection::quick(root, metadata, opts, changes, all)?;
+    let quick = selection::quick(root, metadata, changes)?;
     print_plan(opts.mode, changes.len(), &quick.plan);
     let result = if opts.dry_run {
         println!("Dry run only; nothing executed.");
@@ -186,11 +187,14 @@ fn quick(
         for line in &quick.deferred {
             println!("  {line}");
         }
-        match &quick.ci {
-            Some(ids) => println!(
-                "CI checks --pr selects for this change set: {}",
-                ids.join(" ")
-            ),
+        match &opts.base {
+            Some(base) => match selection::pr_ids(root, metadata, base, changes, all) {
+                Ok(ids) => println!(
+                    "CI checks --pr selects for this change set: {}",
+                    ids.join(" ")
+                ),
+                Err(error) => println!("--pr would reject this change set: {error}"),
+            },
             None => println!("Pass --base REF to list the CI checks --pr selects for them."),
         }
     }

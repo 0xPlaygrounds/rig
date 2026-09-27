@@ -22,7 +22,8 @@ signatures, module paths, and feature flags.
   what the edit owns and lists what it leaves to CI.
 - Keep incremental compilation on locally. `CARGO_INCREMENTAL=0` is a CI
   setting for fresh runners; locally it makes every rebuild start over.
-- Use one target directory per worktree.
+- Keep each worktree's own target directory (Cargo's default). A
+  `CARGO_TARGET_DIR` shared by parallel builds makes them wait on one lock.
 - Do not run workspace-wide builds or tests, or the facade with
   `--all-features`, locally unless you are debugging a CI failure.
 - Run anything that takes over a minute in the background with a log.

@@ -515,6 +515,72 @@ fn prioritized_tests_exist() {
     );
 }
 
+/// Every test source that launches a nested Cargo build or trybuild, with the
+/// `local` profile's selector for it: its whole binary, or one test in it by
+/// exact name, so ordinary sibling tests still run.
+const NESTED_CARGO_GUARDS: [(&str, &str, Option<&str>); 12] = [
+    (
+        "crates/rig-core/tests/macro_hygiene.rs",
+        "rig-core::macro_hygiene",
+        None,
+    ),
+    (
+        "tests/tool_facade_features.rs",
+        "rig::tool_facade_features",
+        Some("portable_tool_facade_is_feature_additive"),
+    ),
+    (
+        "crates/rig-reqwest/tests/middleware_features.rs",
+        "rig-reqwest::middleware_features",
+        Some("middleware_clients_are_available_for_each_tls_selector"),
+    ),
+    (
+        "tests/core/agent_run_stepper.rs",
+        "rig::core",
+        Some("core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver"),
+    ),
+    (
+        "crates/rig-derive/tests/dependency_rename.rs",
+        "rig-derive::dependency_rename",
+        Some("generated_paths_follow_cargo_dependency_renames"),
+    ),
+    (
+        "crates/rig-derive/tests/dependency_rename.rs",
+        "rig-derive::dependency_rename",
+        Some("contextual_tool_compiles_with_rig_core_only"),
+    ),
+    (
+        "crates/rig-derive/tests/tool_args.rs",
+        "rig-derive::tool_args",
+        Some("invalid_tool_arguments_are_rejected"),
+    ),
+    (
+        "crates/rig-derive/tests/custom_name.rs",
+        "rig-derive::custom_name",
+        Some("test_custom_name_trybuild_cases"),
+    ),
+    (
+        "crates/rig-derive/tests/serve.rs",
+        "rig-derive::serve",
+        Some("a_type_that_is_not_a_serve_is_told_to_implement_serve"),
+    ),
+    (
+        "crates/rig-derive/tests/embed_attrs.rs",
+        "rig-derive::embed_attrs",
+        Some("conflicting_embed_attributes_are_rejected"),
+    ),
+    (
+        "crates/rig-derive/tests/context_value.rs",
+        "rig-derive::context_value",
+        Some("a_bare_value_is_rejected_with_the_fix_named"),
+    ),
+    (
+        "crates/rig-derive/tests/tool_context.rs",
+        "rig-derive::tool_context",
+        Some("invalid_context_parameters_are_rejected"),
+    ),
+];
+
 #[test]
 fn local_profile_excludes_nested_builds_without_excluding_their_sibling_tests() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
@@ -527,65 +593,70 @@ fn local_profile_excludes_nested_builds_without_excluding_their_sibling_tests() 
         .split("'''")
         .next()
         .unwrap();
-    let guards = [
-        (
-            "tests/tool_facade_features.rs",
-            "portable_tool_facade_is_feature_additive",
-        ),
-        (
-            "crates/rig-reqwest/tests/middleware_features.rs",
-            "middleware_clients_are_available_for_each_tls_selector",
-        ),
-        (
-            "tests/core/agent_run_stepper.rs",
-            "agent_run_is_steppable_without_the_futures_driver",
-        ),
-        (
-            "crates/rig-derive/tests/dependency_rename.rs",
-            "generated_paths_follow_cargo_dependency_renames",
-        ),
-        (
-            "crates/rig-derive/tests/dependency_rename.rs",
-            "contextual_tool_compiles_with_rig_core_only",
-        ),
-        (
-            "crates/rig-derive/tests/tool_args.rs",
-            "invalid_tool_arguments_are_rejected",
-        ),
-        (
-            "crates/rig-derive/tests/custom_name.rs",
-            "test_custom_name_trybuild_cases",
-        ),
-        (
-            "crates/rig-derive/tests/serve.rs",
-            "a_type_that_is_not_a_serve_is_told_to_implement_serve",
-        ),
-        (
-            "crates/rig-derive/tests/embed_attrs.rs",
-            "conflicting_embed_attributes_are_rejected",
-        ),
-        (
-            "crates/rig-derive/tests/context_value.rs",
-            "a_bare_value_is_rejected_with_the_fix_named",
-        ),
-        (
-            "crates/rig-derive/tests/tool_context.rs",
-            "invalid_context_parameters_are_rejected",
-        ),
-    ];
-    let mut selectors = vec![
-        "package(rig-service-tests)".to_owned(),
-        "binary(macro_hygiene)".to_owned(),
-    ];
-    for (path, name) in guards {
-        let source = std::fs::read_to_string(root.join(path)).unwrap();
-        assert!(source.contains(&format!("fn {name}(")), "{path}: {name}");
-        selectors.push(format!("test({name})"));
+    let mut selectors = vec!["package(rig-service-tests)".to_owned()];
+    for (path, binary, test) in NESTED_CARGO_GUARDS {
+        selectors.push(match test {
+            Some(name) => {
+                let source = std::fs::read_to_string(root.join(path)).unwrap();
+                let function = name.rsplit("::").next().unwrap();
+                assert!(
+                    source.contains(&format!("fn {function}(")),
+                    "{path}: {name}"
+                );
+                format!("(binary_id({binary}) & test(={name}))")
+            }
+            None => format!("binary_id({binary})"),
+        });
     }
     // Pin the entire exclusion, not just the presence of names: excluding a
-    // whole derive package or binary would also hide its ordinary unit tests.
-    let compact: String = filter.chars().filter(|c| !c.is_whitespace()).collect();
-    assert_eq!(compact, format!("not({})", selectors.join("|")));
+    // whole derive package or binary would also hide its ordinary unit tests,
+    // and `test()` without `=` matches any test containing the name.
+    let compact = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    assert_eq!(
+        compact(filter),
+        compact(&format!("not({})", selectors.join("|")))
+    );
+}
+
+#[test]
+fn every_nested_cargo_test_source_is_in_the_local_filter() {
+    // A new trybuild case or nested `cargo build|check|run|test` would
+    // otherwise slow the inner loop unnoticed. Resolver-only probes (`cargo
+    // tree`, `cargo metadata`) are cheap and stay in the loop.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let listed: BTreeSet<&str> = NESTED_CARGO_GUARDS.iter().map(|(p, _, _)| *p).collect();
+    let launching: BTreeSet<String> = execute::tracked_inputs(root)
+        .unwrap()
+        .into_iter()
+        .filter(|p| p.ends_with(".rs") && !p.starts_with("xtask/"))
+        .filter(|p| {
+            let Ok(source) = std::fs::read_to_string(root.join(p)) else {
+                return false;
+            };
+            let cargo = [
+                "env!(\"CARGO\")",
+                "var_os(\"CARGO\")",
+                "Command::new(\"cargo\")",
+            ]
+            .iter()
+            .any(|s| source.contains(s));
+            let builds = ["\"build\"", "\"check\"", "\"run\"", "\"test\""]
+                .iter()
+                .any(|s| source.contains(s));
+            source.contains("trybuild::TestCases") || (cargo && builds)
+        })
+        .collect();
+    let unlisted: Vec<_> = launching
+        .iter()
+        .filter(|p| !listed.contains(p.as_str()))
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "add these to the local profile's filter and NESTED_CARGO_GUARDS: {unlisted:?}"
+    );
+    // A stale entry means a guard moved and the filter no longer names it.
+    let stale: Vec<_> = listed.iter().filter(|p| !launching.contains(**p)).collect();
+    assert!(stale.is_empty(), "no longer launches Cargo: {stale:?}");
 }
 
 #[test]
@@ -969,17 +1040,11 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
 }
 
 fn quick(paths: &[&str]) -> selection::Quick {
-    let quick = selection::quick(
-        Path::new("/repo"),
-        &metadata(),
-        &opts("--quick"),
-        &paths.iter().map(|s| (*s).into()).collect(),
-        &checks::all(),
-    )
-    .unwrap();
-    // Whatever the change set, --quick runs cargo check and the local
+    let paths: BTreeSet<String> = paths.iter().map(|s| (*s).into()).collect();
+    let quick = selection::quick(Path::new("/repo"), &metadata(), &paths).unwrap();
+    // Whatever the change set, --quick runs cargo build and the local
     // nextest profile on named packages, never a workspace or all-features
-    // build, and lists the checks --pr selects for the same paths.
+    // build.
     for step in quick.plan.iter().flat_map(|c| &c.steps) {
         assert_eq!(step.program, "cargo");
         assert!(step.args.contains(&"-p".into()), "{step:?}");
@@ -987,14 +1052,25 @@ fn quick(paths: &[&str]) -> selection::Quick {
             assert!(!step.args.contains(&flag.into()), "{step:?}");
         }
         match step.args[0].as_str() {
-            "check" => {}
+            "build" => {}
             "nextest" => assert!(step.args.windows(2).any(|w| w == ["--profile", "local"])),
             other => panic!("unexpected quick step {other}"),
         }
     }
-    let pr: BTreeSet<String> = quick.ci.iter().flatten().cloned().collect();
-    assert_eq!(pr, ids("--pr", paths));
     quick
+}
+
+fn pr_ids(paths: &[&str]) -> BTreeSet<String> {
+    selection::pr_ids(
+        Path::new("/repo"),
+        &metadata(),
+        "HEAD",
+        &paths.iter().map(|s| (*s).into()).collect(),
+        &checks::all(),
+    )
+    .unwrap()
+    .into_iter()
+    .collect()
 }
 
 fn quick_ids(quick: &selection::Quick) -> BTreeSet<String> {
@@ -1010,9 +1086,10 @@ fn quick_checks_a_core_edit_and_lists_its_consumers_for_ci() {
     let q = quick(&["crates/rig-core/src/agent/mod.rs"]);
     assert_eq!(quick_ids(&q), BTreeSet::from(["package-rig-core".into()]));
     let steps = &q.plan[0].steps;
+    // nextest reuses this build's artifacts; a `cargo check` would not.
     assert_eq!(
         steps[0].args,
-        ["check", "--locked", "-p", "rig-core", "--all-targets"]
+        ["build", "--locked", "-p", "rig-core", "--all-targets"]
     );
     assert_eq!(
         steps[1].args,
@@ -1041,6 +1118,8 @@ fn quick_checks_a_core_edit_and_lists_its_consumers_for_ci() {
 fn quick_runs_only_the_edited_provider_target() {
     let q = quick(&["crates/rig-cassette/tests/providers/openai/cassette/x.rs"]);
     assert_eq!(quick_ids(&q), BTreeSet::from(["provider-openai".into()]));
+    // nextest builds exactly this target, so there is no separate build.
+    assert_eq!(q.plan[0].steps.len(), 1);
     for step in &q.plan[0].steps {
         assert!(step.args.windows(2).any(|w| w == ["-p", "rig-cassette"]));
         assert!(step.args.windows(2).any(|w| w == ["--test", "openai"]));
@@ -1076,8 +1155,7 @@ fn quick_never_escalates_on_shared_inputs() {
             [format!("{path}: shared build or verification input")]
         );
         // --pr runs every lane for these; --quick names them instead.
-        let ci = q.ci.unwrap();
-        assert!(ci.contains(&"full-tests".into()), "{path}");
+        assert!(pr_ids(&[path]).contains("full-tests"), "{path}");
     }
 }
 
@@ -1125,16 +1203,83 @@ fn quick_checks_two_unrelated_packages_separately() {
 }
 
 #[test]
-fn quick_without_a_base_lists_no_ci_ids() {
-    let quick = selection::quick(
+fn quick_lists_the_ci_checks_pr_selects() {
+    for paths in [
+        &["crates/rig-core/src/agent/mod.rs"][..],
+        &["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"],
+        &["Cargo.toml", "README.md"],
+    ] {
+        assert_eq!(pr_ids(paths), ids("--pr", paths), "{paths:?}");
+    }
+}
+
+#[test]
+fn quick_names_a_golden_edits_ci_lanes() {
+    let q = quick(&["crates/rig-cassette/fixtures/effects/agent/a.json"]);
+    assert_eq!(
+        quick_ids(&q),
+        BTreeSet::from(["package-rig-cassette".into()])
+    );
+    for lane in ["bus-verification", "ecs-parity", "default-tests"] {
+        assert!(listed(&q, lane), "{lane}");
+    }
+}
+
+#[test]
+fn quick_builds_a_proc_macro_only_as_its_tests_do() {
+    // As a build root it would get the dev profile, and nextest, which builds
+    // it under `build-override`, would compile it and its users again.
+    let mut metadata = metadata();
+    metadata["packages"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "name": "rig-derive",
+            "manifest_path": "/repo/crates/rig-derive/Cargo.toml",
+            "dependencies": [],
+            "targets": [{"name": "rig_derive", "kind": ["proc-macro"]}]
+        }));
+    let q = selection::quick(
         Path::new("/repo"),
-        &metadata(),
-        &Options::parse(vec!["--quick".into()]).unwrap(),
-        &BTreeSet::from(["Cargo.toml".into()]),
-        &checks::all(),
+        &metadata,
+        &BTreeSet::from(["crates/rig-derive/src/lib.rs".into()]),
     )
     .unwrap();
-    assert!(quick.ci.is_none());
+    assert_eq!(
+        q.plan[0].steps[0].args,
+        [
+            "build",
+            "--locked",
+            "-p",
+            "rig-derive",
+            "--tests",
+            "--examples",
+            "--benches"
+        ]
+    );
+}
+
+#[test]
+fn quick_names_a_few_reverse_dependencies_and_counts_the_rest() {
+    let mut metadata = metadata();
+    let packages = metadata["packages"].as_array_mut().unwrap();
+    for i in 0..10 {
+        packages.push(serde_json::json!({
+            "name": format!("dependent-{i:02}"),
+            "manifest_path": format!("/repo/crates/dependent-{i:02}/Cargo.toml"),
+            "dependencies": [{"name": "rig-sqlite"}]
+        }));
+    }
+    let q = selection::quick(
+        Path::new("/repo"),
+        &metadata,
+        &BTreeSet::from(["crates/rig-sqlite/src/lib.rs".into()]),
+    )
+    .unwrap();
+    assert!(listed(
+        &q,
+        "reverse dependencies of rig-sqlite (10): dependent-00, dependent-01, dependent-02, dependent-03, dependent-04, dependent-05, dependent-06, dependent-07 and 2 more"
+    ));
 }
 
 #[test]

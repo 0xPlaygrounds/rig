@@ -61,7 +61,7 @@ usage: cargo xtask <task>
 
 tasks:
   verify --quick [--base REF] [--dry-run]
-                              the inner loop: cargo check and the `local`
+                              the inner loop: cargo build and the `local`
                               nextest profile for the packages and test
                               targets the change set owns; lists what it
                               leaves to CI and never escalates

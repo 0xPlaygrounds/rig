@@ -26,22 +26,24 @@ retries = 0
 
 # The inner loop: skips the service suites (`rig-service-tests`, mostly
 # Docker-backed) and nested-Cargo guards, including trybuild cases. Ordinary
-# tests in the same binaries still run. CI still runs all of them.
+# tests in the same binaries still run. CI still runs all of them. Each guard
+# is named by binary and exact test name, because `test()` alone matches any
+# name containing it; xtask's `NESTED_CARGO_GUARDS` pins this list.
 [profile.local]
 retries = 0
 fail-fast = true
 default-filter = '''not (
     package(rig-service-tests)
-    | binary(macro_hygiene)
-    | test(portable_tool_facade_is_feature_additive)
-    | test(middleware_clients_are_available_for_each_tls_selector)
-    | test(agent_run_is_steppable_without_the_futures_driver)
-    | test(generated_paths_follow_cargo_dependency_renames)
-    | test(contextual_tool_compiles_with_rig_core_only)
-    | test(invalid_tool_arguments_are_rejected)
-    | test(test_custom_name_trybuild_cases)
-    | test(a_type_that_is_not_a_serve_is_told_to_implement_serve)
-    | test(conflicting_embed_attributes_are_rejected)
-    | test(a_bare_value_is_rejected_with_the_fix_named)
-    | test(invalid_context_parameters_are_rejected)
+    | binary_id(rig-core::macro_hygiene)
+    | (binary_id(rig::tool_facade_features) & test(=portable_tool_facade_is_feature_additive))
+    | (binary_id(rig-reqwest::middleware_features) & test(=middleware_clients_are_available_for_each_tls_selector))
+    | (binary_id(rig::core) & test(=core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver))
+    | (binary_id(rig-derive::dependency_rename) & test(=generated_paths_follow_cargo_dependency_renames))
+    | (binary_id(rig-derive::dependency_rename) & test(=contextual_tool_compiles_with_rig_core_only))
+    | (binary_id(rig-derive::tool_args) & test(=invalid_tool_arguments_are_rejected))
+    | (binary_id(rig-derive::custom_name) & test(=test_custom_name_trybuild_cases))
+    | (binary_id(rig-derive::serve) & test(=a_type_that_is_not_a_serve_is_told_to_implement_serve))
+    | (binary_id(rig-derive::embed_attrs) & test(=conflicting_embed_attributes_are_rejected))
+    | (binary_id(rig-derive::context_value) & test(=a_bare_value_is_rejected_with_the_fix_named))
+    | (binary_id(rig-derive::tool_context) & test(=invalid_context_parameters_are_rejected))
 )'''

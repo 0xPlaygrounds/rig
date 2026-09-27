@@ -512,9 +512,10 @@ pub(super) struct Quick {
     /// One line per shared input, unowned path, reverse dependency or feature
     /// set the plan does not build.
     pub(super) deferred: Vec<String>,
-    /// The check ids `--pr` selects for the same change set, given a `--base`.
-    pub(super) ci: Option<Vec<String>>,
 }
+
+/// Reverse dependencies named in a deferred line before the rest are counted.
+const NAMED_DEPENDENTS: usize = 8;
 
 /// The features a quick run enables: a target's `required-features`, or for a
 /// whole package the union over its targets, so `--all-targets` skips none of
@@ -532,13 +533,17 @@ fn required_features(package: &Value, target: Option<&str>) -> BTreeSet<String> 
         .collect()
 }
 
-/// Cargo check, then the `local` nextest profile, for one package (every
-/// target) or one test target. Nothing broader, and never recording.
+/// The `local` nextest profile for one package (every target) or one test
+/// target. Nothing broader, and never recording. A package is first built
+/// with `--all-targets` for the examples and benches nextest does not build;
+/// nextest reuses that build's artifacts, where a `cargo check` would compile
+/// the changed crates a second time.
 fn quick_check(
     id: String,
     package: &str,
     features: &BTreeSet<String>,
     target: Option<&str>,
+    proc_macro: bool,
     reason: &str,
 ) -> Check {
     let mut selection = vec!["-p".to_owned(), package.to_owned()];
@@ -560,29 +565,34 @@ fn quick_check(
             .collect(),
         env: BTreeMap::new(),
     };
-    let all_targets: &[&str] = if target.is_none() {
-        &["--all-targets"]
-    } else {
-        &[]
-    };
+    let mut steps = Vec::new();
+    if target.is_none() {
+        // Built as a root, a proc-macro gets the dev profile; its tests build
+        // it as a host dependency under `build-override`. Building it only as
+        // the tests do keeps one copy, and one of everything that uses it.
+        let targets: &[&str] = if proc_macro {
+            &["--tests", "--examples", "--benches"]
+        } else {
+            &["--all-targets"]
+        };
+        steps.push(cargo(&["build", "--locked"], targets));
+    }
+    // A live-only suite or an example has no test that runs here; that is
+    // not a failure.
+    steps.push(cargo(
+        &[
+            "nextest",
+            "run",
+            "--locked",
+            "--profile",
+            "local",
+            "--no-tests=warn",
+        ],
+        &[],
+    ));
     Check {
         id,
-        steps: vec![
-            cargo(&["check", "--locked"], all_targets),
-            // A live-only suite or an example has no test that runs here;
-            // that is not a failure.
-            cargo(
-                &[
-                    "nextest",
-                    "run",
-                    "--locked",
-                    "--profile",
-                    "local",
-                    "--no-tests=warn",
-                ],
-                &[],
-            ),
-        ],
+        steps,
         reason: reason.into(),
     }
 }
@@ -591,13 +601,7 @@ fn quick_check(
 /// source and cassettes to that provider's test target, with the same helpers
 /// as `--changed`. It never escalates. Shared inputs, unowned paths and
 /// reverse dependencies are listed for CI instead of built.
-pub(super) fn quick(
-    root: &Path,
-    metadata: &Value,
-    opts: &Options,
-    paths: &BTreeSet<String>,
-    all: &[Check],
-) -> Result<Quick> {
+pub(super) fn quick(root: &Path, metadata: &Value, paths: &BTreeSet<String>) -> Result<Quick> {
     let packages = metadata["packages"]
         .as_array()
         .ok_or_else(|| invalid("Cargo metadata missing packages"))?;
@@ -621,6 +625,13 @@ pub(super) fn quick(
         if documentation(path) || path.ends_with(".md") {
             deferred.push(format!("{path}: documentation"));
             continue;
+        }
+        // The owning package's run replays goldens through its own targets;
+        // `--changed` also runs the lanes named here.
+        if path.starts_with("crates/rig-cassette/fixtures/effects/") {
+            deferred.push(format!(
+                "{path}: golden; bus-verification (with the minimal runner), ecs-parity and default-tests (the facade's golden pairing guard) replay it"
+            ));
         }
         if let Some(name) = provider(path)
             && let Some(owner) = provider_owner(packages, name)
@@ -651,11 +662,21 @@ pub(super) fn quick(
     for name in &owned {
         let package = find(name)?;
         let features = required_features(package, None);
+        let proc_macro = package["targets"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|t| {
+                t["kind"]
+                    .as_array()
+                    .is_some_and(|k| k.iter().any(|x| x == "proc-macro"))
+            });
         out.push(quick_check(
             format!("package-{name}"),
             name,
             &features,
             None,
+            proc_macro,
             "package edit: its targets under default and required features",
         ));
         let table = package["features"].as_object();
@@ -684,10 +705,19 @@ pub(super) fn quick(
             .filter(|n| !owned.contains(n))
             .collect();
         if !dependents.is_empty() {
+            let named: Vec<&str> = dependents
+                .iter()
+                .take(NAMED_DEPENDENTS)
+                .map(String::as_str)
+                .collect();
+            let more = match dependents.len() - named.len() {
+                0 => String::new(),
+                rest => format!(" and {rest} more"),
+            };
             deferred.push(format!(
-                "reverse dependencies of {name} ({}): {}",
+                "reverse dependencies of {name} ({}): {}{more}",
                 dependents.len(),
-                dependents.join(", ")
+                named.join(", ")
             ));
         }
     }
@@ -697,7 +727,8 @@ pub(super) fn quick(
             owner,
             &required_features(find(owner)?, Some(name)),
             Some(name),
-            "provider source or cassette: its test target under its required features",
+            false,
+            "provider source, cassette or test target: that target under its required features",
         ));
     }
     if !out.is_empty() {
@@ -706,26 +737,28 @@ pub(super) fn quick(
                 .into(),
         );
     }
-    let ci = match &opts.base {
-        Some(base) if !paths.is_empty() => {
-            let pr = Options {
-                mode: Mode::Pr,
-                base: Some(base.clone()),
-                dry_run: opts.dry_run,
-                check: None,
-            };
-            Some(
-                plan(root, metadata, &pr, paths, all)?
-                    .into_iter()
-                    .map(|c| c.id)
-                    .collect(),
-            )
-        }
-        _ => None,
-    };
     Ok(Quick {
         plan: out,
         deferred,
-        ci,
     })
+}
+
+/// The check ids `--pr --base` selects for the same change set.
+pub(super) fn pr_ids(
+    root: &Path,
+    metadata: &Value,
+    base: &str,
+    paths: &BTreeSet<String>,
+    all: &[Check],
+) -> Result<Vec<String>> {
+    let pr = Options {
+        mode: Mode::Pr,
+        base: Some(base.to_owned()),
+        dry_run: true,
+        check: None,
+    };
+    Ok(plan(root, metadata, &pr, paths, all)?
+        .into_iter()
+        .map(|c| c.id)
+        .collect())
 }

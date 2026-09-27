@@ -72,8 +72,10 @@ failed job's ID. A truncated log is not evidence that later errors are absent.
 
 `--quick` takes the same change set as `--changed` and supports `--dry-run`. It
 maps each changed file to its owning package, or a provider source or cassette
-to that provider's test target. For those alone it runs `cargo check` and then
-`cargo nextest run --profile local`. A package gets its default features plus
+to that provider's test target. For those alone it runs
+`cargo nextest run --profile local`, after a `cargo build` of a package's
+targets so its examples and benches compile too; nextest reuses that build
+rather than compiling the package again. A package gets its default features plus
 every feature its targets require, so no target is skipped; a provider target
 gets its required features. It never escalates. Shared inputs (the same list as
 `--changed` below), documentation, files no package or test target owns
@@ -152,9 +154,9 @@ a failed run.
   sweep, the cross-crate guards (core-all, bus verification, macro hygiene,
   out-of-facade conformance), rig-derive, loom, doctests, docs, clippy, the
   wasm checks with the two native-only diagnostics, and the wasm test suites.
-  - Apart from the release-document freeze (a shell script), every job is
-    checkout, `.github/actions/rust-setup`, a job-level rust-cache where a
-    warm entry exists, and one or more `cargo xtask verify --check` steps.
+  Apart from the release-document freeze (a shell script) every job is
+  checkout, `.github/actions/rust-setup`, a job-level rust-cache where a warm
+  entry exists, and one or more `cargo xtask verify --check` steps.
 - `slow.yaml`: a plan job runs `verify --lanes` on PRs and gates the
   all-features run and the dependency floors on its answer; the merge queue,
   the 06:00 UTC schedule, manual dispatch and the release gate run both.
@@ -162,84 +164,65 @@ a failed run.
 - `cache-warm.yaml`: on trusted pushes, compiles the default/bedrock test
   graph (`default-test-build`, development base only) and the all-features
   test graph (`full-test-build`, shared key `all-features`, both branches)
-  with nextest `--no-run`, executing nothing.
-  - Only pushes save caches; PRs restore their base branch's entries.
-  - rust-cache runs at job level everywhere so a failed or cancelled job
-    saves nothing, and warms are never cancelled mid-build.
+  with nextest `--no-run`, executing nothing. Only pushes save caches; PRs
+  restore their base branch's entries. rust-cache runs at job level
+  everywhere so a failed or cancelled job saves nothing, and warms are never
+  cancelled mid-build.
 
-Where the tests live:
+Every cassette-backed test source lives in `crates/rig-cassette`: the provider
+targets, the ECS/corpus parity cells inside them, the cache-prefix guard, and
+the verification targets `verify` and `world_replay`, and the effect-log and
+runtime-adapter library regressions. The unpublished `rig-cassette-minimal`
+runner in `tests/minimal/Cargo.toml` shares those verification entrypoints and
+the effect-log/classic-replay regression sources. It enables only cassette's
+`agent,ecs` features, without native HTTP, the facade or provider helpers.
+The facade keeps live-only provider suites, `core`, feature guards and
+integrations; it re-exports cassette's logs and enables its classic adapter
+with the facade's `agent` feature. Both runtimes remain free of normal
+dependencies on the concrete cassette/log implementation.
 
-- Every cassette-backed test source lives in `crates/rig-cassette`: the
-  provider targets, the ECS/corpus parity cells inside them, the cache-prefix
-  guard, the verification targets `verify` and `world_replay`, and the
-  effect-log and runtime-adapter library regressions.
-- The unpublished `rig-cassette-minimal` runner in `tests/minimal/Cargo.toml`
-  shares those verification entrypoints and the effect-log/classic-replay
-  regression sources. It enables only cassette's `agent,ecs` features, without
-  native HTTP, the facade or provider helpers.
-- The facade keeps live-only provider suites, `core`, feature guards and
-  integrations. It re-exports cassette's logs and enables its classic adapter
-  with the facade's `agent` feature.
-- Both runtimes remain free of normal dependencies on the concrete cassette/log
-  implementation.
+The default sweep excludes the parity cells and the two verification targets;
+the cassette library's own tests and every provider target stay in it.
+`ecs-parity` owns the parity cells (both configurations, including the
+extracted ECS helper regressions in `rig-test-support`), the golden pairing
+guard that stayed in the facade's `core` target, and the separate
+`world_replay` target; `bus-verification` owns `verify` and the minimal
+`effect_log` regression target. `core-all` retains the migrated classic replay
+unit tests under its all-features graph. Provider parity excludes the
+two verification binaries from the `corpus_`/`ecs_` pattern, whose module names
+would otherwise match. The standalone parity filter also explicitly includes
+the extracted `rig-test-support` regressions. Minimal verification executions
+select `package(rig-cassette-minimal)`; their `serde_json` graph has neither
+`preserve_order` nor `float_roundtrip`, unlike the unified executions through
+`rig-cassette`. The dependency-graph guard checks the resolved features of the
+packages selected by the CI commands, not just their names. Default-member
+executions and standalone parity retain two retries; minimal verification
+retains zero. The minimal runner is outside default-members and excluded from
+`full-tests`, where its shared sources already execute through `rig-cassette`.
+Shared sources under cassette's `tests/`, `src/effect_log/` and
+`src/agent/replay*` also select the minimal runner in changed-file plans.
+`wasm-rig-cassette` builds the minimal library and the independently enabled
+`agent`, `ecs` and combined integrations; the HTTP engine is native-only.
+The wasm and loom checks retain their distinct configuration coverage even
+when test names overlap. The standalone default-feature type check selects both the
+facade and `rig-test-support`, so extracted helper regression bodies still
+compile there. A `provider-<name>` check is planned against whichever package
+declares that target.
 
-Which check owns which tests:
-
-- The default sweep excludes the parity cells and the two verification
-  targets. The cassette library's own tests and every provider target stay in
-  it.
-- `ecs-parity` owns the parity cells (both configurations, including the
-  extracted ECS helper regressions in `rig-test-support`), the golden pairing
-  guard that stayed in the facade's `core` target, and the separate
-  `world_replay` target.
-- `bus-verification` owns `verify` and the minimal `effect_log` regression
-  target.
-- `core-all` retains the migrated classic replay unit tests under its
-  all-features graph.
-- `wasm-rig-cassette` builds the minimal library and the independently enabled
-  `agent`, `ecs` and combined integrations; the HTTP engine is native-only.
-- The wasm and loom checks retain their distinct configuration coverage even
-  when test names overlap.
-- The standalone default-feature type check selects both the facade and
-  `rig-test-support`, so extracted helper regression bodies still compile
-  there.
-- A `provider-<name>` check is planned against whichever package declares that
-  target.
-
-Filters, graphs and retries:
-
-- Provider parity excludes the two verification binaries from the
-  `corpus_`/`ecs_` pattern, whose module names would otherwise match.
-- The standalone parity filter also explicitly includes the extracted
-  `rig-test-support` regressions.
-- Minimal verification executions select `package(rig-cassette-minimal)`.
-  Their `serde_json` graph has neither `preserve_order` nor `float_roundtrip`,
-  unlike the unified executions through `rig-cassette`.
-- The dependency-graph guard checks the resolved features of the packages
-  selected by the CI commands, not just their names.
-- Default-member executions and standalone parity retain two retries; minimal
-  verification retains zero.
-- The minimal runner is outside default-members and excluded from
-  `full-tests`, where its shared sources already execute through
-  `rig-cassette`.
-- Shared sources under cassette's `tests/`, `src/effect_log/` and
-  `src/agent/replay*` also select the minimal runner in changed-file plans.
-
-Secrets:
-
-- Tokens are read-only except release-plz.
-- No job receives provider secrets: cassettes replay with a dummy key and live
-  tests are `#[ignore]`.
+Tokens are read-only except release-plz. No job receives provider secrets:
+cassettes replay with a dummy key and live tests are `#[ignore]`.
 
 ## Adding a check
 
 Add it to `checks::all()` with a stable id, decide which selection rule owns
 it in `selection.rs` (or leave it in the fast set every `--pr` runs), add a
 `cargo xtask verify --check <id>` step to the matching ci.yaml job, and update
-the tests in `xtask/src/verify/tests.rs` that pin ids and lanes. Checks that
-shell out to a nested Cargo build belong in the `local` profile's filter.
-The slowest guards (facade feature forwarding and macro hygiene) also get a
-nextest priority so they start first in CI.
+the tests in `xtask/src/verify/tests.rs` that pin ids and lanes. A test that
+shells out to a nested Cargo build or uses trybuild belongs in the `local`
+profile's filter and in `NESTED_CARGO_GUARDS` in `xtask/src/verify/tests.rs`,
+which fails on a source it does not list. The slowest guards (facade feature
+forwarding and macro hygiene) also get a nextest priority so they start first
+in CI.
 
 ## PR completion
 
