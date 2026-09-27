@@ -2458,9 +2458,10 @@ pub fn read_turn(
                 .finish_reason()
                 .filter(|reason| reason.truncated_output())
         {
+            // Reads as the classic agent reports the same turn.
             let report = rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Response,
-                reason.no_answer_message(),
+                format!("ResponseError: {}", reason.no_answer_message()),
             );
             commands.entity(run).end(Failed(Failure::Provider(report)));
             continue;

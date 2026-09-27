@@ -17,7 +17,6 @@ use crate::{
     completion::{PromptError, Usage},
     streaming::{Delta, StreamEvent},
 };
-use rig_core::error::{ErrorKind, RigError};
 use rig_core::wasm_compat::WasmCompatSend;
 
 /// One chat turn against caller-owned history, as the CLI chatbot drives it.
@@ -243,10 +242,9 @@ where
         loop {
             print!("> ");
             stdout.flush().map_err(|e| {
-                PromptError::Failed(RigError::new(
-                    ErrorKind::Response,
-                    format!("failed to flush stdout: {e}"),
-                ))
+                PromptError::Failed(crate::failure::response(format!(
+                    "failed to flush stdout: {e}"
+                )))
             })?;
 
             let mut input = String::new();

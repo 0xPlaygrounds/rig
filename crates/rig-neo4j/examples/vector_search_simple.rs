@@ -6,7 +6,6 @@
 //! 3. Creates a vector index on the embeddings
 //! 4. Queries the vector index
 //! 5. Returns the results
-use std::env;
 
 use futures::{StreamExt, TryStreamExt};
 use rig_core::RigError;
@@ -31,9 +30,9 @@ async fn main() -> Result<(), RigError> {
     let openai_client = OpenAI::from_env()?;
 
     // Initialize Neo4j client
-    let neo4j_uri = env::var("NEO4J_URI").map_err(RigError::other)?;
-    let neo4j_username = env::var("NEO4J_USERNAME").map_err(RigError::other)?;
-    let neo4j_password = env::var("NEO4J_PASSWORD").map_err(RigError::other)?;
+    let neo4j_uri = rig_core::client::env::required("NEO4J_URI")?;
+    let neo4j_username = rig_core::client::env::required("NEO4J_USERNAME")?;
+    let neo4j_password = rig_core::client::env::required("NEO4J_PASSWORD")?;
 
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 

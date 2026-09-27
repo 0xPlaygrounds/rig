@@ -711,7 +711,9 @@ impl ToolServerHandle {
 
             futures::future::try_join_all(search_futures)
                 .await
-                .map_err(|error| ToolServerError::DefinitionError(RigError::from(error)))?
+                .map_err(|error| {
+                    ToolServerError::DefinitionError(crate::failure::request_caused_by(error))
+                })?
                 .into_iter()
                 .flatten()
                 .collect::<Vec<String>>()

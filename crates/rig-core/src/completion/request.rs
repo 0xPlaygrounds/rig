@@ -10,7 +10,7 @@
 //! ```
 
 use super::message::{AssistantContent, DocumentMediaType, Reasoning, ReasoningContent, ToolCall};
-use crate::error::{ErrorKind, RigError};
+use crate::error::RigError;
 use crate::message::ToolChoice;
 use crate::{
     json_utils,
@@ -518,20 +518,16 @@ impl CompletionRequest {
     /// here.
     pub fn validate_message_content(&self) -> Result<(), RigError> {
         if self.chat_history.is_empty() {
-            return Err(RigError::new(
-                ErrorKind::Request,
+            return Err(RigError::request_failure(
                 "request has an empty chat history; providers require at least one message",
             ));
         }
 
         let empty_message = |role: &str, index: usize| {
-            RigError::new(
-                ErrorKind::Request,
-                format!(
-                    "{role} message at index {index} has no content; \
+            RigError::request_failure(format!(
+                "{role} message at index {index} has no content; \
                      providers reject empty content blocks"
-                ),
-            )
+            ))
         };
 
         for (index, message) in self.chat_history.iter().enumerate() {
@@ -553,14 +549,11 @@ impl CompletionRequest {
                         match item {
                             UserContent::ToolResult(result) if result.content.is_empty() => {
                                 let name = &result.name;
-                                return Err(RigError::new(
-                                    ErrorKind::Request,
-                                    format!(
-                                        "tool result for `{name}` at index {position} of the \
+                                return Err(RigError::request_failure(format!(
+                                    "tool result for `{name}` at index {position} of the \
                                          user message at index {index} has no content; \
                                          providers reject empty content blocks"
-                                    ),
-                                ));
+                                )));
                             }
                             UserContent::ToolResult(_)
                             | UserContent::Text(_)

@@ -132,8 +132,7 @@ pub(crate) trait TurnSource: WasmCompatSend {
 /// truncation, never a successful zero-usage completion, and a truncated
 /// stream has no document to record a completion call from.
 fn truncated_stream_error() -> RigError {
-    RigError::new(
-        ErrorKind::Response,
+    crate::failure::response(
         "provider stream ended without a terminal record; treating the turn as truncated",
     )
 }
@@ -422,10 +421,7 @@ where
                     }
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
-                        let err = StreamingError::Failed(RigError::new(
-                            ErrorKind::Response,
-                            "agent requested tool execution without a prepared registry snapshot",
-                        ));
+                        let err = StreamingError::Failed(crate::failure::response("agent requested tool execution without a prepared registry snapshot"));
                         settle_error!(err);
                         yield Err(err);
                         break 'outer;
@@ -690,10 +686,7 @@ where
         for slot in collected {
             let Some(CollectedToolResult { content, block_id, surface }) = slot else {
                 yield Err(StreamingError::Failed(
-                    RigError::new(
-                        ErrorKind::Response,
-                        "tool execution finished without producing every result",
-                    ),
+                    crate::failure::response("tool execution finished without producing every result"),
                 ));
                 return;
             };
@@ -934,10 +927,7 @@ impl TurnSource for StreamingTurnSource {
                             );
                             if provider_final_seen && visible_content {
                                 yield Err(StreamingError::Failed(
-                                    RigError::new(
-                                        ErrorKind::Response,
-                                        "provider stream emitted visible assistant content after its final response",
-                                    ),
+                                    crate::failure::response("provider stream emitted visible assistant content after its final response"),
                                 ));
                                 return;
                             }
@@ -997,9 +987,7 @@ impl TurnSource for StreamingTurnSource {
                             {
                                 let Some(aggregated) = assembler.aggregated_reasoning(id) else {
                                     yield Err(StreamingError::Failed(
-                                        RigError::new(ErrorKind::Response, format!(
-                                            "reasoning delta `{id}` was ingested without a pending aggregate"
-                                        )),
+                                        crate::failure::response(format!("reasoning delta `{id}` was ingested without a pending aggregate")),
                                     ));
                                     return;
                                 };

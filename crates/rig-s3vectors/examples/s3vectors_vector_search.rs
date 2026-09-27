@@ -8,7 +8,6 @@ use rig_core::error::ErrorKind;
 use rig_core::providers::openai::{self, OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreIndex};
-use std::env;
 
 const BUCKET_NAME: &str = "foo_bucket";
 const INDEX_NAME: &str = "foo_index";
@@ -22,8 +21,8 @@ struct Word {
 
 #[tokio::main]
 async fn main() -> Result<(), RigError> {
-    let access_key_id = env::var("AWS_ACCESS_KEY_ID").map_err(RigError::other)?;
-    let secret_access_key = env::var("AWS_SECRET_ACCESS_KEY").map_err(RigError::other)?;
+    let access_key_id = rig_core::client::env::required("AWS_ACCESS_KEY_ID")?;
+    let secret_access_key = rig_core::client::env::required("AWS_SECRET_ACCESS_KEY")?;
 
     let credentials = Credentials::new(access_key_id, secret_access_key, None, None, "test");
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");

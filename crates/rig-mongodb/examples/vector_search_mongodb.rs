@@ -6,7 +6,6 @@ use mongodb::{
 use rig_core::{providers::openai, vector_store::request::VectorSearchRequest};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
-use std::env;
 
 use rig_core::RigError;
 use rig_core::{
@@ -52,8 +51,7 @@ async fn main() -> Result<(), RigError> {
     let openai_client = OpenAI::from_env()?;
 
     // Initialize MongoDB client
-    let mongodb_connection_string =
-        env::var("MONGODB_CONNECTION_STRING").map_err(RigError::other)?;
+    let mongodb_connection_string = rig_core::client::env::required("MONGODB_CONNECTION_STRING")?;
     let options = ClientOptions::parse(mongodb_connection_string)
         .await
         .map_err(RigError::other)?;

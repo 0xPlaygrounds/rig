@@ -269,6 +269,18 @@ impl RigError {
         Self::classified(ErrorKind::Other, &error)
     }
 
+    /// A request rig will not send, reported as a wire's request failure
+    /// with `message` is.
+    pub(crate) fn request_failure(message: impl Into<String>) -> Self {
+        Self::from(ProviderError::Request(message.into().into()))
+    }
+
+    /// A reply rig cannot use, reported as a wire's response failure with
+    /// `message` is.
+    pub(crate) fn response_failure(message: impl Into<String>) -> Self {
+        Self::from(ProviderError::Response(message.into()))
+    }
+
     /// A report of `kind` for `error`: its `Display` as the message and its
     /// sources as the chain, not retryable.
     pub(crate) fn classified(kind: ErrorKind, error: &dyn std::error::Error) -> Self {

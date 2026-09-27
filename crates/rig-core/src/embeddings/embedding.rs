@@ -12,7 +12,7 @@
 //! ```
 
 use crate::completion::{ResponseIdentity, Usage};
-use crate::error::{ErrorKind, RigError};
+use crate::error::RigError;
 use serde::{Deserialize, Serialize};
 
 impl<W, T> crate::driver::Model<W, T>
@@ -37,10 +37,7 @@ impl crate::driver::DynModel<crate::operation::Embedding> {
 fn last_embedding(response: EmbeddingResponse) -> Result<Embedding, RigError> {
     let mut embeddings = response.embeddings;
     embeddings.pop().ok_or_else(|| {
-        RigError::new(
-            ErrorKind::Response,
-            "embedding provider returned an empty response for embed_text",
-        )
+        RigError::response_failure("embedding provider returned an empty response for embed_text")
     })
 }
 

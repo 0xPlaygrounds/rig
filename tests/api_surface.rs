@@ -273,7 +273,13 @@ async fn a_failed_stream_ends_with_its_partial_response() -> Result<(), RigError
         relayed.is_err_and(|error| error.kind == ErrorKind::Response),
         "the relayed truncation",
     )?;
-    ensure(kept.len() == 1, "the relayed partial answer is kept")?;
+    ensure(
+        matches!(
+            kept.last(),
+            Some(Message::Assistant { content, .. }) if content.len() == 1
+        ),
+        "the relayed partial answer holds the text that ended",
+    )?;
 
     let mut history = Vec::new();
     let Err(error) = tell_a_story(&model, &mut history).await else {

@@ -5,8 +5,6 @@
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
 
-use std::env;
-
 use rig_core::{
     providers::openai::{self, OpenAI},
     vector_store::{
@@ -36,12 +34,12 @@ const INDEX_NAME: &str = "moviePlots";
 #[tokio::main]
 async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
-    let openai_api_key = env::var("OPENAI_API_KEY").map_err(RigError::other)?;
+    let openai_api_key = rig_core::client::env::required("OPENAI_API_KEY")?;
     let openai_client = OpenAI::new(&openai_api_key);
 
-    let neo4j_uri = env::var("NEO4J_URI").map_err(RigError::other)?;
-    let neo4j_username = env::var("NEO4J_USERNAME").map_err(RigError::other)?;
-    let neo4j_password = env::var("NEO4J_PASSWORD").map_err(RigError::other)?;
+    let neo4j_uri = rig_core::client::env::required("NEO4J_URI")?;
+    let neo4j_username = rig_core::client::env::required("NEO4J_USERNAME")?;
+    let neo4j_password = rig_core::client::env::required("NEO4J_PASSWORD")?;
 
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
@@ -154,7 +152,7 @@ async fn main() -> Result<(), RigError> {
 }
 
 async fn import_batch(graph: &Graph, nodes: &[Movie], batch_n: i32) -> Result<(), RigError> {
-    let openai_api_key = env::var("OPENAI_API_KEY").map_err(RigError::other)?;
+    let openai_api_key = rig_core::client::env::required("OPENAI_API_KEY")?;
     let to_encode_list: Vec<String> = nodes
         .iter()
         .map(|node| {

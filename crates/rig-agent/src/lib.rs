@@ -44,6 +44,7 @@ pub mod agent;
 pub mod bus;
 pub mod completion;
 pub mod extractor;
+pub(crate) mod failure;
 /// Ready-made integrations: the CLI chatbot.
 pub mod integrations;
 pub(crate) use rig_core::json_utils;

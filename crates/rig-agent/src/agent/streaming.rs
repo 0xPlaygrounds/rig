@@ -6,7 +6,7 @@
 //! # }
 //! ```
 
-use rig_core::error::{ErrorKind, RigError};
+use rig_core::error::RigError;
 use rig_core::streaming::BlockId;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
@@ -525,8 +525,7 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::Failed(RigError::new(
-                    ErrorKind::Response,
+                PromptError::Failed(crate::failure::response(
                     "agent run ended without producing a final response",
                 ))
             })

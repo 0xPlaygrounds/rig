@@ -23,7 +23,7 @@ use crate::{
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
-use rig_core::error::{ErrorKind, RigError};
+use rig_core::error::RigError;
 use rig_core::id::ConversationId;
 
 use super::drive::AgentBus;
@@ -97,10 +97,7 @@ pub(crate) async fn build_prepared_completion_request(
             other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
         })
         .map_err(|report| {
-            RigError::new(
-                ErrorKind::Request,
-                format!("Failed to get tool definitions: {report}"),
-            )
+            crate::failure::request(format!("Failed to get tool definitions: {report}"))
         })?;
         dynamic_tool_ids.extend(ids);
     }

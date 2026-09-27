@@ -19,7 +19,7 @@ use std::{cmp::max, ops::Range};
 use futures::{StreamExt, stream};
 
 use crate::driver::DynModel;
-use crate::error::{ErrorKind, RigError};
+use crate::error::RigError;
 use crate::operation::Embedding as EmbeddingOp;
 use crate::{
     completion::Usage,
@@ -155,14 +155,11 @@ where
 
         for (index, (doc, span)) in docs.into_iter().zip(spans).enumerate() {
             if span.is_empty() {
-                return Err(RigError::new(
-                    ErrorKind::Response,
-                    format!(
-                        "document {index} produced no text to embed, so it has no \
+                return Err(RigError::response_failure(format!(
+                    "document {index} produced no text to embed, so it has no \
                      embeddings to return; an empty collection in an `#[embed]` \
                      field embeds nothing"
-                    ),
-                ));
+                )));
             }
 
             // Missing slots identify short provider responses without silently
@@ -172,17 +169,14 @@ where
                 .take(span.len())
                 .collect::<Option<Vec<Embedding>>>()
                 .ok_or_else(|| {
-                    RigError::new(
-                        ErrorKind::Response,
-                        format!(
-                            "provider returned fewer embeddings than texts sent: \
+                    RigError::response_failure(format!(
+                        "provider returned fewer embeddings than texts sent: \
                          document {index} is missing at least one of its {} texts \
                          (slots {}..{} of {total_texts})",
-                            span.len(),
-                            span.start,
-                            span.end
-                        ),
-                    )
+                        span.len(),
+                        span.start,
+                        span.end
+                    ))
                 })?;
 
             result.push((doc, embeddings));

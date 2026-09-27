@@ -6,7 +6,6 @@ use rig::{
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
-use std::env;
 
 // Define a knowledge base entry for our vector store
 #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
@@ -26,7 +25,7 @@ async fn main() -> Result<(), RigError> {
         .init();
 
     // Create the Anthropic provider
-    let anthropic_api_key = env::var("ANTHROPIC_API_KEY").map_err(RigError::other)?;
+    let anthropic_api_key = rig::client::env::required("ANTHROPIC_API_KEY")?;
     let anthropic_client = Anthropic::new(&anthropic_api_key);
 
     // Create the embedding model for our vector store

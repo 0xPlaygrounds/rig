@@ -34,7 +34,6 @@ use crate::{
 };
 
 use super::UNKNOWN_AGENT_NAME;
-use rig_core::error::{ErrorKind, RigError};
 
 /// A hook-aware driver over [`AgentRun`].
 ///
@@ -580,8 +579,7 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::Failed(RigError::new(
-                    ErrorKind::Response,
+                PromptError::Failed(crate::failure::response(
                     "agent run ended without producing a final response",
                 ))
             })
