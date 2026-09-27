@@ -584,8 +584,8 @@ fn typed_thinking_and_effort_serialize_to_the_documented_wire_values() {
 // for a turn that answers a `tool_result` on Claude Opus 5.5 and Fable 5.1: a
 // reasoning block, then a progress-update block, then the `tool_use` it
 // introduces. Under `display: "omitted"` both thinking blocks are empty; under
-// `"updates"` the progress update carries text. No Opus 5.5 recording exists
-// in the corpus yet, so these are fixtures rather than cassettes.
+// `"updates"` the progress update carries text. The recorded Opus 5.5 stream
+// returned no progress-update block, so these shapes are fixtures.
 // Source: <https://platform.claude.com/docs/en/build-with-claude/thinking#progress-updates>
 
 const PROGRESS_UPDATE_TEXT: &str = "Confirmed the retry path never refreshes the expired token. Editing auth.py to add the refresh call.";
@@ -745,4 +745,40 @@ fn progress_update_blocks_survive_decoding_and_replay_under_every_display() {
             );
         }
     }
+}
+
+#[test]
+fn a_forced_tool_choice_in_additional_params_fails_to_encode_too() {
+    use crate::providers::anthropic::completion::{CLAUDE_OPUS_5, CLAUDE_OPUS_5_5};
+
+    for raw in [
+        serde_json::json!({"tool_choice": {"type": "any"}}),
+        serde_json::json!({"tool_choice": {"type": "tool", "name": "lookup"}}),
+    ] {
+        let mut forced = request_with_tool_choice(crate::message::ToolChoice::Auto);
+        forced.tool_choice = None;
+        forced.additional_params = Some(raw.clone());
+        let wire = AnthropicConfig::new("sk-test").completion(CLAUDE_OPUS_5_5);
+        assert!(encoded_for(&wire, forced.clone()).is_err(), "{raw}");
+        let accepting = AnthropicConfig::new("sk-test").completion(CLAUDE_OPUS_5);
+        assert!(encoded_for(&accepting, forced).is_ok(), "{raw}");
+    }
+}
+
+/// A Messages-format gateway may accept thinking and effort values Anthropic
+/// does not document, so only Anthropic's own dialect checks them.
+#[test]
+fn gateways_pass_thinking_and_effort_through_unchecked() {
+    let mut request = request();
+    request.additional_params = Some(serde_json::json!({
+        "thinking": {"type": "enabled"},
+        "output_config": {"effort": "turbo"}
+    }));
+    let gateway = AnthropicConfig::with_dialect("sk-test", &ZAI).completion("glm-5");
+    let body = body_of(&encoded_for(&gateway, request.clone()).expect("a gateway passes through"));
+    assert_eq!(body["thinking"], serde_json::json!({"type": "enabled"}));
+    assert_eq!(body["output_config"]["effort"], "turbo");
+
+    let anthropic = AnthropicConfig::new("sk-test").completion("claude-opus-5-5");
+    assert!(encoded_for(&anthropic, request).is_err());
 }

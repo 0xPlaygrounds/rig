@@ -494,8 +494,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             crate::providers::anthropic::wire::strict_tool_transform
                 as fn(&mut crate::providers::anthropic::completion::ToolDefinition),
         ),
-        None,
-        None,
+        ReasoningSettings::default(),
     )
     .unwrap();
 

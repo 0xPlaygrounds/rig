@@ -1517,8 +1517,8 @@ pub struct AdditionalParameters {
     /// A stable cache routing key for prompt caching.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<String>,
-    /// Prompt cache retention policy (`in_memory` or `24h`) for models before
-    /// GPT-5.6. GPT-5.6 and later, GPT-6 included, take
+    /// Prompt cache retention policy for models before GPT-5.6: `in_memory`
+    /// or `24h`, depending on the model. GPT-5.6 and later, GPT-6 included, take
     /// [`Self::prompt_cache_options`] instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_retention: Option<String>,

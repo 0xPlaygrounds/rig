@@ -73,11 +73,14 @@ pub(crate) enum OpenAiEndpoint {
     Responses,
 }
 
-/// Reject a GPT-6 request body the API would refuse. Every GPT-6 model
-/// reasons by default, so unless the body sets effort `none`, it must not
-/// carry `temperature`, `top_p` or `top_logprobs` (nor `logprobs` on Chat
-/// Completions). On Chat Completions, GPT-6 Astra cannot carry tools and
-/// GPT-6 Sol and Luna carry them only at effort `none`. Other models pass.
+/// Reject a GPT-6 request body the API would refuse for its sampling
+/// parameters or its tools. Every GPT-6 model reasons by default, so unless
+/// the body sets effort `none`, it must not carry `temperature`, `top_p` or
+/// `top_logprobs` (nor `logprobs` on Chat Completions; Rig's Responses
+/// `include` cannot ask for output logprobs). On Chat Completions, GPT-6
+/// Astra cannot carry tools and GPT-6 Sol and Luna carry them only at effort
+/// `none`. Any dialect addressing these exact IDs is checked; other models
+/// pass.
 pub(crate) fn check_gpt_6_request(
     body: &serde_json::Value,
     endpoint: OpenAiEndpoint,

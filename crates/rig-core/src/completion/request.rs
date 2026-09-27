@@ -444,14 +444,15 @@ impl AddAssign for Usage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     /// Whether native structured output can remain enabled with tool calls
-    /// without suppressing them. A wire that sets this also supports native
-    /// structured output on its own. Defaults to `false`.
+    /// without suppressing them. Defaults to `false`. When a forced tool
+    /// choice is unavailable, `rig-agent` takes `true` as the signal to ask
+    /// for native output instead.
     pub composes_native_output_with_tools: bool,
     /// Whether the model accepts a forced tool choice
     /// ([`ToolChoice::Required`] or [`ToolChoice::Specific`]). A wire whose
-    /// model rejects one fails to encode such a request, and runtimes that
-    /// force the structured-output tool fall back to native output or `auto`.
-    /// Defaults to `true`.
+    /// model rejects one fails to encode such a request. The `rig-agent`
+    /// extractor, which forces its own output tool, falls back to native
+    /// output or `auto`. Defaults to `true`.
     #[serde(
         default = "crate::json_utils::default_true",
         skip_serializing_if = "crate::json_utils::is_true"

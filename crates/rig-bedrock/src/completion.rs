@@ -75,11 +75,11 @@ pub const ANTHROPIC_CLAUDE_OPUS_5_5: &str = "us.anthropic.claude-opus-5-5";
 /// always on and forced tool choice is rejected.
 pub const ANTHROPIC_CLAUDE_FABLE_5_1: &str = "us.anthropic.claude-fable-5-1";
 
-/// Claude model and inference-profile IDs that reject a forced tool choice,
-/// exactly as the Bedrock model cards list them for `bedrock-runtime`.
-/// Sources: <https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html>,
-/// `model-card-anthropic-claude-fable-5-1.html` and
-/// `model-card-anthropic-claude-mythos-5-1.html`.
+/// Claude model and inference-profile IDs that reject a forced tool choice.
+/// The models are those Anthropic names at
+/// <https://platform.claude.com/docs/en/build-with-claude/thinking#response-prefill-and-forced-tool-use>;
+/// the IDs are the `bedrock-runtime` IDs their Bedrock model cards list, such
+/// as <https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html>.
 const REJECTS_FORCED_TOOL_CHOICE: &[&str] = &[
     "anthropic.claude-opus-5-5",
     "us.anthropic.claude-opus-5-5",

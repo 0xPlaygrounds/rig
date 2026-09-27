@@ -2055,6 +2055,17 @@ mod gpt_6 {
     }
 
     #[test]
+    fn gpt_6_chat_requests_use_the_reasoning_output_cap() {
+        for model in [GPT_6_ASTRA, GPT_6_SOL, GPT_6_LUNA] {
+            let mut capped = request(Some(json!({"reasoning_effort": "none"})));
+            capped.max_tokens = Some(256);
+            let body = body(&chat(model, capped).expect("encodes"));
+            assert_eq!(body["max_completion_tokens"], json!(256), "{model}");
+            assert_eq!(body.get("max_tokens"), None, "{model}");
+        }
+    }
+
+    #[test]
     fn other_models_are_not_checked() {
         for model in ["gpt-5.6-sol", "gpt-6", "gpt-6-sol-mini", "openai/gpt-6-sol"] {
             let mut sampled = with_tool(request(None));

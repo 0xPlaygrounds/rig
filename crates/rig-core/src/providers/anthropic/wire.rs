@@ -24,7 +24,7 @@ use crate::wire::{
 use serde::{Deserialize, Serialize};
 
 use super::completion::{
-    AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, Effort,
+    AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, Effort, ReasoningSettings,
     THINKING_DISPLAY_UPDATES_BETA, Thinking, ToolDefinition, accepts_forced_tool_choice,
     default_max_tokens_for_model, sanitize_strict_tool_schema,
 };
@@ -535,8 +535,11 @@ impl Messages {
             },
             (self.strict_tools && self.provider.dialect.quirks.strict_tool_schemas)
                 .then_some(strict_tool_transform as fn(&mut ToolDefinition)),
-            self.thinking.as_ref(),
-            self.effort,
+            ReasoningSettings {
+                thinking: self.thinking.as_ref(),
+                effort: self.effort,
+                validate: self.provider.dialect.name == ANTHROPIC.name,
+            },
         )?;
         let mut body = serde_json::to_value(&typed)?;
         if mode == Mode::Unary {

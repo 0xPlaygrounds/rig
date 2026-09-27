@@ -20,8 +20,9 @@ use std::{convert::Infallible, str::FromStr};
 ///
 /// Adaptive thinking is always on: `thinking` `disabled` or `enabled` is
 /// rejected by the API, so control depth with [`Effort`] (default `high`).
-/// Forced tool choice is rejected, and replayed thinking blocks are bound to
-/// the prompt prefix before them.
+/// Forced tool choice is rejected, text between tool calls arrives as
+/// `thinking` blocks, and replayed thinking blocks are bound to the prompt
+/// prefix before them.
 pub const CLAUDE_FABLE_5_1: &str = "claude-fable-5-1";
 /// `claude-fable-5` completion model
 pub const CLAUDE_FABLE_5: &str = "claude-fable-5";
@@ -1661,12 +1662,15 @@ impl Thinking {
     }
 }
 
-/// The `output_config` keys Rig validates. Other keys pass through unchanged.
-#[derive(Deserialize)]
-struct OutputConfigCheck {
-    #[serde(default)]
-    #[allow(dead_code)]
-    effort: Option<Effort>,
+/// The wire's `thinking` and `effort` defaults, and whether request values
+/// are checked against the types Anthropic documents. Gateways speaking the
+/// Messages format may accept other values, so only Anthropic's own dialect
+/// checks.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct ReasoningSettings<'a> {
+    pub(super) thinking: Option<&'a Thinking>,
+    pub(super) effort: Option<Effort>,
+    pub(super) validate: bool,
 }
 
 /// Output format specifier for Anthropic's structured output.
@@ -1700,11 +1704,12 @@ fn take_object_param(
 
 /// Merge the wire's `thinking` default with `additional_params.thinking`.
 /// Request keys override the default's; a request `type` different from the
-/// default's replaces the default whole. The result must parse as [`Thinking`];
-/// unknown keys pass through.
+/// default's replaces the default whole. When `validate`, the result must
+/// parse as [`Thinking`]; unknown keys pass through either way.
 fn merge_thinking(
     default: Option<&Thinking>,
     additional_params: &mut serde_json::Value,
+    validate: bool,
 ) -> Result<Option<serde_json::Map<String, serde_json::Value>>, EncodeError> {
     let default = match default {
         Some(thinking) => match serde_json::to_value(thinking)? {
@@ -1728,20 +1733,26 @@ fn merge_thinking(
             }
         }
     };
-    serde_json::from_value::<Thinking>(serde_json::Value::Object(merged.clone())).map_err(
-        |err| EncodeError::request(format!("Invalid Anthropic `thinking` configuration: {err}")),
-    )?;
+    if validate {
+        serde_json::from_value::<Thinking>(serde_json::Value::Object(merged.clone())).map_err(
+            |err| {
+                EncodeError::request(format!("Invalid Anthropic `thinking` configuration: {err}"))
+            },
+        )?;
+    }
     Ok(Some(merged))
 }
 
 /// Merge the wire's `effort` default with `additional_params.output_config`,
 /// then add the `format` Rig derives from `output_schema`. Request keys
-/// override the default's and unknown keys pass through. A request `format`
-/// that differs from Rig's is an error rather than a silent override.
+/// override the default's and unknown keys pass through. When `validate`, the
+/// effort must be an [`Effort`]. A request `format` that differs from Rig's
+/// is an error rather than a silent override.
 fn merge_output_config(
     effort: Option<Effort>,
     additional_params: &mut serde_json::Value,
     format: Option<OutputFormat>,
+    validate: bool,
 ) -> Result<Option<serde_json::Map<String, serde_json::Value>>, EncodeError> {
     let mut merged = serde_json::Map::new();
     if let Some(effort) = effort {
@@ -1750,8 +1761,11 @@ fn merge_output_config(
     if let Some(request) = take_object_param(additional_params, "output_config")? {
         merged.extend(request);
     }
-    serde_json::from_value::<OutputConfigCheck>(serde_json::Value::Object(merged.clone()))
-        .map_err(|err| EncodeError::request(format!("Invalid Anthropic `output_config`: {err}")))?;
+    if validate && let Some(effort) = merged.get("effort") {
+        serde_json::from_value::<Effort>(effort.clone()).map_err(|err| {
+            EncodeError::request(format!("Invalid Anthropic `output_config.effort`: {err}"))
+        })?;
+    }
     if let Some(format) = format {
         let format = serde_json::to_value(format)?;
         match merged.get("format") {
@@ -2231,15 +2245,14 @@ pub struct AnthropicRequestParams<'a> {
 
 impl AnthropicCompletionRequest {
     /// Build the typed request, optionally transforming generated tools with `strict`.
-    /// `thinking` and `effort` are the wire's defaults, which the request's
-    /// `additional_params` override key by key. Reject missing token limits,
+    /// `reasoning` holds the wire's `thinking` and `effort` defaults, which the
+    /// request's `additional_params` override key by key. Reject missing token limits,
     /// invalid message conversions, cache conflicts, forced tool choices the
     /// model rejects, and conflicting `output_config.format`.
     pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
         strict: Option<fn(&mut ToolDefinition)>,
-        thinking: Option<&Thinking>,
-        effort: Option<Effort>,
+        reasoning: ReasoningSettings<'_>,
     ) -> Result<Self, EncodeError> {
         let AnthropicRequestParams {
             model,
@@ -2307,6 +2320,14 @@ impl AnthropicCompletionRequest {
             automatic_caching_ttl.as_ref(),
             &mut additional_params_payload,
         )?;
+        let raw_tool_choice_forces = additional_params_payload
+            .get("tool_choice")
+            .and_then(|choice| choice.get("type"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|kind| matches!(kind, "any" | "tool"));
+        if raw_tool_choice_forces && !accepts_forced_tool_choice(model) {
+            return Err(forced_tool_choice_error(model));
+        }
         let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload, strict)?;
 
         let mut system = history_system;
@@ -2336,8 +2357,17 @@ impl AnthropicCompletionRequest {
                 schema: schema_value,
             }
         });
-        let thinking = merge_thinking(thinking, &mut additional_params_payload)?;
-        let output_config = merge_output_config(effort, &mut additional_params_payload, format)?;
+        let thinking = merge_thinking(
+            reasoning.thinking,
+            &mut additional_params_payload,
+            reasoning.validate,
+        )?;
+        let output_config = merge_output_config(
+            reasoning.effort,
+            &mut additional_params_payload,
+            format,
+            reasoning.validate,
+        )?;
 
         Ok(Self {
             model: model.to_string(),
@@ -2363,7 +2393,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = EncodeError;
 
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
-        Self::try_from_params(params, None, None, None)
+        Self::try_from_params(params, None, ReasoningSettings::default())
     }
 }
 

@@ -485,21 +485,76 @@ fn forced_output_tool_is_kept_for_models_that_accept_forcing() {
     assert_eq!(prepared.tool_choice, Some(ToolChoice::Required));
 }
 
+fn lookup_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "lookup".to_string(),
+        description: "looks up".to_string(),
+        parameters: serde_json::json!({"type": "object"}),
+    }
+}
+
 #[test]
-fn forcing_real_tools_is_left_for_the_wire_to_reject() {
+fn an_extractor_with_real_tools_falls_back_too() {
+    let native = ProviderCapabilities::new()
+        .with_native_output_tool_composition(true)
+        .with_forced_tool_choice(false);
+    let prepared = prepare_extraction(&extractor_spec(), native, vec![lookup_tool()]);
+    assert_eq!(prepared.output_mode, OutputMode::Native);
+    assert_eq!(prepared.tool_choice, None);
+    assert_eq!(
+        prepared
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        ["lookup"]
+    );
+
+    let tool_only = ProviderCapabilities::new().with_forced_tool_choice(false);
+    let prepared = prepare_extraction(&extractor_spec(), tool_only, vec![lookup_tool()]);
+    assert_eq!(prepared.output_mode, OutputMode::Tool);
+    assert_eq!(prepared.tool_choice, Some(ToolChoice::Auto));
+}
+
+#[test]
+fn the_native_fallback_tells_the_model_the_output_tool_is_gone() {
+    let spec = RunSpec {
+        preamble: Some("Always call the `submit` function.".to_string()),
+        ..extractor_spec()
+    };
     let capabilities = ProviderCapabilities::new()
         .with_native_output_tool_composition(true)
         .with_forced_tool_choice(false);
-    let prepared = prepare_extraction(
-        &extractor_spec(),
-        capabilities,
-        vec![ToolDefinition {
-            name: "lookup".to_string(),
-            description: "looks up".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
-        }],
-    );
+    let prepared = prepare_extraction(&spec, capabilities, Vec::new());
+    let Some(Message::System { content }) = prepared.chat_history.first() else {
+        panic!("the preamble leads the history");
+    };
+    assert!(content.starts_with("Always call the `submit` function."));
+    assert!(content.contains("The `submit` tool is not available."));
+}
 
-    assert_eq!(prepared.output_mode, OutputMode::Tool);
-    assert_eq!(prepared.tool_choice, Some(ToolChoice::Required));
+/// A caller's own forcing is not Rig's to relax: it reaches the wire, which
+/// rejects it for these models.
+#[test]
+fn a_callers_forced_choice_is_left_for_the_wire_to_reject() {
+    let capabilities = ProviderCapabilities::new()
+        .with_native_output_tool_composition(true)
+        .with_forced_tool_choice(false);
+    let caller_spec = RunSpec {
+        output_tool_name: None,
+        ..extractor_spec()
+    };
+    for tools in [Vec::new(), vec![lookup_tool()]] {
+        let prepared = prepare_request(
+            &caller_spec,
+            &capabilities,
+            &[Message::user("hi")],
+            tools,
+            None,
+            None,
+        )
+        .expect("prepare");
+        assert_eq!(prepared.output_mode, OutputMode::Tool);
+        assert_eq!(prepared.tool_choice, Some(ToolChoice::Required));
+    }
 }

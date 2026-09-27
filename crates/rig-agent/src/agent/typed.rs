@@ -89,8 +89,10 @@ impl<T> TypedPromptResponse<T> {
 pub(crate) enum TypedOutput {
     /// Parse the model's final text; tolerate prose or fences around the JSON.
     Native,
-    /// The value is the arguments of the run's output tool call; the model not
-    /// calling it is an empty response.
+    /// The value is the arguments of the run's output tool call. Without one,
+    /// final text that parses as JSON of `T` is the value (a model that cannot
+    /// be forced to call the tool answers natively); otherwise the response is
+    /// empty.
     OutputTool,
 }
 
@@ -411,8 +413,8 @@ fn recover_output<T: DeserializeOwned>(
             let submissions = response.output_tool_calls();
             if submissions == 0 {
                 // A model that cannot be forced to call the output tool answers
-                // natively, and the run accepts schema-valid text in its place.
-                if let Ok(output) = deserialize_structured_output(&response.output) {
+                // natively. Only a whole JSON answer counts, not prose around one.
+                if let Ok(output) = serde_json::from_str(response.output.trim()) {
                     return Ok(output);
                 }
                 tracing::warn!(

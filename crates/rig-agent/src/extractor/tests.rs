@@ -707,3 +707,31 @@ async fn extraction_keeps_forcing_submit_on_a_model_that_accepts_it() {
     assert_eq!(body["tools"][0]["name"], SUBMIT_TOOL_NAME);
     assert_eq!(body.get("output_config"), None);
 }
+
+/// A whole JSON answer without a `submit` call is the value, as a native
+/// answer from a model that cannot be forced to call the tool is.
+#[tokio::test]
+async fn a_whole_json_answer_without_submit_is_extracted() {
+    let model = MockCompletionModel::from_turns([MockTurn::text("{\"name\":\"John\"}")]);
+    let person = extractor(model, 0)
+        .extract("John")
+        .await
+        .expect("a whole JSON answer is the value")
+        .output;
+    assert_eq!(person.name, "John");
+}
+
+/// Prose around a JSON object is not an answer: it stays an empty response.
+#[tokio::test]
+async fn prose_around_json_without_submit_is_not_extracted() {
+    let model =
+        MockCompletionModel::from_turns([MockTurn::text("Here you go: {\"name\":\"John\"}")]);
+    let error = extractor(model, 0)
+        .extract("John")
+        .await
+        .expect_err("prose is not an extraction");
+    assert!(
+        matches!(error, StructuredOutputError::EmptyResponse),
+        "{error:?}"
+    );
+}
