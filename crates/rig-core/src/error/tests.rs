@@ -862,3 +862,26 @@ fn a_relayed_report_takes_the_transport_s_request_id_and_headers() {
         .with_provider_request_id(Some("req_2".to_owned()));
     assert_eq!(kept.provider_request_id(), Some("req_1"));
 }
+
+/// A status and a code the transport reports beside a relayed report reach
+/// it as they reach the reply it preserves, and the report reads them. The
+/// report keeps the origin's retry verdict.
+#[test]
+fn a_relayed_report_takes_the_transport_s_status_and_code() {
+    let report = ErrorReport::from(&ProviderError::ProviderResponse(
+        ProviderResponseError::without_status("throttled"),
+    ));
+    assert_eq!((report.http_status, report.code.as_deref()), (None, None));
+    let retryable = report.retryable;
+    let relayed = ProviderError::Relayed(Box::new(report))
+        .with_provider_status(Some(StatusCode::TOO_MANY_REQUESTS))
+        .with_provider_code(Some("ThrottlingException".to_owned()));
+    assert_eq!(
+        relayed.provider_response_status(),
+        Some(StatusCode::TOO_MANY_REQUESTS)
+    );
+    let filled = ErrorReport::from(&relayed);
+    assert_eq!(filled.http_status, Some(429));
+    assert_eq!(filled.code.as_deref(), Some("ThrottlingException"));
+    assert_eq!(relayed.is_retryable(), retryable);
+}

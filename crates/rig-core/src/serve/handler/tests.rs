@@ -755,3 +755,31 @@ fn the_tap_yields_only_its_first_outcome() {
     assert_eq!(outcomes.len(), 1, "{outcomes:?}");
     assert!(matches!(outcomes.first(), Some(Err(report)) if report.message == "reset"));
 }
+
+/// The terminal's response is the outcome: a second terminal and an error
+/// item after it yield nothing more.
+#[test]
+fn the_tap_yields_nothing_after_its_terminal() {
+    let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
+    let terminal = || {
+        Ok(StreamEvent::Final(StreamFinal::new(
+            "local",
+            Default::default(),
+            serde_json::Value::Null,
+        )))
+    };
+    let items: Vec<Result<StreamEvent, ErrorReport>> = vec![
+        Ok(StreamEvent::text(text, "first")),
+        terminal(),
+        Err(ErrorReport::new(ErrorKind::Provider, "late")),
+        terminal(),
+    ];
+    let mut tap = StreamTap::new();
+    let outcomes: Vec<_> = items.iter().filter_map(|item| tap.observe(item)).collect();
+    assert_eq!(outcomes.len(), 1, "{outcomes:?}");
+    assert!(matches!(
+        outcomes.first(),
+        Some(Ok(Outcome::Completion(response)))
+            if response.choice == vec![crate::message::AssistantContent::text("first")]
+    ));
+}
