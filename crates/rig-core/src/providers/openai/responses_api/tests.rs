@@ -2863,12 +2863,12 @@ fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
     let Some(completion::AssistantContent::ToolCall(call)) = choice.first() else {
         panic!("the body's one output is a call: {choice:?}");
     };
-    let result = completion::Message::tool_result(call.id.wire_hint(), "get_weather", "sunny");
+    let result = completion::Message::tool_result(call.wire_call_id(), "get_weather", "sunny");
     let history = vec![
         completion::Message::user("Weather in Paris?"),
         completion::Message::Assistant {
             id: None,
-            content: choice.clone().try_into().expect("one part"),
+            content: choice.clone(),
         },
         result,
     ];
