@@ -141,6 +141,13 @@ Extractors support the same run-local choice: `extract(...)` returns a
 the default candidate for each extraction retry, routing hooks may replace it,
 and the extractor's default is unchanged for later calls.
 
+An extractor forces its `submit` tool. For a model whose
+`ProviderCapabilities::accepts_forced_tool_choice` is false (Claude Opus 5.5
+and Claude Fable 5.1), request preparation drops that forced choice: it asks
+for native structured output when the wire composes native output with tools,
+and otherwise lets the model choose, relying on the preamble. A forced choice
+that targets real tools is left in place, and the wire rejects it.
+
 ```rust,ignore
 #[derive(Clone)]
 struct RouteModels {

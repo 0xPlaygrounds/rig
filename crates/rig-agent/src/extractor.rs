@@ -119,7 +119,9 @@ where
     }
 
     /// Configure an agent builder for extraction of `T`, replacing its preamble,
-    /// output schema, tool choice, and output mode.
+    /// output schema, tool choice, and output mode. The forced `submit` call
+    /// falls back to native output, or to `auto`, on a model that rejects
+    /// forced tool choice.
     pub fn from_agent_builder(builder: AgentBuilder) -> Self {
         Self {
             agent_builder: builder
