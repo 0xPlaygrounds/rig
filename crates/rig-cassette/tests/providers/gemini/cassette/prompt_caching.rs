@@ -50,7 +50,6 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::error::ProviderError;
 use rig::providers::gemini::{self};
 use rig_test_support::cassette_models::GeminiModels;
 use rig_test_support::cassette_models::MapWire;
@@ -63,6 +62,7 @@ use crate::cache_conformance::{
 };
 
 use super::super::support::{always_deleting_cached_contents, with_gemini_prompt_caching_cassette};
+use rig::error::ErrorDetail;
 
 /// Gemini 2.5 Flash: implicit caching, and the cheapest model that has it.
 pub(super) const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
@@ -642,7 +642,7 @@ async fn changing_the_system_instruction_misses() {
 }
 
 /// A handle that no longer exists must surface as
-/// [`ProviderError::CacheExpired`], not as a raw status code.
+/// [`ErrorDetail::CacheExpired`], not as a raw status code.
 ///
 /// This variant exists because it is the one failure a caller is expected to
 /// *handle* rather than propagate: a cache that lapsed mid-run is recreated. It
@@ -668,7 +668,9 @@ async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
                 .get(&cache.name)
                 .await
                 .expect_err("a deleted handle should not resolve");
-            let ProviderError::CacheExpired { name, response } = &error else {
+            let (Some(ErrorDetail::CacheExpired { name }), Some(response)) =
+                (&error.detail, &error.provider_response)
+            else {
                 panic!(
                     "a handle that is gone should report CacheExpired, not a bare status: {error:?}"
                 );

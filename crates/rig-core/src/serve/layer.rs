@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome, family},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -34,13 +34,13 @@ pub enum Decision {
     Patch(EffectKind),
     /// Returns this report without invoking the handler or recording a dispatch.
     /// The report's kind is preserved; [`Decision::deny`] uses `ErrorKind::Denied`.
-    Deny(ErrorReport),
+    Deny(RigError),
 }
 
 impl Decision {
     /// A denial by policy: `ErrorKind::Denied`, never retryable.
     pub fn deny(reason: impl Into<String>) -> Self {
-        Self::Deny(ErrorReport::new(ErrorKind::Denied, reason).with_retryable(false))
+        Self::Deny(RigError::new(ErrorKind::Denied, reason).with_retryable(false))
     }
 }
 
@@ -55,7 +55,7 @@ pub enum Verdict {
     /// as they came, so only an error can replace the answer there: a
     /// `Replace(Ok(_))` reaches the consumer as an `Internal` error naming
     /// the layer.
-    Replace(Result<Outcome, ErrorReport>),
+    Replace(Result<Outcome, RigError>),
 }
 
 /// Host policy before a handler and after its first answer. A suspended
@@ -80,7 +80,7 @@ pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
         &self,
         id: EffectId,
         kind: &EffectKind,
-        outcome: &Result<Outcome, ErrorReport>,
+        outcome: &Result<Outcome, RigError>,
     ) -> impl Future<Output = Verdict> + WasmCompatSend;
 }
 
@@ -101,8 +101,8 @@ impl<I: Intercept> Layer<I> {
         }
     }
 
-    fn internal(&self, message: String) -> ErrorReport {
-        ErrorReport::new(
+    fn internal(&self, message: String) -> RigError {
+        RigError::new(
             ErrorKind::Internal,
             format!("layer `{}`: {message}", self.intercept.name()),
         )
@@ -207,7 +207,7 @@ impl<I: Intercept> Serve for Layer<I> {
                         }
                         Verdict::Replace(Ok(_)) => {
                             attribution.replaced(&intercept.name());
-                            Err(ErrorReport::new(
+                            Err(RigError::new(
                                 ErrorKind::Internal,
                                 format!("layer `{}`: cannot replace a streamed answer already delivered; replace with an error, or decide before", intercept.name()),
                             ).with_retryable(false))

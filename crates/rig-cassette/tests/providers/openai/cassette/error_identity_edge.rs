@@ -3,8 +3,7 @@
 //! handshake, on both APIs where the class differs.
 
 use futures::StreamExt;
-use rig::error::ProviderError;
-use rig::error::{ErrorKind, ErrorReport};
+use rig::error::ErrorKind;
 use rig::providers::openai;
 
 use super::super::support::{
@@ -12,6 +11,7 @@ use super::super::support::{
 };
 use crate::support::assert_transport_request_id;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorDetail;
 
 /// 401 auth rejection — the fixture documents whether OpenAI's auth tier
 /// sends `x-request-id` (assertion derived from the recording).
@@ -25,7 +25,7 @@ async fn auth_rejection_carries_identity() {
                 .call(CompletionRequest::new("Never authenticated"))
                 .await
                 .expect_err("a bogus key must be rejected");
-            assert!(matches!(error, ProviderError::ProviderResponse(_)));
+            assert_eq!(error.kind, ErrorKind::ProviderResponse);
             assert_eq!(
                 error
                     .provider_response_status()
@@ -54,7 +54,7 @@ async fn nonexistent_previous_response_reference_carries_identity() {
                 })))
                 .await
                 .expect_err("a nonexistent previous_response_id must be rejected");
-            assert!(matches!(error, ProviderError::ProviderResponse(_)));
+            assert_eq!(error.kind, ErrorKind::ProviderResponse);
             assert_transport_request_id(error.provider_request_id(), "reference error");
             // The referenced id is scrub-placeholdered in replay; assert on
             // the error *class*, never the literal id.
@@ -84,7 +84,7 @@ async fn chat_completions_validation_error_carries_identity() {
                 )
                 .await
                 .expect_err("an impossible temperature must be rejected");
-            assert!(matches!(error, ProviderError::ProviderResponse(_)));
+            assert_eq!(error.kind, ErrorKind::ProviderResponse);
             assert_eq!(
                 error
                     .provider_response_status()
@@ -109,7 +109,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
                 .completion("gpt-nonexistent-model-for-error-edge");
             let result = model.stream(CompletionRequest::new("Never streamed"));
             let error = match result {
-                Err(error) => ErrorReport::from(&error),
+                Err(error) => error,
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {
@@ -173,7 +173,7 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
                 .await
                 .expect_err("a bogus key must fail the listing");
             assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
+                error.kind == ErrorKind::ProviderResponse,
                 "the review's P1 fix, proven live: {error:?}"
             );
             let message = error.to_string();
@@ -201,8 +201,8 @@ async fn verify_reports_invalid_authentication() {
                 .expect_err("a bogus key must fail verification");
             assert!(
                 matches!(
-                    &error,
-                    ProviderError::InvalidAuthentication(response)
+                    (&error.detail, &error.provider_response),
+                    (Some(ErrorDetail::InvalidAuthentication), Some(response))
                         if response.status.map(|status| status.as_u16()) == Some(401)
                 ),
                 "verify's 401 arm is live: {error:?}"

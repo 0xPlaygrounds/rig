@@ -12,8 +12,8 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
-use anyhow::Result;
 use rig_agent::prelude::*;
+use rig_core::RigError;
 use rig_core::completion::Message;
 use rig_core::providers::openai;
 use rig_core::providers::openai::OpenAI;
@@ -43,7 +43,7 @@ fn approx_token_count(message: &Message) -> usize {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = OpenAI::from_env()?;
     // One model serves both agents: erase it once, clone the handle.
     let model = client.completion(openai::GPT_4O).erase();

@@ -1006,15 +1006,15 @@ pub fn land_memory(
                 }
             }
             Ok(other) => {
-                commands.entity(run).end(Failed(Failure::Memory(
-                    rig_core::error::ErrorReport::new(
+                commands
+                    .entity(run)
+                    .end(Failed(Failure::Memory(rig_core::error::RigError::new(
                         ErrorKind::Internal,
                         format!(
                             "the memory handler answered a load with a {} outcome",
                             other.family()
                         ),
-                    ),
-                )));
+                    ))));
             }
             Err(report) => {
                 commands
@@ -1291,7 +1291,7 @@ fn completion_model(
     bound: &Query<&Bound>,
 ) -> Result<(Entity, bool), Failure> {
     let unavailable = |message: String| {
-        Failure::Provider(rig_core::error::ErrorReport::new(
+        Failure::Provider(rig_core::error::RigError::new(
             rig_core::error::ErrorKind::HandlerUnavailable,
             message,
         ))
@@ -2349,7 +2349,7 @@ pub fn judge_invalid_calls(
 fn provider_failed(
     commands: &mut Commands,
     run: Entity,
-    report: &rig_core::error::ErrorReport,
+    report: &rig_core::error::RigError,
     budget: usize,
     retried: usize,
     witness: Option<(&crate::bus::Witnessing, &crate::bus::Subjects)>,
@@ -2458,10 +2458,9 @@ pub fn read_turn(
                 .finish_reason()
                 .filter(|reason| reason.truncated_output())
         {
-            let report = rig_core::error::ErrorReport::from(
-                &rig_core::error::ProviderError::Response(reason.no_answer_message()),
-            );
-            commands.entity(run).end(Failed(Failure::Provider(report)));
+            commands
+                .entity(run)
+                .end(Failed(Failure::Provider(no_answer(&reason))));
             continue;
         }
         let access = access.get(turn).ok();
@@ -2913,9 +2912,10 @@ pub fn run_cancelled(
     commands
         .entity(run)
         .remove::<RunPhase>()
-        .insert(Failed(Failure::Cancelled(
-            rig_core::error::ErrorReport::new(ErrorKind::Cancelled, reason.clone()),
-        )));
+        .insert(Failed(Failure::Cancelled(rig_core::error::RigError::new(
+            ErrorKind::Cancelled,
+            reason.clone(),
+        ))));
     for effect in pending {
         commands.entity(effect).despawn();
     }
@@ -2926,3 +2926,15 @@ pub fn run_cancelled(
             .remove::<(Batch, Fresh, RequestPatch)>();
     }
 }
+
+/// A turn the provider truncated before it produced an answer, reported as
+/// the classic agent reports the same turn.
+fn no_answer(reason: &rig_core::completion::FinishReason) -> rig_core::error::RigError {
+    rig_core::error::RigError::new(
+        rig_core::error::ErrorKind::Response,
+        format!("ResponseError: {}", reason.no_answer_message()),
+    )
+}
+
+#[cfg(test)]
+mod tests;

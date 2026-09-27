@@ -7,12 +7,13 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_agent::prelude::*;
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_core::RigError;
 use tracing::info;
 
 const DOCUMENT_URL: &str = "https://bitcoin.org/bitcoin.pdf";
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .without_time()
@@ -26,12 +27,16 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let reqwest_client = reqwest::Client::new();
-    let response = reqwest_client.get(DOCUMENT_URL).send().await?;
+    let response = reqwest_client
+        .get(DOCUMENT_URL)
+        .send()
+        .await
+        .map_err(RigError::other)?;
 
     info!("Status: {}", response.status().as_str());
     info!("Content Type: {:?}", response.headers().get("Content-Type"));
 
-    let document_bytes = response.bytes().await?;
+    let document_bytes = response.bytes().await.map_err(RigError::other)?;
     let bytes_base64 = BASE64_STANDARD.encode(document_bytes);
 
     let document = Document {

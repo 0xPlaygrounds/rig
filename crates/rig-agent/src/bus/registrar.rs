@@ -16,7 +16,7 @@ use crate::sync::Mutex;
 
 use rig_core::{
     effect::{Family, HandlerDescriptor, HandlerKey},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
 };
 
 use rig_core::serve::{ErasedHandler, Serve};
@@ -29,8 +29,8 @@ pub(super) fn family_proof_failed(
     key: &HandlerKey,
     wanted: rig_core::effect::EffectFamily,
     descriptor: &HandlerDescriptor,
-) -> ErrorReport {
-    ErrorReport::new(
+) -> RigError {
+    RigError::new(
         ErrorKind::HandlerUnavailable,
         format!(
             "handler for `{key}` serves the {} family; a `Key<{wanted}>` cannot name it",
@@ -84,7 +84,7 @@ impl Mailbox {
         shared: &Shared,
         key: HandlerKey,
         handler: ErasedHandler,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         // User code runs before the mailbox lock. Publishing and posting
         // must share an order, even when two registrar clones race.
         let descriptor = handler.descriptor();
@@ -180,7 +180,7 @@ impl Registrar {
         &self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         self.register_erased(key, ErasedHandler::new(handler))
     }
 
@@ -189,7 +189,7 @@ impl Registrar {
         &self,
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         self.mailbox.register(&self.shared, key.into(), handler)
     }
 
@@ -200,7 +200,7 @@ impl Registrar {
         &self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<Key<F>, ErrorReport> {
+    ) -> Result<Key<F>, RigError> {
         let key = key.into();
         let handler = ErasedHandler::new(handler);
         let descriptor = handler.descriptor();

@@ -430,10 +430,10 @@ fn a_reply_names_its_machine_code_from_the_transport_then_the_body() {
 
     // The report a completion failure becomes carries it.
     let report =
-        crate::error::ErrorReport::from(&crate::error::ProviderError::ProviderResponse(bodied));
+        crate::error::RigError::from(&crate::error::ProviderError::ProviderResponse(bodied));
     assert_eq!(report.code.as_deref(), Some("model_not_found"));
     assert_eq!(report.http_status, Some(404));
-    let report = crate::error::ErrorReport::from(&crate::error::ProviderError::ProviderResponse(
+    let report = crate::error::RigError::from(&crate::error::ProviderError::ProviderResponse(
         ProviderResponseError::new(StatusCode::NOT_FOUND, r#"{"error":"prose"}"#),
     ));
     assert_eq!(report.code, None);

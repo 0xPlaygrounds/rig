@@ -14,7 +14,7 @@ use bevy_ecs::{lifecycle::HookContext, prelude::*, world::DeferredWorld};
 use bevy_tasks::Task;
 use rig_core::{
     effect::{CustomEffect, EffectId, EffectKind, Family, HandlerKey, Key, Outcome},
-    error::ErrorReport,
+    error::RigError,
     streaming::{StreamEvent, StreamEvents},
     tool::{PublishedContext, ToolContext},
 };
@@ -47,7 +47,7 @@ impl PendingEffect {
     }
 
     /// Wrap a typed request for `key`, returning any family conversion error.
-    pub fn typed<F: Family>(key: &Key<F>, request: F::Request) -> Result<Self, ErrorReport> {
+    pub fn typed<F: Family>(key: &Key<F>, request: F::Request) -> Result<Self, RigError> {
         Ok(Self {
             key: key.raw().clone(),
             kind: F::wrap(request)?,
@@ -59,9 +59,9 @@ impl PendingEffect {
     pub fn custom<E: CustomEffect>(
         key: impl Into<HandlerKey>,
         effect: &E,
-    ) -> Result<Self, ErrorReport> {
+    ) -> Result<Self, RigError> {
         let payload = serde_json::to_value(effect).map_err(|error| {
-            ErrorReport::new(
+            RigError::new(
                 rig_core::error::ErrorKind::Request,
                 format!("the custom effect `{}` did not serialize: {error}", E::KIND),
             )
@@ -199,7 +199,7 @@ pub struct Serving;
 pub struct Streaming {
     /// Bounded worker delivery, exclusively consumed by Collect.
     pub events: futures::channel::mpsc::Receiver<
-        Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>,
+        Result<rig_core::streaming::StreamEvent, rig_core::error::RigError>,
     >,
     /// The shared core fold of delivered events.
     pub fold: rig_core::serve::StreamTap,
@@ -216,7 +216,7 @@ fn spawn_stream_worker(
     wake: super::plugin::Wake,
 ) -> (
     futures::channel::mpsc::Receiver<
-        Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>,
+        Result<rig_core::streaming::StreamEvent, rig_core::error::RigError>,
     >,
     Task<()>,
 ) {
@@ -323,7 +323,7 @@ pub struct Streamed {
     /// independent of recorder event retention; `outcome` remains the first fold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[reflect(remote = crate::bus::reflect::StreamErrorsReflect)]
-    pub errors: Vec<(usize, ErrorReport)>,
+    pub errors: Vec<(usize, RigError)>,
     /// Every event, in order.
     #[reflect(remote = crate::bus::reflect::StreamEventsReflect)]
     pub events: Vec<StreamEvent>,
@@ -332,7 +332,7 @@ pub struct Streamed {
     /// The fold's outcome at the terminal record, or the error that ended
     /// the stream.
     #[reflect(remote = crate::bus::reflect::StreamedOutcomeReflect)]
-    pub outcome: Option<Result<Outcome, ErrorReport>>,
+    pub outcome: Option<Result<Outcome, RigError>>,
 }
 
 /// The answer. Inserted by `Collect` when a handler's task or stream
@@ -341,7 +341,7 @@ pub struct Streamed {
 #[derive(Component, Debug, Clone, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct EffectOutcome(
-    #[reflect(remote = crate::bus::reflect::OutcomeReflect)] pub Result<Outcome, ErrorReport>,
+    #[reflect(remote = crate::bus::reflect::OutcomeReflect)] pub Result<Outcome, RigError>,
 );
 
 /// An open world's submitted answer. Insert with [`WorldOutcome::new`];
@@ -354,13 +354,13 @@ pub struct EffectOutcome(
 #[component(on_add = stamp_world_outcome)]
 pub struct WorldOutcome {
     /// The submitted answer, published unchanged by the collector.
-    pub outcome: Result<Outcome, ErrorReport>,
+    pub outcome: Result<Outcome, RigError>,
     order: u64,
 }
 
 impl WorldOutcome {
     /// Submit one answer for an in-flight world-served effect.
-    pub fn new(outcome: Result<Outcome, ErrorReport>) -> Self {
+    pub fn new(outcome: Result<Outcome, RigError>) -> Self {
         Self { outcome, order: 0 }
     }
 
@@ -388,21 +388,21 @@ fn stamp_world_outcome(mut world: DeferredWorld<'_>, context: HookContext) {
 
 impl EffectOutcome {
     /// Return the family's typed answer, propagating a recorded or conversion error.
-    pub fn typed<F: Family>(&self) -> Result<F::Answer, ErrorReport> {
+    pub fn typed<F: Family>(&self) -> Result<F::Answer, RigError> {
         F::unwrap(self.0.clone()?)
     }
 
     /// Deserialize a custom answer as `E::Answer`, returning recorded errors or a
     /// response error for a different outcome family or invalid payload.
-    pub fn custom<E: CustomEffect>(&self) -> Result<E::Answer, ErrorReport> {
+    pub fn custom<E: CustomEffect>(&self) -> Result<E::Answer, RigError> {
         match self.0.clone()? {
             Outcome::Custom { payload: value } => serde_json::from_value(value).map_err(|error| {
-                ErrorReport::new(
+                RigError::new(
                     rig_core::error::ErrorKind::Response,
                     format!("the answer to `{}` did not deserialize: {error}", E::KIND),
                 )
             }),
-            other => Err(ErrorReport::new(
+            other => Err(RigError::new(
                 rig_core::error::ErrorKind::Response,
                 format!(
                     "`{}` was answered with a {} outcome",
@@ -475,7 +475,7 @@ pub struct Typed<F: Family>(pub Key<F>);
 
 impl<F: Family> Typed<F> {
     /// Build a pending effect for this key, returning any family conversion error.
-    pub fn pending(&self, request: F::Request) -> Result<PendingEffect, ErrorReport> {
+    pub fn pending(&self, request: F::Request) -> Result<PendingEffect, RigError> {
         PendingEffect::typed(&self.0, request)
     }
 

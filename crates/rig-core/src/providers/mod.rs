@@ -8,7 +8,7 @@
 //! ```no_run
 //! use rig_core::providers::openai::{self, OpenAI};
 //! let model = OpenAI::from_env()?.chat(openai::GPT_5_2);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 pub mod anthropic;
 pub mod azure;

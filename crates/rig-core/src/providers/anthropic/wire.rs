@@ -4,7 +4,7 @@
 //! ```no_run
 //! use rig_core::providers::anthropic::{Anthropic, completion::CLAUDE_SONNET_4_6};
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), rig_core::RigError> {
 //! let wire = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
 //! # Ok(())
 //! # }
@@ -366,7 +366,7 @@ impl Messages {
     /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
     /// use rig_core::providers::anthropic::Anthropic;
     ///
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
     /// messages.wire = messages.wire.with_automatic_caching();
     /// # Ok(())
@@ -385,7 +385,7 @@ impl Messages {
     /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
     /// use rig_core::providers::anthropic::Anthropic;
     ///
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
     /// messages.wire = messages.wire.with_automatic_caching_1h();
     /// # Ok(())
@@ -407,7 +407,7 @@ impl Messages {
     /// use rig_core::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
     /// use rig_core::providers::anthropic::Anthropic;
     ///
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
     /// messages.wire = messages.wire.with_automatic_caching().with_static_prefix_cache_ttl(CacheTtl::OneHour);
     /// # Ok(())

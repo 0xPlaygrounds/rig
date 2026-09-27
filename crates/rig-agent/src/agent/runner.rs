@@ -3,7 +3,7 @@
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
-//! # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(agent: Agent) -> Result<(), rig_core::RigError> {
 //! let response = agent
 //!     .prompt("What is 2 + 2?")
 //!     .max_turns(3)
@@ -26,7 +26,6 @@ use super::{
     run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
-use rig_core::error::ProviderError;
 use rig_core::{completion::ModelRef, message::ToolChoice};
 
 use crate::{
@@ -580,8 +579,8 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(ProviderError::Response(
-                    "agent run ended without producing a final response".to_string(),
+                PromptError::Failed(crate::failure::response(
+                    "agent run ended without producing a final response",
                 ))
             })
         };
@@ -613,7 +612,7 @@ mod prompt_tests;
 
 /// A memory report back into the memory error the run surface names.
 pub(crate) fn memory_error_from_report(
-    report: rig_core::error::ErrorReport,
+    report: rig_core::error::RigError,
 ) -> rig_core::memory::MemoryError {
     match report.kind {
         rig_core::error::ErrorKind::MemoryPolicy => {
@@ -638,7 +637,8 @@ pub(crate) fn memory_error_from_report(
         | rig_core::error::ErrorKind::BusClosed
         | rig_core::error::ErrorKind::HandlerUnavailable
         | rig_core::error::ErrorKind::Divergence
-        | rig_core::error::ErrorKind::Other => {
+        | rig_core::error::ErrorKind::Other
+        | rig_core::error::ErrorKind::Configuration => {
             rig_core::memory::MemoryError::Internal(report.to_string())
         }
     }

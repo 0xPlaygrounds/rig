@@ -1,4 +1,5 @@
 use rig_agent::prelude::*;
+use rig_core::RigError;
 use rig_core::providers;
 use rig_core::providers::openai::OpenAI;
 use rig_derive::rig_tool;
@@ -37,7 +38,7 @@ fn calculator(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().pretty().init();
 
     let calculator_agent =
@@ -50,7 +51,8 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "CALCULATOR: {}",
-        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&CALCULATOR))?
+        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&CALCULATOR))
+            .map_err(RigError::other)?
     );
 
     for prompt in [

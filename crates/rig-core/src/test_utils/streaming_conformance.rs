@@ -30,7 +30,7 @@ use crate::error::ProviderError;
 use crate::streaming::BlockId;
 use crate::{
     completion::FinishReason,
-    error::ErrorReport,
+    error::RigError,
     http_client,
     message::AssistantContent,
     streaming::{Delta, StreamEvent, StreamFinal},
@@ -41,7 +41,7 @@ use crate::{
 pub enum ConformanceError {
     /// Opening the stream failed before any wire frame was consumed.
     #[error(transparent)]
-    Completion(#[from] ProviderError),
+    Completion(#[from] RigError),
     /// The pipeline violated the streaming contract table.
     #[error("{scenario} conformance failed for {provider}: {details}")]
     Contract {
@@ -386,7 +386,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 ///    yielded (no full block), the aggregated reasoning text is exactly
 ///    their concatenation.
 pub fn assert_valid_event_stream(
-    items: &[Result<StreamEvent, ErrorReport>],
+    items: &[Result<StreamEvent, RigError>],
     choice: &[AssistantContent],
 ) {
     use crate::message::AssistantContent;
@@ -572,7 +572,7 @@ pub fn assert_valid_event_stream(
 #[derive(Debug)]
 pub struct DrainedStream {
     /// Every item the stream yielded, in order.
-    pub items: Vec<Result<StreamEvent, ErrorReport>>,
+    pub items: Vec<Result<StreamEvent, RigError>>,
     /// The final aggregated assistant message.
     pub choice: Vec<AssistantContent>,
     /// The normalized terminal record, absent on truncation or terminal error.
@@ -675,9 +675,8 @@ impl DrainedStream {
     }
 }
 
-type DriveFn = Box<
-    dyn Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, ProviderError>> + Send + Sync,
->;
+type DriveFn =
+    Box<dyn Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, RigError>> + Send + Sync>;
 
 /// One provider's full streaming pipeline over scripted wire chunks.
 ///
@@ -694,7 +693,7 @@ impl WireDriver {
     /// Wrap a provider pipeline closure.
     pub fn new(
         provider: &'static str,
-        drive: impl Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, ProviderError>>
+        drive: impl Fn(WireChunks) -> BoxFuture<'static, Result<DrainedStream, RigError>>
         + Send
         + Sync
         + 'static,
@@ -706,7 +705,7 @@ impl WireDriver {
     }
 
     /// Run the provider's full pipeline over `chunks` and drain it.
-    pub async fn drive(&self, chunks: WireChunks) -> Result<DrainedStream, ProviderError> {
+    pub async fn drive(&self, chunks: WireChunks) -> Result<DrainedStream, RigError> {
         (self.drive)(chunks).await
     }
 }
@@ -735,9 +734,7 @@ pub struct InterleavedReasoningFixture {
 }
 
 type BufferedDriveFn = Box<
-    dyn Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, ProviderError>>
-        + Send
-        + Sync,
+    dyn Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, RigError>> + Send + Sync,
 >;
 
 /// A buffered-body pipeline (the ChatGPT backend shape): the full SSE body is
@@ -752,7 +749,7 @@ impl BufferedBodyDriver {
     /// Wrap a buffered pipeline closure.
     pub fn new(
         provider: &'static str,
-        drive: impl Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, ProviderError>>
+        drive: impl Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, RigError>>
         + Send
         + Sync
         + 'static,
@@ -764,7 +761,7 @@ impl BufferedBodyDriver {
     }
 
     /// Run the buffered pipeline over a complete SSE body.
-    pub async fn drive(&self, body: String) -> Result<Vec<AssistantContent>, ProviderError> {
+    pub async fn drive(&self, body: String) -> Result<Vec<AssistantContent>, RigError> {
         (self.drive)(body).await
     }
 }
@@ -1680,7 +1677,7 @@ pub mod fixtures {
     pub async fn drain_observed<W, T>(
         model: &Model<W, T>,
         request: crate::completion::CompletionRequest,
-    ) -> Result<DrainedStream, ProviderError>
+    ) -> Result<DrainedStream, RigError>
     where
         W: Wire<Op = Completion>,
         T: Transport<W>,
@@ -1726,14 +1723,15 @@ pub mod fixtures {
     /// Lower fixture frames onto the byte transport a `SequencedStreamingHttpClient`
     /// replays. Only byte frames are valid here — an event frame in a
     /// byte-driver fixture is a fixture authoring error.
-    fn byte_chunks(chunks: WireChunks) -> Result<Vec<http_client::Result<Bytes>>, ProviderError> {
+    fn byte_chunks(chunks: WireChunks) -> Result<Vec<http_client::Result<Bytes>>, RigError> {
         chunks
             .into_iter()
             .map(|chunk| match chunk {
                 Ok(WireInput::Bytes(bytes)) => Ok(Ok(bytes)),
                 Ok(WireInput::Event(_)) => Err(ProviderError::Provider(
                     "typed-event frame fed to a byte-transport driver".to_string(),
-                )),
+                )
+                .into()),
                 Err(error) => Ok(Err(error)),
             })
             .collect()

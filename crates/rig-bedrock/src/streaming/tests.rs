@@ -2,7 +2,7 @@ use super::*;
 use crate::completion::{Converse, ConverseRequest};
 use futures::StreamExt;
 use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{AssistantContent, Reasoning};
 use rig_core::streaming::{CompletionStream, Delta, StreamEvent};
 
@@ -50,8 +50,7 @@ fn folded(items: Vec<Result<StreamEvent, ProviderError>>) -> CompletionStream {
     CompletionStream::relay(
         PROVIDER_NAME,
         Box::pin(
-            futures::stream::iter(items)
-                .map(|item| item.map_err(|error| ErrorReport::from(&error))),
+            futures::stream::iter(items).map(|item| item.map_err(|error| RigError::from(&error))),
         ),
     )
 }
@@ -572,7 +571,7 @@ fn run_events(
 /// malformed-input errors belong at this level.
 async fn assembled(
     items: Vec<Result<StreamEvent, ProviderError>>,
-) -> (Vec<rig_core::message::ToolCall>, Vec<ErrorReport>) {
+) -> (Vec<rig_core::message::ToolCall>, Vec<RigError>) {
     use futures::StreamExt;
     let mut stream = folded(items);
     let mut calls = Vec::new();

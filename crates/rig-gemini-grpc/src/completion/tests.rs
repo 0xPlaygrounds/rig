@@ -1,6 +1,6 @@
 use super::*;
-use rig_core::Model;
 use rig_core::streaming::CompletionStream;
+use rig_core::{Model, RigError};
 
 /// Answers every request with scripted protobuf replies: the first for a
 /// unary call, all of them as chunks for a streamed one.
@@ -46,7 +46,7 @@ fn hello() -> CompletionRequest {
 /// `response` as the unary endpoint answers it.
 pub(crate) fn complete(
     response: GenerateContentResponse,
-) -> Result<completion::CompletionResponse, ProviderError> {
+) -> Result<completion::CompletionResponse, RigError> {
     futures::executor::block_on(scripted(vec![Ok(response)]).call(hello()))
 }
 

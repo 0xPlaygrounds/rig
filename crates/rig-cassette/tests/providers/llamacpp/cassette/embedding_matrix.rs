@@ -29,12 +29,12 @@
 //! that came back. A handle built without a width is untouched: it reports
 //! whatever the provider's own table says and has nothing to disagree with.
 
-use rig::error::ProviderError;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
+use rig::error::ErrorDetail;
 
 /// The width `Qwen/Qwen3-Embedding-0.6B-GGUF` returns, measured.
 const NATIVE_WIDTH: usize = 1024;
@@ -125,17 +125,19 @@ async fn a_declared_width_llamacpp_cannot_honour_is_refused() {
                 .map(|response| response.embeddings)
                 .expect_err("llama.cpp cannot resize embeddings");
 
-            match error {
-                ProviderError::MismatchedDimensions {
-                    provider,
+            match error.detail {
+                Some(ErrorDetail::MismatchedDimensions {
                     requested,
                     returned,
-                } => {
-                    assert_eq!(provider, "llamacpp");
+                }) => {
+                    assert!(
+                        error.message.starts_with("llamacpp embedding response"),
+                        "{error}"
+                    );
                     assert_eq!(requested, 128, "the width the caller declared");
                     assert_eq!(returned, NATIVE_WIDTH, "the width the model has");
                 }
-                other => panic!("expected MismatchedDimensions, got {other:?}"),
+                _ => panic!("expected MismatchedDimensions, got {error:?}"),
             }
         },
     )

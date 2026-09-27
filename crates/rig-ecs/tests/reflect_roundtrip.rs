@@ -27,7 +27,7 @@ use bevy_reflect::{
 use rig_core::{
     completion::message::{Message, ToolCallId, ToolChoice},
     effect::{EffectId, HandlerKey},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
 };
 use rig_ecs::{
     agent::{
@@ -162,10 +162,10 @@ fn populated() -> bevy_app::App {
             Utterance,
             rig_ecs::agent::Role::User,
             Streamed {
-                errors: vec![(0, ErrorReport::new(ErrorKind::Cancelled, "stopped"))],
+                errors: vec![(0, RigError::new(ErrorKind::Cancelled, "stopped"))],
                 events: Vec::new(),
                 text: "so far".to_owned(),
-                outcome: Some(Err(ErrorReport::new(ErrorKind::Cancelled, "stopped"))),
+                outcome: Some(Err(RigError::new(ErrorKind::Cancelled, "stopped"))),
             },
             rig_ecs::agent::OutputToolName(Some("out".to_owned())),
             rig_ecs::agent::Retry { feedback: None },

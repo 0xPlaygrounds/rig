@@ -3,7 +3,7 @@
 
 use crate::client::macros::http_client;
 use crate::driver::Model;
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::model::ModelList;
 
 use crate::providers::gemini::GeminiConfig;
@@ -92,13 +92,13 @@ impl Gemini {
     }
 
     /// The models this API key can use, every page followed.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.model(self.config.models()).list().await
     }
 
     /// Check that the provider accepts the configured key. A 401 or 403
-    /// reply is [`ProviderError::InvalidAuthentication`].
-    pub async fn verify(&self) -> Result<(), ProviderError> {
+    /// reply carries [`ErrorDetail::InvalidAuthentication`](crate::error::ErrorDetail::InvalidAuthentication).
+    pub async fn verify(&self) -> Result<(), RigError> {
         self.model(self.config.verify()).verify().await
     }
 }

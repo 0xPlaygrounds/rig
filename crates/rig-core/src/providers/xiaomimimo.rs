@@ -8,7 +8,7 @@
 //! ```no_run
 //! use rig_core::providers::xiaomimimo;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let model = xiaomimimo::from_env()?.chat(xiaomimimo::MIMO_V2_5_PRO);
 //! # let _ = model;
 //! # Ok(())

@@ -41,7 +41,7 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().init();
     let client = OpenAI::from_env()?;
     let embedding_model = client

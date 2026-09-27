@@ -22,7 +22,7 @@ use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     completion::Message,
     effect::{CustomEffect, EffectId, EffectKind, FamilyDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     serve::Decision,
     tool::{ToolOutput, ToolResult},
 };
@@ -230,10 +230,7 @@ fn patch_greeting(mut fresh: Query<&mut PendingEffect, (Without<Issued>, Without
 
 fn replace_answer(mut landed: Query<&mut EffectOutcome, Added<EffectOutcome>>) {
     for mut outcome in &mut landed {
-        outcome.0 = Err(ErrorReport::new(
-            ErrorKind::Timeout,
-            "replaced by the judge",
-        ));
+        outcome.0 = Err(RigError::new(ErrorKind::Timeout, "replaced by the judge"));
     }
 }
 
@@ -625,10 +622,10 @@ impl rig_core::serve::Intercept for Deciding {
         &self,
         id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Outcome, ErrorReport>,
+        _outcome: &Result<Outcome, RigError>,
     ) -> rig_core::serve::Verdict {
         if id.as_u64() == 2 {
-            rig_core::serve::Verdict::Replace(Err(ErrorReport::new(
+            rig_core::serve::Verdict::Replace(Err(RigError::new(
                 ErrorKind::Timeout,
                 "replaced by the layer",
             )))

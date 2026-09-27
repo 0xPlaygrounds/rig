@@ -12,7 +12,7 @@ use rig_core::providers::openai::OpenAIConfig;
 use rig_core::{
     completion::CompletionRequest,
     effect::EffectKind,
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     serve::{ErasedHandler, adapters::ModelAdapter},
     test_utils::RecordingHttpClient,
 };
@@ -41,7 +41,7 @@ fn assemble() -> ErasedHandler {
     ErasedHandler::new(ModelAdapter::new("demo", model))
 }
 
-fn finish(app: &mut App) -> Result<EffectLog, ErrorReport> {
+fn finish(app: &mut App) -> Result<EffectLog, RigError> {
     let started = std::time::Instant::now();
     loop {
         app.update();
@@ -55,7 +55,7 @@ fn finish(app: &mut App) -> Result<EffectLog, ErrorReport> {
             return Ok(app.world().resource::<EffectLogResource>().log());
         }
         if started.elapsed() > std::time::Duration::from_secs(5) {
-            return Err(ErrorReport::new(
+            return Err(RigError::new(
                 ErrorKind::Internal,
                 "offline example did not finish",
             ));
@@ -64,7 +64,7 @@ fn finish(app: &mut App) -> Result<EffectLog, ErrorReport> {
     }
 }
 
-fn main() -> Result<(), ErrorReport> {
+fn main() -> Result<(), RigError> {
     let mut live = app();
     Handlers::with(live.world_mut(), |handlers| {
         handlers.register_erased(KEY, assemble())

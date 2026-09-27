@@ -1,13 +1,17 @@
-//! The provider error type, serializable error reports, and shared retry
-//! classifications for the effect protocol. Reports preserve classifications,
-//! available provider metadata, and textual source chains.
+//! [`RigError`], the one error a caller handles, and [`ProviderError`], the
+//! error a provider implementation builds. Every model, stream, bus and agent
+//! failure reaches a caller as a `RigError`: a serializable report with a
+//! classification, a retry verdict, the provider's preserved reply, and an
+//! optional [`ErrorDetail`] to route on.
 //!
 //! ```
-//! use rig_core::error::{ErrorKind, ProviderError};
+//! use rig_core::error::{ErrorKind, ProviderError, RigError};
 //!
 //! let error = ProviderError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, "slow down");
-//! assert!(error.is_retryable());
-//! assert_eq!(error.report().kind, ErrorKind::ProviderResponse);
+//! let error = RigError::from(error);
+//! assert!(error.retryable);
+//! assert_eq!(error.kind, ErrorKind::ProviderResponse);
+//! assert_eq!(error.http_status, Some(429));
 //! ```
 
 use std::fmt;
@@ -23,7 +27,7 @@ use crate::{
     vector_store::VectorStoreError,
 };
 
-/// Normalized classification of an [`ErrorReport`].
+/// Normalized classification of a [`RigError`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
@@ -72,6 +76,10 @@ pub enum ErrorKind {
     Denied,
     /// Anything else.
     Other,
+    /// The caller's setup is invalid: a missing or malformed environment
+    /// variable, an unknown provider reference, an unparseable id. Never
+    /// retryable.
+    Configuration,
 }
 
 impl ErrorKind {
@@ -96,11 +104,12 @@ impl ErrorKind {
             Self::Divergence => "divergence",
             Self::Denied => "denied",
             Self::Other => "other",
+            Self::Configuration => "configuration",
         }
     }
 }
 
-/// A serde-able error crossing a wire boundary.
+/// A failure, as every caller-facing surface and the effect bus report it.
 ///
 /// Field semantics:
 /// - `retryable` is the one policy signal; it is decided at conversion time
@@ -109,7 +118,7 @@ impl ErrorKind {
 ///   each `source()` link, outermost first, excluding `message` itself.
 /// - `code`, `http_status`, `refusal` are copied when the source had them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ErrorReport {
+pub struct RigError {
     /// Normalized classification.
     pub kind: ErrorKind,
     /// Whether the same operation may reasonably be retried.
@@ -151,6 +160,20 @@ pub enum ErrorDetail {
     /// truncated input. Carries exact accumulated arguments and the parser
     /// error for recovery or replay.
     MalformedToolInput(MalformedToolInput),
+    /// The provider rejected the credentials (401 or 403).
+    InvalidAuthentication,
+    /// A context-cache handle the request named is expired or deleted.
+    CacheExpired {
+        /// The cache handle the request named.
+        name: String,
+    },
+    /// The provider returned vectors of a width other than the declared one.
+    MismatchedDimensions {
+        /// Width the caller declared.
+        requested: usize,
+        /// Width the provider actually returned.
+        returned: usize,
+    },
 }
 
 /// The payload of [`ErrorDetail::MalformedToolInput`].
@@ -170,7 +193,7 @@ pub struct MalformedToolInput {
     pub error: String,
 }
 
-impl ErrorReport {
+impl RigError {
     /// Build a report of `kind` with `message` and no other metadata.
     pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
         Self {
@@ -227,9 +250,48 @@ impl ErrorReport {
     pub const fn is_retryable(&self) -> bool {
         self.retryable
     }
+
+    /// A failure from outside rig, classified [`ErrorKind::Other`], with its
+    /// `Display` as the message and its sources as `source_chain`.
+    ///
+    /// ```
+    /// use rig_core::{ErrorKind, RigError};
+    ///
+    /// fn token() -> Result<String, RigError> {
+    ///     std::env::var("APP_TOKEN").map_err(RigError::other)
+    /// }
+    /// # let _ = token();
+    /// let error = RigError::other(std::io::Error::other("disk full"));
+    /// assert_eq!(error.kind, ErrorKind::Other);
+    /// assert_eq!(error.message, "disk full");
+    /// ```
+    pub fn other(error: impl std::error::Error) -> Self {
+        Self::classified(ErrorKind::Other, &error)
+    }
+
+    /// A request rig will not send, reported as a wire's request failure
+    /// with `message` as its message.
+    pub(crate) fn request_failure(message: impl Into<String>) -> Self {
+        Self::from(ProviderError::Request(message.into().into()))
+    }
+
+    /// A reply rig cannot use, reported as a wire's response failure with
+    /// `message` as its message.
+    pub(crate) fn response_failure(message: impl Into<String>) -> Self {
+        Self::from(ProviderError::Response(message.into()))
+    }
+
+    /// A report of `kind` for `error`: its `Display` as the message and its
+    /// sources as the chain, not retryable.
+    pub(crate) fn classified(kind: ErrorKind, error: &dyn std::error::Error) -> Self {
+        Self {
+            source_chain: source_chain(error),
+            ..Self::new(kind, error.to_string())
+        }
+    }
 }
 
-impl ErrorReport {
+impl RigError {
     /// The provider response body preserved on this report, if any.
     pub fn provider_response_body(&self) -> Option<&str> {
         self.provider_response
@@ -261,13 +323,13 @@ impl ErrorReport {
     }
 }
 
-impl fmt::Display for ErrorReport {
+impl fmt::Display for RigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)
     }
 }
 
-impl std::error::Error for ErrorReport {}
+impl std::error::Error for RigError {}
 
 /// The one status → retryable table.
 ///
@@ -302,7 +364,7 @@ pub fn transient_transport(error: &http_client::Error) -> bool {
 
 /// Collect the `Display` of each `source()` link below `error`, outermost
 /// first.
-pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
+pub(crate) fn source_chain(error: &dyn std::error::Error) -> Vec<String> {
     let mut chain = Vec::new();
     let mut current = error.source();
     while let Some(source) = current {
@@ -322,7 +384,8 @@ pub type BoxError = Box<dyn std::error::Error + 'static>;
 
 /// A failed provider operation: completion, embedding, reranking,
 /// transcription, image or audio generation, verification, model listing, or
-/// context caching.
+/// context caching. Wires, decoders, sinks, folds and transports build it; a
+/// caller receives it as a [`RigError`].
 ///
 /// The variant is the classification, and each variant maps to one
 /// [`ErrorKind`]. A provider's reply is preserved as a
@@ -406,7 +469,7 @@ pub enum ProviderError {
     /// A failure a relay delivered as its report, such as a stream relayed
     /// over the effect bus. It reports as the relayed report, unchanged.
     #[error("{}", .0.message)]
-    Relayed(Box<ErrorReport>),
+    Relayed(Box<RigError>),
 }
 
 impl ProviderError {
@@ -562,8 +625,8 @@ impl ProviderError {
     }
 
     /// The wire form of this error.
-    pub fn report(&self) -> ErrorReport {
-        ErrorReport::from(self)
+    pub fn report(&self) -> RigError {
+        RigError::from(self)
     }
 
     /// Which boundary produced this error, by its classification.
@@ -669,13 +732,13 @@ impl From<http::Error> for ProviderError {
     }
 }
 
-impl From<&ProviderError> for ErrorReport {
+impl From<&ProviderError> for RigError {
     fn from(error: &ProviderError) -> Self {
         if let ProviderError::Relayed(report) = error {
             return (**report).clone();
         }
         let response = error.provider_response();
-        ErrorReport {
+        RigError {
             kind: error.kind(),
             retryable: error.is_retryable(),
             message: error.to_string(),
@@ -691,13 +754,25 @@ impl From<&ProviderError> for ErrorReport {
                 ProviderError::MalformedToolInput(input) => {
                     Some(ErrorDetail::MalformedToolInput(input.clone()))
                 }
+                ProviderError::InvalidAuthentication(_) => Some(ErrorDetail::InvalidAuthentication),
+                ProviderError::CacheExpired { name, .. } => {
+                    Some(ErrorDetail::CacheExpired { name: name.clone() })
+                }
+                ProviderError::MismatchedDimensions {
+                    requested,
+                    returned,
+                    ..
+                } => Some(ErrorDetail::MismatchedDimensions {
+                    requested: *requested,
+                    returned: *returned,
+                }),
                 _ => None,
             },
         }
     }
 }
 
-impl From<ProviderError> for ErrorReport {
+impl From<ProviderError> for RigError {
     fn from(error: ProviderError) -> Self {
         Self::from(&error)
     }
@@ -705,8 +780,8 @@ impl From<ProviderError> for ErrorReport {
 
 impl ToolExecutionError {
     /// The wire form of this error.
-    pub fn report(&self) -> ErrorReport {
-        ErrorReport::from(self)
+    pub fn report(&self) -> RigError {
+        RigError::from(self)
     }
 }
 
@@ -722,9 +797,9 @@ impl ToolExecutionError {
     }
 }
 
-impl From<&ToolExecutionError> for ErrorReport {
+impl From<&ToolExecutionError> for RigError {
     fn from(error: &ToolExecutionError) -> Self {
-        ErrorReport {
+        RigError {
             kind: ErrorKind::Tool(error.kind()),
             retryable: error.is_retryable(),
             message: error.message().to_string(),
@@ -739,7 +814,7 @@ impl From<&ToolExecutionError> for ErrorReport {
     }
 }
 
-impl From<ToolExecutionError> for ErrorReport {
+impl From<ToolExecutionError> for RigError {
     fn from(error: ToolExecutionError) -> Self {
         Self::from(&error)
     }
@@ -747,19 +822,19 @@ impl From<ToolExecutionError> for ErrorReport {
 
 impl MemoryError {
     /// The wire form of this error.
-    pub fn report(&self) -> ErrorReport {
-        ErrorReport::from(self)
+    pub fn report(&self) -> RigError {
+        RigError::from(self)
     }
 }
 
-impl From<&MemoryError> for ErrorReport {
+impl From<&MemoryError> for RigError {
     fn from(error: &MemoryError) -> Self {
         let kind = match error {
             MemoryError::Backend(_) => ErrorKind::MemoryBackend,
             MemoryError::Policy(_) => ErrorKind::MemoryPolicy,
             MemoryError::Internal(_) => ErrorKind::Internal,
         };
-        ErrorReport {
+        RigError {
             kind,
             retryable: false,
             message: error.to_string(),
@@ -774,20 +849,24 @@ impl From<&MemoryError> for ErrorReport {
     }
 }
 
-impl From<MemoryError> for ErrorReport {
+impl From<MemoryError> for RigError {
     fn from(error: MemoryError) -> Self {
         Self::from(&error)
     }
 }
 
-impl From<&VectorStoreError> for ErrorReport {
+impl From<&VectorStoreError> for RigError {
     fn from(error: &VectorStoreError) -> Self {
         let (kind, provider_response) = match error {
+            // The embedding failure is this error's source: its message
+            // leads the chain, followed by its own sources.
             VectorStoreError::EmbeddingError(inner) => {
                 return Self {
                     message: error.to_string(),
-                    source_chain: source_chain(error),
-                    ..Self::from(inner)
+                    source_chain: std::iter::once(inner.message.clone())
+                        .chain(inner.source_chain.iter().cloned())
+                        .collect(),
+                    ..inner.clone()
                 };
             }
             VectorStoreError::JsonError(_) => (ErrorKind::Json, None),
@@ -829,7 +908,7 @@ impl From<&VectorStoreError> for ErrorReport {
         let code = provider_response
             .as_ref()
             .and_then(|response| response.machine_code());
-        ErrorReport {
+        RigError {
             kind,
             retryable,
             message: error.to_string(),
@@ -844,7 +923,7 @@ impl From<&VectorStoreError> for ErrorReport {
     }
 }
 
-impl From<VectorStoreError> for ErrorReport {
+impl From<VectorStoreError> for RigError {
     fn from(error: VectorStoreError) -> Self {
         Self::from(&error)
     }
@@ -854,10 +933,11 @@ impl From<VectorStoreError> for ErrorReport {
 // and serialize on every target, browser wasm included.
 const _: fn() = || {
     fn assert_wire<T: Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}
-    assert_wire::<ErrorReport>();
+    assert_wire::<RigError>();
     assert_wire::<ErrorKind>();
 };
 
+mod convert;
 #[cfg(test)]
 mod encode_tests;
 #[cfg(test)]

@@ -17,10 +17,11 @@ dbg_macro = "forbid"
 todo = "forbid"
 unimplemented = "forbid"
 unwrap_used = "deny"
+# As the root workspace allows it: `RigError` is returned by value.
+result_large_err = "allow"
 
 [dependencies]
 rig = { path = "../.." }
-anyhow = "1"
 serenity = "0.12"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }

@@ -83,7 +83,7 @@ fn a_trace_round_trips_through_json() {
         Action::StreamTruncated {
             delivered: 2,
             tail: Vec::new(),
-            errors: vec![Reason::from_report(&ErrorReport::new(
+            errors: vec![Reason::from_report(&RigError::new(
                 ErrorKind::Response,
                 "the stream ended before its terminal record",
             ))],
@@ -195,7 +195,7 @@ fn a_host_action_travels_typed_and_named() {
 
 #[test]
 fn reasons_and_summaries_come_from_reports_without_inventing_detail() {
-    let report = ErrorReport::new(ErrorKind::Cancelled, "stopped").with_retryable(false);
+    let report = RigError::new(ErrorKind::Cancelled, "stopped").with_retryable(false);
     let reason = Reason::from_report(&report);
     assert_eq!(&*reason.code, "cancelled");
     assert_eq!(reason.detail.as_deref(), Some("stopped"));

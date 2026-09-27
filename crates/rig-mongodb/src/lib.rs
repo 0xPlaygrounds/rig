@@ -75,7 +75,9 @@ struct Field {
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 /// use rig_core::{providers::openai::{self, OpenAI}, vector_store::{VectorStoreIndex, VectorSearchRequest}};
 ///
-/// # async fn example() -> anyhow::Result<()> {
+/// use rig_core::RigError;
+///
+/// # async fn example() -> Result<(), RigError> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
 /// struct WordDefinition {
 ///     #[serde(rename = "_id")]
@@ -84,7 +86,9 @@ struct Field {
 ///     embedding: Vec<f64>,
 /// }
 ///
-/// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
+/// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017") // <-- replace with your mongodb uri.
+///     .await
+///     .map_err(RigError::other)?;
 /// let openai = OpenAI::from_env()?;
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.

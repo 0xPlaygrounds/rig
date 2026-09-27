@@ -78,7 +78,7 @@ impl Serve for Echo {
                     }
                 })
             }
-            other => Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+            other => Reply::Outcome(Err(rig_core::error::RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!("cannot serve {}", other.name()),
             ))),

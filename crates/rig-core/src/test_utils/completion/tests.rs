@@ -142,8 +142,8 @@ async fn missing_completion_turn_returns_provider_error() {
         .expect_err("missing turn should error");
 
     assert!(matches!(
-        err,
-        ProviderError::Provider(message)
+        (err.kind, err.message.strip_prefix("ProviderError: ")),
+        (ErrorKind::Provider, Some(message))
             if message.contains("no scripted completion turn")
     ));
 }

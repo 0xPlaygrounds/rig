@@ -23,7 +23,7 @@ use rig_core::{
         EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
         MemoryOutcome, Outcome, RetrieveQuery, RetrievedDocuments,
     },
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, Message},
     serve::Serve,
 };
@@ -65,7 +65,7 @@ impl Serve for Store {
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::Memory { op } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(RigError::new(
                 ErrorKind::Internal,
                 "not memory",
             )));
@@ -77,7 +77,7 @@ impl Serve for Store {
                     .unwrap()
                     .push(format!("load:{conversation}"));
                 if self.refuse_load {
-                    Err(ErrorReport::new(ErrorKind::MemoryBackend, "refused"))
+                    Err(RigError::new(ErrorKind::MemoryBackend, "refused"))
                 } else {
                     Ok(MemoryOutcome::Loaded {
                         messages: self.messages.lock().unwrap().clone(),
@@ -129,7 +129,7 @@ impl Serve for Index {
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::Retrieve { query } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(RigError::new(
                 ErrorKind::Internal,
                 "not a retrieval",
             )));
@@ -474,7 +474,7 @@ impl Serve for Subtractor {
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::ToolCall { args, .. } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(RigError::new(
                 ErrorKind::Internal,
                 "not a call",
             )));

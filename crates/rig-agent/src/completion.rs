@@ -77,5 +77,21 @@ pub enum StructuredOutputError {
     EmptyResponse,
 }
 
+/// The run's failure converts as it does; an answer that is not the
+/// requested structure is [`ErrorKind::Response`](rig_core::error::ErrorKind::Response).
+impl From<StructuredOutputError> for rig_core::error::RigError {
+    fn from(error: StructuredOutputError) -> Self {
+        match error {
+            StructuredOutputError::PromptError(error) => Self::from(error),
+            other => Self {
+                kind: rig_core::error::ErrorKind::Response,
+                ..Self::other(&other)
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod provider_response_tests;
+#[cfg(test)]
+mod rig_error_tests;

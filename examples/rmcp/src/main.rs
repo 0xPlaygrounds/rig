@@ -28,6 +28,7 @@ use hyper_util::{
     server::conn::auto::Builder,
     service::TowerToHyperService,
 };
+use rig::RigError;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpService, session::local::LocalSessionManager,
 };
@@ -195,7 +196,7 @@ impl ServerHandler for Counter {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt::init();
 
     let service = TowerToHyperService::new(StreamableHttpService::new(
@@ -203,7 +204,9 @@ async fn main() -> anyhow::Result<()> {
         LocalSessionManager::default().into(),
         Default::default(),
     ));
-    let listener = tokio::net::TcpListener::bind("localhost:8080").await?;
+    let listener = tokio::net::TcpListener::bind("localhost:8080")
+        .await
+        .map_err(RigError::other)?;
 
     tokio::spawn({
         let service = service.clone();

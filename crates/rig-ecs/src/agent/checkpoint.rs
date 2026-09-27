@@ -98,6 +98,17 @@ pub enum CheckpointError {
     ZeroTurn,
 }
 
+/// The host's request is not one a run can honor, as the checkpoint's own
+/// validation reports it: a request that cannot be built.
+impl From<CheckpointError> for rig_core::error::RigError {
+    fn from(error: CheckpointError) -> Self {
+        Self {
+            kind: rig_core::error::ErrorKind::Request,
+            ..Self::other(error)
+        }
+    }
+}
+
 /// Arm a hold for this owner. Re-arming is idempotent and cannot move an
 /// existing owner's boundary later; release that hold explicitly to replace it.
 /// Returns true when a hold was added or moved earlier. Hosts must arm before
@@ -162,10 +173,10 @@ pub fn release_tool_turn_hold(
 /// on a run with named owners and non-zero turns; a commit or its links on
 /// a turn of a run, naming utterances of that run in their roles; a commit
 /// with both links, no batch out, and a turn the run's cursor has reached.
-pub(crate) fn validate(world: &World, entity: Entity) -> Result<(), rig_core::error::ErrorReport> {
+pub(crate) fn validate(world: &World, entity: Entity) -> Result<(), rig_core::error::RigError> {
     use super::{Batch, Cursor, Role, Turn, Utterance};
     let refused = |message: &str| {
-        rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::Request, message)
+        rig_core::error::RigError::new(rig_core::error::ErrorKind::Request, message)
     };
     if let Some(holds) = world.get::<ToolTurnHolds>(entity)
         && (world.get::<Run>(entity).is_none()

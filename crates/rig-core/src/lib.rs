@@ -16,12 +16,11 @@
 //! transports, agent runtimes, and external storage integrations.
 //!
 //! ```no_run
-//! use rig_core::DynModel;
+//! use rig_core::{DynModel, RigError};
 //! use rig_core::completion::{CompletionRequest, CompletionResponse};
-//! use rig_core::error::ProviderError;
 //! use rig_core::operation::Completion;
 //!
-//! async fn ask(model: &DynModel<Completion>) -> Result<CompletionResponse, ProviderError> {
+//! async fn ask(model: &DynModel<Completion>) -> Result<CompletionResponse, RigError> {
 //!     let request = CompletionRequest::new("Who are you?");
 //!     model.call(request).await
 //! }
@@ -76,7 +75,7 @@ pub use rig_http::ws_client;
 pub use completion::message;
 pub use driver::{DynModel, Model};
 pub use embeddings::Embed;
-pub use error::{ErrorKind, ErrorReport, ProviderError};
+pub use error::{ErrorKind, RigError};
 pub use provider_response::ProviderResponseError;
 // `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
 // code (and downstream crates) can resolve them through Rig instead of

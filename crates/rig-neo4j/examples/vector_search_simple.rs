@@ -6,9 +6,9 @@
 //! 3. Creates a vector index on the embeddings
 //! 4. Queries the vector index
 //! 5. Returns the results
-use std::env;
 
 use futures::{StreamExt, TryStreamExt};
+use rig_core::RigError;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -25,14 +25,14 @@ pub struct Word {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
 
     // Initialize Neo4j client
-    let neo4j_uri = env::var("NEO4J_URI")?;
-    let neo4j_username = env::var("NEO4J_USERNAME")?;
-    let neo4j_password = env::var("NEO4J_PASSWORD")?;
+    let neo4j_uri = rig_core::client::env::required("NEO4J_URI")?;
+    let neo4j_username = rig_core::client::env::required("NEO4J_USERNAME")?;
+    let neo4j_password = rig_core::client::env::required("NEO4J_PASSWORD")?;
 
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
@@ -84,7 +84,8 @@ async fn main() -> Result<(), anyhow::Error> {
         })
         .buffer_unordered(3)
         .try_collect::<Vec<_>>()
-        .await?;
+        .await
+        .map_err(RigError::other)?;
 
     // Create a vector index on our vector store
     println!("Creating vector index...");
@@ -99,7 +100,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 `vector.similarity_function`: 'cosine'
                 }}",
         ))
-        .await?;
+        .await
+        .map_err(RigError::other)?;
 
     // ℹ️ The index name must be unique among both indexes and constraints.
     // A newly created index is not immediately available but is created in the background.

@@ -28,7 +28,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
-use rig_core::error::ProviderError;
 use rig_core::streaming::BlockId;
 
 use rig_core::message::{
@@ -98,7 +97,7 @@ impl InvalidToolCallDiagnostic<'_> {
                 self.unknown(self.tool_call.function.name.clone())
             }
             InvalidToolCallReason::MalformedArguments { error } => {
-                PromptError::Report(malformed_tool_input_report(self.tool_call, error))
+                PromptError::Failed(malformed_tool_input_report(self.tool_call, error))
             }
         }
     }
@@ -109,8 +108,8 @@ impl InvalidToolCallDiagnostic<'_> {
 }
 
 /// Reconstruct a malformed-input response report from the diagnostic call.
-fn malformed_tool_input_report(tool_call: &ToolCall, error: &str) -> rig_core::error::ErrorReport {
-    rig_core::error::ErrorReport::new(
+fn malformed_tool_input_report(tool_call: &ToolCall, error: &str) -> rig_core::error::RigError {
+    rig_core::error::RigError::new(
         rig_core::error::ErrorKind::Response,
         format!(
             "tool call `{}` arrived with malformed JSON input: {error}",
@@ -996,7 +995,7 @@ impl AgentRun {
                 if turn_delivered_no_answer(&items)
                     && let Some(reason) = self.truncating_finish_reason()
                 {
-                    return Err(ProviderError::Response(reason.no_answer_message()).into());
+                    return Err(crate::failure::response(reason.no_answer_message()).into());
                 }
 
                 // Empty turns may succeed but cannot form provider history entries.

@@ -6,7 +6,7 @@ use crate::goldens::{
 use bevy_ecs::prelude::*;
 use rig_core::{
     effect::{EffectFamily, EffectKind, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::AssistantContent,
     tool::ToolOutput,
 };
@@ -36,7 +36,7 @@ pub(super) fn deny_tools(tools: UnissuedTools, mut commands: Commands) {
         if matches!(&pending.kind,EffectKind::ToolCall{name,..} if name=="add") {
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Err(ErrorReport::new(
+                .insert(EffectOutcome(Err(RigError::new(
                     ErrorKind::Denied,
                     DENY_REASON,
                 ))));

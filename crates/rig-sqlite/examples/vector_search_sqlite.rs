@@ -1,3 +1,4 @@
+use rig_core::RigError;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -50,7 +51,7 @@ type SqliteExtensionFn =
     unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
@@ -70,7 +71,9 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Initialize SQLite connection
-    let conn = Connection::open("vector_store.db").await?;
+    let conn = Connection::open("vector_store.db")
+        .await
+        .map_err(RigError::other)?;
 
     // Select the embedding model and generate our embeddings
     let model = openai_client

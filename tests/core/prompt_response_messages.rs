@@ -492,7 +492,7 @@ fn memory_append_is_absent_without_memory_and_round_trips_through_serde() {
     assert_eq!(restored.memory_append, Some(MemoryAppend::Acknowledged));
 
     let failed = bare.with_memory_append(Some(MemoryAppend::Failed {
-        report: rig::error::ErrorReport::new(rig::error::ErrorKind::MemoryBackend, "boom"),
+        report: rig::error::RigError::new(rig::error::ErrorKind::MemoryBackend, "boom"),
     }));
     let json = serde_json::to_value(&failed).expect("serializes");
     assert_eq!(json["memory_append"]["status"], "failed");

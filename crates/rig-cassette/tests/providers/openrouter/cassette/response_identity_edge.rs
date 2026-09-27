@@ -10,6 +10,7 @@
 
 use super::super::support::with_openrouter_cassette;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 
 const MODEL: &str = "openai/gpt-5.2";
 
@@ -76,10 +77,7 @@ async fn routed_failure_error_shape() {
                 .expect_err("an unroutable model must fail");
             // Derived from the recording: OpenRouter answers a body-ful 4xx,
             // preserved as its response through the one funnel.
-            assert!(
-                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
-                "got {error:?}"
-            );
+            assert!(error.kind == ErrorKind::ProviderResponse, "got {error:?}");
             assert!(error.provider_response_body().is_some());
             assert_eq!(error.provider_request_id(), None);
         },

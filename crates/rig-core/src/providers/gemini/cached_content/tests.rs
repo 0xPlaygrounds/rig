@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::ErrorKind;
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 #[test]
@@ -54,7 +55,7 @@ async fn a_mis_targeting_handle_never_reaches_the_socket() {
             let error =
                 error.unwrap_or_else(|| panic!("{label} should refuse the handle {smuggled:?}"));
             assert!(
-                matches!(error, ProviderError::Request(_)),
+                error.kind == ErrorKind::Request,
                 "{label} on {smuggled:?}: {error:?}"
             );
         }
@@ -404,7 +405,7 @@ async fn an_empty_body_acknowledges_a_delete_but_answers_no_get() {
         .get("cachedContents/leaky")
         .await
         .expect_err("an empty 200 carries no resource");
-    assert!(matches!(error, ProviderError::Response(_)), "{error:?}");
+    assert_eq!(error.kind, ErrorKind::Response, "{error:?}");
 }
 
 /// A body that names a resource and then fails to deserialize is the
@@ -426,7 +427,7 @@ async fn a_malformed_resource_body_is_a_decode_error() {
         .await
         .expect_err("a `name` that is not a string cannot decode");
 
-    assert!(matches!(error, ProviderError::Json(_)), "{error:?}");
+    assert_eq!(error.kind, ErrorKind::Json, "{error:?}");
 }
 
 /// The `{}` every recorded delete is answered with is the whole reply —
@@ -464,7 +465,7 @@ async fn a_reply_of_the_other_shape_names_the_shape_it_carried() {
         .await
         .expect_err("a listing page is not one cached content");
     assert!(
-        matches!(&on_get, ProviderError::Response(message) if message.contains("listing page")),
+        on_get.kind == ErrorKind::Response && on_get.message.contains("listing page"),
         "{on_get:?}"
     );
 
@@ -473,7 +474,7 @@ async fn a_reply_of_the_other_shape_names_the_shape_it_carried() {
         .await
         .expect_err("one cached content is not a listing page");
     assert!(
-        matches!(&on_list, ProviderError::Response(message) if message.contains("not a listing page")),
+        on_list.kind == ErrorKind::Response && on_list.message.contains("not a listing page"),
         "{on_list:?}"
     );
 }

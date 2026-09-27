@@ -191,7 +191,7 @@ async fn a_tool_divergence_fails_the_run_at_the_tool_record() {
     let error = within(replayed.prompt("go").max_turns(3).run())
         .await
         .expect_err("the corrupted tool record is a divergence");
-    let rig_agent::completion::PromptError::Report(report) = &error else {
+    let rig_agent::completion::PromptError::Failed(report) = &error else {
         panic!("expected the divergence report, got {error}");
     };
     assert_eq!(report.kind, rig_core::error::ErrorKind::Divergence);

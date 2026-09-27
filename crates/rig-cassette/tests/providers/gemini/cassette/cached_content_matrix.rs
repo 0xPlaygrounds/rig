@@ -50,7 +50,6 @@
 //! ```
 //!
 
-use rig::error::ProviderError;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, GeminiConfig};
 use rig_test_support::cassette_models::GeminiModels;
@@ -61,6 +60,7 @@ use super::super::support::{
     always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
     assert_recorded_response_contains, with_gemini_prompt_caching_cassette,
 };
+use rig::error::ErrorDetail;
 
 /// Deterministic, committed timestamp for the absolute-expiry arm. A computed
 /// "now + 10 minutes" would churn the fixture on every re-record.
@@ -895,7 +895,9 @@ async fn deleting_twice_reports_the_second_as_expired() {
                 .delete(&created.name)
                 .await
                 .expect_err("a second delete should not silently succeed");
-            let ProviderError::CacheExpired { name, response } = &error else {
+            let (Some(ErrorDetail::CacheExpired { name }), Some(response)) =
+                (&error.detail, &error.provider_response)
+            else {
 
                 panic!("a handle that is already gone should report CacheExpired: {error:?}");
             };

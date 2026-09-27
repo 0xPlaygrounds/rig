@@ -76,14 +76,13 @@
 //! bytes instead, as an earlier version did, could not have detected an HTTP
 //! regression at all.
 
-use rig::error::ProviderError;
-
 use super::super::support::with_openai_websocket_cassette;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 
 /// What a caller can actually learn from a failed connection — the three
 /// accessors the rig#2314/#2315 contract is written in terms of.
-fn observable(error: &ProviderError) -> (Option<u16>, bool, bool) {
+fn observable(error: &rig::RigError) -> (Option<u16>, bool, bool) {
     (
         error
             .provider_response_status()
@@ -120,7 +119,7 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
                 "the transport request id must survive, as it does on every other transport"
             );
             assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
+                error.kind == ErrorKind::ProviderResponse,
                 "a rejection carrying a provider response classifies as one: {error:?}"
             );
         },

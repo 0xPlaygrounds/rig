@@ -63,7 +63,7 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load().into_iter();
     /// for result in content {
     ///     match result {
@@ -85,7 +85,7 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load_with_path().into_iter();
     /// for result in content {
     ///     match result {
@@ -129,7 +129,7 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read().into_iter();
     /// for result in content {
     ///     match result {
@@ -151,7 +151,7 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read_with_path().into_iter();
     /// for result in content {
     ///     match result {
@@ -179,7 +179,7 @@ impl<'a> PdfFileLoader<'a, Document> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
     ///     .load()
     ///     .ignore_errors()
@@ -210,7 +210,7 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
     ///     .load_with_path()
     ///     .ignore_errors()
@@ -242,7 +242,7 @@ impl<'a> PdfFileLoader<'a, ByPage> {
     ///
     /// ```no_run
     /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
     ///     .load_with_path()
     ///     .ignore_errors()

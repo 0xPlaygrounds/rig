@@ -7,7 +7,7 @@
 //! ```no_run
 //! use rig_core::providers::doubleword;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let doubleword = doubleword::from_env()?;
 //! let chat = doubleword.chat(doubleword::QWEN3_5_9B);
 //! let embedding = doubleword.embedding(doubleword::QWEN3_EMBEDDING_8B, None);

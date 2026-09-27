@@ -20,7 +20,7 @@ pub use questions::{
     Noul, NoulAnswer, Query, Score, ScoreAnswer,
 };
 use rig_core::driver::{Model, Transport};
-use rig_core::error::ProviderError;
+use rig_core::error::{ProviderError, RigError};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::Serialize;
 pub use wire::{Evaluation, Jev, JevConfig};
@@ -45,7 +45,7 @@ pub trait Evaluate {
     ///
     /// ```compile_fail
     /// use rig_typesafeai::{Evaluate, EvaluationResult, DynamicScoreAnswer, Noul, Query};
-    /// async fn wrong(client: impl Evaluate) -> Result<(), rig_core::error::ProviderError> {
+    /// async fn wrong(client: impl Evaluate) -> Result<(), rig_core::RigError> {
     ///     let question = Noul::new("Ready?")?.named("ready")?;
     ///     let result: EvaluationResult<DynamicScoreAnswer> = client.evaluate(&"state", question).await?;
     ///     Ok(())
@@ -55,8 +55,7 @@ pub trait Evaluate {
         &self,
         state: &S,
         questions: Q,
-    ) -> impl std::future::Future<Output = Result<EvaluationResult<Q::Output>, ProviderError>>
-    + WasmCompatSend
+    ) -> impl std::future::Future<Output = Result<EvaluationResult<Q::Output>, RigError>> + WasmCompatSend
     where
         S: Serialize + WasmCompatSync,
         Q: Query;
@@ -66,12 +65,12 @@ impl<T: Transport<JevConfig>> Evaluate for Model<JevConfig, T> {
         &self,
         state: &S,
         questions: Q,
-    ) -> Result<EvaluationResult<Q::Output>, ProviderError>
+    ) -> Result<EvaluationResult<Q::Output>, RigError>
     where
         S: Serialize + WasmCompatSync,
         Q: Query,
     {
-        let encoded = serde_json::value::to_raw_value(&questions)?;
+        let encoded = serde_json::value::to_raw_value(&questions).map_err(ProviderError::from)?;
         let ids = validation::request_ids(&encoded)?;
         let request = types::Request {
             state: questions::state(state)?,
@@ -81,10 +80,13 @@ impl<T: Transport<JevConfig>> Evaluate for Model<JevConfig, T> {
         if ids != validation::response_ids(&response.answers)? {
             return Err(ProviderError::Response(
                 "response question IDs differ from request".into(),
-            ));
+            )
+            .into());
         }
         Ok(EvaluationResult {
-            answers: questions.decode(serde_json::from_str(response.answers.get())?)?,
+            answers: questions.decode(
+                serde_json::from_str(response.answers.get()).map_err(ProviderError::from)?,
+            )?,
             model: response.model,
             usage: response.usage,
             provider_request_id: response.provider_request_id,

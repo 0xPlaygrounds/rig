@@ -14,7 +14,7 @@ use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, Message},
     serve::{Serve, ServingPolicy},
 };
@@ -77,7 +77,7 @@ impl Serve for Capturing {
                 );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
-            other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+            other => rig_core::serve::Reply::Outcome(Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!("a model cannot serve {}", other.name()),
             ))),
@@ -107,7 +107,7 @@ impl Serve for NeverCalled {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+        rig_core::serve::Reply::Outcome(Err(RigError::new(
             ErrorKind::Internal,
             "a tool advertised and never called was called",
         )))
@@ -283,7 +283,7 @@ impl Serve for Scripted {
                 );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
-            other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+            other => rig_core::serve::Reply::Outcome(Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 format!("a model cannot serve {}", other.name()),
             ))),
@@ -335,7 +335,7 @@ impl Serve for Adder {
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         use std::sync::atomic::Ordering;
         let EffectKind::ToolCall { args, .. } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(RigError::new(
                 ErrorKind::Request,
                 "a tool call",
             )));

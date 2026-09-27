@@ -40,6 +40,13 @@ impl From<PrepareError> for ProviderError {
     }
 }
 
+/// As the agent reports it: a request that could not be built.
+impl From<PrepareError> for rig_core::error::RigError {
+    fn from(error: PrepareError) -> Self {
+        Self::from(ProviderError::from(error))
+    }
+}
+
 /// Everything a model call carries that the protocol decides, as owned data.
 ///
 /// Apply it to a provider's request builder with [`apply`](Self::apply); the

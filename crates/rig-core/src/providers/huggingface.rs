@@ -8,7 +8,7 @@
 //! ```no_run
 //! use rig_core::providers::huggingface;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let router = huggingface::from_env()?;
 //! let chat = router.chat(huggingface::GEMMA_2);
 //! # let _ = chat;

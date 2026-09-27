@@ -3,9 +3,8 @@
 //! Run with:
 //! `cargo test -p rig --test deepseek list_models_smoke -- --ignored --nocapture`
 
-use rig::error::ProviderError;
-
 use super::support::with_deepseek_cassette;
+use rig::error::ErrorKind;
 
 #[tokio::test]
 async fn list_models_smoke() {
@@ -48,7 +47,9 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Re
                 .await
                 .expect_err("a bogus key must not list models");
 
-            let ProviderError::ProviderResponse(response) = &error else {
+            let (ErrorKind::ProviderResponse, Some(response)) =
+                (error.kind, &error.provider_response)
+            else {
                 anyhow::bail!(
                     "a rejected listing must keep the provider's reply\nDisplay: {error}\n\
                      Debug: {error:#?}"

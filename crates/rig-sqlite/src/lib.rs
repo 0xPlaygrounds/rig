@@ -1458,9 +1458,10 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// };
 /// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
+/// use rig_core::RigError;
 /// use tokio_rusqlite::Connection;
 ///
-/// # async fn example() -> anyhow::Result<()> {
+/// # async fn example() -> Result<(), RigError> {
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 /// struct Document {
 ///     id: String,
@@ -1492,7 +1493,9 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 ///     }
 /// }
 ///
-/// let conn = Connection::open("vector_store.db").await?;
+/// let conn = Connection::open("vector_store.db")
+///     .await
+///     .map_err(RigError::other)?;
 /// let openai = OpenAI::new("YOUR_API_KEY");
 /// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None)
 /// .erase();

@@ -2,6 +2,7 @@ use rig_agent::agent::AgentBuilder;
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_core::DynModel;
+use rig_core::RigError;
 use rig_core::loaders::FileLoader;
 use rig_core::operation::Completion;
 use tracing::info;
@@ -10,7 +11,7 @@ mod common;
 
 /// Runs 4 agents based on AWS Bedrock (derived from the agent_with_grok example)
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_target(false)
@@ -38,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 /// Create an AWS Bedrock agent with a system prompt
-async fn basic(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
+async fn basic(model: DynModel<Completion>) -> Result<(), RigError> {
     let agent = AgentBuilder::new(model)
         .preamble("Answer with json format only")
         .build();
@@ -50,7 +51,7 @@ async fn basic(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
 }
 
 /// Create an AWS Bedrock with tools
-async fn tools(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
+async fn tools(model: DynModel<Completion>) -> Result<(), RigError> {
     let calculator_agent = AgentBuilder::new(model)
         .preamble("You must only do math by using a tool.")
         .max_tokens(1024)
@@ -65,7 +66,7 @@ async fn tools(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn context(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
+async fn context(model: DynModel<Completion>) -> Result<(), RigError> {
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)
         .preamble("Answer the question")
@@ -89,7 +90,7 @@ async fn context(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
 ///
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
 ///  context for the agent
-async fn loaders(model: DynModel<Completion>) -> Result<(), anyhow::Error> {
+async fn loaders(model: DynModel<Completion>) -> Result<(), RigError> {
     // Load in all the rust examples
     let examples = FileLoader::with_glob("examples/*.rs")?
         .read_with_path()

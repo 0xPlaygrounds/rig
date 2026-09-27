@@ -12,11 +12,10 @@ use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
 
 use crate::bus::{DispatchOptions, MemoryHandle};
-use rig_core::error::ProviderError;
 use rig_core::{
     completion::{FinishReason, ModelRef, ResponseIdentity},
     effect::{EffectId, EffectKind, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, Message, ToolCall, UserContent},
     streaming::BlockId,
     telemetry::SpanCombinator,
@@ -132,10 +131,9 @@ pub(crate) trait TurnSource: WasmCompatSend {
 /// Per the emission contract (`rig_core::streaming`) that absence means
 /// truncation, never a successful zero-usage completion, and a truncated
 /// stream has no document to record a completion call from.
-fn truncated_stream_error() -> ProviderError {
-    ProviderError::Response(
-        "provider stream ended without a terminal record; treating the turn as truncated"
-            .to_string(),
+fn truncated_stream_error() -> RigError {
+    crate::failure::response(
+        "provider stream ended without a terminal record; treating the turn as truncated",
     )
 }
 
@@ -144,8 +142,7 @@ fn truncated_stream_error() -> ProviderError {
 /// every streaming error originates as one of these.
 pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     match err {
-        StreamingError::Completion(err) => PromptError::CompletionError(err),
-        StreamingError::Report(report) => PromptError::Report(report),
+        StreamingError::Failed(error) => PromptError::Failed(error),
         StreamingError::Prompt(err) => err,
     }
 }
@@ -341,7 +338,7 @@ where
                         Ok(model) => model,
                         Err(report) => {
                             store_error_usage(&runner, &run);
-                            let err = StreamingError::Report(report);
+                            let err = StreamingError::Failed(report);
                             settle_error!(err);
                             yield Err(err);
                             break 'outer;
@@ -424,10 +421,7 @@ where
                     }
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
-                        let err = StreamingError::Completion(ProviderError::Response(
-                            "agent requested tool execution without a prepared registry snapshot"
-                                .to_string(),
-                        ));
+                        let err = StreamingError::Failed(crate::failure::response("agent requested tool execution without a prepared registry snapshot"));
                         settle_error!(err);
                         yield Err(err);
                         break 'outer;
@@ -691,11 +685,9 @@ where
             Vec::with_capacity(call_count.saturating_mul(2));
         for slot in collected {
             let Some(CollectedToolResult { content, block_id, surface }) = slot else {
-                yield Err(StreamingError::Prompt(PromptError::CompletionError(
-                    ProviderError::Response(
-                        "tool execution finished without producing every result".to_string(),
-                    ),
-                )));
+                yield Err(StreamingError::Failed(
+                    crate::failure::response("tool execution finished without producing every result"),
+                ));
                 return;
             };
             if forward_items {
@@ -833,8 +825,8 @@ impl TurnSource for StreamingTurnSource {
             {
                 Ok(CompletionDispatch::Stream { id, kind, stream }) => (id, kind, stream),
                 Ok(CompletionDispatch::Response { .. }) => {
-                    yield Err(StreamingError::Report(
-                        ErrorReport::new(
+                    yield Err(StreamingError::Failed(
+                        RigError::new(
                             ErrorKind::Internal,
                             "a streaming completion dispatch answered unary",
                         ),
@@ -846,7 +838,7 @@ impl TurnSource for StreamingTurnSource {
                     return;
                 }
                 Err(CompletionDispatchError::Failed(report)) => {
-                    yield Err(StreamingError::Report(report));
+                    yield Err(StreamingError::Failed(report));
                     return;
                 }
             };
@@ -897,7 +889,7 @@ impl TurnSource for StreamingTurnSource {
                         // stream that delivered no terminal is truncated per
                         // the emission contract and has no call to record.
                         match stream.folded().terminal().map(|response| response.raw.clone()) {
-                            None => Err(truncated_stream_error().into()),
+                            None => Err(StreamingError::Failed(truncated_stream_error())),
                             Some(raw) => match run.record_streamed_completion_call(
                                 usage,
                                 stream.folded().identity(),
@@ -934,11 +926,9 @@ impl TurnSource for StreamingTurnSource {
                                     | StreamEvent::BlockEnd { block: None, .. }
                             );
                             if provider_final_seen && visible_content {
-                                yield Err(ProviderError::Response(
-                                    "provider stream emitted visible assistant content after its final response"
-                                        .to_string(),
-                                )
-                                .into());
+                                yield Err(StreamingError::Failed(
+                                    crate::failure::response("provider stream emitted visible assistant content after its final response"),
+                                ));
                                 return;
                             }
                             match assembler.ingest(&item) {
@@ -996,10 +986,9 @@ impl TurnSource for StreamingTurnSource {
                                 }) = item_slot.as_ref()
                             {
                                 let Some(aggregated) = assembler.aggregated_reasoning(id) else {
-                                    yield Err(ProviderError::Response(format!(
-                                        "reasoning delta `{id}` was ingested without a pending aggregate"
-                                    ))
-                                    .into());
+                                    yield Err(StreamingError::Failed(
+                                        crate::failure::response(format!("reasoning delta `{id}` was ingested without a pending aggregate")),
+                                    ));
                                     return;
                                 };
                                 if let Some(reason) = observe_action(
@@ -1206,7 +1195,7 @@ impl TurnSource for StreamingTurnSource {
             // reason and payload are read from it below, never from a
             // previous attempt's stream.
             let Some(terminal) = stream.folded().terminal().cloned() else {
-                yield Err(truncated_stream_error().into());
+                yield Err(StreamingError::Failed(truncated_stream_error()));
                 return;
             };
 
@@ -1471,7 +1460,7 @@ pub(crate) async fn settle_model_turn(
     folded.message_id = turn.identity.message_id.clone();
     folded.response_id = turn.identity.response_id.clone();
     folded.provider_request_id = turn.identity.provider_request_id.clone();
-    let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));
+    let outcome: Result<Outcome, RigError> = Ok(Outcome::Completion(folded));
     let mut replaced: Option<Vec<AssistantContent>> = None;
     match hooks
         .on_outcome(
@@ -1493,13 +1482,13 @@ pub(crate) async fn settle_model_turn(
             replaced = Some(replacement.choice);
         }
         OutcomeAction::Replace(Ok(other)) => {
-            return Err(PromptError::Report(wrong_outcome("a completion", &other)));
+            return Err(PromptError::Failed(wrong_outcome("a completion", &other)));
         }
         OutcomeAction::Replace(Err(report)) => {
             if report.kind == ErrorKind::Cancelled {
                 return Ok(ModelTurnDecision::Terminate(report.message));
             }
-            return Err(PromptError::Report(report));
+            return Err(PromptError::Failed(report));
         }
     }
     let content = replaced.as_ref().unwrap_or(turn.content);
@@ -1616,7 +1605,7 @@ pub(crate) async fn dispatch_effect(
     dispatcher: &crate::bus::Dispatcher,
     key: &rig_core::effect::HandlerKey,
     kind: EffectKind,
-) -> Result<Outcome, ErrorReport> {
+) -> Result<Outcome, RigError> {
     let id = dispatcher.mint_id();
     let family = kind.family();
     let kind = match hooks
@@ -1659,8 +1648,8 @@ pub(crate) async fn dispatch_effect(
     }
 }
 
-pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> ErrorReport {
-    ErrorReport::new(
+pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> RigError {
+    RigError::new(
         ErrorKind::Internal,
         format!(
             "expected {expected}, the handler answered with a {} outcome",
@@ -1749,7 +1738,7 @@ pub(crate) async fn run_single_tool(
                 reason,
             ));
         }
-        Err(ToolDispatchAbort::Failed(report)) => return Err(PromptError::Report(report)),
+        Err(ToolDispatchAbort::Failed(report)) => return Err(PromptError::Failed(report)),
     };
 
     // A hook patched the arguments: re-record the span so the trace reflects
@@ -1887,8 +1876,8 @@ impl TurnSource for UnaryTurnSource {
             {
                 Ok(CompletionDispatch::Response { id, kind, response }) => (id, kind, response),
                 Ok(CompletionDispatch::Stream { .. }) => {
-                    yield Err(StreamingError::Report(
-                        ErrorReport::new(
+                    yield Err(StreamingError::Failed(
+                        RigError::new(
                             ErrorKind::Internal,
                             "a unary completion dispatch answered with a stream",
                         ),
@@ -2063,11 +2052,11 @@ pub(crate) enum CompletionDispatchError {
     Cancelled(String),
     /// The dispatch failed (a denial with any other kind, a bus or handler
     /// failure, a wrong-family patch).
-    Failed(ErrorReport),
+    Failed(RigError),
 }
 
-fn wrong_family_patch(expected: &str, kind: &EffectKind) -> ErrorReport {
-    ErrorReport::new(
+fn wrong_family_patch(expected: &str, kind: &EffectKind) -> RigError {
+    RigError::new(
         ErrorKind::Internal,
         format!(
             "a hook patched a {expected} dispatch into a `{}` effect",
@@ -2147,7 +2136,7 @@ pub(crate) async fn dispatch_completion(
         Ok(Outcome::Completion(response)) => {
             Ok(CompletionDispatch::Response { id, kind, response })
         }
-        Ok(other) => Err(CompletionDispatchError::Failed(ErrorReport::new(
+        Ok(other) => Err(CompletionDispatchError::Failed(RigError::new(
             ErrorKind::Internal,
             format!(
                 "the completion handler answered with a {} outcome",
@@ -2179,7 +2168,7 @@ pub(crate) struct ToolCallDispatch {
 /// handler gone). This is a failure of the run, not of the tool.
 pub(crate) enum ToolDispatchAbort {
     Cancelled(String),
-    Failed(ErrorReport),
+    Failed(RigError),
 }
 
 pub(crate) async fn dispatch_tool_call(
@@ -2242,7 +2231,7 @@ pub(crate) async fn dispatch_tool_call(
     };
     let mut published: Option<crate::tool::ToolContext> = None;
     let mut executed = false;
-    let outcome: Result<Outcome, ErrorReport> = match denied {
+    let outcome: Result<Outcome, RigError> = match denied {
         Some(report) => Ok(Outcome::ToolResult {
             result: ToolResult::skipped(report.message),
         }),

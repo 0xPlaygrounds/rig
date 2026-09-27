@@ -4,7 +4,7 @@
 //! use rig_cassette::{ecs::ReplayDelivery, effect_log::EffectLog};
 //! let plan = ReplayDelivery::new(&EffectLog::default(), false)?;
 //! assert!(plan.is_none());
-//! # Ok::<(), rig_core::error::ErrorReport>(())
+//! # Ok::<(), rig_core::error::RigError>(())
 //! ```
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -13,7 +13,7 @@ use crate::effect_log::EffectLog;
 use bevy_ecs::{prelude::*, world::CommandQueue};
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     streaming::{Delta, StreamEvent},
 };
 use std::task::Poll;
@@ -29,7 +29,7 @@ use rig_ecs::bus::{
 /// A delivery trace could not be followed. Also inserted as a resource when
 /// the unchanged program fails to create an effect needed by its next batch.
 #[derive(Resource, Debug, Clone)]
-pub struct ReplayFailure(pub ErrorReport);
+pub struct ReplayFailure(pub RigError);
 
 /// Shared delivery plan installed by `Replay::register`. Readiness remains on
 /// effect entities; this resource holds only the remaining recorded trace.
@@ -49,8 +49,8 @@ pub struct ReplayDelivery {
     seen: u64,
 }
 
-fn invalid(message: impl Into<String>) -> ErrorReport {
-    ErrorReport::new(ErrorKind::Divergence, message)
+fn invalid(message: impl Into<String>) -> RigError {
+    RigError::new(ErrorKind::Divergence, message)
 }
 
 impl ReplayDelivery {
@@ -63,7 +63,7 @@ impl ReplayDelivery {
     /// Return a plan when delivery metadata exists, or `None` when it is absent.
     /// Returns an error for inconsistent metadata or, when `required`, missing
     /// delivery guarantees for a nonempty log.
-    pub fn new(log: &EffectLog, required: bool) -> Result<Option<Self>, ErrorReport> {
+    pub fn new(log: &EffectLog, required: bool) -> Result<Option<Self>, RigError> {
         if required && !log.header.delivery_limitations.is_empty() {
             return Err(invalid(format!(
                 "policy-visible replay refused: {}",
@@ -267,11 +267,11 @@ enum Buffered {
         streamed: bool,
     },
     Unary {
-        answer: Option<Result<Outcome, ErrorReport>>,
+        answer: Option<Result<Outcome, RigError>>,
     },
     Stream {
         streaming: Streaming,
-        items: VecDeque<Result<StreamEvent, ErrorReport>>,
+        items: VecDeque<Result<StreamEvent, RigError>>,
         closed: bool,
         unary: bool,
     },
@@ -642,7 +642,7 @@ pub fn diagnose_idle_replay(world: &mut World) {
     );
 }
 
-fn fail(world: &mut World, report: ErrorReport) {
+fn fail(world: &mut World, report: RigError) {
     let entities: Vec<_> = world
         .query_filtered::<Entity, With<Buffered>>()
         .iter(world)

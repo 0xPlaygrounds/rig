@@ -6,7 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::{Model, Transport};
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::observe::AdapterContext;
 use crate::streaming::Streamed;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -62,7 +62,7 @@ where
 /// use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
 /// use rig_core::{Model, providers::openai::{self, OpenAI}};
 ///
-/// # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), rig_core::RigError> {
 /// let model = OpenAI::from_env()?.with_http(http).embedding(openai::TEXT_EMBEDDING_3_SMALL, None).erase();
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
 ///     .documents(["a document".to_owned()])?
@@ -139,7 +139,7 @@ impl<Op: Operation> DynModel<Op> {
     pub fn call(
         &self,
         request: impl Into<Op::Request>,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Op::Response, RigError>> + WasmCompatSend + 'static {
         self.drained(request.into(), None)
     }
 
@@ -148,23 +148,29 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: impl Into<Op::Request>,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Op::Response, RigError>> + WasmCompatSend + 'static {
         self.drained(request.into(), Some(observation))
     }
 
-    /// The call opens when first polled, as [`Model::call`] does.
+    /// The call opens when first polled, as [`Model::call`] does. The error
+    /// converts here, in the call's own future.
     fn drained(
         &self,
         request: Op::Request,
         observation: Option<AdapterContext>,
-    ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Op::Response, RigError>> + WasmCompatSend + 'static {
         let inner = self.inner.clone();
-        async move { inner.open(request, Mode::Unary, observation)?.drain().await }
+        async move {
+            Ok(inner
+                .open(request, Mode::Unary, observation)?
+                .drain()
+                .await?)
+        }
     }
 
     /// Open a streamed reply; [`Model::stream`] with the model erased.
-    pub fn stream(&self, request: impl Into<Op::Request>) -> Result<Streamed<Op>, ProviderError> {
-        self.inner.open(request.into(), Mode::Streaming, None)
+    pub fn stream(&self, request: impl Into<Op::Request>) -> Result<Streamed<Op>, RigError> {
+        Ok(self.inner.open(request.into(), Mode::Streaming, None)?)
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
@@ -172,9 +178,10 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: impl Into<Op::Request>,
         observation: AdapterContext,
-    ) -> Result<Streamed<Op>, ProviderError> {
-        self.inner
-            .open(request.into(), Mode::Streaming, Some(observation))
+    ) -> Result<Streamed<Op>, RigError> {
+        Ok(self
+            .inner
+            .open(request.into(), Mode::Streaming, Some(observation))?)
     }
 }
 

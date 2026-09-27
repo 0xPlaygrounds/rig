@@ -9,7 +9,7 @@
 
 use crate::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use bevy_ecs::prelude::*;
-use rig_core::error::ErrorReport;
+use rig_core::error::RigError;
 
 use rig_ecs::bus::{
     effect::{PendingEffect, Reserved},
@@ -88,10 +88,10 @@ impl Replay {
     /// descriptors are preserved; reapply executable middleware separately.
     ///
     /// The world must have [`super::ReplayPlugin`] installed after its runtime.
-    pub fn register(&self, world: &mut World, log: &EffectLog) -> Result<(), ErrorReport> {
+    pub fn register(&self, world: &mut World, log: &EffectLog) -> Result<(), RigError> {
         EffectLogReplayer::check_header(log)?;
         if !world.contains_resource::<super::ReplayInstalled>() {
-            return Err(ErrorReport::new(
+            return Err(RigError::new(
                 rig_core::error::ErrorKind::Request,
                 "install rig_cassette::ecs::ReplayPlugin after the runtime before registering replay",
             ));
@@ -111,7 +111,7 @@ impl Replay {
                     rig_core::serve::ErasedHandler::new(replayer.checking(self.check)),
                 )?;
             }
-            Ok::<_, ErrorReport>(())
+            Ok::<_, RigError>(())
         })??;
         world.remove_resource::<super::ReplayFailure>();
         match delivery {

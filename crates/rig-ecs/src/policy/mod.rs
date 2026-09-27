@@ -12,7 +12,7 @@ use rig_core::{
         message::{AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, UserContent},
     },
     effect::{HandlerDescriptor, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     json_utils::to_canonical_string,
     tool::{ToolExecutionError, ToolResult},
     transcript::{tool_result_message, tool_result_output},
@@ -322,7 +322,7 @@ pub fn tool_result_part(
     id: ToolCallId,
     provider: Option<ProviderCallId>,
     name: String,
-    outcome: &Result<Outcome, ErrorReport>,
+    outcome: &Result<Outcome, RigError>,
 ) -> Result<(UserContent, ToolResultStatus), Failure> {
     if let Some(failure) = tool_failure(outcome) {
         return Err(failure);
@@ -428,7 +428,7 @@ pub fn limit_tool_results(parts: &mut MessageParts, limit: &ToolResultLimit) {
 /// The failure a tool call's outcome ends the run in, if any: a cancel,
 /// or a report the bus could not serve the call with (closed, no handler,
 /// a replay divergence). Every other outcome is a result the model sees.
-pub fn tool_failure(outcome: &Result<Outcome, ErrorReport>) -> Option<Failure> {
+pub fn tool_failure(outcome: &Result<Outcome, RigError>) -> Option<Failure> {
     match outcome {
         Ok(_) => None,
         Err(report) if report.kind == ErrorKind::Cancelled => {

@@ -16,7 +16,6 @@ fastembed = { workspace = true }
 futures = { workspace = true }
 
 [dev-dependencies]
-anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
 

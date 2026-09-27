@@ -17,7 +17,7 @@ use crate::{
         HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome, RetrieveQuery,
         RetrievedDocuments, ToolEmbeddingDescriptor,
     },
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     memory::ConversationMemory,
     operation::{Completion, Embedding, Rerank},
     tool::{ErasedTool, Tool, ToolEmbedding},
@@ -29,8 +29,8 @@ use crate::{
 use super::{Dispatch, Reply, Serve};
 use crate::effect::family;
 
-fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
-    ErrorReport::new(
+fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> RigError {
+    RigError::new(
         ErrorKind::HandlerUnavailable,
         format!(
             "a {handler} handler cannot serve a `{}` effect",
@@ -85,7 +85,7 @@ impl Serve for ModelAdapter<Completion> {
                     Some(context) => model.call_observed(request, context).await,
                     None => model.call(request).await,
                 };
-                Reply::Outcome(result.map(Outcome::Completion).map_err(ErrorReport::from))
+                Reply::Outcome(result.map(Outcome::Completion))
             }
             EffectKind::Completion {
                 request,
@@ -97,7 +97,7 @@ impl Serve for ModelAdapter<Completion> {
                 };
                 match opened {
                     Ok(stream) => Reply::Stream(Box::pin(stream)),
-                    Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+                    Err(error) => Reply::Outcome(Err(error)),
                 }
             }
             other @ (EffectKind::ToolCall { .. }
@@ -139,12 +139,11 @@ impl Serve for ModelAdapter<Embedding> {
                 model
                     .call(texts)
                     .await
-                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
-                    .map_err(ErrorReport::from),
+                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response))),
             ),
             EffectKind::Embed {
                 inputs: EmbedInputs::Images(_),
-            } => Reply::Outcome(Err(ErrorReport::new(
+            } => Reply::Outcome(Err(RigError::new(
                 ErrorKind::HandlerUnavailable,
                 "a text embedding handler cannot embed images",
             ))),
@@ -185,8 +184,7 @@ impl Serve for ModelAdapter<Rerank> {
                         documents: request.documents,
                     })
                     .await
-                    .map(Outcome::Reranked)
-                    .map_err(ErrorReport::from),
+                    .map(Outcome::Reranked),
             ),
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
@@ -281,7 +279,7 @@ where
         match kind {
             EffectKind::ToolCall { name, .. } if name != T::NAME => {
                 // Key routing must not invoke a different tool than the bound target.
-                Reply::Outcome(Err(ErrorReport::new(
+                Reply::Outcome(Err(RigError::new(
                     ErrorKind::Internal,
                     format!("tool handler `{}` asked to run `{name}`", T::NAME),
                 )))
@@ -472,7 +470,7 @@ where
                         .await
                         .map(|()| Outcome::Memory(MemoryOutcome::Cleared)),
                 };
-                Reply::Outcome(outcome.map_err(ErrorReport::from))
+                Reply::Outcome(outcome.map_err(RigError::from))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
@@ -554,8 +552,8 @@ where
                                             .collect(),
                                     ))
                                 })
-                                .map_err(ErrorReport::from),
-                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
+                                .map_err(RigError::from),
+                            Err(error) => Err(RigError::from(VectorStoreError::from(error))),
                         }
                     }
                     RetrieveQuery::TopNIds { req } => {
@@ -565,8 +563,8 @@ where
                                 .top_n_ids(req)
                                 .await
                                 .map(|results| Outcome::Documents(RetrievedDocuments::Ids(results)))
-                                .map_err(ErrorReport::from),
-                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
+                                .map_err(RigError::from),
+                            Err(error) => Err(RigError::from(VectorStoreError::from(error))),
                         }
                     }
                 };

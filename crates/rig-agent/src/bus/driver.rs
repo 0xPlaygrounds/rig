@@ -21,7 +21,7 @@ use tracing::Instrument;
 
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
-    error::ErrorReport,
+    error::RigError,
     serve::{Dispatch, Observe, Origin, Recorder},
     streaming::StreamEvent,
     wasm_compat::WasmBoxedFuture,
@@ -55,7 +55,7 @@ impl Observe for Recorded {
         self.recorder.adapter_context(self.id)
     }
 
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Outcome, RigError>) {
         if let Some(output) = self
             .published
             .as_ref()
@@ -73,7 +73,7 @@ impl Observe for Recorded {
     fn event(&mut self, event: &StreamEvent) {
         self.recorder.event(self.id, event);
     }
-    fn stream_error(&mut self, error: &ErrorReport) {
+    fn stream_error(&mut self, error: &RigError) {
         self.recorder.stream_error(self.id, error);
     }
 
@@ -153,7 +153,7 @@ impl BusDriver {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         self.register_erased(key, ErasedHandler::new(handler))
     }
 
@@ -162,7 +162,7 @@ impl BusDriver {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         self.registrar().register_erased(key, handler)?;
         self.apply(self.mailbox.take_pending());
         Ok(())
@@ -174,7 +174,7 @@ impl BusDriver {
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<rig_core::effect::Key<F>, ErrorReport> {
+    ) -> Result<rig_core::effect::Key<F>, RigError> {
         let key = key.into();
         let handler = ErasedHandler::new(handler);
         let descriptor = handler.descriptor();

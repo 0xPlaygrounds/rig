@@ -58,13 +58,13 @@
 //!   400 that must survive rig's SSE funnel rather than the unary one.
 
 use futures::StreamExt;
-use rig::error::ProviderError;
 use serde_json::{Value, json};
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 
 use super::super::cassette_support::*;
 use rig::completion::CompletionRequest;
+use rig::error::{ErrorDetail, ErrorKind};
 use rig::operation::RerankRequest;
 
 /// A prompt long enough to overflow a 512-token context and short enough to
@@ -189,7 +189,7 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
             // this matrix is concerned, so the cell accepts either and asserts
             // on the error it gets.
             let error = match model.stream(request) {
-                Err(error) => rig::ErrorReport::from(&error),
+                Err(error) => error,
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
                     other => panic!("expected a preserved error, got {other:?}"),
@@ -358,8 +358,8 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
                 .expect_err("verification must fail without the key");
             assert!(
                 matches!(
-                    &error,
-                    rig::error::ProviderError::InvalidAuthentication(response)
+                    (&error.detail, &error.provider_response),
+                    (Some(ErrorDetail::InvalidAuthentication), Some(response))
                         if response.status.map(|status| status.as_u16()) == Some(401)
                 ),
                 "a 401 from the verify path must classify as invalid authentication, got: {error}"
@@ -407,9 +407,7 @@ async fn the_model_listing_requires_the_key_on_a_keyed_server() {
                 .await
                 .expect_err("`/v1/models` must refuse an unkeyed client");
             assert!(
-                matches!(
-                    &error,
-                    rig::error::ProviderError::ProviderResponse(response)
+                matches!((error.kind, &error.provider_response), (ErrorKind::ProviderResponse, Some(response))
                         if response.status.map(|status| status.as_u16()) == Some(401)
                 ),
                 "the refusal is a readable 401: {error:?}"
@@ -497,7 +495,7 @@ async fn embeddings_with_pooling_none_are_a_400() {
                 "{error}"
             );
             assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
+                error.kind == ErrorKind::ProviderResponse,
                 "the provider envelope must be preserved rather than reduced: {error}"
             );
         },
@@ -719,7 +717,7 @@ async fn rerank_without_a_reranker_is_a_501() {
                 .expect("the 501 body must be preserved");
             assert!(body.contains("--reranking"), "{body}");
             assert!(
-                !matches!(error, ProviderError::Json(_)),
+                error.kind != ErrorKind::Json,
                 "a 501 must not be misread as a decode failure: {error}"
             );
         },

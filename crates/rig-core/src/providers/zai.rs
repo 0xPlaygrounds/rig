@@ -10,7 +10,7 @@
 //! ```no_run
 //! use rig_core::providers::zai;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let glm_4_6 = zai::from_env()?.chat(zai::GLM_4_6);
 //! # let _ = glm_4_6;
 //! # Ok(())

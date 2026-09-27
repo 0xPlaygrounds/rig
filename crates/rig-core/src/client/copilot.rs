@@ -3,7 +3,7 @@
 
 use crate::client::macros::http_client;
 use crate::driver::Model;
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::model::ModelList;
 
 use crate::providers::copilot::auth::{AuthError, Authenticator};
@@ -44,7 +44,7 @@ impl Copilot {
     }
 
     /// The models this session can use.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.model(self.config.models()).list().await
     }
 
@@ -57,7 +57,7 @@ impl Copilot {
     /// ```no_run
     /// use rig_core::providers::copilot::{CopilotConfig, auth::{AuthSource, Authenticator, DeviceCodeHandler}};
     ///
-    /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), rig_core::RigError> {
     /// let authenticator = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
     /// let copilot = CopilotConfig::new("").connect(http).authenticate(&authenticator).await?;
     /// # let _ = copilot;

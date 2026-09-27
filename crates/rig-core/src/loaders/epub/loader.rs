@@ -45,7 +45,7 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// ```no_run
     /// use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
     ///
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.load().into_iter();
     /// for result in content {
     ///     match result {
@@ -68,7 +68,7 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// ```no_run
     /// use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
     ///
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.load_with_path().into_iter();
     /// for result in content {
     ///     match result {
@@ -96,7 +96,7 @@ where
     ///
     /// ```no_run
     /// # use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.read().into_iter();
     /// for result in content {
     ///     match result {
@@ -127,7 +127,7 @@ where
     ///
     /// ```no_run
     /// # use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.read_with_path().into_iter();
     /// for result in content {
     ///     match result {
@@ -165,7 +165,7 @@ where
     ///
     /// ```no_run
     /// # use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?
     ///     .load()
     ///     .ignore_errors()
@@ -195,7 +195,7 @@ impl<'a, P: TextProcessor> EpubFileLoader<'a, (PathBuf, EpubDoc<BufReader<File>>
     ///
     /// ```no_run
     /// # use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?
     ///     .load_with_path()
     ///     .ignore_errors()
@@ -235,7 +235,7 @@ where
     ///
     /// ```no_run
     /// # use rig_core::loaders::{EpubFileLoader, RawTextProcessor};
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn run() -> Result<(), rig_core::RigError> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?
     ///     .load_with_path()
     ///     .ignore_errors()

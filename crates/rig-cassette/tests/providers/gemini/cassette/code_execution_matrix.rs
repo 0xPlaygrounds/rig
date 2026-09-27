@@ -954,7 +954,7 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 
 mod unit {
     use rig::completion::CompletionResponse;
-    use rig::error::ProviderError;
+    use rig::error::{ErrorKind, RigError};
     use rig::providers::gemini::GeminiConfig;
     use rig::test_utils::RecordingHttpClient;
     use serde_json::{Value, json};
@@ -998,7 +998,7 @@ mod unit {
     /// These part compositions cannot be produced live, so the bytes are
     /// stated here and carried by the real wire, driver and decoder — the
     /// same path every recorded cell above runs, with the reply substituted.
-    async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, ProviderError> {
+    async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, RigError> {
         let model = GeminiConfig::new("unit-key")
             .connect(RecordingHttpClient::new(reply_with(parts)))
             .completion("gemini-2.5-flash");
@@ -1017,7 +1017,7 @@ mod unit {
             .await
             .expect_err("a turn with no modeled content must not convert to a blank answer");
         assert!(
-            matches!(error, ProviderError::Response(_)),
+            error.kind == ErrorKind::Response,
             "expected the shared empty-response rejection, got {error:?}"
         );
     }
@@ -1076,7 +1076,7 @@ mod unit {
                 .await
                 .expect_err("an unaccountable part must still fail the response");
             assert!(
-                matches!(error, ProviderError::Response(_)),
+                error.kind == ErrorKind::Response,
                 "part {part} should be a ResponseError, got {error:?}"
             );
         }

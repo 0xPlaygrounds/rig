@@ -11,7 +11,7 @@
 use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault};
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
-    error::ErrorReport,
+    error::RigError,
     streaming::StreamEvent,
     tool::ToolContext,
 };
@@ -27,12 +27,12 @@ crate::reflect::opaque_reflect! {
     struct HandlerDescriptorReflect(HandlerDescriptor): PartialEq;
     /// [`ToolContext`], reflected.
     struct ToolContextReflect(ToolContext): Default, PartialEq;
-    /// An effect's answer, `Result<Outcome, ErrorReport>`, reflected.
-    enum OutcomeReflect(Result<Outcome, ErrorReport>):;
-    /// A stream's answer so far, `Option<Result<Outcome, ErrorReport>>`, reflected.
-    enum StreamedOutcomeReflect(Option<Result<Outcome, ErrorReport>>): Default;
+    /// An effect's answer, `Result<Outcome, RigError>`, reflected.
+    enum OutcomeReflect(Result<Outcome, RigError>):;
+    /// A stream's answer so far, `Option<Result<Outcome, RigError>>`, reflected.
+    enum StreamedOutcomeReflect(Option<Result<Outcome, RigError>>): Default;
     /// A stream's events, `Vec<StreamEvent>`, reflected.
     struct StreamEventsReflect(Vec<StreamEvent>): Default, PartialEq;
     /// Stream error reports with their item positions, reflected.
-    struct StreamErrorsReflect(Vec<(usize, ErrorReport)>): Default, PartialEq;
+    struct StreamErrorsReflect(Vec<(usize, RigError)>): Default, PartialEq;
 }

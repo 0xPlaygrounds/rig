@@ -2,11 +2,12 @@ use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3vectors::Client;
 use aws_sdk_s3vectors::config::Credentials;
 use rig_core::Embed;
+use rig_core::RigError;
 use rig_core::embeddings::EmbeddingsBuilder;
+use rig_core::error::ErrorKind;
 use rig_core::providers::openai::{self, OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreIndex};
-use std::env;
 
 const BUCKET_NAME: &str = "foo_bucket";
 const INDEX_NAME: &str = "foo_index";
@@ -19,9 +20,9 @@ struct Word {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    let access_key_id = env::var("AWS_ACCESS_KEY_ID")?;
-    let secret_access_key = env::var("AWS_SECRET_ACCESS_KEY")?;
+async fn main() -> Result<(), RigError> {
+    let access_key_id = rig_core::client::env::required("AWS_ACCESS_KEY_ID")?;
+    let secret_access_key = rig_core::client::env::required("AWS_SECRET_ACCESS_KEY")?;
 
     let credentials = Credentials::new(access_key_id, secret_access_key, None, None, "test");
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
@@ -86,7 +87,7 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-pub async fn create_index(client: &aws_sdk_s3vectors::Client) -> Result<(), anyhow::Error> {
+pub async fn create_index(client: &aws_sdk_s3vectors::Client) -> Result<(), RigError> {
     if check_vector_index_exists(client).await? {
         return Ok(());
     };
@@ -97,14 +98,14 @@ pub async fn create_index(client: &aws_sdk_s3vectors::Client) -> Result<(), anyh
         .vector_bucket_name(BUCKET_NAME)
         .send()
         .await
-        .map_err(|x| anyhow::anyhow!("Error while creating index: {x}"))?;
+        .map_err(|x| RigError::new(ErrorKind::Other, format!("Error while creating index: {x}")))?;
 
     Ok(())
 }
 
 pub async fn check_vector_index_exists(
     client: &aws_sdk_s3vectors::Client,
-) -> Result<bool, anyhow::Error> {
+) -> Result<bool, RigError> {
     match client
         .get_index()
         .vector_bucket_name(BUCKET_NAME)
@@ -115,8 +116,9 @@ pub async fn check_vector_index_exists(
         Ok(_) => Ok(true),
         Err(e) => {
             let aws_sdk_s3vectors::error::SdkError::ServiceError(err) = e else {
-                return Err(anyhow::anyhow!(
-                    "Error while checking vector index exists: {e}"
+                return Err(RigError::new(
+                    ErrorKind::Other,
+                    format!("Error while checking vector index exists: {e}"),
                 ));
             };
 
@@ -127,15 +129,16 @@ pub async fn check_vector_index_exists(
             {
                 Ok(false)
             } else {
-                Err(anyhow::anyhow!(
-                    "Error while checking vector index exists: {err}"
+                Err(RigError::new(
+                    ErrorKind::Other,
+                    format!("Error while checking vector index exists: {err}"),
                 ))
             }
         }
     }
 }
 
-pub async fn create_vector_bucket(client: &aws_sdk_s3vectors::Client) -> Result<(), anyhow::Error> {
+pub async fn create_vector_bucket(client: &aws_sdk_s3vectors::Client) -> Result<(), RigError> {
     if check_vector_bucket_exists(client).await? {
         return Ok(());
     };
@@ -145,14 +148,19 @@ pub async fn create_vector_bucket(client: &aws_sdk_s3vectors::Client) -> Result<
         .vector_bucket_name(BUCKET_NAME)
         .send()
         .await
-        .map_err(|x| anyhow::anyhow!("Error while creating bucket: {x}"))?;
+        .map_err(|x| {
+            RigError::new(
+                ErrorKind::Other,
+                format!("Error while creating bucket: {x}"),
+            )
+        })?;
 
     Ok(())
 }
 
 pub async fn check_vector_bucket_exists(
     client: &aws_sdk_s3vectors::Client,
-) -> Result<bool, anyhow::Error> {
+) -> Result<bool, RigError> {
     match client
         .get_vector_bucket()
         .vector_bucket_name(BUCKET_NAME)
@@ -162,8 +170,9 @@ pub async fn check_vector_bucket_exists(
         Ok(_) => Ok(true),
         Err(e) => {
             let aws_sdk_s3vectors::error::SdkError::ServiceError(err) = e else {
-                return Err(anyhow::anyhow!(
-                    "Error while checking vector bucket exists: {e}"
+                return Err(RigError::new(
+                    ErrorKind::Other,
+                    format!("Error while checking vector bucket exists: {e}"),
                 ));
             };
             let err = err.into_err();
@@ -171,7 +180,7 @@ pub async fn check_vector_bucket_exists(
             if let aws_sdk_s3vectors::operation::get_vector_bucket::GetVectorBucketError::NotFoundException(_) = err {
                 Ok(false)
             } else {
-               Err(anyhow::anyhow!("Error while checking vector bucket exists: {err}"))
+               Err(RigError::new(ErrorKind::Other, format!("Error while checking vector bucket exists: {err}")))
             }
         }
     }

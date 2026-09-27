@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -70,7 +69,7 @@ impl Tool for TranslatorTool {
 /// the translator agent to translate the prompt in english, before answering it with GPT-4.
 /// The answer in english is returned.
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Create OpenAI client
     let openai_client = OpenAI::from_env()?;
     let model = openai_client.completion(openai::GPT_4O).erase();

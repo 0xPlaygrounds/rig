@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::voyageai;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let provider = voyageai::VoyageAi::from_env()?;
 //!
 //! let embeddings = provider.embedding(voyageai::VOYAGE_3_5, None);

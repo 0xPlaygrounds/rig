@@ -23,7 +23,7 @@ use crate::{
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
-use rig_core::error::ProviderError;
+use rig_core::error::RigError;
 use rig_core::id::ConversationId;
 
 use super::drive::AgentBus;
@@ -67,7 +67,7 @@ pub(crate) async fn build_prepared_completion_request(
     chat_history: &[Message],
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
-) -> Result<PreparedCompletionRequest, ProviderError> {
+) -> Result<PreparedCompletionRequest, RigError> {
     let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
@@ -97,7 +97,7 @@ pub(crate) async fn build_prepared_completion_request(
             other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
         })
         .map_err(|report| {
-            ProviderError::Request(format!("Failed to get tool definitions: {report}").into())
+            crate::failure::request(format!("Failed to get tool definitions: {report}"))
         })?;
         dynamic_tool_ids.extend(ids);
     }
@@ -163,7 +163,7 @@ pub(crate) async fn build_prepared_completion_request(
 /// use rig_agent::prelude::*;
 /// use rig_core::{Model, providers::openai::{self, OpenAI}};
 ///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn run() -> Result<(), rig_core::RigError> {
 /// let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 ///
 /// let comedian_agent = AgentBuilder::new(model)
@@ -267,7 +267,7 @@ impl AgentConfig {
     }
 
     /// Bind the default model's typed view.
-    pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::ErrorReport> {
+    pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::RigError> {
         self.bus.dispatcher().bind(&self.model_key)
     }
 
@@ -299,7 +299,7 @@ impl AgentConfig {
     pub(crate) fn model_by_ref(
         &self,
         label: &ModelRef,
-    ) -> Result<ModelHandle, rig_core::error::ErrorReport> {
+    ) -> Result<ModelHandle, rig_core::error::RigError> {
         self.bus
             .dispatcher()
             .bind(&self.bus.model_key(label.as_str()))
@@ -308,7 +308,7 @@ impl AgentConfig {
     /// Bind the memory handle, when memory is configured.
     pub(crate) fn memory_handle(
         &self,
-    ) -> Option<Result<crate::bus::MemoryHandle, rig_core::error::ErrorReport>> {
+    ) -> Option<Result<crate::bus::MemoryHandle, rig_core::error::RigError>> {
         self.memory_key
             .as_ref()
             .map(|key| self.bus.dispatcher().bind(key))
@@ -574,7 +574,7 @@ impl Agent {
     /// ```rust,no_run
     /// # use rig_agent::Agent;
     /// # use futures::StreamExt;
-    /// # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example(agent: Agent) -> Result<(), rig_core::RigError> {
     /// let response = agent.prompt("What is 2 + 2?").max_turns(3).await?;
     /// println!("{}", response.output);
     ///
@@ -624,8 +624,10 @@ impl Agent {
     ///
     /// ```rust,no_run
     /// # use rig_agent::{Agent, AgentRun};
-    /// # async fn example(agent: Agent, saved: &str) -> Result<(), Box<dyn std::error::Error>> {
-    /// let run: AgentRun = serde_json::from_str(saved)?;
+    /// use rig_core::RigError;
+    ///
+    /// # async fn example(agent: Agent, saved: &str) -> Result<(), RigError> {
+    /// let run: AgentRun = serde_json::from_str(saved).map_err(RigError::other)?;
     /// let response = agent.resume(run).tool_concurrency(4).await?;
     /// # Ok(())
     /// # }
@@ -666,7 +668,7 @@ impl Agent {
     /// outputs constrain the model's response to match it.
     ///
     /// ```no_run
-    /// # async fn example(agent: rig_agent::Agent) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example(agent: rig_agent::Agent) -> Result<(), rig_core::RigError> {
     /// #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
     /// struct WeatherForecast { city: String, temperature_f: f64 }
     /// let forecast = agent

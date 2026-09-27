@@ -37,7 +37,7 @@
 //! | `anthropic_outcome_cancel_after_tool_call_delta` | `corpus_outcome.rs` `cancel_after_tool_call_delta_…` | `[Completion]`, outcome `Cancelled`, events kept; a `write_note` call whose long body streams past the drop | the run never finishes |
 //! | `anthropic_outcome_tool_error` | `tool_error_…` | `[Completion, Tool (failed), Completion]` | an answer around the failure |
 //! | `anthropic_outcome_tool_error_streamed` | `tool_error_streamed_…` | the same, events kept | an answer |
-//! | `anthropic_outcome_model_error` | `model_error_…` | `[Completion]`, outcome the provider's 401 | `PromptError::Report(ProviderResponse)` |
+//! | `anthropic_outcome_model_error` | `model_error_…` | `[Completion]`, outcome the provider's 401 | `PromptError::Failed(ProviderResponse)` |
 //! | `anthropic_outcome_model_error_streamed` | `model_error_streamed_…` | the same, streamed | the stream's one item is the error |
 //! | `anthropic_outcome_max_turns_exhausted` | `max_turns_exhausted_…` | `[Completion, Tool]` | `MaxTurnsError { max_turns: 1 }` |
 //! | `anthropic_outcome_default_max_turns` | `default_max_turns_…` | `[Completion, Tool, Completion]` | an answer; the header refuses the runner-budget golden's program |

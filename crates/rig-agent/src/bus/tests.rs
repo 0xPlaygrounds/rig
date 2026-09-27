@@ -26,7 +26,7 @@ use rig_core::{
         EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
         MemoryOutcome, Outcome,
     },
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     id::ConversationId,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
@@ -121,7 +121,7 @@ impl Serve for Echo {
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
                 EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
-                other => Err(ErrorReport::new(
+                other => Err(RigError::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
                 )),
@@ -644,7 +644,7 @@ impl Serve for SelfCaller {
                         "message": report.message,
                     }),
                 }),
-                other => Err(ErrorReport::new(
+                other => Err(RigError::new(
                     ErrorKind::Internal,
                     format!("the nested dispatch was not refused: {other:?}"),
                 )),
@@ -1500,7 +1500,7 @@ impl Serve for AskUserHandler {
         let misbehave = self.misbehave;
         {
             let EffectKind::Custom { payload, .. } = kind else {
-                return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                return rig_core::serve::Reply::Outcome(Err(RigError::new(
                     ErrorKind::Internal,
                     "not custom",
                 )));
@@ -1969,7 +1969,7 @@ impl rig_core::serve::Recorder for Counting {
         false
     }
     fn event(&self, _id: rig_core::effect::EffectId, _event: &StreamEvent) {}
-    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Outcome, ErrorReport>) {
+    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Outcome, RigError>) {
         self.resolved.fetch_add(1, Ordering::SeqCst);
     }
 }
@@ -2200,7 +2200,7 @@ fn a_serial_key_is_not_occupied_by_a_dispatch_cancelled_before_it_was_served() {
 /// What a ticking host used to get from `Pending::poll_outcome`; the bus
 /// no longer offers it (a world holds no future to probe), and these tests
 /// keep it as a spelling of "poll once, no executor".
-fn probe(pending: &mut Pending) -> Option<Result<Outcome, ErrorReport>> {
+fn probe(pending: &mut Pending) -> Option<Result<Outcome, RigError>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     match pending.poll_unpin(&mut cx) {
         Poll::Ready(outcome) => Some(outcome),
@@ -2210,7 +2210,7 @@ fn probe(pending: &mut Pending) -> Option<Result<Outcome, ErrorReport>> {
 
 /// One poll with a no-op waker: `Some(Some(item))` for the next item,
 /// `Some(None)` once the stream ended, `None` if nothing is ready.
-fn probe_item(stream: &mut EffectStream) -> Option<Option<Result<StreamEvent, ErrorReport>>> {
+fn probe_item(stream: &mut EffectStream) -> Option<Option<Result<StreamEvent, RigError>>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     match stream.poll_next_unpin(&mut cx) {
         Poll::Ready(item) => Some(item),
@@ -2613,7 +2613,7 @@ impl Serve for Parent {
 fn drive_to_outcome(
     driver: &mut BusDriver,
     pending: &mut super::Pending,
-) -> Option<Result<Outcome, ErrorReport>> {
+) -> Option<Result<Outcome, RigError>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     for _ in 0..16 {
         if let Poll::Ready(result) = pending.poll_unpin(&mut cx) {
@@ -2978,7 +2978,7 @@ impl rig_core::serve::Intercept for Approval {
         self.asks.send((id, decide)).expect("the world listens");
         match decided.await {
             Ok(decision) => decision,
-            Err(oneshot::Canceled) => rig_core::serve::Decision::Deny(ErrorReport::new(
+            Err(oneshot::Canceled) => rig_core::serve::Decision::Deny(RigError::new(
                 ErrorKind::Internal,
                 "layer `approval`: the world closed the answer channel without deciding",
             )),
@@ -2989,7 +2989,7 @@ impl rig_core::serve::Intercept for Approval {
         &self,
         _id: EffectId,
         _kind: &EffectKind,
-        _outcome: &Result<Outcome, ErrorReport>,
+        _outcome: &Result<Outcome, RigError>,
     ) -> rig_core::serve::Verdict {
         rig_core::serve::Verdict::Keep
     }
@@ -3101,7 +3101,7 @@ fn a_denied_dispatch_is_denied_on_the_consumers_pending_and_leaves_no_record() {
             &self,
             _id: EffectId,
             _kind: &EffectKind,
-            _outcome: &Result<Outcome, ErrorReport>,
+            _outcome: &Result<Outcome, RigError>,
         ) -> rig_core::serve::Verdict {
             rig_core::serve::Verdict::Keep
         }

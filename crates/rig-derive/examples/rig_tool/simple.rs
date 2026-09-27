@@ -1,4 +1,5 @@
 use rig_agent::prelude::*;
+use rig_core::RigError;
 use rig_core::providers;
 use rig_core::providers::openai::OpenAI;
 use rig_derive::rig_tool;
@@ -79,7 +80,7 @@ fn sum_numbers(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt().pretty().init();
 
     let calculator_agent =

@@ -5,10 +5,10 @@ use aws_sdk_bedrockruntime::types::error::{
 
 // NOTE: These tests construct the *extracted* service-error enum variants
 // directly via the AWS-provided builders and drive the gating helpers plus
-// the `From` conversions. The `SdkError` wrapper (and thus the public
-// `AwsSdk*Error` newtypes) cannot be constructed in a unit test, so the
-// `From` contract is asserted on the helper + builder-routed error type
-// rather than on the newtype. None of these paths are feature-gated in
+// the `From` conversions. A unit test builds the `SdkError` wrapper (and so
+// the public `AwsSdk*Error` newtypes) only for failures without a reply, so
+// the service-error contract is asserted on the helper + builder-routed
+// error type rather than on the newtype. None of these paths are feature-gated in
 // `rig-bedrock` (the crate exposes no `image`/`audio` features; the
 // completion/embedding/image/streaming modules are always compiled), so the
 // tests only need `#[cfg(test)]`.
@@ -321,4 +321,50 @@ fn a_message_less_failure_keeps_its_status_or_its_transport_verdict() {
 
     let plain: ProviderError = gated(none(), Transport::default());
     assert!(matches!(plain, ProviderError::Provider(_)));
+}
+
+/// Each SDK error converts as the Bedrock transport reports it: a failure
+/// with no reply and no retry hint is Rig's prose as a provider error, and a
+/// timeout is a transport failure that retries.
+#[test]
+fn an_sdk_error_converts_as_the_transport_reports_it() {
+    use rig_core::error::{ErrorKind, RigError};
+    let unexpected = "An unexpected error occurred. Verify Internet connection or AWS keys";
+
+    let converse = RigError::from(AwsSdkConverseError(SdkError::construction_failure(
+        "no region",
+    )));
+    assert_eq!(converse.kind, ErrorKind::Provider, "{converse:?}");
+    assert!(!converse.retryable);
+    assert_eq!(converse.message, format!("ProviderError: {unexpected}"));
+
+    let stream = RigError::from(AwsSdkConverseStreamError(SdkError::timeout_error(
+        "no answer in 60s",
+    )));
+    assert_eq!(stream.kind, ErrorKind::Http, "{stream:?}");
+    assert!(stream.retryable);
+    assert_eq!(
+        stream.message,
+        format!("HttpError: Http client error: {unexpected}")
+    );
+
+    let invoke = RigError::from(AwsSdkInvokeModelError(SdkError::construction_failure(
+        "no region",
+    )));
+    assert_eq!(invoke.kind, ErrorKind::Provider, "{invoke:?}");
+    assert!(!invoke.retryable);
+    assert_eq!(invoke.message, format!("ProviderError: {unexpected}"));
+}
+
+/// A response the Converse wire cannot convert, as the wire reports it.
+#[test]
+fn a_type_conversion_error_converts_as_the_wire_reports_it() {
+    use rig_core::error::{ErrorKind, RigError};
+    let error = RigError::from(TypeConversionError::new("unknown stop reason `paused`"));
+    assert_eq!(error.kind, ErrorKind::Provider);
+    assert!(!error.retryable);
+    assert_eq!(
+        error.message,
+        "ProviderError: Type conversion error: unknown stop reason `paused`"
+    );
 }

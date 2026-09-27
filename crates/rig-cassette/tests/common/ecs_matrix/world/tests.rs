@@ -2,7 +2,7 @@ use super::join_logs;
 use rig_cassette::effect_log::{EffectLog, RecordedStreamError};
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
 };
 
 #[test]
@@ -105,7 +105,7 @@ fn joining_a_restored_tail_keeps_deliveries_and_stream_errors() {
     ]);
     let error = RecordedStreamError {
         item: 0,
-        error: ErrorReport::new(ErrorKind::ProviderResponse, "stream error"),
+        error: RigError::new(ErrorKind::ProviderResponse, "stream error"),
     };
     tail.header
         .stream_errors

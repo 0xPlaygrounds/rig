@@ -244,7 +244,7 @@ fn deny_targeted_part(
             commands
                 .entity(effect)
                 .insert(rig_ecs::bus::EffectOutcome(Err(
-                    rig_core::error::ErrorReport::new(
+                    rig_core::error::RigError::new(
                         rig_core::error::ErrorKind::Denied,
                         "target part denied",
                     )

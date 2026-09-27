@@ -4,7 +4,7 @@
 //! ```no_run
 //! use rig_core::providers::openai;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let provider = openai::OpenAI::from_env()?;
 //!
 //! let gpt_5_2 = provider.responses(openai::GPT_5_2);

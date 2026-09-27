@@ -22,7 +22,7 @@ const TASK: &str = "Implement a Stack with:
 All operations should be O(1).
 ";
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_client = OpenAI::from_env()?;
     // One model serves both agents: erase it once, clone the handle.

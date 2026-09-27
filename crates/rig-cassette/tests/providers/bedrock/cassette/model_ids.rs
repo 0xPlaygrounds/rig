@@ -43,7 +43,7 @@ async fn retired_model_id_preserves_provider_error() {
                 Some(rig::http_client::StatusCode::NOT_FOUND)
             );
             assert!(!error.is_retryable());
-            let report = error.report();
+            let report = &error;
             assert_eq!(report.http_status, Some(404));
             assert_eq!(report.code.as_deref(), Some("ResourceNotFoundException"));
         },
@@ -80,7 +80,7 @@ async fn bare_profile_only_model_id_is_rejected() {
                 Some(rig::http_client::StatusCode::BAD_REQUEST)
             );
             assert!(!error.is_retryable());
-            let report = error.report();
+            let report = &error;
             assert_eq!(report.http_status, Some(400));
             assert_eq!(report.code.as_deref(), Some("ValidationException"));
         },

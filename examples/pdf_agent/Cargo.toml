@@ -9,6 +9,5 @@ workspace = true
 
 [dependencies]
 rig = { workspace = true, features = ["derive", "pdf"] }
-anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }

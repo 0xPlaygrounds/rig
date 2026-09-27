@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::mistral;
 //! let model = mistral::from_env()?.chat(mistral::MISTRAL_SMALL);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 
 use serde::{Deserialize, Deserializer, Serialize};

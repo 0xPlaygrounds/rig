@@ -22,7 +22,7 @@ use rig_cassette::ecs::EffectLogResource;
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectKind, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::{AssistantContent, Message, UserContent},
     tool::{ToolOutput, ToolResult},
 };
@@ -432,7 +432,7 @@ fn deny_tool_calls(
         if let EffectKind::ToolCall { .. } = effect.kind {
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Err(ErrorReport::new(
+                .insert(EffectOutcome(Err(RigError::new(
                     ErrorKind::Denied,
                     "not today",
                 ))));

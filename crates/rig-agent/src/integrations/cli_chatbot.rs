@@ -7,7 +7,6 @@
 //! }
 //! ```
 
-use rig_core::error::ProviderError;
 use rig_core::{
     markers::{Missing, Provided},
     message::Message,
@@ -243,7 +242,7 @@ where
         loop {
             print!("> ");
             stdout.flush().map_err(|e| {
-                PromptError::CompletionError(ProviderError::Response(format!(
+                PromptError::Failed(crate::failure::response(format!(
                     "failed to flush stdout: {e}"
                 )))
             })?;

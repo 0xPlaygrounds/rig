@@ -8,7 +8,7 @@
 use bevy_ecs::prelude::*;
 use rig_core::{
     effect::{EffectKind, HandlerKey, MemoryOp, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     id::ConversationId,
     message::AssistantContent,
     streaming::{Delta, StreamEvent},
@@ -456,7 +456,7 @@ fn gate(
                 Hook::DenyAdd => {
                     commands
                         .entity(entity)
-                        .insert(EffectOutcome(Err(ErrorReport::new(
+                        .insert(EffectOutcome(Err(RigError::new(
                             ErrorKind::Denied,
                             DENY_REASON,
                         ))));

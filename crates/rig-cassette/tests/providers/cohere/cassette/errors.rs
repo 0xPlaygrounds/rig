@@ -5,11 +5,11 @@
 //! place the reason for the failure appears.
 
 use axum::http;
-use rig::error::ProviderError;
 
 use super::super::support::with_cohere_cassette;
 use crate::support::BASIC_PROMPT;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 
 const UNKNOWN_MODEL: &str = "command-does-not-exist";
 
@@ -27,7 +27,7 @@ async fn completion_error_preserves_status_and_body() {
                 .expect_err("an unknown model should fail");
 
             assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
+                error.kind == ErrorKind::ProviderResponse,
                 "the provider's reply is preserved as its response, got {error:?}"
             );
             assert_eq!(

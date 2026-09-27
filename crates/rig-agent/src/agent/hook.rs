@@ -36,7 +36,7 @@ use rig_core::{
 use rig_core::{
     completion::ModelRef,
     effect::{EffectFamily, EffectId, EffectKind, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
 };
 
 use crate::{
@@ -207,9 +207,9 @@ impl HookContext {
 
     /// The run's bus, for a hook binding a typed view; fails when the
     /// context was built outside a run.
-    fn bus(&self) -> Result<&crate::bus::Dispatcher, ErrorReport> {
+    fn bus(&self) -> Result<&crate::bus::Dispatcher, RigError> {
         self.dispatcher.as_ref().ok_or_else(|| {
-            ErrorReport::new(
+            RigError::new(
                 ErrorKind::BusClosed,
                 "this hook context was built outside a run and has no bus",
             )
@@ -224,7 +224,7 @@ impl HookContext {
     pub fn bind<'ctx, F: rig_core::effect::Family>(
         &'ctx self,
         key: &rig_core::effect::Key<F>,
-    ) -> Result<RunHandle<'ctx, F>, ErrorReport> {
+    ) -> Result<RunHandle<'ctx, F>, RigError> {
         self.bus()?.bind(key).map(RunHandle::scoped)
     }
 
@@ -235,7 +235,7 @@ impl HookContext {
     pub fn index<'ctx>(
         &'ctx self,
         key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Retrieve>, ErrorReport> {
+    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Retrieve>, RigError> {
         self.bus()?.handle(key).map(RunHandle::scoped)
     }
 
@@ -243,7 +243,7 @@ impl HookContext {
     pub fn model<'ctx>(
         &'ctx self,
         key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Completion>, ErrorReport> {
+    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Completion>, RigError> {
         self.bus()?.handle(key).map(RunHandle::scoped)
     }
 
@@ -251,7 +251,7 @@ impl HookContext {
     pub fn tool<'ctx>(
         &'ctx self,
         key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Tool>, ErrorReport> {
+    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Tool>, RigError> {
         self.bus()?.handle(key).map(RunHandle::scoped)
     }
 
@@ -259,7 +259,7 @@ impl HookContext {
     pub fn memory<'ctx>(
         &'ctx self,
         key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Memory>, ErrorReport> {
+    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Memory>, RigError> {
         self.bus()?.handle(key).map(RunHandle::scoped)
     }
 
@@ -661,16 +661,16 @@ pub enum DispatchAction {
     /// never reaches a handler. For a tool call a report of kind
     /// `Cancelled` cancels the run; any other kind becomes the skipped
     /// result the model sees. For a completion any report fails the turn.
-    Deny(ErrorReport),
+    Deny(RigError),
 }
 
 /// Validate before a patch becomes visible to policy or execution.
 pub(crate) fn validate_dispatch_patch(
     current: &EffectKind,
     next: &EffectKind,
-) -> Result<(), ErrorReport> {
+) -> Result<(), RigError> {
     if current.family() != next.family() {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Internal,
             format!(
                 "a hook patched a {} dispatch into a `{}` effect",
@@ -683,7 +683,7 @@ pub(crate) fn validate_dispatch_patch(
         (current, next)
         && current != next
     {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Other,
             "a dispatch patch cannot change the tool target",
         ));
@@ -703,18 +703,18 @@ impl DispatchAction {
     }
 
     /// Deny with a report.
-    pub fn deny(report: ErrorReport) -> Self {
+    pub fn deny(report: RigError) -> Self {
         Self::Deny(report)
     }
 
     /// Deny a tool call so the model sees it as skipped with `reason`.
     pub fn skip(reason: impl Into<String>) -> Self {
-        Self::Deny(ErrorReport::new(ErrorKind::Other, reason))
+        Self::Deny(RigError::new(ErrorKind::Other, reason))
     }
 
     /// Deny and cancel the run with `reason`.
     pub fn stop(reason: impl Into<String>) -> Self {
-        Self::Deny(ErrorReport::new(ErrorKind::Cancelled, reason))
+        Self::Deny(RigError::new(ErrorKind::Cancelled, reason))
     }
 
     /// Patch a tool call's arguments, keeping its name and context.
@@ -777,7 +777,7 @@ pub struct OutcomeEvent<'a> {
     /// The effect that was dispatched (after patches).
     pub kind: &'a EffectKind,
     /// The answer, after any earlier hook's replacement.
-    pub outcome: &'a Result<Outcome, ErrorReport>,
+    pub outcome: &'a Result<Outcome, RigError>,
     /// The turn the effect belongs to.
     pub turn: usize,
     /// The block the effect answered, for a tool call the model emitted.
@@ -792,7 +792,7 @@ pub enum OutcomeAction {
     /// Keep the answer.
     Proceed,
     /// Use this answer instead.
-    Replace(Result<Outcome, ErrorReport>),
+    Replace(Result<Outcome, RigError>),
 }
 
 impl OutcomeAction {
@@ -802,7 +802,7 @@ impl OutcomeAction {
     }
 
     /// Use this answer instead.
-    pub fn replace(outcome: Result<Outcome, ErrorReport>) -> Self {
+    pub fn replace(outcome: Result<Outcome, RigError>) -> Self {
         Self::Replace(outcome)
     }
 
@@ -812,7 +812,7 @@ impl OutcomeAction {
     /// The cancellation short-circuits nested hook stacks; later hooks cannot
     /// replace it with a successful answer.
     pub fn stop(reason: impl Into<String>) -> Self {
-        Self::Replace(Err(ErrorReport::new(ErrorKind::Cancelled, reason)))
+        Self::Replace(Err(RigError::new(ErrorKind::Cancelled, reason)))
     }
 
     /// Replace the model-visible output of a tool result, keeping the
@@ -1527,7 +1527,7 @@ impl AgentHook for HookStack {
 
     async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         let kind = StepEventKind::for_family(event.kind.family());
-        let mut replaced: Option<Result<Outcome, ErrorReport>> = None;
+        let mut replaced: Option<Result<Outcome, RigError>> = None;
         for hook in &self.hooks {
             if !hook.observes(kind) {
                 continue;

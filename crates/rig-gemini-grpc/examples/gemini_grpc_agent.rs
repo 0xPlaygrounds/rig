@@ -1,16 +1,17 @@
 use rig_agent::prelude::*;
+use rig_core::RigError;
 use rig_gemini_grpc::GeminiGrpc;
 
 #[tracing::instrument(ret)]
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)
         .init();
 
     // Initialize the Google Gemini gRPC transport
-    let transport = GeminiGrpc::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
+    let transport = GeminiGrpc::from_env().map_err(|error| RigError::other(&*error))?;
 
     // Create agent with a single context prompt
     let model = transport.completion("gemini-2.5-flash");

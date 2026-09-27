@@ -6,3 +6,5 @@
 # everyone who runs the test benefits from these saved cases.
 cc f47fbe5dbc6fc16f82321ca7076a7f68e3747f48c141036bee41c0b964f839ae # shrinks to parts = [Tool { name: "a", arguments: ["{\"q\": \"\", \"n\": 1}"] }, Tool { name: "a", arguments: ["{\"q\": \"\", \"n\": 1}"] }, Text(["", ""])], order = [0], error_at = Some(0)
 cc 86a87bedeb6e68882c0bc1a74384c37664a444463f9e63948ed62c652f03bcf8 # shrinks to parts = [ToolWhole("a"), Reasoning { fragments: ["", ""], signature: Some("sig_a"), restated: false, late_signature: true }], order = [0], error_at = None, plan = [false, true, false, false, false]
+cc 6786aa4da8afe9cf3b554bc7cf8f97367f350300abb77d0abb9ddc9ecefeb6be # shrinks to parts = [ToolWhole("a"), ToolWhole("a"), Text(["", "a"]), Text(["", "", "", " "])], order = [0, 4, 4, 2, 3], error_at = Some(5), plan = [false, true]
+cc e0a078ddb329bc4b5fcc81dabfb34ec03ce849f043236efa33e82db5e2f5b729 # shrinks to parts = [Text(["a"]), ToolWhole("a"), ToolWhole("a"), Text(["", "", " "]), ReasoningWhole("a")], order = [2, 2, 4, 0, 0, 2, 1, 5, 1], error_at = Some(5), plan = [true, false, false, true, false, false, true]

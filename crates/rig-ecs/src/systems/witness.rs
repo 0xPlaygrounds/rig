@@ -46,7 +46,7 @@ pub(crate) fn observe_provider_retry(
     subject: Subject,
     attempt: usize,
     budget: usize,
-    report: &rig_core::error::ErrorReport,
+    report: &rig_core::error::RigError,
 ) {
     let fact = ProviderRetry {
         attempt,

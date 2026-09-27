@@ -20,6 +20,7 @@ use crate::test_utils::{
 };
 use crate::tool::{Tool, ToolContext};
 use futures::{StreamExt, TryStreamExt};
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent, ToolChoice,
     ToolResultContent, UserContent,
@@ -4128,7 +4129,11 @@ async fn tool_call_args_delta_without_name_errors_at_stream_end() {
     assert!(!saw_final_response);
     let error = error.expect("unterminated tool-call args delta should fail");
     match error {
-        StreamingError::Completion(ProviderError::Response(message)) => {
+        StreamingError::Failed(RigError {
+            kind: ErrorKind::Response,
+            message,
+            ..
+        }) => {
             assert!(
                 message.contains("streamed tool call arguments"),
                 "{message}"
@@ -6293,4 +6298,35 @@ async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
             .all(|reasoning| reasoning.replayable_to(rig_core::test_utils::MOCK_PROVIDER)),
         "the issuing provider accepts it: {reasoning:?}"
     );
+}
+
+/// A failure is `Failed` on both surfaces: a blocking run's
+/// `PromptError::Failed` converts to `StreamingError::Failed`, never to
+/// `StreamingError::Prompt(PromptError::Failed(..))`, and back. Every other
+/// prompt error is `StreamingError::Prompt`.
+#[test]
+fn a_failure_is_failed_on_the_blocking_and_the_streamed_surface() {
+    let failure = RigError::new(ErrorKind::ProviderResponse, "ProviderResponseError: boom")
+        .with_http_status(503)
+        .with_retryable(true);
+
+    let streamed = StreamingError::from(PromptError::Failed(failure.clone()));
+    assert!(
+        matches!(&streamed, StreamingError::Failed(error) if *error == failure),
+        "{streamed:?}"
+    );
+    assert!(matches!(
+        crate::agent::engine::streaming_error_into_prompt(streamed),
+        PromptError::Failed(error) if error == failure
+    ));
+
+    let max_turns = PromptError::MaxTurnsError {
+        max_turns: 1,
+        chat_history: Vec::new(),
+        prompt: Message::user("go"),
+    };
+    assert!(matches!(
+        StreamingError::from(max_turns),
+        StreamingError::Prompt(PromptError::MaxTurnsError { max_turns: 1, .. })
+    ));
 }

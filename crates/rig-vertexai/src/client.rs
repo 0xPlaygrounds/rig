@@ -36,6 +36,13 @@ pub enum VertexAiClientError {
     ConflictingCredentials,
 }
 
+/// As the Vertex transport reports a client it cannot build.
+impl From<VertexAiClientError> for rig_core::error::RigError {
+    fn from(error: VertexAiClientError) -> Self {
+        rig_core::error::ProviderError::Provider(error.to_string()).into()
+    }
+}
+
 /// Returns explicit credentials or resolves ADC with optional impersonation.
 /// ADC construction requires a Tokio runtime that stays alive and driven while
 /// credentials are used, because their refresh task runs on that runtime.
@@ -121,11 +128,13 @@ impl VertexAiBuilder {
     ///
     /// ```no_run
     /// # use google_cloud_aiplatform_v1::client::PredictionService;
-    /// # async fn example() -> anyhow::Result<()> {
+    /// # use rig_core::RigError;
+    /// # async fn example() -> Result<(), RigError> {
     /// let service = PredictionService::builder()
     ///     .with_endpoint("https://us-central1-aiplatform.googleapis.com")
     ///     .build()
-    ///     .await?;
+    ///     .await
+    ///     .map_err(RigError::other)?;
     /// let client = rig_vertexai::VertexAi::builder()
     ///     .with_project("my-project")
     ///     .with_location("us-central1")
@@ -278,3 +287,6 @@ impl VertexAi {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

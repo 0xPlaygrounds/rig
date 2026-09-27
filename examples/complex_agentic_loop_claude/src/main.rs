@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, Anthropic};
 use rig::providers::openai;
@@ -7,7 +6,6 @@ use rig::{
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
-use std::env;
 
 // Define a knowledge base entry for our vector store
 #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
@@ -19,7 +17,7 @@ struct KnowledgeEntry {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Set up logging
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
@@ -27,7 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create the Anthropic provider
-    let anthropic_api_key = env::var("ANTHROPIC_API_KEY")?;
+    let anthropic_api_key = rig::client::env::required("ANTHROPIC_API_KEY")?;
     let anthropic_client = Anthropic::new(&anthropic_api_key);
 
     // Create the embedding model for our vector store
@@ -185,12 +183,12 @@ async fn main() -> Result<(), anyhow::Error> {
                 Message::User { content } => println!(
                     "\nUser [{}]: {}",
                     i,
-                    serde_json::to_string_pretty(&content)?
+                    serde_json::to_string_pretty(&content).map_err(RigError::other)?
                 ),
                 Message::Assistant { content, .. } => println!(
                     "Assistant [{}]: {}",
                     i,
-                    serde_json::to_string_pretty(&content)?
+                    serde_json::to_string_pretty(&content).map_err(RigError::other)?
                 ),
                 _ => {
                     // Ignore other message types - the only other type of message that exists is system messages

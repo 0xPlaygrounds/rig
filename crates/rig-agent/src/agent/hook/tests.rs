@@ -161,7 +161,7 @@ fn dispatch_event(kind: &EffectKind) -> DispatchEvent<'_> {
 /// Builds an outcome event for `kind` that resolved to `outcome`.
 fn outcome_event<'a>(
     kind: &'a EffectKind,
-    outcome: &'a Result<Outcome, ErrorReport>,
+    outcome: &'a Result<Outcome, RigError>,
 ) -> OutcomeEvent<'a> {
     OutcomeEvent {
         id: EffectId::from_raw(1),
@@ -177,7 +177,7 @@ fn outcome_event<'a>(
 /// outcome as the engine carries it (format 5).
 fn outcome_event_with<'a>(
     kind: &'a EffectKind,
-    outcome: &'a Result<Outcome, ErrorReport>,
+    outcome: &'a Result<Outcome, RigError>,
     context: &'a ToolContext,
 ) -> OutcomeEvent<'a> {
     OutcomeEvent {
@@ -360,7 +360,7 @@ impl AgentHook for StopThenCount {
         self.calls.fetch_add(1, Ordering::Relaxed);
         if matches!(
             event.outcome,
-            Err(ErrorReport {
+            Err(RigError {
                 kind: ErrorKind::Cancelled,
                 ..
             })
@@ -402,7 +402,7 @@ async fn stop_outcome_short_circuits_later_hooks_and_surfaces_as_cancelled() {
 
     assert!(matches!(
         action,
-        OutcomeAction::Replace(Err(ErrorReport {
+        OutcomeAction::Replace(Err(RigError {
             kind: ErrorKind::Cancelled,
             ref message,
             ..
@@ -807,7 +807,7 @@ async fn first_stop_short_circuits_on_chained_tool_dispatch() {
     let kind = tool_call_kind();
     assert!(matches!(
         stack.on_dispatch(&ctx(), dispatch_event(&kind)).await,
-        DispatchAction::Deny(ErrorReport {
+        DispatchAction::Deny(RigError {
             kind: ErrorKind::Cancelled,
             ..
         })

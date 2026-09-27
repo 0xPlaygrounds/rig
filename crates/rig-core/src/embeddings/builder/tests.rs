@@ -6,6 +6,7 @@ use crate::test_utils::{MockMultiTextDocument, MockTextDocument};
 use super::EmbeddingsBuilder;
 use crate::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use crate::embeddings::EmbeddingResponse;
+use crate::error::ErrorKind;
 use crate::test_utils::MockEmbeddings;
 use crate::wire::Capabilities;
 
@@ -402,7 +403,7 @@ async fn test_build_rejects_a_document_that_embeds_no_text() {
         .expect_err("a document with no texts has no embeddings");
 
     assert!(
-        matches!(error, ProviderError::Response(_)),
+        error.kind == ErrorKind::Response,
         "unexpected error variant: {error:?}"
     );
     assert!(

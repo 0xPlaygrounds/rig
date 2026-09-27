@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::ollama;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let provider = ollama::Ollama::new();
 //!
 //! let qwen = provider.completion("qwen2.5:14b");

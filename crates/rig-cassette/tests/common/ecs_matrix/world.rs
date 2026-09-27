@@ -1319,7 +1319,7 @@ fn two_signals(cell: &Cell) -> bool {
 }
 
 /// The provider report a failed run carries.
-fn provider_report(world: &World, run: Entity, what: &str) -> rig_core::error::ErrorReport {
+fn provider_report(world: &World, run: Entity, what: &str) -> rig_core::error::RigError {
     match world.get::<Failed>(run).map(|failed| &failed.0) {
         Some(Failure::Provider(report)) => report.clone(),
         other => panic!("{what}: a provider failure, not {other:?}"),

@@ -1,4 +1,3 @@
-use anyhow::Result;
 use rig::prelude::*;
 use rig::{
     agent::Agent,
@@ -15,7 +14,7 @@ struct Debater {
 }
 
 impl Debater {
-    fn new(position_a: &str, position_b: &str) -> Result<Self> {
+    fn new(position_a: &str, position_b: &str) -> Result<Self, RigError> {
         tracing_subscriber::fmt()
             .with_max_level(tracing::Level::INFO)
             .with_target(false)
@@ -33,7 +32,7 @@ impl Debater {
         })
     }
 
-    async fn rounds(&self, n: usize) -> Result<()> {
+    async fn rounds(&self, n: usize) -> Result<(), RigError> {
         let mut history_a: Vec<Message> = vec![];
         let mut history_b: Vec<Message> = vec![];
         let mut last_resp_b: Option<String> = None;
@@ -73,7 +72,7 @@ impl Debater {
     }
 }
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     // Create model
     let debator = Debater::new(
         "You believe that religion is a useful concept. \

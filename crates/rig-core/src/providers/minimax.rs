@@ -9,7 +9,7 @@
 //! ```no_run
 //! use rig_core::providers::minimax;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let model = minimax::from_env()?.chat(minimax::MINIMAX_M2_7);
 //! # let _ = model;
 //! # Ok(())

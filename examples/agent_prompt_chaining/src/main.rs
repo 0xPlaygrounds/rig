@@ -2,7 +2,6 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see one agent produce a value that the next agent transforms.
 
-use anyhow::Result;
 use rig::operation::Completion;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -22,7 +21,7 @@ fn build_adder_agent(model: impl Into<DynModel<Completion>>) -> rig::agent::Agen
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     // One model serves both agents: erase it once, clone the handle.
     let gpt4 = OpenAI::from_env()?.completion(openai::GPT_4).erase();
     let seed = build_rng_agent(gpt4.clone())

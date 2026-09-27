@@ -2,7 +2,7 @@
 //! credential rather than as a provider failure.
 
 use crate::driver::{Model, Transport};
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::wire::Wire;
 
 impl<W, T> Model<W, T>
@@ -11,9 +11,10 @@ where
     T: Transport<W>,
 {
     /// Check that the provider accepts the configured credentials. A 401 or
-    /// 403 reply is [`ProviderError::InvalidAuthentication`].
-    pub async fn verify(&self) -> Result<(), ProviderError> {
-        self.call(()).await.map_err(authentication)
+    /// 403 reply carries [`ErrorDetail::InvalidAuthentication`](crate::error::ErrorDetail::InvalidAuthentication).
+    pub async fn verify(&self) -> Result<(), RigError> {
+        let verified: Result<(), ProviderError> = self.drained((), None).await;
+        Ok(verified.map_err(authentication)?)
     }
 }
 

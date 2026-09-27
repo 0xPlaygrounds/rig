@@ -68,7 +68,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
             // The SSE connection opens lazily, so the HTTP error may surface
             // either from `stream()` itself or as the first stream item.
             let error = match model.stream(request) {
-                Err(error) => rig::ErrorReport::from(&error),
+                Err(error) => error,
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
                     Some(Ok(item)) => {
@@ -159,7 +159,7 @@ async fn nonexistent_model_streaming_error_preserves_response_headers() {
             let request = CompletionRequest::new("Say hi.").max_tokens(16);
 
             let error = match model.stream(request) {
-                Err(error) => rig::ErrorReport::from(&error),
+                Err(error) => error,
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
                     Some(Ok(item)) => {

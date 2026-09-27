@@ -43,7 +43,7 @@ fn recording() -> (std::sync::Arc<Recording>, Waker) {
     (flag, waker)
 }
 
-type Receiver = oneshot::Receiver<Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>>;
+type Receiver = oneshot::Receiver<Result<rig_core::effect::Outcome, rig_core::error::RigError>>;
 
 fn command(id: u64) -> (Command, Receiver) {
     let (reply, receiver) = oneshot::channel();
@@ -140,7 +140,7 @@ impl Serve for Nothing {
         _kind: EffectKind,
         _dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+        rig_core::serve::Reply::Outcome(Err(rig_core::error::RigError::new(
             rig_core::error::ErrorKind::Internal,
             "the handler dropped its outcome sink without answering",
         )))
@@ -422,7 +422,7 @@ impl rig_core::serve::Recorder for Begun {
     fn resolve(
         &self,
         _id: EffectId,
-        outcome: Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        outcome: Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) {
         if let Err(report) = outcome
             && report.kind != rig_core::error::ErrorKind::Cancelled

@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::cohere;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let provider = cohere::Cohere::from_env()?;
 //!
 //! let command_a = provider.completion(cohere::COMMAND_A_03_2025);

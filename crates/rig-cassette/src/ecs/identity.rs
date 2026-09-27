@@ -328,10 +328,10 @@ pub fn stamp_run(
     world: &mut World,
     run: Entity,
     recorder: &EffectLogRecorder,
-) -> Result<(), rig_core::error::ErrorReport> {
-    use rig_core::error::{ErrorKind, ErrorReport};
+) -> Result<(), rig_core::error::RigError> {
+    use rig_core::error::{ErrorKind, RigError};
     if world.get::<RunOf>(run).is_none() {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Request,
             "cannot stamp program identity: provide a run with an explicit Scope, not an agent",
         ));
@@ -339,7 +339,7 @@ pub fn stamp_run(
     let scope = world
         .get::<Scope>(run)
         .ok_or_else(|| {
-            ErrorReport::new(
+            RigError::new(
                 ErrorKind::Request,
                 "cannot stamp program identity: the run has no Scope",
             )
@@ -347,7 +347,7 @@ pub fn stamp_run(
         .0
         .clone();
     let policy = spec_hash(world, run)
-        .ok_or_else(|| ErrorReport::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
+        .ok_or_else(|| RigError::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
     let required = required_row(world, run);
     recorder.set_program_identity(
         scope,
@@ -366,11 +366,11 @@ pub fn check_replayable(
     world: &mut World,
     run: Entity,
     log: &crate::effect_log::EffectLog,
-) -> Result<(), rig_core::error::ErrorReport> {
-    use rig_core::error::{ErrorKind, ErrorReport};
+) -> Result<(), rig_core::error::RigError> {
+    use rig_core::error::{ErrorKind, RigError};
     crate::effect_log::EffectLogReplayer::check_header(log)?;
     if world.get::<RunOf>(run).is_none() {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Request,
             "replay compatibility unverified: provide a run with an explicit Scope, not an agent",
         ));
@@ -378,7 +378,7 @@ pub fn check_replayable(
     let scope = world
         .get::<Scope>(run)
         .ok_or_else(|| {
-            ErrorReport::new(
+            RigError::new(
                 ErrorKind::Request,
                 "replay compatibility unverified: the run has no Scope",
             )
@@ -386,13 +386,13 @@ pub fn check_replayable(
         .0
         .clone();
     let policy = spec_hash(world, run)
-        .ok_or_else(|| ErrorReport::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
+        .ok_or_else(|| RigError::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
     let required = required_row(world, run);
-    let identity = log.header.programs.get(&scope).ok_or_else(|| ErrorReport::new(ErrorKind::Request,
+    let identity = log.header.programs.get(&scope).ok_or_else(|| RigError::new(ErrorKind::Request,
         format!("replay compatibility unverified: the log has no program for scope `{scope}`; builder identity is insufficient")))?;
     let (recorded_policy, recorded_row) = (Some(identity.policy), &identity.required);
     if recorded_policy != Some(policy) {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Internal,
             format!(
                 "replay refused: the log was recorded under policy {:?}, this agent's is {policy:#018x}",
@@ -402,7 +402,7 @@ pub fn check_replayable(
     }
     let differences = required.diff(recorded_row);
     if !differences.is_empty() {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Internal,
             format!(
                 "replay refused: the required row differs from the log's: {}",
@@ -415,13 +415,13 @@ pub fn check_replayable(
         ));
     }
     if let Err(gap) = required.is_subset_of(&log.header.handlers) {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::HandlerUnavailable,
             format!("replay refused: the log's handlers do not serve the row: {gap}"),
         ));
     }
     if effective::<PolicyVersion>(world, run).is_none_or(|version| version.0.trim().is_empty()) {
-        return Err(ErrorReport::new(
+        return Err(RigError::new(
             ErrorKind::Request,
             "replay compatibility unverified: declare a nonempty PolicyVersion for custom systems, ordering and configuration",
         ));

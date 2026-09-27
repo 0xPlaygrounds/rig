@@ -4,7 +4,7 @@
 //! **Bug.** Anthropic streams tool input as `input_json_delta` fragments and
 //! closes the block with `content_block_stop`, so rig's accumulator treats a
 //! close as "the wire promised a complete block" and, when the assembled
-//! fragments are not JSON, raised a bare `ErrorReport`. The agent engine
+//! fragments are not JSON, raised a bare `RigError`. The agent engine
 //! turned any stream error into a fatal `StreamingError` before the
 //! invalid-tool recovery seam saw it: one bad byte from the model ended the
 //! run, the model never learned why, and the application got a string.
@@ -60,7 +60,6 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
     MultiTurnStreamItem, StreamingError,
 };
-use rig::completion::PromptError;
 use rig::providers::anthropic;
 use rig::streaming::StreamedUserContent;
 use rig_test_support::cassette_models::AnthropicModels;
@@ -218,17 +217,11 @@ async fn streaming_malformed_fails_by_default() {
                 }
             }
             match error.expect("default policy is fail-fast") {
-                StreamingError::Prompt(err) => match err {
-                    PromptError::Report(report) => assert!(
-                        report.message.contains("malformed JSON input"),
-                        "{}",
-                        report.message
-                    ),
-                    other => panic!("expected the provider report, got {other:?}"),
-                },
-                StreamingError::Report(report) => {
-                    assert!(report.message.contains("malformed JSON input"));
-                }
+                StreamingError::Failed(report) => assert!(
+                    report.message.contains("malformed JSON input"),
+                    "{}",
+                    report.message
+                ),
                 other => panic!("expected the provider report, got {other:?}"),
             }
         },

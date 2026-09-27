@@ -8,7 +8,7 @@
 //! ```no_run
 //! use rig_core::providers::llamacpp;
 //! let model = llamacpp::from_env()?.chat(llamacpp::LLAMA_CPP);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 
 pub mod completion;

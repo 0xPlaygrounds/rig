@@ -120,7 +120,7 @@ pub struct SeenOutcome {
 
 impl SeenOutcome {
     /// The seen outcome of `outcome`.
-    pub fn of(outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>) -> Self {
+    pub fn of(outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>) -> Self {
         Self {
             summary: OutcomeSummary::of(outcome),
             fingerprint: fingerprint(outcome),

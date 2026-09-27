@@ -1,6 +1,6 @@
 use crate::{ChoiceAnswer, Evaluate, JevConfig, NoulAnswer, Query, ScoreAnswer, types};
 use anyhow::ensure;
-use rig_core::error::ProviderError;
+use rig_core::error::{ErrorKind, ProviderError, RigError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -29,7 +29,7 @@ struct Assessment<R = ChoiceAnswer<Route>, U = ScoreAnswer<Urgency>, F = NoulAns
 type AssessmentQuery = Assessment<crate::Choice<Route>, crate::Score<Urgency>, crate::Noul>;
 
 impl AssessmentQuery {
-    fn new() -> Result<Self, rig_core::error::ProviderError> {
+    fn new() -> Result<Self, rig_core::RigError> {
         Ok(Self {
             route: crate::Choice::<Route>::new(
                 "Which team should handle the customer message?",
@@ -56,10 +56,7 @@ impl<R: crate::Query, U: crate::Query, F: crate::Query> crate::Query for Assessm
     type Response = Assessment<R::Response, U::Response, F::Response>;
     type Output = Assessment<R::Output, U::Output, F::Output>;
 
-    fn decode(
-        &self,
-        response: Self::Response,
-    ) -> Result<Self::Output, rig_core::error::ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, rig_core::RigError> {
         Ok(Assessment {
             route: self.route.decode(response.route)?,
             urgency: self.urgency.decode(response.urgency)?,
@@ -129,7 +126,10 @@ fn named_query_rejects_mismatched_answer_types() -> anyhow::Result<()> {
     let schema = AssessmentQuery::new()?;
     ensure!(matches!(
         schema.decode(serde_json::from_value(answers)?),
-        Err(ProviderError::Response(_))
+        Err(RigError {
+            kind: ErrorKind::Response,
+            ..
+        })
     ));
     Ok(())
 }
@@ -184,10 +184,7 @@ struct Renamed<Q> {
 impl<Q: Query> Query for Renamed<Q> {
     type Response = Renamed<Q::Response>;
     type Output = Renamed<Q::Output>;
-    fn decode(
-        &self,
-        response: Self::Response,
-    ) -> Result<Self::Output, rig_core::error::ProviderError> {
+    fn decode(&self, response: Self::Response) -> Result<Self::Output, rig_core::RigError> {
         Ok(Renamed {
             ready: self.ready.decode(response.ready)?,
         })

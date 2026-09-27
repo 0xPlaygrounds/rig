@@ -18,6 +18,7 @@ use crate::providers::openai::wire::{Dialect, GROQ, OPENAI, OpenAIConfig};
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 
 use super::super::tests::{recorded, recorded_json};
+use crate::error::ErrorKind;
 
 fn wire() -> Chat {
     OpenAIConfig::new("sk-test")
@@ -730,7 +731,7 @@ async fn malformed_arguments_on_a_completed_tool_turn_stay_a_decode_error() {
         .await
         .expect_err("a completed tool-call turn with malformed arguments is a defect");
     assert!(
-        matches!(error, ProviderError::Json(_)),
+        error.kind == ErrorKind::Json,
         "the malformed payload must stay loud rather than be dropped: {error:?}"
     );
 }
@@ -805,7 +806,12 @@ async fn a_gateway_may_answer_with_a_bare_string() {
         crate::driver::Model::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
             .call(prompt("ask"))
             .await;
-    let Err(ProviderError::Response(message)) = &strict else {
+    let Some(message) = strict
+        .as_ref()
+        .err()
+        .filter(|error| error.kind == ErrorKind::Response)
+        .and_then(|error| error.message.strip_prefix("ResponseError: "))
+    else {
         panic!("openai does not answer with a bare string: {strict:?}");
     };
     assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR);
@@ -892,7 +898,12 @@ async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
                 .call(prompt("ask"))
                 .await;
 
-        let Err(ProviderError::Response(message)) = &folded else {
+        let Some(message) = folded
+            .as_ref()
+            .err()
+            .filter(|error| error.kind == ErrorKind::Response)
+            .and_then(|error| error.message.strip_prefix("ResponseError: "))
+        else {
             panic!("`{reason:?}` does not license an empty turn: {folded:?}");
         };
         assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR, "{reason:?}");

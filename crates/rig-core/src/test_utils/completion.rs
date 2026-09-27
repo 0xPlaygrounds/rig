@@ -281,7 +281,7 @@ struct MockScriptState {
 ///
 /// Each call consumes exactly one scripted turn, emitted through the same
 /// [`AdapterOutput`] helpers every adapter uses. If no turn is available,
-/// the call fails with [`ProviderError::Provider`] and a clear message
+/// the call fails with an [`ErrorKind::Provider`](crate::error::ErrorKind::Provider) error and a clear message
 /// instead of repeating previous responses.
 #[derive(Clone, Default)]
 pub struct MockScript {

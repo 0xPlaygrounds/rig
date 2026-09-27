@@ -2,8 +2,8 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see one batch of text split into names, topics, and sentiment in parallel.
 
-use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
+use rig::RigError;
 use rig::extractor::ExtractorBuilder;
 use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
@@ -35,7 +35,7 @@ fn sample_inputs() -> Vec<&'static str> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let client = OpenAI::from_env()?;
     let model = client.completion(openai::GPT_4O_MINI).erase();
     let names_extractor = ExtractorBuilder::<Names>::new(model.clone())
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
                     topics_extractor.extract(text).into_future(),
                     sentiment_extractor.extract(text).into_future(),
                 )?;
-                anyhow::Ok(format!(
+                Ok::<_, RigError>(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
                     names.output.names.join(", "),
                     topics.output.topics.join(", "),

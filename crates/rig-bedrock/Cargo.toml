@@ -28,7 +28,6 @@ tracing = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
-anyhow = { workspace = true }
 # Harness signal: rig-core's sequence laws panic (not just log) in this
 # crate's own tests.
 rig-derive = { path = "../rig-derive", version = "0.42.0" }

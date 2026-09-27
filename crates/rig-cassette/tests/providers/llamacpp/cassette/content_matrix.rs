@@ -78,13 +78,13 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
                 .await
                 .expect_err("rig rejects an empty converted choice");
 
-            match &error {
-                rig::error::ProviderError::Response(message) => assert_eq!(
+            match (error.kind, error.message.strip_prefix("ResponseError: ")) {
+                (rig::error::ErrorKind::Response, Some(message)) => assert_eq!(
                     message,
                     rig::message::EMPTY_RESPONSE_ERROR,
                     "the shared empty-response wording, not a provider-specific one"
                 ),
-                other => panic!("expected the shared empty-response error, got {other:?}"),
+                _ => panic!("expected the shared empty-response error, got {error:?}"),
             }
             // Deliberately *not* `provider_response_status().is_none()`: that
             // is structurally true for `ResponseError` and would assert

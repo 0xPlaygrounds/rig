@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::gemini::{Gemini, image_generation::GEMINI_2_5_FLASH_IMAGE};
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), rig_core::RigError> {
 //! let model = Gemini::from_env()?.image_generation(GEMINI_2_5_FLASH_IMAGE);
 //! # Ok(())
 //! # }

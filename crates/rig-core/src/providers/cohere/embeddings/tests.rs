@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::ErrorKind;
 use crate::error::ProviderError;
 
 #[tokio::test]
@@ -20,7 +21,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
         .map(|response| response.embeddings)
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -50,7 +51,7 @@ async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
         .map(|response| response.embeddings)
         .expect_err("should fail with provider error envelope");
 
-    let ProviderError::ProviderResponse(stored) = &error else {
+    let (ErrorKind::ProviderResponse, Some(stored)) = (error.kind, &error.provider_response) else {
         panic!("expected ProviderResponse, got {error:?}");
     };
     // Byte-equal, not "contains": a preserved reply is the provider's bytes
@@ -134,7 +135,7 @@ async fn image_batches_are_fully_validated_before_any_request() {
         .map(|response| response.embeddings)
         .expect_err("invalid batch should fail before transport");
 
-    assert!(matches!(error, ProviderError::Request(_)));
+    assert_eq!(error.kind, ErrorKind::Request);
     assert!(http_client.requests().is_empty());
 }
 
@@ -157,7 +158,8 @@ async fn an_empty_image_batch_sends_nothing_and_is_a_response_failure() {
         .expect_err("an empty batch has no payload to fold");
 
     assert!(
-        matches!(&error, ProviderError::Response(message) if message == "embedding reply carried no payload"),
+        error.kind == ErrorKind::Response
+            && error.message == "ResponseError: embedding reply carried no payload",
         "{error:?}"
     );
     assert!(http_client.requests().is_empty());
@@ -180,7 +182,7 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, ProviderError::ProviderResponse(_)));
+    assert_eq!(error.kind, ErrorKind::ProviderResponse);
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -206,7 +208,7 @@ async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
         .await
         .expect_err("should fail with provider error envelope");
 
-    let ProviderError::ProviderResponse(stored) = &error else {
+    let (ErrorKind::ProviderResponse, Some(stored)) = (error.kind, &error.provider_response) else {
         panic!("expected ProviderResponse, got {error:?}");
     };
     assert_eq!(stored.body, body);

@@ -9,12 +9,13 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_agent::prelude::*;
 use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_core::RigError;
 use tracing::info;
 
 const IMAGE_URL: &str = "https://playgrounds.network/assets/PG-Logo.png";
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), RigError> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_target(false)
@@ -27,7 +28,14 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Grab image and convert to base64
     let reqwest_client = Client::new();
-    let image_bytes = reqwest_client.get(IMAGE_URL).send().await?.bytes().await?;
+    let image_bytes = reqwest_client
+        .get(IMAGE_URL)
+        .send()
+        .await
+        .map_err(RigError::other)?
+        .bytes()
+        .await
+        .map_err(RigError::other)?;
     let image_base64 = BASE64_STANDARD.encode(image_bytes);
 
     // Compose `Image` for prompt

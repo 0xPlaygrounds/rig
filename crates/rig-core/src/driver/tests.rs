@@ -13,6 +13,7 @@ use futures::StreamExt;
 
 use super::{Model, Transport};
 use crate::completion::CompletionRequest;
+use crate::error::ErrorKind;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
 use crate::model::{ModelInfo, ModelList};
@@ -40,11 +41,11 @@ where
     W: Wire,
     H: Transport<W>,
 {
-    let model = Model::new(wire.clone(), http.clone());
-    match context {
-        Some(context) => model.call_observed(request, context).await,
-        None => model.call(request).await,
-    }
+    // Provider-author tests read the provider's own error, before the
+    // driver converts it for a caller.
+    Model::new(wire.clone(), http.clone())
+        .drained::<ProviderError>(request, context)
+        .await
 }
 
 /// The items of one streamed reply of `wire` over `http`, as the driver
@@ -1253,8 +1254,8 @@ async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
         .await
         .expect_err("a whole reply that delivered nothing is not an answer");
     assert!(
-        matches!(&error, ProviderError::Response(message)
-            if message == crate::message::EMPTY_RESPONSE_ERROR),
+        error.kind == ErrorKind::Response
+            && error.message == format!("ResponseError: {}", crate::message::EMPTY_RESPONSE_ERROR),
         "expected the empty-reply error, got {error:?}"
     );
 

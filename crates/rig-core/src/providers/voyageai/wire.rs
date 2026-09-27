@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::voyageai::{VoyageAi, VOYAGE_3_5};
 //! let wire = VoyageAi::from_env()?.embedding(VOYAGE_3_5, None);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 
 use crate::client::env::{self, EnvError};

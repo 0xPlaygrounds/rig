@@ -8,7 +8,7 @@ use crate::completion::CompletionResponse;
 use crate::streaming::StreamFinal;
 
 /// The events a completion outcome re-emits when a stream consumer asks for it.
-fn re_emitted_events(response: &CompletionResponse) -> Vec<Result<StreamEvent, ErrorReport>> {
+fn re_emitted_events(response: &CompletionResponse) -> Vec<Result<StreamEvent, RigError>> {
     block_on(
         Reply::Outcome(Ok(Outcome::Completion(response.clone())))
             .into_stream()
@@ -18,7 +18,7 @@ fn re_emitted_events(response: &CompletionResponse) -> Vec<Result<StreamEvent, E
 
 #[derive(Default)]
 struct Seen {
-    outcomes: Vec<Result<Outcome, ErrorReport>>,
+    outcomes: Vec<Result<Outcome, RigError>>,
     events: usize,
     discard_events: bool,
 }
@@ -26,7 +26,7 @@ struct Seen {
 struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+    fn outcome(&mut self, outcome: &Result<Outcome, RigError>) {
         self.0.lock().expect("seen").outcomes.push(outcome.clone());
     }
 
@@ -237,7 +237,7 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
     );
     let mut fold = crate::operation::CompletionFold::default();
     let mut published = Vec::new();
-    let events: Vec<Result<StreamEvent, ErrorReport>> = serde_json::from_value(
+    let events: Vec<Result<StreamEvent, RigError>> = serde_json::from_value(
         serde_json::to_value(re_emitted_events(&response)).expect("serialize events"),
     )
     .expect("deserialize events");
@@ -303,12 +303,12 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
 fn terminal_items_carry_the_original_answer_in_one_observer_call() {
     use crate::message::{AssistantContent, DocumentSourceKind, Image};
     type Observation = (
-        Result<StreamEvent, ErrorReport>,
-        Option<Result<Outcome, ErrorReport>>,
+        Result<StreamEvent, RigError>,
+        Option<Result<Outcome, RigError>>,
     );
     struct AtomicObserver(Arc<Mutex<Vec<Observation>>>);
     impl Observe for AtomicObserver {
-        fn outcome(&mut self, _: &Result<Outcome, ErrorReport>) {
+        fn outcome(&mut self, _: &Result<Outcome, RigError>) {
             panic!("a terminal item must carry its answer in stream_item");
         }
         fn keep_events(&self) -> bool {
@@ -317,13 +317,13 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
         fn event(&mut self, _: &StreamEvent) {
             panic!("separate event callback");
         }
-        fn stream_error(&mut self, _: &ErrorReport) {
+        fn stream_error(&mut self, _: &RigError) {
             panic!("separate error callback");
         }
         fn stream_item(
             &mut self,
-            item: &Result<StreamEvent, ErrorReport>,
-            outcome: Option<&Result<Outcome, ErrorReport>>,
+            item: &Result<StreamEvent, RigError>,
+            outcome: Option<&Result<Outcome, RigError>>,
         ) {
             self.0
                 .lock()
@@ -343,7 +343,7 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
         serde_json::json!({}),
     );
     let original = Ok(Outcome::Completion(response));
-    let error = ErrorReport::new(ErrorKind::Response, "first error");
+    let error = RigError::new(ErrorKind::Response, "first error");
     let final_event = Ok(StreamEvent::Final(StreamFinal::new(
         "test",
         Default::default(),
@@ -467,7 +467,7 @@ impl Observe for ProviderObserver {
     fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
         Some(self.0.clone())
     }
-    fn outcome(&mut self, _: &Result<Outcome, ErrorReport>) {}
+    fn outcome(&mut self, _: &Result<Outcome, RigError>) {}
     fn keep_events(&self) -> bool {
         false
     }
@@ -571,17 +571,17 @@ fn an_observer_never_changes_what_the_consumer_receives() {
     };
 
     type Shape = fn() -> Reply;
-    fn terminal() -> Result<StreamEvent, ErrorReport> {
+    fn terminal() -> Result<StreamEvent, RigError> {
         Ok(StreamEvent::Final(StreamFinal::new(
             "test",
             Default::default(),
             serde_json::json!({}),
         )))
     }
-    fn text(fragment: &str) -> Result<StreamEvent, ErrorReport> {
+    fn text(fragment: &str) -> Result<StreamEvent, RigError> {
         Ok(StreamEvent::text(BlockId::wire("text-0"), fragment))
     }
-    fn items(items: Vec<Result<StreamEvent, ErrorReport>>) -> Reply {
+    fn items(items: Vec<Result<StreamEvent, RigError>>) -> Reply {
         Reply::Stream(Box::pin(futures::stream::iter(items)))
     }
     let shapes: [(&str, Shape); 6] = [
@@ -600,11 +600,11 @@ fn an_observer_never_changes_what_the_consumer_receives() {
             ))))
         }),
         ("a setup failure", || {
-            Reply::Outcome(Err(ErrorReport::new(ErrorKind::Provider, "refused")))
+            Reply::Outcome(Err(RigError::new(ErrorKind::Provider, "refused")))
         }),
         ("an in-band error before the terminal", || {
             items(vec![
-                Err(ErrorReport::new(ErrorKind::Response, "mid-stream")),
+                Err(RigError::new(ErrorKind::Response, "mid-stream")),
                 text("after"),
                 terminal(),
             ])
@@ -714,7 +714,7 @@ fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
 #[test]
 fn the_tap_folds_a_raw_handler_stream_like_a_canonical_one() {
     let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
-    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
+    let raw: Vec<Result<StreamEvent, RigError>> = vec![
         Ok(StreamEvent::text(text, "hello")),
         Ok(StreamEvent::Final(StreamFinal::new(
             "local",
@@ -741,8 +741,8 @@ fn the_tap_folds_a_raw_handler_stream_like_a_canonical_one() {
 #[test]
 fn the_tap_yields_only_its_first_outcome() {
     let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
-    let items: Vec<Result<StreamEvent, ErrorReport>> = vec![
-        Err(ErrorReport::new(ErrorKind::Provider, "reset")),
+    let items: Vec<Result<StreamEvent, RigError>> = vec![
+        Err(RigError::new(ErrorKind::Provider, "reset")),
         Ok(StreamEvent::text(text, "late")),
         Ok(StreamEvent::Final(StreamFinal::new(
             "local",
@@ -768,10 +768,10 @@ fn the_tap_yields_nothing_after_its_terminal() {
             serde_json::Value::Null,
         )))
     };
-    let items: Vec<Result<StreamEvent, ErrorReport>> = vec![
+    let items: Vec<Result<StreamEvent, RigError>> = vec![
         Ok(StreamEvent::text(text, "first")),
         terminal(),
-        Err(ErrorReport::new(ErrorKind::Provider, "late")),
+        Err(RigError::new(ErrorKind::Provider, "late")),
         terminal(),
     ];
     let mut tap = StreamTap::new();

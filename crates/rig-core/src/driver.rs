@@ -9,7 +9,7 @@
 //! use rig_core::driver::Model;
 //! use rig_core::providers::openai::{self, OpenAI};
 //!
-//! # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(http: rig_core::http_client::DynHttpClient) -> Result<(), rig_core::RigError> {
 //! let model = OpenAI::from_env()?.with_http(http).responses(openai::GPT_5_2);
 //! let response = model.call(CompletionRequest::new("Hello")).await?;
 //! # let _ = response;
@@ -22,7 +22,7 @@ use std::task::{Context, Poll};
 
 use futures::StreamExt;
 
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
 use crate::streaming::Streamed;
 use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
@@ -223,7 +223,7 @@ where
     pub fn call(
         &self,
         request: impl Into<Request<W>>,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, RigError>> + WasmCompatSend + 'static {
         self.drained(request.into(), None)
     }
 
@@ -232,26 +232,34 @@ where
         &self,
         request: impl Into<Request<W>>,
         observation: AdapterContext,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, RigError>> + WasmCompatSend + 'static {
         self.drained(request.into(), Some(observation))
     }
 
     /// The call opens when first polled, so its span is created under the
-    /// caller's instrumented context.
-    fn drained(
+    /// caller's instrumented context. The error converts here, in the call's
+    /// own future: a caller receives a [`RigError`], and a verb that
+    /// reclassifies the provider's failure first asks for the
+    /// [`ProviderError`].
+    pub(crate) fn drained<E: From<ProviderError>>(
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,
-    ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
+    ) -> impl Future<Output = Result<Response<W>, E>> + WasmCompatSend + 'static {
         let model = self.clone();
-        async move { model.open(request, Mode::Unary, observation)?.drain().await }
+        async move {
+            Ok(model
+                .open(request, Mode::Unary, observation)?
+                .drain()
+                .await?)
+        }
     }
 
     /// Open a streamed reply. Encoding errors, and requests the transport
     /// cannot stream, return here; every later failure arrives in-band.
     /// Nothing is sent until the stream is first polled.
-    pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(request.into(), Mode::Streaming, None)
+    pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, RigError> {
+        Ok(self.open(request.into(), Mode::Streaming, None)?)
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
@@ -259,8 +267,8 @@ where
         &self,
         request: impl Into<Request<W>>,
         observation: AdapterContext,
-    ) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(request.into(), Mode::Streaming, Some(observation))
+    ) -> Result<Streamed<W::Op>, RigError> {
+        Ok(self.open(request.into(), Mode::Streaming, Some(observation))?)
     }
 
     /// [`Self::call`], with a failure paired with the request path of the
@@ -278,7 +286,7 @@ where
             }
         }
         let route = stream.route().to_owned();
-        stream.finish().map_err(|error| (error, route))
+        stream.finished().map_err(|error| (error, route))
     }
 
     /// The one entry to the driver: the operation's fold for the reply,
@@ -795,13 +803,13 @@ where
 /// Read pages until one names no cursor, names the cursor it was asked
 /// with, or [`MAX_CONTINUATION_PAGES`] were read. `page` reads the page at a
 /// cursor (`None` for the first) and returns it with the next cursor.
-pub(crate) async fn follow_cursors<P, Fut>(
+pub(crate) async fn follow_cursors<P, E, Fut>(
     provider: &str,
     operation: &str,
     mut page: impl FnMut(Option<String>) -> Fut,
-) -> Result<Vec<P>, ProviderError>
+) -> Result<Vec<P>, E>
 where
-    Fut: Future<Output = Result<(P, Option<String>), ProviderError>>,
+    Fut: Future<Output = Result<(P, Option<String>), E>>,
 {
     let mut pages = Vec::new();
     let mut cursor = None;

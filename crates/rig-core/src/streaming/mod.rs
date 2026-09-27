@@ -15,8 +15,7 @@ mod update;
 
 use crate::completion::{CompletionResponse, Usage};
 use crate::driver::{Progress, Source, record_request_id};
-use crate::error::ErrorReport;
-use crate::error::ProviderError;
+use crate::error::{ProviderError, RigError};
 use crate::message::{AssistantContent, ToolResult};
 use crate::operation::{Completion, CompletionReply};
 use crate::wire::{End, Fold, Operation, Ready, Reply};
@@ -292,8 +291,7 @@ mod unknown_payload_tests;
 
 /// The one completion stream item type: what a [`CompletionStream`]
 /// yields, what a [`CompletionFold`](crate::operation::CompletionFold) collects, what the bus carries.
-pub type StreamEvents =
-    crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, ErrorReport>>;
+pub type StreamEvents = crate::wasm_compat::WasmBoxedStream<'static, Result<StreamEvent, RigError>>;
 
 /// One reply as it arrives: its canonical events, and the fold that has
 /// seen each of them. It is what [`Model::stream`](crate::Model::stream)
@@ -349,7 +347,12 @@ impl<Op: Operation> Streamed<Op> {
 
     /// The response the events seen so far fold into. Events not yet polled
     /// are not part of it.
-    pub fn finish(self) -> Result<Op::Response, ProviderError> {
+    pub fn finish(self) -> Result<Op::Response, RigError> {
+        Ok(self.finished()?)
+    }
+
+    /// [`Self::finish`], with the fold's own error.
+    pub(crate) fn finished(self) -> Result<Op::Response, ProviderError> {
         self.fold.finish(self.reply)
     }
 
@@ -359,7 +362,7 @@ impl<Op: Operation> Streamed<Op> {
         while let Some(item) = futures::future::poll_fn(|cx| self.poll_step(cx)).await {
             item?;
         }
-        self.finish()
+        self.finished()
     }
 
     /// The request path of the reply being read, when the transport named
@@ -478,43 +481,71 @@ impl Streamed<Completion> {
 
 impl Streamed<Completion> {
     /// The parts of the response as they start, grow and finish, then the
-    /// response. See [`Update`] for the order and the index contract. An
-    /// error is an item, as on the event stream; a stream that ends without
-    /// its terminal record ends with that error instead of [`Update::Done`].
+    /// response in [`Update::Done`], or the failure and what arrived before
+    /// it in [`Update::Failed`]. See [`Update`] for the order and the index
+    /// contract. Exactly one of the two is last; the stream ends after it,
+    /// and a later call yields nothing. The first error the reply carries
+    /// fails it, and a stream that ends without its terminal record fails
+    /// as truncated.
     ///
     /// A later call, or [`Self::text`], continues where an earlier one
     /// stopped. Events read from the stream itself in between are not
     /// projected as they pass: a part they touched is sent whole, or the
-    /// rest of it at its end, so the contract still holds.
+    /// rest of it at its end, so the contract still holds. An error read
+    /// from the stream itself fails the next call. `Failed` carries
+    /// [`Self::partial`] as it stood when the updates failed; events read
+    /// from the stream itself after that are not projected.
     ///
     /// ```no_run
     /// use futures::StreamExt;
+    /// use rig_core::message::Message;
     /// use rig_core::streaming::Update;
     ///
-    /// # async fn run(model: rig_core::DynModel<rig_core::operation::Completion>) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn run(model: rig_core::DynModel<rig_core::operation::Completion>) -> Result<(), rig_core::RigError> {
+    /// let mut history: Vec<Message> = Vec::new();
     /// let mut stream = model.stream("Tell me a story.")?;
     /// let mut updates = stream.updates();
     /// while let Some(update) = updates.next().await {
-    ///     if let Update::Delta { text, .. } = update? {
-    ///         print!("{text}");
+    ///     match update {
+    ///         Update::Delta { text, .. } => print!("{text}"),
+    ///         Update::Done(response) => history.push(response.into()),
+    ///         Update::Failed { error, partial } => {
+    ///             history.push(partial.into());
+    ///             return Err(error);
+    ///         }
+    ///         _ => {}
     ///     }
     /// }
     /// # Ok(())
     /// # }
     /// ```
-    pub fn updates(&mut self) -> impl Stream<Item = Result<Update, ErrorReport>> + '_ {
+    pub fn updates(&mut self) -> impl Stream<Item = Update> + '_ {
         futures::stream::poll_fn(move |cx| {
-            if std::mem::take(&mut self.projection.stale) {
+            // Nothing is projected past the terminal update.
+            if std::mem::take(&mut self.projection.stale) && !self.projection.ended {
                 self.projection
                     .projector
                     .catch_up(&self.fold, &mut self.projection.queue);
             }
             loop {
-                if let Some(item) = self.projection.queue.pop_front() {
-                    return Poll::Ready(Some(item));
+                if let Some(update) = self.projection.queue.pop_front() {
+                    return Poll::Ready(Some(update));
                 }
                 if self.projection.ended {
                     return Poll::Ready(None);
+                }
+                if let Some(error) = self.projection.failure.take() {
+                    // What the projection holds goes first; the failure
+                    // follows it, with what arrived by then.
+                    self.projection.ended = true;
+                    self.projection
+                        .projector
+                        .finish(&self.fold, &mut self.projection.queue);
+                    let partial = self.partial();
+                    self.projection
+                        .queue
+                        .push_back(Update::Failed { error, partial });
+                    continue;
                 }
                 match self.poll_step(cx) {
                     Poll::Pending => return Poll::Pending,
@@ -524,49 +555,40 @@ impl Streamed<Completion> {
                         &mut self.projection.queue,
                     ),
                     Poll::Ready(Some(Err(error))) => {
-                        self.projection.failed = true;
-                        self.projection
-                            .queue
-                            .push_back(Err(ErrorReport::from(&error)));
+                        self.projection.failure = Some(RigError::from(&error));
                     }
-                    Poll::Ready(None) => {
-                        self.projection.ended = true;
-                        self.projection
-                            .projector
-                            .finish(&self.fold, &mut self.projection.queue);
-                        match self.fold.streamed_response(&self.reply) {
-                            Ok(response) => {
-                                self.projection.queue.push_back(Ok(Update::Done(response)));
-                            }
-                            Err(error) if !self.projection.failed => {
-                                self.projection
-                                    .queue
-                                    .push_back(Err(ErrorReport::from(&error)));
-                            }
-                            Err(_) => {}
+                    Poll::Ready(None) => match self.fold.streamed_response(&self.reply) {
+                        Ok(response) => {
+                            self.projection.ended = true;
+                            self.projection
+                                .projector
+                                .finish(&self.fold, &mut self.projection.queue);
+                            self.projection.queue.push_back(Update::Done(response));
                         }
-                    }
+                        Err(error) => self.projection.failure = Some(RigError::from(&error)),
+                    },
                 }
             }
         })
     }
 
     /// The text deltas of the response, in order; [`Self::updates`] without
-    /// reasoning, tool calls or the parts' boundaries.
-    pub fn text(&mut self) -> impl Stream<Item = Result<String, ErrorReport>> + '_ {
+    /// reasoning, tool calls or the parts' boundaries. A failure is the last
+    /// item.
+    pub fn text(&mut self) -> impl Stream<Item = Result<String, RigError>> + '_ {
         let mut text_parts = std::collections::HashSet::new();
         self.updates().filter_map(move |update| {
             std::future::ready(match update {
-                Ok(Update::Start {
+                Update::Start {
                     index,
                     part: PartKind::Text,
-                }) => {
+                } => {
                     text_parts.insert(index);
                     None
                 }
-                Ok(Update::Delta { index, text }) if text_parts.contains(&index) => Some(Ok(text)),
-                Ok(_) => None,
-                Err(error) => Some(Err(error)),
+                Update::Delta { index, text } if text_parts.contains(&index) => Some(Ok(text)),
+                Update::Failed { error, .. } => Some(Err(error)),
+                _ => None,
             })
         })
     }
@@ -583,15 +605,28 @@ impl Streamed<Completion> {
 impl<Op: Operation> Unpin for Streamed<Op> {}
 
 impl<Op: Operation> Stream for Streamed<Op> {
-    type Item = Result<Op::Event, ErrorReport>;
+    type Item = Result<Op::Event, RigError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        let item = this.poll_step(cx);
-        if matches!(item, Poll::Ready(Some(_))) {
-            this.projection.stale = true;
+        match this.poll_step(cx) {
+            Poll::Ready(Some(Ok(event))) => {
+                this.projection.stale = true;
+                Poll::Ready(Some(Ok(event)))
+            }
+            Poll::Ready(Some(Err(error))) => {
+                this.projection.stale = true;
+                let error = RigError::from(&error);
+                // The first error read here fails a later `updates()`.
+                if !this.projection.ended && this.projection.failure.is_none() {
+                    this.projection.failure = Some(error.clone());
+                }
+                Poll::Ready(Some(Err(error)))
+            }
+            other => {
+                other.map(|item| item.map(|item| item.map_err(|error| RigError::from(&error))))
+            }
         }
-        item.map(|item| item.map(|item| item.map_err(|error| ErrorReport::from(&error))))
     }
 }
 

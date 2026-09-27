@@ -9,6 +9,7 @@ use anyhow::Result;
 
 use super::support::with_groq_cassette_result;
 use rig::completion::CompletionRequest;
+use rig::error::ErrorKind;
 
 const MODEL: &str = "openai/gpt-oss-120b";
 
@@ -106,10 +107,7 @@ async fn auth_rejection_classifies_with_contract() -> Result<()> {
                 .call(CompletionRequest::new("Never authenticated"))
                 .await
                 .expect_err("a bogus key must be rejected");
-            anyhow::ensure!(
-                matches!(error, rig::error::ProviderError::ProviderResponse(_)),
-                "got {error:?}"
-            );
+            anyhow::ensure!(error.kind == ErrorKind::ProviderResponse, "got {error:?}");
             anyhow::ensure!(
                 error
                     .provider_request_id()

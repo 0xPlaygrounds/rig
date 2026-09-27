@@ -5,7 +5,7 @@
 //! use rig_core::audio_generation::AudioGenerationRequestBuilder;
 //! use rig_core::operation::AudioGeneration;
 //!
-//! # async fn example(model: DynModel<AudioGeneration>, voice: &str) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(model: DynModel<AudioGeneration>, voice: &str) -> Result<(), rig_core::RigError> {
 //! let request = AudioGenerationRequestBuilder::new("Hello", voice).build();
 //! let response = model.call(request).await?;
 //! # let _ = response;

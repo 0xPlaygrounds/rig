@@ -6,7 +6,7 @@
 //! # }
 //! ```
 
-use rig_core::error::ProviderError;
+use rig_core::error::RigError;
 use rig_core::streaming::BlockId;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
@@ -245,15 +245,34 @@ pub(crate) fn finalize_streamed_choice(
 /// Why a streamed run ended before its final response.
 #[derive(Debug, thiserror::Error)]
 pub enum StreamingError {
-    /// The provider stream failed.
-    #[error("CompletionError: {0}")]
-    Completion(#[from] ProviderError),
-    /// Structured failure from the bus, a handler, a hook, or a stream item.
+    /// A model, bus, handler or hook failure, direct or relayed.
     #[error("{0}")]
-    Report(#[from] rig_core::error::ErrorReport),
+    Failed(#[from] RigError),
     /// The run failed for a reason the blocking surface reports the same way.
     #[error("PromptError: {0}")]
-    Prompt(#[from] PromptError),
+    Prompt(PromptError),
+}
+
+/// A failure converts unchanged; a prompt error as it converts.
+impl From<StreamingError> for RigError {
+    fn from(error: StreamingError) -> Self {
+        match error {
+            StreamingError::Failed(error) => error,
+            StreamingError::Prompt(error) => Self::from(error),
+        }
+    }
+}
+
+/// A failure is [`StreamingError::Failed`] on the streamed surface, as it is
+/// [`PromptError::Failed`] on the blocking one; every other prompt error is
+/// [`StreamingError::Prompt`].
+impl From<PromptError> for StreamingError {
+    fn from(error: PromptError) -> Self {
+        match error {
+            PromptError::Failed(error) => Self::Failed(error),
+            other => Self::Prompt(other),
+        }
+    }
 }
 
 impl From<rig_core::memory::MemoryError> for StreamingError {
@@ -506,8 +525,8 @@ impl AgentRunner {
                 }
             }
             response.ok_or_else(|| {
-                PromptError::CompletionError(ProviderError::Response(
-                    "agent run ended without producing a final response".to_string(),
+                PromptError::Failed(crate::failure::response(
+                    "agent run ended without producing a final response",
                 ))
             })
         };

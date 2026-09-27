@@ -29,7 +29,7 @@ use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     message::AssistantContent,
     observe::{Action, ObservationLog},
     serve::{Dispatch, Reply, Serve},
@@ -51,7 +51,7 @@ const ADD: &str = "t/tool:add#0";
 
 /// A model that answers a script of outcomes, one per request, in order.
 struct Flaky {
-    script: Mutex<VecDeque<Result<Vec<AssistantContent>, ErrorReport>>>,
+    script: Mutex<VecDeque<Result<Vec<AssistantContent>, RigError>>>,
     requests: Arc<Mutex<Vec<CompletionRequest>>>,
 }
 
@@ -71,7 +71,7 @@ impl Serve for Flaky {
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let EffectKind::Completion { request, .. } = kind else {
-            return Reply::Outcome(Err(ErrorReport::new(ErrorKind::Request, "a completion")));
+            return Reply::Outcome(Err(RigError::new(ErrorKind::Request, "a completion")));
         };
         self.requests.lock().unwrap().push(request);
         let next = self.script.lock().unwrap().pop_front();
@@ -83,13 +83,13 @@ impl Serve for Flaky {
                 serde_json::json!({}),
             ))),
             Some(Err(report)) => Err(report),
-            None => Err(ErrorReport::new(ErrorKind::Provider, "the script ran out")),
+            None => Err(RigError::new(ErrorKind::Provider, "the script ran out")),
         })
     }
 }
 
-fn unavailable(message: &str) -> ErrorReport {
-    ErrorReport::new(ErrorKind::ProviderResponse, message)
+fn unavailable(message: &str) -> RigError {
+    RigError::new(ErrorKind::ProviderResponse, message)
         .with_http_status(503)
         .with_retryable(true)
 }
@@ -102,7 +102,7 @@ fn done() -> Vec<AssistantContent> {
     vec![AssistantContent::text("done")]
 }
 
-type Script = Vec<Result<Vec<AssistantContent>, ErrorReport>>;
+type Script = Vec<Result<Vec<AssistantContent>, RigError>>;
 type Requests = Arc<Mutex<Vec<CompletionRequest>>>;
 
 /// An app recording its effects, a flaky model and the adder granted to
@@ -279,7 +279,7 @@ fn a_spent_budget_ends_the_run_with_the_last_report() {
 fn a_non_retryable_failure_after_tool_work_ends_the_run_at_once() {
     let (mut app, agent, requests, _, witness) = tooling(vec![
         Ok(add_call()),
-        Err(ErrorReport::new(ErrorKind::Provider, "blocked: SAFETY")),
+        Err(RigError::new(ErrorKind::Provider, "blocked: SAFETY")),
         Ok(done()),
     ]);
     let run = app.world_mut().spawn_run(agent, &[], "add", false, None);

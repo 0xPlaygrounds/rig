@@ -3,7 +3,7 @@
 
 use crate::client::macros::http_client;
 use crate::driver::Model;
-use crate::error::ProviderError;
+use crate::error::RigError;
 use crate::model::ModelList;
 use crate::providers::chatgpt::auth::{AuthError, Authenticator};
 use crate::providers::openai::responses_api::wire::Responses;
@@ -24,7 +24,7 @@ http_client!(
     /// use rig_core::completion::CompletionRequest;
     /// use rig_core::providers::openai::{self, OpenAIConfig};
     ///
-    /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), rig_core::RigError> {
     /// let openai = OpenAIConfig::from_env()?.connect(http);
     /// let model = openai.completion(openai::GPT_5_2);
     /// let response = model.call(CompletionRequest::new("Capital of France?")).await?;
@@ -98,13 +98,13 @@ impl OpenAI {
     }
 
     /// The models this provider serves, every page followed.
-    pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
+    pub async fn list_models(&self) -> Result<ModelList, RigError> {
         self.model(self.config.models()).list().await
     }
 
     /// Check that the provider accepts the configured credential. A 401 or
-    /// 403 reply is [`ProviderError::InvalidAuthentication`].
-    pub async fn verify(&self) -> Result<(), ProviderError> {
+    /// 403 reply carries [`ErrorDetail::InvalidAuthentication`](crate::error::ErrorDetail::InvalidAuthentication).
+    pub async fn verify(&self) -> Result<(), RigError> {
         self.model(self.config.verify()).verify().await
     }
 
@@ -117,7 +117,7 @@ impl OpenAI {
     /// use rig_core::providers::chatgpt::{self, auth::{AuthSource, Authenticator, DeviceCodeHandler}};
     /// use rig_core::providers::openai::OpenAIConfig;
     ///
-    /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), rig_core::RigError> {
     /// let authenticator = Authenticator::new(AuthSource::OAuth, None, DeviceCodeHandler::default(), true);
     /// let chatgpt = OpenAIConfig::with_key(&chatgpt::DIALECT, "")
     ///     .connect(http)

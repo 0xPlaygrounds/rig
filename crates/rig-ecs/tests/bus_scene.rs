@@ -401,7 +401,7 @@ impl Serve for Echo {
 
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::ToolCall { args, .. } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Request,
                 "not a tool call",
             )));

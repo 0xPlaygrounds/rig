@@ -17,7 +17,6 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use anyhow::Result;
 use futures::{StreamExt, stream};
 use rig_agent::{
     AgentBuilder,
@@ -28,6 +27,7 @@ use rig_agent::{
     completion::{CompletionRequest, FinishReason, Usage},
     streaming::{StreamEvent, StreamFinal},
 };
+use rig_core::RigError;
 use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
@@ -145,7 +145,7 @@ impl AgentHook for GrowCapOnTruncation {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     // One model serves both agents: erase it once, clone the handle.
     let budgeted = Model::new(Local::new("budgeted"), Budgeted).erase();
     // Starts far below what the answer costs, so the first attempts truncate.

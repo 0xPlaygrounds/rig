@@ -7,7 +7,7 @@
 //! ```
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
-use rig_core::error::ProviderError;
+use rig_core::error::{ErrorKind, RigError};
 use rig_core::message::{AssistantContent, Message};
 use serde::{Deserialize, Serialize};
 
@@ -137,7 +137,7 @@ pub enum MemoryAppend {
     /// original answer rather than any hook replacement.
     Failed {
         /// Why the append failed.
-        report: rig_core::error::ErrorReport,
+        report: rig_core::error::RigError,
     },
 }
 
@@ -148,7 +148,7 @@ impl MemoryAppend {
     }
 
     /// The failure report, when the append failed.
-    pub fn failure(&self) -> Option<&rig_core::error::ErrorReport> {
+    pub fn failure(&self) -> Option<&rig_core::error::RigError> {
         match self {
             Self::Acknowledged => None,
             Self::Failed { report } => Some(report),
@@ -265,13 +265,9 @@ use rig_core::memory::MemoryError;
 /// Errors from classic agent prompting.
 #[derive(Debug, Error)]
 pub enum PromptError {
-    /// A provider completion failed.
-    #[error("CompletionError: {0}")]
-    CompletionError(#[from] ProviderError),
-
-    /// Structured effect failure from the bus, a handler, a hook, or a stream item.
+    /// A model, bus, handler or hook failure, direct or relayed.
     #[error("{0}")]
-    Report(#[from] rig_core::error::ErrorReport),
+    Failed(#[from] RigError),
 
     /// Conversation memory failed to load or persist history.
     #[error("MemoryError: {0}")]
@@ -313,68 +309,61 @@ pub enum PromptError {
     },
 }
 
-/// Forward provider response accessors through wrapped errors and optional reports.
-macro_rules! forward_provider_response_helpers {
-    ($err:ident, $variant:ident, $inner:literal $(, report = $report:ident)?) => {
-        impl $err {
-            #[doc = concat!("Returns the provider response body exposed by a wrapped ", $inner, ".")]
-            pub fn provider_response_body(&self) -> Option<&str> {
-                match self {
-                    Self::$variant(error) => error.provider_response_body(),
-                    $(Self::$report(report) => report.provider_response_body(),)?
-                    _ => None,
-                }
-            }
-
-            #[doc = concat!("Parses the provider response body of a wrapped ", $inner, " as JSON when present.")]
-            pub fn provider_response_json(
-                &self,
-            ) -> Result<Option<serde_json::Value>, serde_json::Error> {
-                match self {
-                    Self::$variant(error) => error.provider_response_json(),
-                    $(Self::$report(report) => report.provider_response_json(),)?
-                    _ => Ok(None),
-                }
-            }
-
-            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, ", or carried by a wire report.")]
-            pub fn provider_request_id(&self) -> Option<&str> {
-                match self {
-                    Self::$variant(error) => error.provider_request_id(),
-                    $(Self::$report(report) => report.request_id.as_deref(),)?
-                    _ => None,
-                }
-            }
-
-            #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ", or carried by a wire report.")]
-            pub fn provider_response_status(&self) -> Option<http::StatusCode> {
-                match self {
-                    Self::$variant(error) => error.provider_response_status(),
-                    $(Self::$report(report) => report
-                        .http_status
-                        .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
-                    _ => None,
-                }
-            }
-
-            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, " or report.")]
-            pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
-                match self {
-                    Self::$variant(error) => error.provider_response_headers(),
-                    $(Self::$report(report) => report.provider_response_headers(),)?
-                    _ => None,
-                }
-            }
+/// A failure converts unchanged, and a memory failure as memory reports it.
+/// A cancelled run is [`ErrorKind::Cancelled`], a call to a tool the turn did
+/// not offer is [`ErrorKind::Response`], and an exhausted budget is
+/// [`ErrorKind::Other`].
+impl From<PromptError> for RigError {
+    fn from(error: PromptError) -> Self {
+        let kind = match error {
+            PromptError::Failed(error) => return error,
+            PromptError::MemoryError(error) => return Self::from(error),
+            PromptError::PromptCancelled { .. } => ErrorKind::Cancelled,
+            PromptError::UnknownToolCall { .. } => ErrorKind::Response,
+            PromptError::MaxTurnsError { .. } => ErrorKind::Other,
+        };
+        Self {
+            kind,
+            ..Self::other(&error)
         }
-    };
+    }
 }
 
-forward_provider_response_helpers!(
-    PromptError,
-    CompletionError,
-    "completion error",
-    report = Report
-);
+impl PromptError {
+    /// The provider response body a [`Self::Failed`] failure preserved.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        self.failure()?.provider_response_body()
+    }
+
+    /// Parses the provider response body a [`Self::Failed`] failure
+    /// preserved as JSON: `Ok(None)` when there is none.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        self.failure()
+            .map_or(Ok(None), RigError::provider_response_json)
+    }
+
+    /// The provider transport request id a [`Self::Failed`] failure carries.
+    pub fn provider_request_id(&self) -> Option<&str> {
+        self.failure()?.provider_request_id()
+    }
+
+    /// The HTTP status a [`Self::Failed`] failure carries.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        self.failure()?.provider_response_status()
+    }
+
+    /// The provider response headers a [`Self::Failed`] failure preserved.
+    pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+        self.failure()?.provider_response_headers()
+    }
+
+    fn failure(&self) -> Option<&RigError> {
+        match self {
+            Self::Failed(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl PromptError {
     /// Build a [`PromptError::PromptCancelled`] from the history available at

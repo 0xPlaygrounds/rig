@@ -9,7 +9,7 @@ use rig_cassette::ecs::Replay;
 use rig_core::serve::Dispatch;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
-    error::{ErrorKind, ErrorReport},
+    error::{ErrorKind, RigError},
     serve::Serve,
     tool::{ContextValue, PublishedContext, ToolContext, ToolOutput, ToolResult},
 };
@@ -70,7 +70,7 @@ impl Serve for Publish {
             .unwrap()
             .publish(context);
         let answer = if self.fail {
-            Err(ErrorReport::new(ErrorKind::Request, "tool refused"))
+            Err(RigError::new(ErrorKind::Request, "tool refused"))
         } else {
             Ok(Outcome::ToolResult {
                 result: ToolResult::success(ToolOutput::text("ok")),
@@ -191,12 +191,9 @@ impl rig_core::serve::Intercept for ReplaceAnswer {
         &self,
         _: rig_core::effect::EffectId,
         _: &EffectKind,
-        _: &Result<Outcome, ErrorReport>,
+        _: &Result<Outcome, RigError>,
     ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Replace(Err(ErrorReport::new(
-            ErrorKind::Timeout,
-            "outer verdict",
-        )))
+        rig_core::serve::Verdict::Replace(Err(RigError::new(ErrorKind::Timeout, "outer verdict")))
     }
 }
 

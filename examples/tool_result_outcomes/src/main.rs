@@ -32,11 +32,11 @@
 //! The fatal command terminates after the disk failure. The recoverable command
 //! lets the network failure return to the model. `--help` requires no credentials.
 
-use anyhow::{Result, bail};
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, OutcomeAction, OutcomeEvent,
     RequestPatch,
 };
+use rig::error::ErrorKind;
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -307,17 +307,20 @@ fn usage() {
     );
 }
 
-fn parse_mode() -> Result<Option<Mode>> {
+fn parse_mode() -> Result<Option<Mode>, RigError> {
     match std::env::args().nth(1).as_deref() {
         Some("fatal") => Ok(Some(Mode::Fatal)),
         Some("recoverable") => Ok(Some(Mode::Recoverable)),
         Some("-h" | "--help") | None => Ok(None),
-        Some(other) => bail!("unknown mode `{other}`; use --help"),
+        Some(other) => Err(RigError::new(
+            ErrorKind::Other,
+            format!("unknown mode `{other}`; use --help"),
+        )),
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     let Some(mode) = parse_mode()? else {
         usage();
         return Ok(());

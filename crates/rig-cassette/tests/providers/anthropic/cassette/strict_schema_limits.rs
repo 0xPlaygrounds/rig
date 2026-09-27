@@ -1,7 +1,6 @@
 //! Live boundary tests for Anthropic's published strict-schema complexity limits.
 
 use rig::completion::ToolDefinition;
-use rig::error::ProviderError;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
 use rig_test_support::cassette_models::MapWire;
@@ -44,7 +43,7 @@ fn union_parameters_schema(count: usize) -> Value {
 
 /// The rejection is the schema limit `reason` names, not some other 400
 /// (a spent quota answers with the same status and error type).
-fn assert_invalid_request(error: &ProviderError, reason: &str) {
+fn assert_invalid_request(error: &rig::RigError, reason: &str) {
     let status = error
         .provider_response_status()
         .expect("provider status should be preserved");

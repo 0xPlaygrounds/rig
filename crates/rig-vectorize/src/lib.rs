@@ -9,7 +9,7 @@
 //! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
-//! # fn example() -> anyhow::Result<()> {
+//! # fn example() -> Result<(), rig_core::RigError> {
 //! let openai = openai::OpenAI::from_env()?;
 //! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //!
@@ -17,7 +17,7 @@
 //!     embedding_model,
 //!     "your-account-id",
 //!     "your-index-name",
-//!     std::env::var("CLOUDFLARE_API_TOKEN")?,
+//!     std::env::var("CLOUDFLARE_API_TOKEN").map_err(rig_core::RigError::other)?,
 //! );
 //! # let _ = vector_store;
 //! # Ok(())
@@ -43,6 +43,13 @@ use uuid::Uuid;
 impl From<VectorizeError> for VectorStoreError {
     fn from(err: VectorizeError) -> Self {
         VectorStoreError::datastore(err)
+    }
+}
+
+/// As the Vectorize store reports it.
+impl From<VectorizeError> for rig_core::error::RigError {
+    fn from(error: VectorizeError) -> Self {
+        VectorStoreError::from(error).into()
     }
 }
 
@@ -174,3 +181,6 @@ impl InsertDocuments for VectorizeVectorStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

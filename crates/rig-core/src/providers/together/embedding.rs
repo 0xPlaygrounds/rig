@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rig_core::providers::together;
 //! let model = together::from_env()?.embedding(together::BGE_BASE_EN_V1_5, None);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # Ok::<(), rig_core::RigError>(())
 //! ```
 
 pub const BGE_BASE_EN_V1_5: &str = "BAAI/bge-base-en-v1.5";

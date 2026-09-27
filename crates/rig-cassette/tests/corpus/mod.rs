@@ -32,7 +32,7 @@
 //! | hook identity | the type name · a name the hook gives itself (`AgentHook::name`) |
 //! | causality | a consumer's own dispatch · nested from a tool's `Serve` through its sink's dispatcher (depth 1 · 2) · from a detached sink's resolver · from a spawned thread; the target another key · the same key (refused under serial serving, served under concurrent); the parent answered · cancelled with the child in flight · cancelled with the child queued (Matrix Q) |
 //! | interpreters | the bus engine · the hand driver · the resumed engine · the Bevy host replaying the log as a script |
-//! | outcome kind | success · `Cancelled` · handler error (`ErrorReport`) · a divergence (refused) |
+//! | outcome kind | success · `Cancelled` · handler error (`RigError`) · a divergence (refused) |
 //! | invalid call | none · unary, resolved by a hook · streamed, resolved mid-stream · unresolved under `Fail` · under `Ignore` |
 //!
 //! # What the original ten goldens cover
@@ -267,7 +267,7 @@ pub enum Ending {
     /// model still calling tools (a per-run `tool_choice` that forces a
     /// call does this). Every record is a success; the run is not.
     MaxTurns,
-    /// `PromptError::Report` of kind `ProviderResponse`: the completion
+    /// `PromptError::Failed` of kind `ProviderResponse`: the completion
     /// record's outcome is the provider's error and the run fails at it.
     ProviderError,
     /// `PromptError::UnknownToolCall`: the model called a tool the program
@@ -280,7 +280,7 @@ pub enum Ending {
     /// `PromptError::PromptCancelled` with this reason: a hook stopped the
     /// run. The records are those the engine made before the stop.
     Cancelled(&'static str),
-    /// `PromptError::Report` (or a stream's `Report` item) of this kind: a
+    /// `PromptError::Failed` (or a stream's `StreamingError::Failed`) of this kind: a
     /// layer denied or replaced what the run needed (Matrices P and T).
     Failed(ErrorKind),
 }
@@ -1071,7 +1071,7 @@ pub fn unserializable_key()
 }
 
 /// What the hook sees when its effect has no wire form.
-pub fn assert_unserializable(report: &rig_core::error::ErrorReport) {
+pub fn assert_unserializable(report: &rig_core::error::RigError) {
     assert_eq!(report.kind, ErrorKind::Request, "{report:?}");
     assert!(
         report.message.contains("did not serialize")
@@ -1176,7 +1176,7 @@ impl rig_core::serve::Intercept for DenyAddLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         rig_core::serve::Verdict::Keep
     }
@@ -1200,7 +1200,7 @@ impl rig_core::serve::Intercept for PatchAddArgsLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         rig_core::serve::Verdict::Keep
     }
@@ -1224,7 +1224,7 @@ impl rig_core::serve::Intercept for PatchAgainLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         rig_core::serve::Verdict::Keep
     }
@@ -1248,7 +1248,7 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
         &self,
         _id: rig_core::effect::EffectId,
         kind: &rig_core::effect::EffectKind,
-        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         match outcome {
             Ok(rig_core::effect::Outcome::ToolResult { result }) if is_add(kind) => {
@@ -1285,7 +1285,7 @@ impl rig_core::serve::Intercept for ApprovalLayer {
         match decided.await {
             Ok(decision) => decision,
             Err(futures::channel::oneshot::Canceled) => {
-                rig_core::serve::Decision::Deny(rig_core::error::ErrorReport::new(
+                rig_core::serve::Decision::Deny(rig_core::error::RigError::new(
                     ErrorKind::Internal,
                     "layer `ApprovalLayer`: the world closed the answer channel without deciding",
                 ))
@@ -1296,7 +1296,7 @@ impl rig_core::serve::Intercept for ApprovalLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         rig_core::serve::Verdict::Keep
     }
@@ -1327,7 +1327,7 @@ impl rig_core::serve::Intercept for WrongFamilyLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         rig_core::serve::Verdict::Keep
     }
@@ -1351,9 +1351,9 @@ impl rig_core::serve::Intercept for CancelStreamLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
-        rig_core::serve::Verdict::Replace(Err(rig_core::error::ErrorReport::new(
+        rig_core::serve::Verdict::Replace(Err(rig_core::error::RigError::new(
             ErrorKind::Cancelled,
             CANCEL_STREAM_REASON,
         )))
@@ -1378,7 +1378,7 @@ impl rig_core::serve::Intercept for ReplaceLoadLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         match outcome {
             Ok(rig_core::effect::Outcome::Memory(MemoryOutcome::Loaded { .. })) => {
@@ -1411,7 +1411,7 @@ impl rig_core::serve::Intercept for DenyAllLayer {
         &self,
         _id: rig_core::effect::EffectId,
         _kind: &rig_core::effect::EffectKind,
-        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::RigError>,
     ) -> rig_core::serve::Verdict {
         rig_core::serve::Verdict::Keep
     }
@@ -1686,7 +1686,7 @@ impl rig_core::serve::Serve for Lookup {
         dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
         let rig_core::effect::EffectKind::ToolCall { args, .. } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Request,
                 "a tool call",
             )));
@@ -1746,7 +1746,7 @@ impl rig_core::serve::Serve for Relay {
         dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
         let rig_core::effect::EffectKind::Custom { payload, .. } = kind else {
-            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::RigError::new(
                 rig_core::error::ErrorKind::Request,
                 "a relay note",
             )));
@@ -2354,7 +2354,7 @@ impl Replay {
         &self,
         source: &EffectLog,
         key: &HandlerKey,
-    ) -> Result<EffectLogReplayer, rig_core::error::ErrorReport> {
+    ) -> Result<EffectLogReplayer, rig_core::error::RigError> {
         EffectLogReplayer::for_key(source, key).map(|replayer| replayer.checking(self.check))
     }
 
@@ -2717,7 +2717,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                         output = Some(response.output);
                     }
-                    Err(StreamingError::Report(report))
+                    Err(StreamingError::Failed(report))
                         if program.cancel_after_first_delta
                             && report.kind == rig_core::error::ErrorKind::Cancelled =>
                     {
@@ -2750,19 +2750,14 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Report(report))
+                    Err(StreamingError::Failed(report))
                         if program.ending == Ending::ProviderError
                             && report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Report(report))
+                    Err(StreamingError::Failed(report))
                         if program.ending == Ending::Failed(report.kind) =>
-                    {
-                        failed_as_expected = true;
-                    }
-                    Err(StreamingError::Completion(_))
-                        if program.ending == Ending::ProviderError =>
                     {
                         failed_as_expected = true;
                     }
@@ -2819,12 +2814,12 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
                 | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall)
                 | (Err(PromptError::MemoryError(_)), Ending::MemoryError) => None,
-                (Err(PromptError::Report(report)), Ending::ProviderError)
+                (Err(PromptError::Failed(report)), Ending::ProviderError)
                     if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                 {
                     None
                 }
-                (Err(PromptError::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
+                (Err(PromptError::Failed(report)), Ending::Failed(kind)) if report.kind == kind => {
                     None
                 }
                 (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))

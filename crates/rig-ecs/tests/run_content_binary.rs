@@ -133,3 +133,18 @@ fn scene_spelling_metadata_cannot_change_decoded_bytes() {
         );
     }
 }
+
+/// A source the caller supplied is a request that cannot be built; a store
+/// that lost or corrupted a payload is an internal failure.
+#[test]
+fn a_binary_failure_converts_by_whose_fault_it_is() {
+    use rig_core::error::{ErrorKind, RigError};
+    let limit = RigError::from(BinaryError::Limit);
+    assert_eq!(limit.kind, ErrorKind::Request);
+    assert!(!limit.retryable);
+    assert_eq!(limit.message, "binary content exceeds its allocation limit");
+    let corrupt = RigError::from(BinaryError::Corrupt);
+    assert_eq!(corrupt.kind, ErrorKind::Internal);
+    assert!(!corrupt.retryable);
+    assert_eq!(corrupt.message, "binary asset hash mismatch");
+}

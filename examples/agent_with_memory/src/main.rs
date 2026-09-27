@@ -6,13 +6,12 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
-use anyhow::Result;
 use rig::memory::InMemoryConversationMemory;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     // For named history-shaping policies (sliding window, token budget, etc.),
     // depend on the `rig-memory` companion crate. Here we use the bare backend.
     let memory = InMemoryConversationMemory::new();

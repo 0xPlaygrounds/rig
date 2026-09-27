@@ -9,7 +9,7 @@
 
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
-    error::ErrorReport,
+    error::RigError,
     streaming::StreamEvent,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -69,10 +69,10 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn event(&self, id: EffectId, event: &StreamEvent);
     /// An error item at its original position in a kept stream. Unlike the
     /// folded outcome, this includes errors after an earlier terminal item.
-    fn stream_error(&self, _id: EffectId, _error: &ErrorReport) {}
+    fn stream_error(&self, _id: EffectId, _error: &RigError) {}
     /// Explicitly published tool output, delivered before `resolve`. A driver
     /// snapshots it without consuming the caller's published context.
     fn tool_output(&self, id: EffectId, output: crate::tool::ToolResultContext);
     /// The outcome of `id`.
-    fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>);
+    fn resolve(&self, id: EffectId, outcome: Result<Outcome, RigError>);
 }

@@ -14,7 +14,7 @@ impl Drop for Dropped {
     }
 }
 
-fn item() -> Result<StreamEvent, rig_core::error::ErrorReport> {
+fn item() -> Result<StreamEvent, rig_core::error::RigError> {
     Ok(StreamEvent::Unknown(UnknownPayload::new(
         serde_json::Value::Null,
     )))

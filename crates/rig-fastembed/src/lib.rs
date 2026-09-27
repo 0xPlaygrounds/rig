@@ -58,6 +58,21 @@ impl fmt::Display for FastembedError {
     }
 }
 
+/// A model `fastembed` does not know is the caller's setup; a model that
+/// would not load is [`ErrorKind::Other`](rig_core::error::ErrorKind::Other).
+impl From<FastembedError> for rig_core::error::RigError {
+    fn from(error: FastembedError) -> Self {
+        let kind = match error {
+            FastembedError::UnknownModel(_) => rig_core::error::ErrorKind::Configuration,
+            FastembedError::Initialization(_) => rig_core::error::ErrorKind::Other,
+        };
+        Self {
+            kind,
+            ..Self::other(&error)
+        }
+    }
+}
+
 impl StdError for FastembedError {}
 
 /// The local embedding wire of `model` at `ndims` dimensions, named
@@ -159,3 +174,6 @@ impl Transport<Local<Embedding>> for Fastembed {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests;

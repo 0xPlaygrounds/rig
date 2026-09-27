@@ -217,6 +217,13 @@ impl From<CandleError> for ProviderError {
     }
 }
 
+/// As the Candle transport reports it.
+impl From<CandleError> for rig_core::error::RigError {
+    fn from(error: CandleError) -> Self {
+        ProviderError::from(error).into()
+    }
+}
+
 /// The reason local generation ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -281,3 +288,6 @@ impl From<FinishReason> for rig_core::completion::FinishReason {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -6,7 +6,7 @@ use super::{
 use crate::completion::CompletionRequest;
 use crate::driver::WireDriver;
 use crate::error::ProviderError;
-use crate::error::{ErrorKind, ErrorReport};
+use crate::error::{ErrorKind, RigError};
 use crate::message::{AssistantContent, ReasoningContent};
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
@@ -316,7 +316,7 @@ fn folded_stream_events(
     fold.finish(reply)
 }
 
-async fn first_error_from_event(event: serde_json::Value) -> ErrorReport {
+async fn first_error_from_event(event: serde_json::Value) -> RigError {
     let mut stream = responses_stream_of(&[event]).await;
 
     stream
@@ -359,7 +359,7 @@ async fn stream_final_from_event(event: serde_json::Value) -> crate::streaming::
 /// carrying the completed call) come first, then the error, then nothing.
 async fn flushed_tool_call_then_error(
     stream: &mut crate::streaming::CompletionStream,
-) -> (crate::message::ToolCall, ErrorReport) {
+) -> (crate::message::ToolCall, RigError) {
     let mut tool_call = None;
     let err = loop {
         match stream

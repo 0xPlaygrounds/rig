@@ -2,7 +2,7 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see a classifier agent choose which second prompt should run.
 
-use anyhow::{Result, bail};
+use rig::error::ErrorKind;
 use rig::operation::Completion;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
@@ -21,17 +21,20 @@ fn build_response_agent(model: impl Into<DynModel<Completion>>) -> rig::agent::A
     AgentBuilder::new(model).build()
 }
 
-fn follow_up_prompt(category: &str) -> Result<&'static str> {
+fn follow_up_prompt(category: &str) -> Result<&'static str, RigError> {
     match category {
         "cow" => Ok("Tell me a fact about the United States of America."),
         "sheep" => Ok("Calculate 5+5 for me. Return only the number."),
         "dog" => Ok("Write me a poem about cashews."),
-        other => bail!("could not process category: {other}"),
+        other => Err(RigError::new(
+            ErrorKind::Other,
+            format!("could not process category: {other}"),
+        )),
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     // One model serves both agents: erase it once, clone the handle.
     let gpt4 = OpenAI::from_env()?.completion(openai::GPT_4).erase();
     let category = build_router_agent(gpt4.clone())

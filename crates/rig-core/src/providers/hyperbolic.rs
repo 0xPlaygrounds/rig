@@ -7,7 +7,7 @@
 //! ```no_run
 //! use rig_core::providers::hyperbolic;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let provider = hyperbolic::from_env()?;
 //! let llama_3_1_8b = provider.chat(hyperbolic::LLAMA_3_1_8B);
 //! # Ok(())

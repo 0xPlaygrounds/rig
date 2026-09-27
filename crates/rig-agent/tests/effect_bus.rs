@@ -364,7 +364,7 @@ async fn selecting_an_unregistered_model_label_fails_at_bind_time() {
         .add_hook(SelectMissing)
         .build();
     let error = within(agent.prompt("go").run()).await.expect_err("unbound");
-    let rig_agent::completion::PromptError::Report(report) = error else {
+    let rig_agent::completion::PromptError::Failed(report) = error else {
         panic!("expected a report, got {error}");
     };
     assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
@@ -1736,7 +1736,7 @@ async fn a_bus_failure_on_a_tool_dispatch_is_a_run_error_not_a_tool_result() {
         .await
         .expect_err("the run fails");
     match error {
-        rig_agent::completion::PromptError::Report(report) => {
+        rig_agent::completion::PromptError::Failed(report) => {
             assert_eq!(report.kind, ErrorKind::HandlerUnavailable, "{report}");
         }
         other => panic!("expected the bus report, got {other:?}"),

@@ -6,7 +6,7 @@
 //! ```no_run
 //! use rig_core::providers::together;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let together = together::from_env()?;
 //! let embedding = together.embedding(together::BGE_BASE_EN_V1_5, None);
 //! let chat = together.chat(together::MIXTRAL_8X7B_INSTRUCT_V0_1);

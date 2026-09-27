@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use rig::error::ErrorKind;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::ollama::OllamaConfig;
@@ -16,43 +16,49 @@ struct Document {
     content: String,
 }
 
-fn load_pdf(path: &Path) -> Result<Vec<String>> {
+fn load_pdf(path: &Path) -> Result<Vec<String>, RigError> {
     const CHUNK_SIZE: usize = 2000;
-    let content_chunks = PdfFileLoader::with_glob(path.to_str().context("Invalid path")?)?
-        .read()
-        .into_iter()
-        .filter_map(|result| {
-            result
-                .map_err(|e| {
-                    eprintln!("Error reading PDF content: {e}");
-                    e
-                })
-                .ok()
-        })
-        .flat_map(|content| {
-            let mut chunks = Vec::new();
-            let mut current = String::new();
-            for word in content.split_whitespace() {
-                if current.len() + word.len() + 1 > CHUNK_SIZE && !current.is_empty() {
-                    chunks.push(std::mem::take(&mut current).trim().to_string());
-                }
-                current.push_str(word);
-                current.push(' ');
+    let content_chunks = PdfFileLoader::with_glob(
+        path.to_str()
+            .ok_or_else(|| RigError::new(ErrorKind::Other, "Invalid path"))?,
+    )?
+    .read()
+    .into_iter()
+    .filter_map(|result| {
+        result
+            .map_err(|e| {
+                eprintln!("Error reading PDF content: {e}");
+                e
+            })
+            .ok()
+    })
+    .flat_map(|content| {
+        let mut chunks = Vec::new();
+        let mut current = String::new();
+        for word in content.split_whitespace() {
+            if current.len() + word.len() + 1 > CHUNK_SIZE && !current.is_empty() {
+                chunks.push(std::mem::take(&mut current).trim().to_string());
             }
-            if !current.is_empty() {
-                chunks.push(current.trim().to_string());
-            }
-            chunks
-        })
-        .collect::<Vec<_>>();
+            current.push_str(word);
+            current.push(' ');
+        }
+        if !current.is_empty() {
+            chunks.push(current.trim().to_string());
+        }
+        chunks
+    })
+    .collect::<Vec<_>>();
     if content_chunks.is_empty() {
-        anyhow::bail!("No content found in PDF file: {}", path.display());
+        return Err(RigError::new(
+            ErrorKind::Other,
+            format!("No content found in PDF file: {}", path.display()),
+        ));
     }
     Ok(content_chunks)
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RigError> {
     // Initialize the Ollama provider
     // because Ollama is local and does not require an api key, we leave the
     // credential unset
@@ -61,9 +67,14 @@ async fn main() -> Result<()> {
         .client();
 
     // Load PDFs using Rig's built-in PDF loader
-    let documents_dir = std::env::current_dir()?.join("examples/documents");
+    let documents_dir = std::env::current_dir()
+        .map_err(RigError::other)?
+        .join("examples/documents");
     let pdf_chunks =
-        load_pdf(&documents_dir.join("deepseek_r1.pdf")).context("Failed to load pdf documents")?;
+        load_pdf(&documents_dir.join("deepseek_r1.pdf")).map_err(|error| RigError {
+            message: format!("Failed to load pdf documents: {}", error.message),
+            ..error
+        })?;
     println!("Successfully loaded and chunked PDF documents");
 
     // Create embedding model

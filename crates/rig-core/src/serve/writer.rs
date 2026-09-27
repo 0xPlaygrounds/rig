@@ -12,7 +12,7 @@
 use futures::{SinkExt, StreamExt, channel::mpsc};
 
 use crate::{
-    error::ErrorReport,
+    error::RigError,
     operation::AdapterOutput,
     streaming::{StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd},
 };
@@ -24,7 +24,7 @@ use crate::wasm_compat::WasmCompatSend;
 /// [`finish`](Self::finish) emits the terminal, while ordinary drop without
 /// a terminal leaves a truncated stream.
 pub struct StreamWriter {
-    events: mpsc::Sender<Result<StreamEvent, ErrorReport>>,
+    events: mpsc::Sender<Result<StreamEvent, RigError>>,
     output: AdapterOutput,
     tool_ids: SyntheticIds,
 }
@@ -94,7 +94,7 @@ impl StreamWriter {
     }
 
     /// An in-band error: the consumer's next item.
-    pub async fn error(&mut self, report: ErrorReport) -> Result<(), SinkClosed> {
+    pub async fn error(&mut self, report: RigError) -> Result<(), SinkClosed> {
         self.flush().await.map_err(|_| SinkClosed)?;
         self.events.send(Err(report)).await.map_err(|_| SinkClosed)
     }
@@ -115,7 +115,7 @@ impl StreamWriter {
     async fn flush(&mut self) -> Result<(), SinkClosed> {
         for item in self.output.drain() {
             self.events
-                .send(item.map_err(|error| ErrorReport::from(&error)))
+                .send(item.map_err(|error| RigError::from(&error)))
                 .await
                 .map_err(|_| SinkClosed)?;
         }

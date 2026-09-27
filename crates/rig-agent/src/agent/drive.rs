@@ -26,7 +26,7 @@ use rig_core::serve::adapters::ModelAdapter;
 use rig_core::{
     completion::ModelRef,
     effect::{HandlerKey, Key, family},
-    error::ErrorReport,
+    error::RigError,
 };
 
 /// The per-process counter behind an agent's default owner label.
@@ -115,15 +115,15 @@ impl AgentBus {
     /// builder is the driver's only holder; a bus this agent does not own
     /// (or one another agent value already shares) cannot record, and says
     /// so.
-    pub(crate) fn record_to(&mut self, recorder: Recording) -> Result<(), ErrorReport> {
+    pub(crate) fn record_to(&mut self, recorder: Recording) -> Result<(), RigError> {
         let Some(driver) = self.driver.as_mut() else {
-            return Err(ErrorReport::new(
+            return Err(RigError::new(
                 rig_core::error::ErrorKind::Internal,
                 "an agent over a host's bus does not record; tap the host's driver",
             ));
         };
         let Some(driver) = Arc::get_mut(driver) else {
-            return Err(ErrorReport::new(
+            return Err(RigError::new(
                 rig_core::error::ErrorKind::Internal,
                 "recording is enabled at build, before a clone shares the driver",
             ));
@@ -207,7 +207,7 @@ impl AgentBus {
         &mut self,
         key: HandlerKey,
         handler: ErasedHandler,
-    ) -> Result<(), ErrorReport> {
+    ) -> Result<(), RigError> {
         match self.driver.as_mut().and_then(Arc::get_mut) {
             Some(driver) => driver
                 .get_mut()
@@ -290,7 +290,7 @@ impl AgentBus {
 /// Check a generated-key registration expected to preserve its family.
 /// Panics on refusal in debug builds; logs the error in release builds.
 #[track_caller]
-pub(crate) fn register_generated(registered: Result<(), rig_core::error::ErrorReport>) {
+pub(crate) fn register_generated(registered: Result<(), rig_core::error::RigError>) {
     if let Err(report) = registered {
         let caller = std::panic::Location::caller();
         debug_assert!(

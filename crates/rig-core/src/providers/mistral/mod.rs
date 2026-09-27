@@ -7,7 +7,7 @@
 //! ```no_run
 //! use rig_core::providers::mistral;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), rig_core::RigError> {
 //! let mistral = mistral::from_env()?;
 //! let small = mistral.chat(mistral::MISTRAL_SMALL);
 //! let embed = mistral.embedding(mistral::embedding::MISTRAL_EMBED, None);

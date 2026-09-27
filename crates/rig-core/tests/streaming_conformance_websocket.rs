@@ -103,7 +103,7 @@ fn spawn_server(listener: TcpListener, messages: Vec<String>, abort: bool) {
 /// flush-before-terminal-error contract (`RawChoiceAccumulator::flush_tool_calls`).
 async fn drain_openai_responses_websocket_events(
     provider: &'static str,
-    events: Vec<Result<ResponsesWebSocketEvent, ProviderError>>,
+    events: Vec<Result<ResponsesWebSocketEvent, rig_core::RigError>>,
 ) -> conformance::DrainedStream {
     use ResponsesWebSocketEvent;
     use rig_core::operation::AdapterOutput;
@@ -151,9 +151,11 @@ async fn drain_openai_responses_websocket_events(
                 errored = true;
                 break;
             }
+            // The session's error, already a caller's report, enters the
+            // sink as that report.
             Err(error) => {
                 accumulator.flush_tool_calls(&mut out);
-                out.error(error);
+                out.error(ProviderError::Relayed(Box::new(error)));
                 errored = true;
                 break;
             }
@@ -169,7 +171,7 @@ async fn drain_openai_responses_websocket_events(
     let stream = rig_core::streaming::CompletionStream::relay(
         provider,
         Box::pin(futures::stream::iter(out.into_items().into_iter().map(
-            |item| item.map_err(|error| rig_core::error::ErrorReport::from(&error)),
+            |item| item.map_err(|error| rig_core::error::RigError::from(&error)),
         ))),
     );
     conformance::fixtures::drain(stream).await
