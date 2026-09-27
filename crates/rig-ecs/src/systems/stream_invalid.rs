@@ -11,7 +11,7 @@ use super::*;
 use rig_core::{
     message::{ToolCall, ToolCallId, ToolFunction},
     operation::{AdapterOutput, Completion, CompletionFold},
-    streaming::{Delta, StreamEvent},
+    streaming::{BlockId, Delta, StreamEvent},
     wire::{Fold, Sink},
 };
 
@@ -26,21 +26,41 @@ pub(super) fn validation_len(stream: &BusStreamed) -> usize {
         })
 }
 
-/// Resolve a delivered name's block to the final identity its end carried.
-/// The offset disambiguates a block identifier reused later in the stream.
+/// The tool call each delivered event completes, by position, as the
+/// completion sink finalizes it. A handler need not write its stream through
+/// the sink, so an end that carries no call completes the one its events
+/// assembled; a canonical stream passes the sink unchanged.
+fn completed_calls(events: &[StreamEvent]) -> Vec<Option<(BlockId, ToolCall)>> {
+    let mut sink = AdapterOutput::new();
+    events
+        .iter()
+        .map(|event| {
+            sink.push(Ok(event.clone()));
+            sink.drain().find_map(|item| match item {
+                Ok(StreamEvent::BlockEnd {
+                    id,
+                    block: Some(AssistantContent::ToolCall(call)),
+                    ..
+                }) => Some((id, call)),
+                _ => None,
+            })
+        })
+        .collect()
+}
+
+/// Resolve a delivered name's block to the final identity of the call it
+/// completed. The offset disambiguates a block identifier reused later in
+/// the stream.
 pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option<ToolCallId> {
     let block_id = match events.get(offset)? {
         StreamEvent::BlockDelta { id, .. } | StreamEvent::BlockEnd { id, .. } => id,
         _ => return None,
     };
-    events.iter().skip(offset).find_map(|event| match event {
-        StreamEvent::BlockEnd {
-            id,
-            block: Some(AssistantContent::ToolCall(call)),
-            ..
-        } if id == block_id => Some(call.id.clone()),
-        _ => None,
-    })
+    completed_calls(events)
+        .into_iter()
+        .skip(offset)
+        .flatten()
+        .find_map(|(id, call)| (&id == block_id).then_some(call.id))
 }
 
 /// The assistant content `events` delivered, with the text and reasoning
@@ -167,13 +187,11 @@ pub fn discover_streamed_invalid_calls(
             let Some(mut prefix) = stream.events.get(..index).and_then(delivered_prefix) else {
                 break;
             };
-            let completed = match event {
-                StreamEvent::BlockEnd {
-                    block: Some(AssistantContent::ToolCall(call)),
-                    ..
-                } => Some(call.clone()),
-                _ => None,
-            };
+            let completed = stream
+                .events
+                .get(..=index)
+                .and_then(|events| completed_calls(events).pop().flatten())
+                .map(|(_, call)| call);
             // Earlier repairs/ignores already took effect in the driver's
             // view, even while native execution waits for the final outcome.
             for (_, call, resolution) in &pending {
