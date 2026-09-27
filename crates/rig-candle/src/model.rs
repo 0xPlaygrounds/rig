@@ -14,8 +14,6 @@
 
 use std::sync::Arc;
 
-#[cfg(not(target_family = "wasm"))]
-use futures::Stream;
 use futures::StreamExt;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Sending, Transport};
@@ -50,7 +48,7 @@ use crate::runtime::CancellationSignal;
 #[cfg(all(test, not(target_family = "wasm")))]
 use crate::runtime::TestControl;
 #[cfg(not(target_family = "wasm"))]
-use crate::runtime::{CancelOnDrop, acquire_concurrency};
+use crate::runtime::{CancelOnDrop, ReceiverStream, acquire_concurrency};
 use crate::types::*;
 #[cfg(test)]
 use crate::validation::*;
@@ -273,31 +271,6 @@ fn render_prompt_for(
 
 #[cfg(not(target_family = "wasm"))]
 type CandleStreamItem = Result<GenerationEvent, ProviderError>;
-
-#[cfg(not(target_family = "wasm"))]
-struct CandleReceiverStream {
-    receiver: tokio::sync::mpsc::Receiver<CandleStreamItem>,
-    cancellation: CancellationSignal,
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl Stream for CandleReceiverStream {
-    type Item = CandleStreamItem;
-
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        context: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        self.get_mut().receiver.poll_recv(context)
-    }
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl Drop for CandleReceiverStream {
-    fn drop(&mut self) {
-        self.cancellation.cancel();
-    }
-}
 
 #[cfg(not(target_family = "wasm"))]
 fn stream_infer(
@@ -528,10 +501,7 @@ impl CandleModel {
             });
             // Dropping the receiver signals cancellation.
             cancel_on_drop.disarm();
-            Ok(Box::pin(CandleReceiverStream {
-                receiver,
-                cancellation,
-            }))
+            Ok(Box::pin(ReceiverStream::new(receiver, cancellation)))
         }
 
         #[cfg(target_family = "wasm")]

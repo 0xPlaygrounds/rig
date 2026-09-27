@@ -1,9 +1,10 @@
 # rig-candle
 
 `rig-candle` runs validated local checkpoints through Rig's model and agent
-APIs: `CandleModel::completion()` is the model a loaded checkpoint serves. The
-crate receives byte buffers and performs no filesystem or network access
-itself.
+APIs: `CandleModel::completion()` is the model a loaded checkpoint serves, and
+`CandlePoseModel::pose()` estimates human poses (see
+[Pose estimation](#pose-estimation)). The crate receives byte buffers and
+performs no filesystem or network access itself.
 
 ```rust,no_run
 use rig_agent::agent::AgentBuilder;
@@ -153,6 +154,64 @@ behind a passing umbrella test. Provider suites retain HTTP serialization,
 authentication, SSE framing, hosted tools, remote files, and provider-specific
 reasoning/session assertions; those are transport conformance, not local model
 quality.
+
+## Pose estimation
+
+`rig_candle::pose` runs YOLOv8 pose checkpoints in the safetensors layout of
+Candle's YOLOv8 example (`lmz/candle-yolo-v8`, sizes n, s, m, l and x). Its
+`PoseEstimation` operation takes RGB frames and yields one `FramePoses` event
+per frame, in order: every person's box, confidence and the 17 COCO
+keypoints, in the frame's pixels. A call folds the events into a `PoseTrack`.
+The model is a `Local<PoseEstimation>` wire on the loaded checkpoint, so it
+streams, erases to `DynModel<PoseEstimation>` and swaps transports like any
+other Rig model.
+
+```rust,no_run
+use futures::StreamExt;
+use rig_candle::pose::{BodyPart, CandlePoseModel, ImageFrame, PoseRequest};
+
+# async fn run(weights: Vec<u8>, video: Vec<(u32, u32, Vec<u8>)>) -> Result<(), Box<dyn std::error::Error>> {
+let model = CandlePoseModel::builder(weights)
+    .confidence_threshold(0.5)
+    .build_async()
+    .await?
+    .pose();
+let frames = video
+    .into_iter()
+    .map(|(width, height, rgb)| ImageFrame::from_rgb8(width, height, rgb))
+    .collect::<Result<PoseRequest, _>>()?;
+let mut poses = model.stream(frames)?;
+while let Some(frame) = poses.next().await {
+    for person in frame?.people {
+        println!("{:?}", person.keypoint(BodyPart::LeftWrist));
+    }
+}
+# Ok(())
+# }
+```
+
+The loader reads the size from the checkpoint and refuses a detection or
+non-COCO checkpoint before allocating tensors. Frames are resized so their
+longest side is the builder's `input_size` (640 by default, a multiple of 32)
+and the other keeps the aspect ratio; overlapping boxes above
+`iou_threshold` are suppressed. Frames run one at a time on a blocking worker,
+and dropping the stream stops it before the next frame. A reply that ends
+before every frame was answered fails the call.
+
+The weights are Ultralytics' YOLOv8 pose weights and are licensed under
+AGPL-3.0; rig-candle neither ships nor downloads them. Check that license
+before you ship them. `examples/candle_pose` runs the model on JPEG or PNG
+files, and the opt-in live test checks the nano checkpoint on a photo:
+
+```bash
+./crates/rig-candle/tests/download_yolov8_pose.sh
+cargo test --release -p rig-candle --test live_pose -- --ignored --nocapture
+```
+
+| artifact | revision | bytes | SHA-256 |
+|---|---|---:|---|
+| `yolov8n-pose.safetensors` (`lmz/candle-yolo-v8`) | `be388c6fab95ae3035a039070e1b883b9c5a1325` | 6,650,412 | `08c76047b41744c027c8150e81d1dbbd94f996656cf5be266491367ae7fad072` |
+| `bike.jpg` (`huggingface/candle`) | `7a62aad24a5d8b1d8cb351e5ef77a7b3457a74b8` | 182,991 | `317e4a9d2d2be7859ba0ab8726a526f5ece9d77daf92857f3e93fb7b367824c1` |
 
 ## Runtime behavior and limits
 
