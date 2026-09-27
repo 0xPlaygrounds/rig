@@ -7,7 +7,9 @@
 //! whose only difference from the base (`HEAD` unless `--base` names another
 //! ref) is that field is restored. A golden whose content changed keeps the
 //! base's batches, their stream counts moved by the events the change
-//! inserted, so the diff shows the change and not the race.
+//! inserted, so the diff shows the change and not the race. A golden those
+//! batches do not fit keeps its regenerated ones and is listed; it fails the
+//! command only when `--base` names the base.
 
 use std::path::Path;
 use std::process::Command;

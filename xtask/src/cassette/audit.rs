@@ -3,10 +3,11 @@
 //! Every golden's streams are checked on their own: a text end's block is
 //! the text its deltas carried, an unrestated reasoning end's block is the
 //! reasoning its deltas carried since the key's last end, and a tool call
-//! finalized from its fragments has the arguments they parse to. Every
-//! golden that differs from the base is then classified change by change;
-//! a change outside the known kinds, or a block that disagrees with its
-//! deltas, fails the audit.
+//! finalized from its fragments has the arguments they parse to. An end
+//! whose deltas assembled text, or that closes an open reasoning part,
+//! carries its block. Every golden that differs from the base is then
+//! classified change by change; a change outside the known kinds, or a
+//! block that disagrees with its deltas, fails the audit.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
