@@ -16,7 +16,7 @@ use qdrant_client::{
 };
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
     },
@@ -27,21 +27,25 @@ use uuid::Uuid;
 
 /// Vector store backed by a Qdrant collection.
 ///
-/// Queries are embedded with the same model `M` that populated the collection,
+/// Queries are embedded with the same model that populated the collection,
 /// so results are meaningless under another model.
-pub struct QdrantVectorStore<M> {
-    model: M,
+pub struct QdrantVectorStore {
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     client: Qdrant,
     query_params: QueryPoints,
 }
 
-impl<M: EmbeddingModel> QdrantVectorStore<M> {
+impl QdrantVectorStore {
     /// Creates a store over the collection named by `query_params`. Each search
     /// clones `query_params` and overrides its query, limit, threshold, and filter.
-    pub fn new(client: Qdrant, model: M, query_params: QueryPoints) -> Self {
+    pub fn new(
+        client: Qdrant,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
+        query_params: QueryPoints,
+    ) -> Self {
         Self {
             client,
-            model,
+            model: model.into(),
             query_params,
         }
     }
@@ -104,7 +108,7 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
     }
 }
 
-impl<M: EmbeddingModel> InsertDocuments for QdrantVectorStore<M> {
+impl InsertDocuments for QdrantVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -156,7 +160,7 @@ fn missing_point_id() -> VectorStoreError {
     VectorStoreError::MissingIdError("Qdrant search result carries no point id".to_string())
 }
 
-impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
+impl VectorStoreIndex for QdrantVectorStore {
     type Filter = QdrantFilter;
 
     /// Returns the nearest points as `(score, id, payload)`. Errors when a point

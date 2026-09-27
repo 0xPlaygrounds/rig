@@ -56,7 +56,6 @@
 //! the whole vocabulary can be enumerated without a live call.
 
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
@@ -100,9 +99,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
             "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
             |client| async move {
                 {
-                    client
-                        .chat
-                        .agent(openai::GPT_4O_MINI)
+                    rig::AgentBuilder::new(client.chat.completion(openai::GPT_4O_MINI))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(TINY_CAP)
@@ -150,9 +147,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
             "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
             |client| async move {
                 {
-                    let agent = client
-                        .chat
-                        .agent(openai::GPT_4O_MINI)
+                    let agent = rig::AgentBuilder::new(client.chat.completion(openai::GPT_4O_MINI))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(TINY_CAP)
@@ -192,9 +187,7 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
             "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
             |client| async move {
                 {
-                    client
-                        .chat
-                        .agent(openai::GPT_4O_MINI)
+                    rig::AgentBuilder::new(client.chat.completion(openai::GPT_4O_MINI))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(ROOMY_CAP)
@@ -233,9 +226,7 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
             "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
             |client| async move {
                 {
-                    let agent = client
-                        .chat
-                        .agent(openai::GPT_4O_MINI)
+                    let agent = rig::AgentBuilder::new(client.chat.completion(openai::GPT_4O_MINI))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(ROOMY_CAP)
@@ -271,9 +262,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
             "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
             |client| async move {
                 {
-                    client
-                        .chat
-                        .agent(openai::GPT_4O_MINI)
+                    rig::AgentBuilder::new(client.chat.completion(openai::GPT_4O_MINI))
                         .preamble(TOOL_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(ROOMY_CAP)
@@ -317,9 +306,7 @@ async fn streaming_tool_turn_reports_tool_calls() {
             "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
             |client| async move {
                 {
-                    let agent = client
-                        .chat
-                        .agent(openai::GPT_4O_MINI)
+                    let agent = rig::AgentBuilder::new(client.chat.completion(openai::GPT_4O_MINI))
                         .preamble(TOOL_PREAMBLE)
                         .temperature(0.0)
                         .max_tokens(ROOMY_CAP)
@@ -366,9 +353,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
             "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
                 {
-                    client
-                        .chat
-                        .agent(openai::GPT_4O_MINI)
+                    rig::AgentBuilder::new(client.chat.completion(openai::GPT_4O_MINI))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         // The agent baseline. Neither attempt should report it: the
@@ -424,9 +409,7 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
             "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
                 {
-                    let agent = client
-                        .chat
-                        .agent(openai::GPT_4O_MINI)
+                    let agent = rig::AgentBuilder::new(client.chat.completion(openai::GPT_4O_MINI))
                         .preamble(CONCISE_PREAMBLE)
                         .temperature(0.0)
                         // The agent baseline. Neither attempt should report it: the

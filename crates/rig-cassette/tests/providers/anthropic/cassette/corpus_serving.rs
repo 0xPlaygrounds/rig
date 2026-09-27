@@ -11,12 +11,10 @@
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
-use rig::driver::Bound;
 use rig::effect::{EffectFamily, HandlerKey};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
-use rig::providers::anthropic::wire::Anthropic;
 use rig_cassette::agent::AgentReplayExt;
+use rig_test_support::cassette_models::AnthropicModels;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_serving_cassette};
 use crate::goldens::{RouteAfterFirstTurn, families};
@@ -47,13 +45,12 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 /// The two-tool stream program under a bus policy and a runner
 /// concurrency: the record is in dispatch order whatever the policy.
 async fn two_tools(
-    client: Bound<Anthropic>,
+    client: AnthropicModels,
     bus: rig::serve::ServingPolicy,
     concurrency: usize,
     events: bool,
 ) -> rig::cassette::effect_log::EffectLog {
-    let builder = client
-        .agent(CLAUDE_SONNET_4_6)
+    let builder = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
         .name("golden")
         .configure_bus(bus)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
@@ -180,8 +177,7 @@ async fn capacity_one_effect_log_is_the_golden_fixture() {
 async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
             .configure_bus(rig::serve::ServingPolicy {
                 serial_per_handler: true,
@@ -225,8 +221,7 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
 async fn model_route_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_serving_cassette("corpus_serving/model_route", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -271,8 +266,7 @@ async fn model_route_effect_log_is_the_golden_fixture() {
 async fn model_route_unselected_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(CLAUDE_SONNET_4_6)
+        let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
@@ -317,7 +311,7 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
 /// model under the agent's key, drives the bus and records; the agent
 /// stamps the log, whose header names no bus policy (the host's).
 async fn over_host_bus(
-    client: Bound<Anthropic>,
+    client: AnthropicModels,
     streamed: bool,
 ) -> rig::cassette::effect_log::EffectLog {
     let (dispatcher, registrar, mut driver) = rig::bus::Bus::channel();
@@ -325,7 +319,7 @@ async fn over_host_bus(
     driver
         .register_erased(
             model_key.clone(),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
                 client.completion(CLAUDE_SONNET_4_6),
             )),

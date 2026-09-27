@@ -155,7 +155,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -958,6 +958,17 @@
           "id": "wire:msg_08222f8fb1f447cc006ab2b3ba261887d099a5c8c41a91c500",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_08222f8fb1f447cc006ab2b3ba261887d099a5c8c41a91c500",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The lookup results are crimson-harbor and silver-orchard."
           }
         },
         {

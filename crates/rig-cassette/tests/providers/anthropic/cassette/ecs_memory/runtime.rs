@@ -6,7 +6,6 @@ use crate::{
 };
 use bevy_ecs::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-use rig::providers::anthropic::wire::Anthropic;
 use rig_core::{
     effect::{EffectKind, MemoryOp, MemoryOutcome, Outcome},
     memory::ConversationMemory,
@@ -17,6 +16,7 @@ use rig_ecs::{
     bus::{Bound, EffectOutcome, Handlers, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
+use rig_test_support::cassette_models::AnthropicModels;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -45,7 +45,7 @@ pub(super) fn register_memory(
     .expect("memory key")
 }
 pub(super) fn agent(
-    client: &rig::driver::Bound<Anthropic>,
+    client: &AnthropicModels,
     memory: impl ConversationMemory + 'static,
     preamble: &str,
     streamed: bool,
@@ -197,7 +197,7 @@ pub(super) async fn run_prompts(
     outputs
 }
 pub(super) async fn remembers(
-    client: rig::driver::Bound<Anthropic>,
+    client: AnthropicModels,
     clears: Clears,
     prompts: &[&str],
     streamed: bool,

@@ -47,15 +47,13 @@
 //! `stop_reason`.
 
 use rig::message::AssistantContent;
+use rig_test_support::cassette_models::AnthropicModels;
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel as _, FinishReason, ToolDefinition};
-use rig::driver::Bound;
+use rig::completion::{FinishReason, ToolDefinition};
 use rig::message::{ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
-use rig::providers::anthropic::wire::Anthropic;
-use rig::providers::anthropic::wire::Messages;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -66,6 +64,7 @@ use super::super::support::{
 
 use crate::raw_capture::{capture_terminal, stream_normalized_without_raw};
 use crate::support::Observed;
+use rig::completion::CompletionRequest;
 
 const ANTHROPIC_PROVIDER: &str = "anthropic";
 const PROMPT: &str = "Reply with exactly: raw stream capture probe";
@@ -89,20 +88,16 @@ const THINKING_SCENARIO: &str =
 const TOOL_USE_SCENARIO: &str =
     "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream";
 
-type AnthropicModel = Bound<Messages>;
-
-fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(32).build()
+fn probe_request() -> rig::completion::CompletionRequest {
+    CompletionRequest::new(PROMPT).max_tokens(32)
 }
 
 /// From `reasoning_usage_matrix.rs`: extended thinking on, minimum budget,
 /// `max_tokens` above it as Anthropic requires.
-fn thinking_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(THINKING_PROMPT)
+fn thinking_request() -> rig::completion::CompletionRequest {
+    CompletionRequest::new(THINKING_PROMPT)
         .max_tokens(2048)
         .additional_params(json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }))
-        .build()
 }
 
 /// From `empty_stop_sequence_matrix.rs`.
@@ -120,13 +115,11 @@ fn weather_tool() -> ToolDefinition {
 
 /// `tool_choice: required` (Anthropic `any`) so the turn is a `tool_use`
 /// terminal by construction, not by the model's mood.
-fn tool_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> rig::completion::CompletionRequest {
+    CompletionRequest::new(TOOL_PROMPT)
         .max_tokens(256)
         .tool(weather_tool())
         .tool_choice(ToolChoice::Required)
-        .build()
 }
 
 /// What a cell observed on the stream: every non-terminal item, and the
@@ -136,7 +129,7 @@ struct Streamed {
     terminal: StreamFinal,
 }
 
-async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> Streamed {
+async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> Streamed {
     let mut items = Vec::new();
     let mut terminal = None;
     while let Some(item) = stream.next().await {
@@ -159,16 +152,13 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 /// [`capture_terminal`]; these two assert on the non-terminal items too, so
 /// the drain stays local.
 async fn streamed_body(
-    client: Bound<Anthropic>,
+    client: AnthropicModels,
     model_name: &str,
-    build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
+    request: rig::completion::CompletionRequest,
     sink: Observed<Streamed>,
 ) {
     let model = client.completion(model_name);
-    let stream = model
-        .stream(build(&model))
-        .await
-        .expect("stream should open");
+    let stream = model.stream(request).expect("stream should open");
     sink.put(drain_stream(stream).await);
 }
 
@@ -308,7 +298,7 @@ async fn terminal_raw_round_trips_into_provider_type() {
             move |client| async move {
                 capture_terminal(
                     client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                    probe_request,
+                    probe_request(),
                     sink,
                 )
                 .await
@@ -411,13 +401,9 @@ async fn raw_exposes_stop_sequence() {
         move |client| async move {
             capture_terminal(
                 client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                |model| {
-                    model
-                        .completion_request(IMMEDIATE_PROMPT)
-                        .max_tokens(32)
-                        .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                        .build()
-                },
+                CompletionRequest::new(IMMEDIATE_PROMPT)
+                    .max_tokens(32)
+                    .additional_params(json!({ "stop_sequences": ["alpha"] })),
                 sink,
             )
             .await
@@ -487,7 +473,7 @@ async fn normalized_terminal_matches_raw_renormalized() {
             move |client| async move {
                 capture_terminal(
                     client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
-                    probe_request,
+                    probe_request(),
                     sink,
                 )
                 .await
@@ -549,7 +535,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
                 streamed_body(
                     client,
                     anthropic::completion::CLAUDE_SONNET_4_6,
-                    thinking_request,
+                    thinking_request(),
                     sink,
                 )
             }
@@ -681,7 +667,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
                 streamed_body(
                     client,
                     anthropic::completion::CLAUDE_HAIKU_4_5,
-                    tool_request,
+                    tool_request(),
                     sink,
                 )
             }
@@ -773,5 +759,65 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
             .map(|provider| provider.call_id.clone())],
         std::slice::from_ref(&recorded_tool_id),
         TOOL_USE_SCENARIO,
+    );
+}
+
+/// `updates()` over a streamed Anthropic turn that thinks, then answers: the
+/// stream keeps the index contract, the reasoning part's deltas are the
+/// recorded `thinking_delta` text and the text part's the recorded
+/// `text_delta` text, both read from the cassette's frames.
+#[tokio::test]
+async fn updates_carry_reasoning_then_text_for_a_thinking_stream() {
+    let sink = Observed::default();
+    with_anthropic_cassette(
+        "raw_stream_capture_matrix/terminal_raw_round_trips_for_thinking_stream",
+        {
+            let sink = sink.clone();
+            move |client: AnthropicModels| async move {
+                let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
+                let mut stream = model
+                    .stream(thinking_request())
+                    .expect("stream should open");
+                sink.put(rig_test_support::updates::collect_updates(&mut stream).await);
+            }
+        },
+    )
+    .await;
+    let updates = sink.take();
+    let (_, parts) = rig_test_support::updates::assert_update_contract(&updates);
+
+    let frames = recorded_frames(THINKING_SCENARIO);
+    let recorded = |kind: &str, field: &str| -> String {
+        frames
+            .iter()
+            .filter(|frame| {
+                frame["type"] == "content_block_delta" && frame["delta"]["type"] == kind
+            })
+            .filter_map(|frame| frame["delta"][field].as_str())
+            .collect()
+    };
+    let delivered = |kind: rig::streaming::PartKind| -> String {
+        parts
+            .iter()
+            .filter(|part| part.kind == kind)
+            .map(|part| part.text.as_str())
+            .collect()
+    };
+    let thinking = recorded("thinking_delta", "thinking");
+    assert!(!thinking.is_empty(), "premise: the recording thinks");
+    assert_eq!(delivered(rig::streaming::PartKind::Reasoning), thinking);
+    assert_eq!(
+        delivered(rig::streaming::PartKind::Text),
+        recorded("text_delta", "text")
+    );
+    let first_reasoning = parts
+        .iter()
+        .position(|part| part.kind == rig::streaming::PartKind::Reasoning);
+    let first_text = parts
+        .iter()
+        .position(|part| part.kind == rig::streaming::PartKind::Text);
+    assert!(
+        first_reasoning < first_text,
+        "the reasoning part comes first"
     );
 }

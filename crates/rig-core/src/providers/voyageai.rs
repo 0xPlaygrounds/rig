@@ -6,20 +6,20 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = voyageai::VoyageAi::from_env()?;
 //!
-//! let embeddings = provider.embeddings(voyageai::VOYAGE_3_5, None);
+//! let embeddings = provider.embedding(voyageai::VOYAGE_3_5, None);
 //! let reranker = provider.rerank(voyageai::RERANK_2_5);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! Bind a configured wire to a transport to obtain a [`crate::driver::Bound`]
-//! implementing the corresponding model trait.
+//! Pair a configured wire with a transport in a [`crate::Model`] to send it.
 
 use serde::{Deserialize, Serialize};
 
 pub mod wire;
 
-pub use wire::{Embeddings, Rerank, VoyageAi};
+pub use crate::client::voyageai::VoyageAi;
+pub use wire::{Embeddings, Rerank, VoyageAiConfig};
 
 /// Voyage AI's API root.
 const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";

@@ -1,8 +1,8 @@
 //! Reasoning across a session boundary on Gemini: see
 //! `rig_test_support::history_survival::sessions`.
 
-use super::super::support::{BoundGemini, with_gemini_cassette};
-use rig::completion::CompletionModel;
+use super::super::support::with_gemini_cassette;
+use rig_test_support::cassette_models::GeminiModels;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -20,11 +20,20 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: BoundGemini,
+    client: GeminiModels,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::DynHttpClient,
+    >,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::DynHttpClient,
+    >,
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::DynHttpClient,
+    >,
 ) {
     (
         client.completion("gemini-2.5-flash"),

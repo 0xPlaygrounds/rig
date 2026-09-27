@@ -21,7 +21,7 @@ use crate::effect_log::{EffectLog, EffectLogRecorder};
 
 use rig_core::serve::{
     Reply, Serve,
-    adapters::{CompletionAdapter, ToolAdapter},
+    adapters::{ModelAdapter, ToolAdapter},
 };
 
 use rig_core::{
@@ -143,7 +143,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
     let replay_model: rig_agent::bus::ModelHandle =
         dispatcher.handle(&HandlerKey::from("model")).unwrap();
     assert_eq!(replay_model.capabilities(), live_model.capabilities());
-    assert_eq!(replay_model.model_ref(), live_model.model_ref());
+    assert_eq!(replay_model.label(), live_model.label());
     assert!(
         replay_model
             .capabilities()
@@ -447,7 +447,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
         driver
             .register(
                 "model",
-                CompletionAdapter::new(
+                ModelAdapter::new(
                     "mock",
                     MockCompletionModel::from_stream_turns([vec![
                         MockStreamEvent::text("streamed"),
@@ -757,7 +757,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
         driver
             .register(
                 "model",
-                CompletionAdapter::new("mock", MockCompletionModel::from_stream_turns([events()])),
+                ModelAdapter::new("mock", MockCompletionModel::from_stream_turns([events()])),
             )
             .expect("register");
         driver.record_to(recorder.clone());
@@ -977,7 +977,7 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     driver
         .register(
             "model",
-            CompletionAdapter::new(
+            ModelAdapter::new(
                 "mock",
                 MockCompletionModel::from_stream_turns([vec![
                     MockStreamEvent::text("hel"),
@@ -1162,19 +1162,15 @@ async fn a_record_names_the_scope_of_the_program_that_made_it() {
     assert_eq!(restored[1].scope.as_deref(), Some("run-1"));
 }
 
-/// A stream whose *fold* fails — a tool call closed with malformed
-/// arguments under `UnparseableToolInput::Error` — reaches the consumer as
-/// the provider sent it (the malformed close is an `Ok` item; the
-/// consumer's own accumulator reports it) while the record's outcome is
-/// the fold's error. A replay with kept events re-emits the items as they
-/// were and nothing more: the consumer re-derives the same error and a
-/// re-record folds to the same outcome. It never appends the folded error
-/// as an item the live consumer did not receive.
+/// A tool call closed with malformed arguments under
+/// `UnparseableToolInput::Error` reaches the consumer as the handler's sink
+/// made it: the malformed close is an error item in the call's place, and
+/// the record's outcome is that error. A replay with kept events re-emits
+/// the items as they were and nothing more, and a re-record folds to the
+/// same outcome.
 #[tokio::test]
-async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
-    use rig_core::streaming::{
-        BlockClose, BlockId, BlockKind, Delta, StreamFinal, ToolCallEnd, UnparseableToolInput,
-    };
+async fn kept_events_replay_a_malformed_call_as_the_items_that_carried_it() {
+    use rig_core::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
 
     struct Items(Vec<Result<StreamEvent, ErrorReport>>);
     impl Serve for Items {
@@ -1193,35 +1189,25 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
             Reply::Stream(Box::pin(futures::stream::iter(self.0.clone())))
         }
     }
-    let call = || BlockId::wire("call_1");
-    let items = vec![
-        Ok(StreamEvent::BlockStart {
-            id: call(),
-            kind: BlockKind::ToolCall,
-        }),
-        Ok(StreamEvent::BlockDelta {
-            id: call(),
-            delta: Delta::ToolName {
-                name: "lookup".to_owned(),
-            },
-        }),
-        Ok(StreamEvent::BlockDelta {
-            id: call(),
-            delta: Delta::ToolArguments {
-                arguments: "{not json".to_owned(),
-            },
-        }),
-        Ok(StreamEvent::BlockEnd {
-            id: call(),
-            end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Error)),
-            block: None,
-        }),
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "test",
-            rig_core::completion::Usage::default(),
-            serde_json::json!({}),
-        ))),
-    ];
+    // The handler writes through the completion sink, as every handler does.
+    let call = BlockId::wire("call_1");
+    let mut sink = rig_core::operation::AdapterOutput::self_closing();
+    sink.tool_name(&call, "lookup");
+    sink.tool_arguments(&call, "{not json");
+    sink.tool_end(call, ToolCallEnd::new(UnparseableToolInput::Error));
+    sink.final_record(StreamFinal::new(
+        "test",
+        rig_core::completion::Usage::default(),
+        serde_json::json!({}),
+    ));
+    let items: Vec<Result<StreamEvent, ErrorReport>> = sink
+        .drain()
+        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
+        .collect();
+    assert!(
+        items.iter().any(Result::is_err),
+        "the malformed close is an error item"
+    );
     let key = HandlerKey::from("model");
     let (dispatcher, _, mut driver) = Bus::channel();
     let recorder = EffectLogRecorder::keeping_stream_events();
@@ -1237,7 +1223,7 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
     assert_eq!(
         serde_json::to_value(&live).unwrap(),
         serde_json::to_value(&items).unwrap(),
-        "the consumer receives the items as the provider sent them"
+        "the consumer receives the items as the handler's sink made them"
     );
     drop(dispatcher);
     let log = recorder.take();
@@ -1245,7 +1231,7 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
     let report = log[0]
         .outcome
         .as_ref()
-        .expect_err("the fold's error is the record's outcome");
+        .expect_err("the malformed close is the record's outcome");
     assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
 
     let (dispatcher, _, mut driver) = Bus::channel();
@@ -1272,3 +1258,77 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
         "a re-record of the replay folds to the same outcome"
     );
 }
+
+/// A log recorded before streams were canonical carries its text as deltas
+/// alone: no end closes the block and no end carries it. This record is the
+/// last turn of `anthropic_causal_completion_streamed` as it was recorded
+/// then (at `22368226f`), outcome and events verbatim. Replay re-emits those
+/// items, and a consumer folds them through the completion sink, so the
+/// replayed turn still holds its text.
+#[tokio::test]
+async fn a_log_recorded_before_canonical_streams_replays_its_text() {
+    let key = HandlerKey::from("golden/model:default");
+    let EffectKind::Completion { request, .. } = completion_kind(true) else {
+        panic!("a completion kind");
+    };
+    let events: serde_json::Value = serde_json::from_str(LEGACY_EVENTS).expect("legacy events");
+    let outcome: serde_json::Value = serde_json::from_str(LEGACY_OUTCOME).expect("legacy outcome");
+    let log: EffectLog = serde_json::from_value(json!({
+        "header": {
+            "handlers": [{
+                "key": "golden/model:default",
+                "family": {"family": "completion", "model": "default", "capabilities": {"composes_native_output_with_tools": true}},
+            }],
+            "signature": {"golden/model:default": "completion"},
+            "hooks": [],
+            "required": {"golden/model:default": "completion"},
+        },
+        "records": [{
+            "id": 0,
+            "key": "golden/model:default",
+            "kind": {"effect": "completion", "request": request, "stream": true},
+            "outcome": outcome,
+            "events": events,
+            "tool_output": null,
+        }],
+    }))
+    .expect("the legacy log decodes");
+    assert!(
+        log[0]
+            .events
+            .iter()
+            .flatten()
+            .all(|event| !matches!(event, StreamEvent::BlockEnd { .. })),
+        "the legacy record never ends its text"
+    );
+
+    let (dispatcher, _, mut driver) = Bus::channel();
+    super::register_all(&log, &mut driver).expect("fresh keys");
+    let model: rig_agent::bus::ModelHandle = dispatcher.handle(&key).unwrap();
+    let _replay = spawn(driver);
+    let mut stream = model.stream(request);
+    let mut items = Vec::new();
+    while let Some(item) = within(stream.next()).await {
+        items.push(item.expect("no error"));
+    }
+    assert!(
+        items.iter().any(|item| matches!(
+            item,
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Text(_)),
+                ..
+            }
+        )),
+        "the consumer's stream closes the text: {items:?}"
+    );
+    assert_eq!(
+        stream.finish().expect("a terminal record").choice,
+        vec![AssistantContent::text("Paris")]
+    );
+}
+
+/// The legacy record's events, verbatim.
+const LEGACY_EVENTS: &str = r#"[{"event": "block_start", "id": "minted:block:0", "kind": {"kind": "text"}}, {"event": "block_delta", "id": "minted:block:0", "delta": {"delta": "text", "text": "Paris"}}, {"event": "final", "usage": {"input_tokens": 695, "output_tokens": 4, "total_tokens": 699, "cached_input_tokens": 0, "cache_creation_input_tokens": 0}, "finish_reason": "stop", "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F", "response_id": null, "provider_request_id": "req_011CfLcWCdKMMoTXzZp2m89E", "provider": "anthropic", "model": "claude-sonnet-4-6", "raw": {"usage": {"output_tokens": 4, "input_tokens": 695, "cache_creation_input_tokens": 0, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0}, "cache_read_input_tokens": 0}, "stop_reason": "end_turn", "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F", "model": "claude-sonnet-4-6"}}]"#;
+
+/// The legacy record's outcome, verbatim.
+const LEGACY_OUTCOME: &str = r#"{"Ok": {"outcome": "completion", "choice": [{"type": "text", "text": "Paris"}], "usage": {"input_tokens": 695, "output_tokens": 4, "total_tokens": 699, "cached_input_tokens": 0, "cache_creation_input_tokens": 0}, "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F", "response_id": null, "provider_request_id": "req_011CfLcWCdKMMoTXzZp2m89E", "finish_reason": "stop", "provider": "anthropic", "model": "claude-sonnet-4-6", "raw": {"usage": {"output_tokens": 4, "input_tokens": 695, "cache_creation_input_tokens": 0, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0}, "cache_read_input_tokens": 0}, "stop_reason": "end_turn", "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F", "model": "claude-sonnet-4-6"}}}"#;

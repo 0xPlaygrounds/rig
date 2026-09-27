@@ -1,5 +1,5 @@
 use super::*;
-use crate::types::completion_response::VertexGenerateContentOutput;
+use crate::types::completion_response::tests::Complete;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionResponse;
 use rig_core::message::{Message, Text, ToolCallId, ToolResult, ToolResultContent};
@@ -57,9 +57,7 @@ fn test_assistant_image_response_round_trips_through_history_in_order() {
                 ]),
         ),
     ]);
-    let response: CompletionResponse = VertexGenerateContentOutput(response)
-        .try_into()
-        .expect("image response should convert");
+    let response: CompletionResponse = response.complete().expect("image response should convert");
 
     let content: vertexai::model::Content = RigMessage(Message::Assistant {
         id: None,

@@ -205,6 +205,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "wire:msg_090e23a73445605d006ab2b35c45b887d0950ba097db0b19b1",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "ready"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 27,
@@ -524,6 +535,17 @@
           "id": "wire:msg_090e23a73445605d006ab2b35db72087d0b33d1507d4ffcdf6",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_090e23a73445605d006ab2b35db72087d0b33d1507d4ffcdf6",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "again"
           }
         },
         {

@@ -13,8 +13,6 @@ use crate::{
     support::{BASIC_PREAMBLE, TOOLS_PREAMBLE},
 };
 use bevy_ecs::prelude::*;
-use rig::driver::Bound;
-use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::{EffectFamily, EffectKind},
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
@@ -28,10 +26,11 @@ use rig_ecs::{
     bus::{BusSet, EffectOutcome, Handlers, Issued, PendingEffect, RigSchedule},
     systems::{Fresh, RigSet},
 };
+use rig_test_support::cassette_models::AnthropicModels;
 use std::sync::Arc;
 
 fn layered_agent(
-    client: Bound<Anthropic>,
+    client: AnthropicModels,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
@@ -59,7 +58,7 @@ async fn run_tool(ecs: &mut EcsAgent) -> rig::cassette::effect_log::EffectLog {
     ecs.effect_log()
 }
 async fn own_bus(
-    client: Bound<Anthropic>,
+    client: AnthropicModels,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
     configure: impl FnOnce(&mut EcsAgent),
 ) -> rig::cassette::effect_log::EffectLog {
@@ -114,7 +113,7 @@ fn check_history(
         checks.0 += 1;
     }
 }
-fn memory_agent(client: Bound<Anthropic>) -> EcsAgent {
+fn memory_agent(client: AnthropicModels) -> EcsAgent {
     let mut memory_entity = None;
     let mut ecs = EcsAgent::for_golden_with_setup(
         client.completion(CLAUDE_SONNET_4_6),

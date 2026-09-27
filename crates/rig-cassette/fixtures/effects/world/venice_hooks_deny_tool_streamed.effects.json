@@ -365,7 +365,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1103,6 +1103,17 @@
           "delta": {
             "delta": "text",
             "text": "?"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'm unable to assist with that specific request at the moment, as the necessary tools are not available. However, I can guide you through the process if you'd like! Would you be interested in that?"
           }
         },
         {

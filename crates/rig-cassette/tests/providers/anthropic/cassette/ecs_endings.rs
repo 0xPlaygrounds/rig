@@ -12,8 +12,7 @@ use crate::{
     support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE},
 };
 use bevy_ecs::prelude::*;
-use rig::driver::Bound;
-use rig::providers::anthropic::wire::Anthropic;
+use rig::serve::adapters::ModelAdapter;
 use rig::{
     effect::EffectFamily, error::ErrorKind, providers::anthropic::completion::CLAUDE_SONNET_4_6,
 };
@@ -22,6 +21,7 @@ use rig_ecs::{
     bus::{BusSet, EffectOutcome, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
+use rig_test_support::cassette_models::AnthropicModels;
 #[path = "ecs_endings/policies.rs"]
 mod policies;
 use policies::*;
@@ -43,18 +43,18 @@ enum Streamed {
     Essay,
     Note,
 }
-fn agent(client: &Bound<Anthropic>, ending: Ending, preamble: &str, streamed: bool) -> EcsAgent {
+fn agent(client: &AnthropicModels, ending: Ending, preamble: &str, streamed: bool) -> EcsAgent {
     let model = client.completion(CLAUDE_SONNET_4_6);
     // Backpressure after the real first delta lets the native policy cancel
     // before transport scheduling can publish additional chunks.
     let mut ecs = match ending {
-        StopOnToolCallDelta => EcsAgent::for_golden(
-            super::ecs_outcome::FirstDelta::tool(model),
+        StopOnToolCallDelta => EcsAgent::for_golden_serving(
+            |label| super::ecs_outcome::FirstDelta::tool(ModelAdapter::new(label, model)),
             preamble,
             streamed,
         ),
-        StopOnTextDelta => EcsAgent::for_golden(
-            super::ecs_outcome::FirstDelta::text(model),
+        StopOnTextDelta => EcsAgent::for_golden_serving(
+            |label| super::ecs_outcome::FirstDelta::text(ModelAdapter::new(label, model)),
             preamble,
             streamed,
         ),
@@ -143,7 +143,7 @@ async fn cancelled_run(ecs: &mut EcsAgent, run: Entity, reason: &str) {
     );
 }
 async fn unary_tool_run(
-    client: Bound<Anthropic>,
+    client: AnthropicModels,
     ending: Ending,
     reason: &str,
     shape: &[EffectFamily],
@@ -169,7 +169,7 @@ async fn unary_tool_run(
     log
 }
 async fn streamed_run(
-    client: Bound<Anthropic>,
+    client: AnthropicModels,
     ending: Ending,
     reason: &str,
     program: Streamed,

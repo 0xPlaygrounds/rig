@@ -8,14 +8,13 @@
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
-use rig::completion::CompletionModel;
-use rig::prelude::*;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::cassette_models::OpenAiModels;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::OpenAiResponses;
 
-fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
         model: client.openai.completion("gpt-4.1-mini"),
@@ -25,7 +24,9 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
     }
 }
 
-fn task_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
+fn task_wire(
+    client: &OpenAiCassette,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         additional_params: Some(
             || serde_json::json!({"prompt_cache_key": "rig-native-long-tasks"}),
@@ -58,11 +59,14 @@ const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
-fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = OpenAI::new(SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
+fn scripted_unary(
+    replies: Vec<MockHttpResponse>,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+    let client = OpenAIConfig::new(SCRIPTED_KEY);
+    let http = SequencedHttpClient::new(replies);
     Wire {
         thinking: THINKING,
-        model: client.completion("gpt-4.1-mini"),
+        model: OpenAiModels::new(client, http.clone()).completion("gpt-4.1-mini"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

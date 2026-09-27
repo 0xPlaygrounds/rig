@@ -51,8 +51,9 @@
 //! ```
 
 use rig::error::ProviderError;
-use rig::prelude::*;
-use rig::providers::gemini::{self, Gemini};
+use rig::providers::gemini::{self};
+use rig_test_support::cassette_models::GeminiModels;
+use rig_test_support::cassette_models::MapWire;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -61,9 +62,7 @@ use crate::cache_conformance::{
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
-use super::super::support::{
-    BoundGemini, always_deleting_cached_contents, with_gemini_prompt_caching_cassette,
-};
+use super::super::support::{always_deleting_cached_contents, with_gemini_prompt_caching_cassette};
 
 /// Gemini 2.5 Flash: implicit caching, and the cheapest model that has it.
 pub(super) const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
@@ -109,7 +108,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 
     with_gemini_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
-        let observation = run_cache_probe(&model, &probe()).await;
+        let observation = run_cache_probe(model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "blocking probe");
     })
     .await;
@@ -124,7 +123,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 
     with_gemini_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
-        let observation = run_cache_probe_streaming(&model, &probe()).await;
+        let observation = run_cache_probe_streaming(model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "streaming probe");
     })
     .await;
@@ -138,8 +137,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
     const SCENARIO: &str = "prompt_caching/agent_loop";
 
     with_gemini_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
-        let response = client
-            .agent(CACHE_MODEL)
+        let response = rig::AgentBuilder::new(client.completion(CACHE_MODEL))
             .preamble(&probe().preamble)
             .tool(CacheProbeLookupTool)
             .temperature(0.0)
@@ -168,10 +166,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = Gemini::from_env()
-        .expect("GEMINI_API_KEY")
-        .bound()
-        .expect("transport should build");
+    let client = GeminiModels::from_env().expect("GEMINI_API_KEY");
     let model = client.completion(CACHE_MODEL);
 
     // Two passes, asserting on the second — the same procedure the module docs
@@ -180,8 +175,8 @@ async fn live_cache_economics() {
     // turn-3 prefix (which no earlier request ever sent) reads zero. The first
     // pass establishes it; the second measures steady-state economics, which is
     // what this cell is for.
-    let _warm_up = run_cache_probe(&model, &probe()).await;
-    let observation = run_cache_probe(&model, &probe()).await;
+    let _warm_up = run_cache_probe(model.clone(), &probe()).await;
+    let observation = run_cache_probe(model, &probe()).await;
     report_and_assert_live(&observation, &GEMINI_CACHE_SUPPORT, "live_cache_economics");
 }
 
@@ -219,7 +214,7 @@ fn cached_corpus() -> String {
 }
 
 async fn create_probe_cache(
-    client: &BoundGemini,
+    client: &GeminiModels,
     display_name: &str,
 ) -> rig::providers::gemini::cached_content::CachedContent {
     client
@@ -315,7 +310,7 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
                 // `bare()`: the cache owns the system instruction and tools, and a
                 // request that also sends its own is rejected — by rig, before it
                 // reaches Gemini.
-                let observation = run_cache_probe(&model, &probe().bare()).await;
+                let observation = run_cache_probe(model, &probe().bare()).await;
                 assert_cache_conformance(
                     &observation,
                     &GEMINI_EXPLICIT_SUPPORT,
@@ -384,7 +379,8 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
                         output_schema: None,
                         record_telemetry_content: false,
                     };
-                    let response = rig::completion::CompletionModel::completion(&model, request)
+                    let response = model
+                        .call(request)
                         .await
                         .expect("a cached-content request should succeed");
                     reads.push((
@@ -525,10 +521,12 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
                 )
             };
 
-            let first = rig::completion::CompletionModel::completion(&model, request())
+            let first = model
+                .call(request())
                 .await
                 .expect("first small request should succeed");
-            let second = rig::completion::CompletionModel::completion(&model, request())
+            let second = model
+                .call(request())
                 .await
                 .expect("second small request should succeed");
 
@@ -567,19 +565,20 @@ async fn changing_temperature_still_hits() {
             let preamble = probe().preamble;
             let history = vec![user("Reply with exactly: temp")];
 
-            let warm = rig::completion::CompletionModel::completion(
-                &model,
-                mutation_request(Some(&preamble), vec![], history.clone(), 0.0),
-            )
-            .await
-            .expect("warming request should succeed");
+            let warm = model
+                .call(mutation_request(
+                    Some(&preamble),
+                    vec![],
+                    history.clone(),
+                    0.0,
+                ))
+                .await
+                .expect("warming request should succeed");
 
-            let hotter = rig::completion::CompletionModel::completion(
-                &model,
-                mutation_request(Some(&preamble), vec![], history, 0.7),
-            )
-            .await
-            .expect("second request should succeed");
+            let hotter = model
+                .call(mutation_request(Some(&preamble), vec![], history, 0.7))
+                .await
+                .expect("second request should succeed");
 
             let cached = hotter.usage.cached_input_tokens.unwrap_or(0);
             let input = hotter.usage.input_tokens.unwrap_or(0);
@@ -613,12 +612,10 @@ async fn changing_the_system_instruction_misses() {
             let base = probe().preamble;
             let history = vec![user("Reply with exactly: sysinstr")];
 
-            let _warm = rig::completion::CompletionModel::completion(
-                &model,
-                mutation_request(Some(&base), vec![], history.clone(), 0.0),
-            )
-            .await
-            .expect("warming request should succeed");
+            let _warm = model
+                .call(mutation_request(Some(&base), vec![], history.clone(), 0.0))
+                .await
+                .expect("warming request should succeed");
 
             // One word, at the very front of the prefix.
             let mutated = base.replacen("deterministic", "nondeterministic", 1);
@@ -627,12 +624,10 @@ async fn changing_the_system_instruction_misses() {
                 "the mutation should actually change the text"
             );
 
-            let after = rig::completion::CompletionModel::completion(
-                &model,
-                mutation_request(Some(&mutated), vec![], history, 0.0),
-            )
-            .await
-            .expect("mutated request should succeed");
+            let after = model
+                .call(mutation_request(Some(&mutated), vec![], history, 0.0))
+                .await
+                .expect("mutated request should succeed");
 
             assert_eq!(
                 after.usage.cached_input_tokens.unwrap_or(0),

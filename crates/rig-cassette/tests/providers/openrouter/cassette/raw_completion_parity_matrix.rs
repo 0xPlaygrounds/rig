@@ -35,7 +35,7 @@
 //! literals keep the names they were recorded under; the cell names describe
 //! what the cells now assert.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
+use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::providers::openai;
 use rig::providers::openai::wire::OPENROUTER;
 use rig::providers::openrouter;
@@ -51,8 +51,8 @@ use crate::support::Observed;
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(16).build()
+fn request() -> CompletionRequest {
+    CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
 /// One turn's normalized view against its own interaction's recorded bytes:
@@ -79,7 +79,7 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
-        |client| capture_completion_pair(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| capture_completion_pair(client.completion(DEFAULT_MODEL), request(), sink.clone()),
     )
     .await
     .expect("raw_with_request_id_reproduces_completion should replay from its cassette");
@@ -141,7 +141,7 @@ async fn no_request_id_contract_holds_on_both_turns() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_completion_parity_matrix/plain_raw_completion_matches_completion_without_id",
-        |client| capture_completion_pair(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| capture_completion_pair(client.completion(DEFAULT_MODEL), request(), sink.clone()),
     )
     .await
     .expect("plain_raw_completion_matches_completion_without_id should replay from its cassette");

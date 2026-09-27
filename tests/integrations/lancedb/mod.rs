@@ -1,14 +1,10 @@
-use rig::client::DefaultTransport as _;
 use serde_json::json;
 
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    prelude::*,
-    providers::openai,
-    vector_store::VectorStoreIndex,
+    embeddings::EmbeddingsBuilder, prelude::*, providers::openai, vector_store::VectorStoreIndex,
 };
 
 #[path = "./fixtures/lib.rs"]
@@ -104,10 +100,9 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST")
+    let openai_client = openai::OpenAIConfig::new("TEST")
         .with_base_url(server.base_url())
-        .bound()
-        .unwrap();
+        .client();
 
     // Select an embedding model.
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
@@ -145,7 +140,7 @@ async fn vector_search_test() {
     } else {
         db.create_table(
             table_name,
-            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
+            vec![as_record_batch(embeddings, model.capabilities().ndims).unwrap()],
         )
         .execute()
         .await
@@ -316,12 +311,11 @@ async fn agent_with_dynamic_context_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST")
+    let openai_client = openai::OpenAIConfig::new("TEST")
         .with_base_url(server.base_url())
         // The mock answers Chat Completions, not the Responses default.
         .with_route(openai::Route::Chat)
-        .bound()
-        .unwrap();
+        .client();
 
     // Select an embedding model.
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
@@ -361,7 +355,7 @@ async fn agent_with_dynamic_context_test() {
     } else {
         db.create_table(
             table_name,
-            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
+            vec![as_record_batch(embeddings, model.capabilities().ndims).unwrap()],
         )
         .execute()
         .await
@@ -387,8 +381,7 @@ async fn agent_with_dynamic_context_test() {
         .unwrap();
 
     // Build RAG agent with dynamic context.
-    let agent = openai_client
-        .agent(openai::GPT_4O)
+    let agent = AgentBuilder::new(openai_client.completion(openai::GPT_4O))
         .dynamic_context(top_k, vector_store_index)
         .build();
 

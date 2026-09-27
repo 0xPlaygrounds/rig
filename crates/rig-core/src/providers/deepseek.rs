@@ -1,12 +1,11 @@
 //! DeepSeek model identifiers and typed response fields, including cache usage
-//! and reasoning content. Configure requests with [`crate::providers::openai::wire::DEEPSEEK`].
+//! and reasoning content. [`from_env`] and [`new`] build a client on the [`DEEPSEEK`](crate::providers::openai::wire::DEEPSEEK) dialect.
 //!
 //! ```no_run
 //! use rig_core::providers::deepseek;
-//! use rig_core::providers::openai::wire::{DEEPSEEK, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let deepseek_chat = OpenAI::from_env_with(&DEEPSEEK)?.chat(deepseek::DEEPSEEK_V4_FLASH);
+//! let deepseek_chat = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
 //! # let _ = deepseek_chat;
 //! # Ok(())
 //! # }
@@ -115,3 +114,5 @@ pub enum ToolType {
     #[default]
     Function,
 }
+
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::DEEPSEEK, "DeepSeek");

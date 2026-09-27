@@ -190,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -666,6 +666,17 @@
           "delta": {
             "delta": "text",
             "text": " edges."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, blocking the Sun's light and casting a shadow on Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, briefly turning day into darkness and allowing the Sun's outer atmosphere, called the corona, to become visible. Partial and annular eclipses occur when the alignment is not perfect or the Moon is too far from Earth to fully cover the Sun, leaving a ring of sunlight visible around the Moon's edges."
           }
         },
         {

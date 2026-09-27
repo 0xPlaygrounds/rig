@@ -35,7 +35,7 @@ async fn recording_to_an_explicit_path_keeps_partial_snapshots_before_finalizing
     let path = candidate.path().join("provider.yaml");
     let partial = candidate.path().join("provider.partial.yaml");
     let cassette = ProviderCassette::start_at(
-        Transport::Proxy,
+        RecordVia::Proxy,
         "example",
         CassetteSpec::new("explicit-destination"),
         &format!("{}/v1", upstream.base_url()),
@@ -93,7 +93,7 @@ async fn replaying_an_explicit_path_ignores_the_fixture_layout_and_never_snapsho
     };
     fs::write(&path, serialize_cassette_interactions(&[interaction])).expect("write fixture");
     let cassette = ProviderCassette::start_at(
-        Transport::Proxy,
+        RecordVia::Proxy,
         "example",
         CassetteSpec::new("explicit-destination"),
         "https://example.invalid/v1",

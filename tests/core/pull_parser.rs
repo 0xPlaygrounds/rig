@@ -1,15 +1,11 @@
 //! Migrated completion adapters preserve recorded parser output under direct polling.
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
+use rig::completion::CompletionRequest;
 use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
-    completion::CompletionModel,
     http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
-    prelude::*,
-    providers::{
-        anthropic::wire::Anthropic,
-        openai::wire::{DEEPSEEK, OPENAI, OpenAI},
-    },
+    providers::{anthropic::Anthropic, deepseek, openai::OpenAI},
     streaming::{StreamEvent, StreamEvents},
     wasm_compat::WasmCompatSend,
 };
@@ -104,16 +100,17 @@ fn body(path: &str) -> Bytes {
     let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
     Bytes::from(doc["then"]["body"].as_str().unwrap().to_owned())
 }
-async fn adapted<M: CompletionModel + Clone + 'static>(model: M, direct: bool) -> StreamEvents {
-    let request = model
-        .completion_request("response parsing probe")
-        .max_tokens(1024)
-        .build();
+async fn adapted<W, T>(model: rig::Model<W, T>, direct: bool) -> StreamEvents
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
+    let request = CompletionRequest::new("response parsing probe").max_tokens(1024);
     if direct {
-        Box::pin(model.stream(request).await.unwrap())
+        Box::pin(model.stream(request).unwrap())
     } else {
         let handler = rig_core::serve::ErasedHandler::new(
-            rig_core::serve::adapters::CompletionAdapter::new("probe", model),
+            rig_core::serve::adapters::ModelAdapter::new("probe", model),
         );
         handler
             .handle(
@@ -132,17 +129,15 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
     match provider {
         "openai" => {
             adapted(
-                OpenAI::with_key(&OPENAI, "test-not-a-key")
-                    .bind(http)
-                    .chat("gpt-4o"),
+                OpenAI::new("test-not-a-key").with_http(http).chat("gpt-4o"),
                 direct,
             )
             .await
         }
         "deepseek" => {
             adapted(
-                OpenAI::with_key(&DEEPSEEK, "test-not-a-key")
-                    .bind(http)
+                deepseek::new("test-not-a-key")
+                    .with_http(http)
                     .completion("deepseek-reasoner"),
                 direct,
             )
@@ -151,7 +146,7 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
         "anthropic" => {
             adapted(
                 Anthropic::new("test-not-a-key")
-                    .bind(http)
+                    .with_http(http)
                     .completion("claude-sonnet-4-5"),
                 direct,
             )

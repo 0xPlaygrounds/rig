@@ -2,7 +2,7 @@
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, image_generation::GPT_IMAGE_2};
-//! let wire = OpenAI::new("key").images(GPT_IMAGE_2);
+//! let wire = OpenAI::new("key").image_generation(GPT_IMAGE_2);
 //! ```
 
 pub const DALL_E_2: &str = "dall-e-2";

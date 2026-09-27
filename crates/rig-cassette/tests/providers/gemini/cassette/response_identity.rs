@@ -5,12 +5,11 @@
 //! are the recorded proof of that absence, on both surfaces.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::StreamEvent;
 
 use super::super::support::with_gemini_cassette;
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn nonstreaming_request_id_is_none_by_design() {
@@ -19,8 +18,7 @@ async fn nonstreaming_request_id_is_none_by_design() {
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call("Reply with exactly: identity probe")
                 .await
                 .expect("completion should succeed");
 
@@ -40,9 +38,9 @@ async fn streaming_request_id_is_none_by_design() {
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
-                .await
+                .stream(CompletionRequest::new(
+                    "Reply with exactly: stream identity probe",
+                ))
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -73,11 +71,11 @@ async fn agent_run_reports_none_identity() {
         "response_identity/agent_run_reports_none_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble("You are a terse assistant.")
-                .add_hook(probe.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .preamble("You are a terse assistant.")
+                    .add_hook(probe.clone())
+                    .build();
 
             let response = agent
                 .prompt("Reply with exactly: identity probe")
@@ -105,11 +103,11 @@ async fn streamed_agent_run_reports_none_identity() {
         "response_identity/streamed_agent_run_reports_none_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble("You are a terse assistant.")
-                .add_hook(probe.clone())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .preamble("You are a terse assistant.")
+                    .add_hook(probe.clone())
+                    .build();
 
             let mut stream = agent
                 .prompt(rig::completion::Message::user(
@@ -138,8 +136,7 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
         |client| async move {
             let model = client.completion("gemini-nonexistent-model-for-identity-edge");
             let error = model
-                .completion_request("Never answered")
-                .send()
+                .call(CompletionRequest::new("Never answered"))
                 .await
                 .expect_err("a nonexistent model must fail");
             assert!(
@@ -163,8 +160,7 @@ async fn auth_rejection_keeps_transport_shape() {
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let error = model
-                .completion_request("Never authenticated")
-                .send()
+                .call(CompletionRequest::new("Never authenticated"))
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
@@ -172,6 +168,78 @@ async fn auth_rejection_keeps_transport_shape() {
                 "the reply is the provider's, id contract or not: {error:?}"
             );
             assert_eq!(error.provider_request_id(), None);
+        },
+    )
+    .await;
+}
+
+/// `updates()` over a streamed Gemini turn: the stream keeps the index
+/// contract, and the text part's deltas are the recorded answer text (the
+/// parts not marked `thought`), read from the cassette's frames.
+#[tokio::test]
+async fn updates_carry_the_recorded_answer_text() {
+    with_gemini_cassette(
+        "response_identity/streaming_request_id_is_none_by_design",
+        |client| async move {
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
+            let mut stream = model
+                .stream("Reply with exactly: stream identity probe")
+                .expect("stream should open");
+            let updates = rig_test_support::updates::collect_updates(&mut stream).await;
+            let (_, parts) = rig_test_support::updates::assert_update_contract(&updates);
+
+            let frames = crate::cassettes::recorded_sse_json_frames(
+                "gemini",
+                "response_identity/streaming_request_id_is_none_by_design",
+            );
+            let recorded: String = frames
+                .iter()
+                .flat_map(|frame| {
+                    frame["candidates"][0]["content"]["parts"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default()
+                })
+                .filter(|part| part["thought"] != true)
+                .filter_map(|part| part["text"].as_str().map(str::to_owned))
+                .collect();
+            assert!(!recorded.is_empty(), "premise: the recording answers");
+            let delivered: String = parts
+                .iter()
+                .filter(|part| part.kind == rig::streaming::PartKind::Text)
+                .map(|part| part.text.as_str())
+                .collect();
+            assert_eq!(delivered, recorded);
+        },
+    )
+    .await;
+}
+
+/// A model built from the string `"gemini:gemini-2.5-flash"` with a key and
+/// a client replays the configured client's recording: the Gemini wire
+/// family, from data.
+#[tokio::test]
+async fn a_model_from_a_provider_reference_replays_the_recording() {
+    with_gemini_cassette(
+        "response_identity/nonstreaming_request_id_is_none_by_design",
+        |client| async move {
+            let reference = rig::providers::registry::ProviderRef::parse(&format!(
+                "{}:{}",
+                gemini::PROVIDER_NAME,
+                gemini::completion::GEMINI_2_5_FLASH
+            ))
+            .expect("a registered reference");
+            let http = rig_test_support::rebased::Rebased::new(
+                gemini::BASE_URL,
+                client.config.base_url.clone(),
+                client.http.clone(),
+            );
+            let model = reference.completion_model_with(client.config.api_key.clone(), http);
+            let response = model
+                .call("Reply with exactly: identity probe")
+                .await
+                .expect("the recorded completion replays");
+            assert!(!response.text().is_empty());
         },
     )
     .await;

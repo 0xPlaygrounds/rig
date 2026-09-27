@@ -306,6 +306,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Let me calculate the sum right away!"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 660,
@@ -585,6 +596,17 @@
           "delta": {
             "delta": "text",
             "text": " **42**."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The dominant color is **red**, and 17 + 25 = **42**."
           }
         },
         {

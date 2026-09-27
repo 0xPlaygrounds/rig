@@ -6,12 +6,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
-use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{IdentityProbe, assert_transport_request_id};
+use rig::completion::CompletionRequest;
 
 /// Family A: `output_schema` reshapes the request (structured output);
 /// identity still rides it.
@@ -28,9 +27,10 @@ async fn structured_output_and_identity() {
             let model = client.openai.completion(openai::GPT_4O);
             let schema = schemars::schema_for!(Sum);
             let response = model
-                .completion_request("What is 2 + 3? Respond with the JSON object.")
-                .output_schema(schema)
-                .send()
+                .call(
+                    CompletionRequest::new("What is 2 + 3? Respond with the JSON object.")
+                        .output_schema(schema),
+                )
                 .await
                 .expect("structured completion should succeed");
             assert_transport_request_id(
@@ -52,10 +52,9 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
             let first = model
-                .completion_request(
+                .call(CompletionRequest::new(
                     "Remember the code word 'heliotrope'. Reply with exactly: noted",
-                )
-                .send()
+                ))
                 .await
                 .expect("first chained call should succeed");
             let first_response_id = first
@@ -65,11 +64,12 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
             assert_transport_request_id(first.provider_request_id.as_deref(), "chain call 1");
 
             let second = model
-                .completion_request("What was the code word? Reply with just the word.")
-                .additional_params(serde_json::json!({
-                    "previous_response_id": first_response_id.clone(),
-                }))
-                .send()
+                .call(
+                    CompletionRequest::new("What was the code word? Reply with just the word.")
+                        .additional_params(serde_json::json!({
+                            "previous_response_id": first_response_id.clone(),
+                        })),
+                )
                 .await
                 .expect("chained call should succeed");
 
@@ -124,9 +124,7 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
         "response_identity_edge/blocking_hook_retry_uses_second_attempts_id",
         |client| async move {
             let hook = RetryOnce::default();
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                 .preamble("You are a terse assistant.")
                 .add_hook(hook.clone())
                 .build();
@@ -159,8 +157,7 @@ async fn provider_error_response_carries_request_id() {
                 .openai
                 .completion("gpt-nonexistent-model-for-identity-edge");
             let error = model
-                .completion_request("Never answered")
-                .send()
+                .call(CompletionRequest::new("Never answered"))
                 .await
                 .expect_err("a nonexistent model must fail");
             assert_transport_request_id(error.provider_request_id(), "4xx error");
@@ -188,11 +185,9 @@ async fn raw_and_normalized_views_agree_on_identity() {
         "response_identity_edge/raw_and_normalized_views_agree_on_identity",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
-            let request = model
-                .completion_request("Reply with exactly: two views probe")
-                .build();
+            let request = CompletionRequest::new("Reply with exactly: two views probe");
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("completion should succeed");
             assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");

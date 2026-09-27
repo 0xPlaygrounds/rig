@@ -246,7 +246,7 @@ impl AgentHook for SkipUnexpected {
 
 #[tokio::test]
 async fn extractor_runs_through_full_response_lifecycle() {
-    let model = MockCompletionModel::new([submit_turn("John")]);
+    let model = MockCompletionModel::from_turns([submit_turn("John")]);
     let counts = LifecycleCounts::default();
     let response = ExtractorBuilder::<Person>::new(model.clone())
         .add_hook(counts.clone())
@@ -266,14 +266,15 @@ async fn extractor_runs_through_full_response_lifecycle() {
 async fn extractor_hook_receives_canonical_response_fields() {
     let capture = ExtractorResponseCapture::default();
     let expected_usage = usage(23);
-    let response = ExtractorBuilder::<Person>::new(MockCompletionModel::new([submit_turn("John")
-        .with_usage(expected_usage)
-        .with_message_id("extractor-message")]))
-    .add_hook(capture.clone())
-    .build()
-    .extract("John")
-    .await
-    .expect("extraction should succeed");
+    let response =
+        ExtractorBuilder::<Person>::new(MockCompletionModel::from_turns([submit_turn("John")
+            .with_usage(expected_usage)
+            .with_message_id("extractor-message")]))
+        .add_hook(capture.clone())
+        .build()
+        .extract("John")
+        .await
+        .expect("extraction should succeed");
     assert_eq!(response.output.name, "John");
 
     let (prompt, content, observed_usage, message_id) = capture
@@ -295,7 +296,7 @@ async fn extractor_hook_receives_canonical_response_fields() {
 
 #[tokio::test]
 async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
-    let model = MockCompletionModel::new([submit_turn("John")]);
+    let model = MockCompletionModel::from_turns([submit_turn("John")]);
     let probe = model.clone();
     let queries = Arc::new(Mutex::new(Vec::new()));
     let response = ExtractorBuilder::<Person>::new(model)
@@ -328,7 +329,7 @@ async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
 
 #[tokio::test]
 async fn extractor_completion_call_stop_prevents_provider_io() {
-    let model = MockCompletionModel::new([submit_turn("John")]);
+    let model = MockCompletionModel::from_turns([submit_turn("John")]);
     let error = ExtractorBuilder::<Person>::new(model.clone())
         .add_hook(StopBeforeCompletion)
         .build()
@@ -349,7 +350,7 @@ async fn extractor_completion_call_stop_prevents_provider_io() {
 
 #[tokio::test]
 async fn usage_accumulates_across_failed_attempts() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::text("no submit call").with_usage(usage(10)),
         submit_turn("John").with_usage(usage(5)),
     ]);
@@ -369,7 +370,7 @@ async fn usage_accumulates_across_failed_attempts() {
 }
 
 async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         submit_turn("ignored").with_usage(usage(10)),
         submit_turn("John").with_usage(usage(5)),
     ]);
@@ -400,7 +401,7 @@ async fn model_turn_finished_hook_termination_preserves_billed_usage() {
 
 #[tokio::test]
 async fn unexpected_tool_call_preserves_usage_and_retries() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
         submit_turn("John").with_usage(usage(5)),
     ]);
@@ -416,7 +417,7 @@ async fn unexpected_tool_call_preserves_usage_and_retries() {
 
 #[tokio::test]
 async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
         submit_turn("John").with_usage(usage(5)),
     ]);
@@ -439,7 +440,8 @@ async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
 
 #[tokio::test]
 async fn unexpected_tool_call_hook_can_stop_extraction() {
-    let model = MockCompletionModel::new([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
+    let model =
+        MockCompletionModel::from_turns([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
 
     let error = ExtractorBuilder::<Person>::new(model)
         .add_hook(StopOnInvalidToolCall)
@@ -461,7 +463,7 @@ async fn unexpected_tool_call_hook_can_stop_extraction() {
 
 #[tokio::test]
 async fn unexpected_tool_call_hook_can_repair_to_submit() {
-    let model = MockCompletionModel::new([MockTurn::tool_call(
+    let model = MockCompletionModel::from_turns([MockTurn::tool_call(
         "unknown",
         "unexpected",
         json!({ "name": "John" }),
@@ -483,7 +485,7 @@ async fn skip_hook_preserves_valid_submit_sibling() {
         tool_call("unknown", "unexpected", json!({})),
         tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
     ]);
-    let model = MockCompletionModel::new([turn]);
+    let model = MockCompletionModel::from_turns([turn]);
 
     let response = ExtractorBuilder::<Person>::new(model)
         .add_hook(SkipUnexpected)
@@ -502,7 +504,7 @@ async fn submit_call_wins_over_unexpected_sibling_call() {
         tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
     ])
     .with_usage(usage(7));
-    let model = MockCompletionModel::new([turn]);
+    let model = MockCompletionModel::from_turns([turn]);
 
     let response = extractor(model, 0)
         .extract("John")
@@ -520,7 +522,7 @@ async fn submit_call_wins_before_unexpected_sibling_call() {
         tool_call("unknown", "unexpected", json!({})),
     ]);
 
-    let response = extractor(MockCompletionModel::new([turn]), 0)
+    let response = extractor(MockCompletionModel::from_turns([turn]), 0)
         .extract("John")
         .await
         .expect("an earlier submit should remain authoritative");
@@ -536,7 +538,7 @@ async fn multiple_unexpected_calls_surrounding_submit_are_ignored() {
         tool_call("unknown-after", "unexpected_after", json!({})),
     ]);
 
-    let response = extractor(MockCompletionModel::new([turn]), 0)
+    let response = extractor(MockCompletionModel::from_turns([turn]), 0)
         .extract("John")
         .await
         .expect("unexpected siblings should not displace submit");
@@ -546,7 +548,7 @@ async fn multiple_unexpected_calls_surrounding_submit_are_ignored() {
 
 #[tokio::test]
 async fn transport_errors_contribute_no_usage() {
-    let model = MockCompletionModel::new([
+    let model = MockCompletionModel::from_turns([
         MockTurn::error("boom"),
         submit_turn("John").with_usage(usage(5)),
     ]);
@@ -561,7 +563,7 @@ async fn transport_errors_contribute_no_usage() {
 
 #[tokio::test]
 async fn single_successful_attempt_reports_its_own_usage() {
-    let model = MockCompletionModel::new([submit_turn("John").with_usage(usage(7))]);
+    let model = MockCompletionModel::from_turns([submit_turn("John").with_usage(usage(7))]);
 
     let response = extractor(model, 0)
         .extract("John")
@@ -573,7 +575,8 @@ async fn single_successful_attempt_reports_its_own_usage() {
 
 #[tokio::test]
 async fn exhausted_retries_return_last_error() {
-    let model = MockCompletionModel::new([MockTurn::text("no submit call").with_usage(usage(10))]);
+    let model =
+        MockCompletionModel::from_turns([MockTurn::text("no submit call").with_usage(usage(10))]);
 
     let err = extractor(model, 0)
         .extract("John")
@@ -585,7 +588,8 @@ async fn exhausted_retries_return_last_error() {
 
 #[tokio::test]
 async fn exhausted_retries_return_error_from_final_attempt() {
-    let model = MockCompletionModel::new([MockTurn::error("first"), MockTurn::error("second")]);
+    let model =
+        MockCompletionModel::from_turns([MockTurn::error("first"), MockTurn::error("second")]);
 
     let err = extractor(model, 1)
         .extract("John")

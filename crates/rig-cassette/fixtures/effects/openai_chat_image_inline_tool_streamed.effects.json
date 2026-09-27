@@ -679,6 +679,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The image’s dominant non-background color is red, and 17 + 25 = 42."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 235,

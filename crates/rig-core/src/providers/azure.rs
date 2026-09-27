@@ -1,15 +1,15 @@
 //! Conventional Azure OpenAI deployment names. Deployments are account-defined;
 //! replace these constants with the names configured on your resource.
 //!
-//! [`crate::providers::openai::wire::AZURE`] reads `AZURE_ENDPOINT`,
+//! [`from_env`] builds a client on the
+//! [`AZURE`](crate::providers::openai::wire::AZURE) dialect from `AZURE_ENDPOINT`,
 //! `AZURE_API_VERSION`, and either `AZURE_API_KEY` or `AZURE_TOKEN`.
 //!
 //! ```no_run
 //! use rig_core::providers::azure;
-//! use rig_core::providers::openai::wire::{AZURE, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let gpt4o = OpenAI::from_env_with(&AZURE)?.chat(azure::GPT_4O);
+//! let gpt4o = azure::from_env()?.chat(azure::GPT_4O);
 //! # Ok(())
 //! # }
 //! ```
@@ -47,3 +47,5 @@ pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
 pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 /// `gpt-3.5-turbo-16k` completion model
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
+
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::AZURE, "Azure OpenAI");

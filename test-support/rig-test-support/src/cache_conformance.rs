@@ -51,8 +51,6 @@
 //!   economics suite catches the provider changing its cache semantics under us.
 #![allow(dead_code)]
 
-use rig_agent::completion::CompletionModel;
-
 use rig_agent::completion::CompletionRequest;
 
 use rig_agent::completion::CompletionResponse;
@@ -430,16 +428,17 @@ impl CacheObservation {
 /// message-normalization path, and a normalizer that rewrites the assistant turn
 /// on the way back in is precisely the loop-level prefix move
 /// [`assert_growth_still_hits`] is looking for.
-pub async fn run_cache_probe<M>(model: &M, probe: &CacheProbe) -> CacheObservation
-where
-    M: CompletionModel,
-{
+pub async fn run_cache_probe(
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    probe: &CacheProbe,
+) -> CacheObservation {
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let opening = Message::User {
         content: vec![UserContent::text(probe.prompt)],
     };
 
-    let first = send(model, probe, vec![opening.clone()], "turn 1 (warm)").await;
-    let second = send(model, probe, vec![opening.clone()], "turn 2 (hit)").await;
+    let first = send(&model, probe, vec![opening.clone()], "turn 1 (warm)").await;
+    let second = send(&model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
     let assistant = Message::Assistant {
         id: second.message_id.clone(),
@@ -449,7 +448,7 @@ where
         content: vec![UserContent::text(probe.follow_up)],
     };
     let third = send(
-        model,
+        &model,
         probe,
         vec![opening, assistant, follow_up],
         "turn 3 (hit after append)",
@@ -461,17 +460,14 @@ where
     }
 }
 
-async fn send<M>(
-    model: &M,
+async fn send(
+    model: &rig_core::DynModel<rig_core::operation::Completion>,
     probe: &CacheProbe,
     chat_history: Vec<Message>,
     label: &str,
-) -> CompletionResponse
-where
-    M: CompletionModel,
-{
+) -> CompletionResponse {
     model
-        .completion(probe.request(chat_history))
+        .call(probe.request(chat_history))
         .await
         .unwrap_or_else(|error| panic!("cache probe {label} should succeed: {error}"))
 }
@@ -486,18 +482,19 @@ where
 /// class — see the carry-forward logic in
 /// `crates/rig-core/src/providers/anthropic/streaming.rs` — and only a streamed
 /// probe can see it.
-pub async fn run_cache_probe_streaming<M>(model: &M, probe: &CacheProbe) -> CacheObservation
-where
-    M: CompletionModel,
-{
+pub async fn run_cache_probe_streaming(
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    probe: &CacheProbe,
+) -> CacheObservation {
+    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let opening = Message::User {
         content: vec![UserContent::text(probe.prompt)],
     };
 
     let (first_usage, _, _) =
-        stream_turn(model, probe, vec![opening.clone()], "turn 1 (warm)").await;
+        stream_turn(&model, probe, vec![opening.clone()], "turn 1 (warm)").await;
     let (second_usage, text, message_id) =
-        stream_turn(model, probe, vec![opening.clone()], "turn 2 (hit)").await;
+        stream_turn(&model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
     // A model can legitimately produce no *text* within the probe's small
     // output budget — a reasoning model may spend all of it on thinking, which
@@ -518,7 +515,7 @@ where
         content: vec![UserContent::text(probe.follow_up)],
     };
     let (third_usage, _, _) = stream_turn(
-        model,
+        &model,
         probe,
         vec![opening, assistant, follow_up],
         "turn 3 (hit after append)",
@@ -532,15 +529,12 @@ where
 
 /// Drive one streamed turn, returning its final usage, accumulated text, and
 /// message id.
-async fn stream_turn<M>(
-    model: &M,
+async fn stream_turn(
+    model: &rig_core::DynModel<rig_core::operation::Completion>,
     probe: &CacheProbe,
     chat_history: Vec<Message>,
     label: &str,
-) -> (Usage, String, Option<String>)
-where
-    M: CompletionModel,
-{
+) -> (Usage, String, Option<String>) {
     use futures::StreamExt;
 
     use rig_core::streaming::Delta;
@@ -549,7 +543,6 @@ where
 
     let mut stream = model
         .stream(probe.request(chat_history))
-        .await
         .unwrap_or_else(|error| panic!("streamed cache probe {label} should start: {error}"));
 
     let mut text = String::new();
@@ -574,7 +567,7 @@ where
              which is exactly the streaming-path bug class this probe exists to catch"
         )
     });
-    (usage, text, stream.message_id.clone())
+    (usage, text, stream.folded().message_id().map(str::to_owned))
 }
 
 /// Turn 1 must create a cache entry, or read one that was already warm.

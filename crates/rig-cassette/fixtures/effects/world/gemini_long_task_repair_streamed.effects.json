@@ -19899,6 +19899,10 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "done"
           }
         },
         {
@@ -19925,6 +19929,15 @@
           "id": "minted:text:1",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "EsUBCsIBAWkUfRMgTe1Hche5XKQJYfPkMe0U8wbLoxDHSenHM8+nrAbz2ZPuAzgRZMejfdJc36A+YKPf4lCdzyVeeKgtr4F8QbpyRKX5iNEXUmFWJ0IXq1YWZZYAdPkiX/uCuw1FRRaPjmUTSEun6zNV94FduHt551LGZryHY6c8Dxl/pDBtAAziYptW0yITAjY6ntdUFok0cHZc58NEC5QBoboUtZfIj2VDz9Pr9sgV0YzgVVhmyY4y2ZnzQrY8pd1LdTRN1d0="
+              }
+            }
           }
         },
         {

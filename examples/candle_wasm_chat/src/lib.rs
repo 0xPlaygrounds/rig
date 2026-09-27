@@ -73,7 +73,7 @@ pub fn initialize() -> Result<(), JsValue> {
         weights: WEIGHTS,
     })
     .map_err(|error| js_error(BrowserModelError::Initialization(error.to_string())))?;
-    let agent = AgentBuilder::new(model)
+    let agent = AgentBuilder::new(model.completion())
         .preamble(
             "Repeat facts the user asks you to remember. Use those facts in later answers. \
              Never claim you cannot remember conversation history.",

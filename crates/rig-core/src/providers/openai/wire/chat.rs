@@ -32,14 +32,14 @@ use crate::wire::{
 use super::dto::{
     ChatChoice, ChatFrame, ChatUsage, StreamingCompletionResponse, StreamingDelta, delta_text,
 };
-use super::{BodyRewrite, OpenAI, OutputCap};
+use super::{BodyRewrite, OpenAIConfig, OutputCap};
 
 /// The chat-completions wire: a provider configuration, a model, and the
 /// per-turn options the endpoint takes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Chat {
     /// Which provider, and how to reach it.
-    pub provider: OpenAI,
+    pub provider: OpenAIConfig,
     /// The model this wire addresses.
     pub model: String,
     /// Whether tool schemas are sanitized for OpenAI's strict mode:
@@ -59,7 +59,7 @@ impl Chat {
         request: CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
-            &OpenAI,
+            &OpenAIConfig,
             &CompletionRequest,
             http::request::Builder,
         ) -> http::request::Builder,
@@ -134,11 +134,12 @@ impl Chat {
             Mode::Unary => Framing::Whole,
         };
         Ok(Encoded::new(request, framing)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+            .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_route(Some(self.provider.dialect.quirks.completion_path)))
     }
 
     /// The wire for `model` on `provider`, with every option off.
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             provider,
             model: model.into(),
@@ -751,26 +752,27 @@ fn refuse_file_ids(request: &CompletionRequest) -> Result<(), EncodeError> {
 
 impl Wire for Chat {
     type Op = crate::operation::Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ChatDecoder;
 
     fn name(&self) -> &str {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
-        super::replay_issuers(&self.provider.dialect, model.unwrap_or(&self.model))
-    }
-
-    fn route(&self) -> Option<&str> {
-        Some(self.provider.dialect.quirks.completion_path)
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
+        Some(super::replay_issuers(
+            &self.provider.dialect,
+            model.unwrap_or(&self.model),
+        ))
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        self.encode_with_headers(request, mode, OpenAI::completion_headers)
+        self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
     }
 
     fn decoder(&self, mode: Mode) -> ChatDecoder {

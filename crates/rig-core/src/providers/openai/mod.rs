@@ -1,5 +1,5 @@
-//! OpenAI: one configuration, the Responses and Chat Completions wires, and
-//! every OpenAI-shaped dialect.
+//! OpenAI: the client and its configuration, the Responses and Chat
+//! Completions wires, and every OpenAI-shaped dialect.
 //!
 //! ```no_run
 //! use rig_core::providers::openai;
@@ -9,14 +9,15 @@
 //!
 //! let gpt_5_2 = provider.responses(openai::GPT_5_2);
 //! let chat = provider.chat(openai::GPT_5_2);
-//! let embeddings = provider.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None);
+//! let embeddings = provider.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+//! # let _ = (gpt_5_2, chat, embeddings);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! A wire says what to send and how to read the reply; `.bind(transport)`
-//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
-//! implements the consumer-facing model traits.
+//! Each model pairs a wire, which says what to send and how to read the reply,
+//! with the client's transport. A vendor that speaks this format builds its
+//! client from its own module, such as [`crate::providers::deepseek::from_env`].
 
 pub mod completion;
 pub mod embedding;
@@ -26,7 +27,8 @@ pub mod responses_api;
 /// `Dialect` constant per OpenAI-shaped provider.
 pub mod wire;
 
-pub use wire::{OpenAI, Route};
+pub use crate::client::openai::OpenAI;
+pub use wire::{OpenAIConfig, Route};
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]

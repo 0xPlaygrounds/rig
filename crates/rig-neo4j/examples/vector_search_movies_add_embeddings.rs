@@ -5,11 +5,10 @@
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
 
-use rig_reqwest::prelude::*;
 use std::env;
 
 use rig_core::{
-    providers::openai::{self, wire::OpenAI},
+    providers::openai::{self, OpenAI},
     vector_store::{
         VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
@@ -35,9 +34,9 @@ const INDEX_NAME: &str = "moviePlots";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Bind the OpenAI embeddings endpoint
+    // The OpenAI client, from `OPENAI_API_KEY`.
     let openai_api_key = env::var("OPENAI_API_KEY")?;
-    let openai_client = OpenAI::new(&openai_api_key).bound()?;
+    let openai_client = OpenAI::new(&openai_api_key);
 
     let neo4j_uri = env::var("NEO4J_URI")?;
     let neo4j_username = env::var("NEO4J_USERNAME")?;
@@ -105,7 +104,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client
-        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, &model)
+        .create_vector_index(
+            IndexConfig::new(INDEX_NAME),
+            NODE_LABEL,
+            model.capabilities().ndims,
+        )
         .await?;
 
     // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings

@@ -1,6 +1,6 @@
-use rig::driver::{Bind, Bound};
-use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::providers::openai::{OpenAI, Route};
+use rig::http_client::{DynHttpClient, ReqwestClient};
+use rig::providers::openai::{OpenAIConfig, Route};
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -24,30 +24,31 @@ use crate::cassettes::DirectRecordingHttpClient;
 /// wires serve every other OpenAI REST route (embeddings, transcriptions,
 /// images, speech, model listing, verification). So the same credential is
 /// held here on both routes, and a cell spells the route it drives by the
-/// field it reads: `client.openai.agent(model)` beside
-/// `client.chat.agent(model)`, with `.chat(model)` / `.responses(model)`
+/// field it reads: `rig::AgentBuilder::new(client.openai.completion(model))` beside
+/// `rig::AgentBuilder::new(client.chat.completion(model))`, with `.chat(model)` / `.responses(model)`
 /// still naming a typed wire when a cell reads the native reply.
-pub(super) struct OpenAiCassette<H = BoxedHttpClient> {
-    /// The configuration on its flagship route, over the cassette's socket.
-    pub(super) openai: Bound<OpenAI, H>,
-    /// The same configuration routed to Chat Completions.
-    pub(super) chat: Bound<OpenAI, H>,
+pub(super) struct OpenAiCassette {
+    /// The models of the configuration on its flagship route.
+    pub(super) openai: OpenAiModels,
+    /// The models of the same configuration routed to Chat Completions.
+    pub(super) chat: OpenAiModels,
 }
 
-impl<H: Clone> OpenAiCassette<H> {
+impl OpenAiCassette {
     /// The configuration for `api_key` at `base_url`, over `http`.
-    fn new(api_key: impl Into<String>, base_url: impl Into<String>, http: H) -> Self {
-        let openai = OpenAI::new(api_key).with_base_url(base_url).bind(http);
-        let chat = openai
-            .clone()
-            .map_wire(|openai| openai.with_route(Route::Chat));
-        Self { openai, chat }
+    fn new(
+        api_key: impl Into<String>,
+        base_url: impl Into<String>,
+        http: impl rig::http_client::HttpClientExt + 'static,
+    ) -> Self {
+        let http = DynHttpClient::new(http);
+        let openai = OpenAIConfig::new(api_key).with_base_url(base_url);
+        let chat = openai.clone().with_route(Route::Chat);
+        Self {
+            openai: OpenAiModels::new(openai, http.clone()),
+            chat: OpenAiModels::new(chat, http),
+        }
     }
-}
-
-/// The bundled transport, erased — the socket the deleted client built.
-fn bundled() -> BoxedHttpClient {
-    ReqwestClient::default().boxed()
 }
 
 async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAiCassette) {
@@ -61,7 +62,7 @@ async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Op
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
-        bundled(),
+        rig::rig_reqwest::shared(),
     );
 
     (cassette, openai)
@@ -69,38 +70,13 @@ async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Op
 
 async fn openai_completions_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, Bound<OpenAI>) {
+) -> (ProviderCassette, OpenAiModels) {
     let (cassette, openai) = openai_cassette(spec).await;
     (cassette, openai.chat)
 }
 
-/// Like [`with_openai_cassette`], but the client sends through the erased
-/// [`BoxedHttpClient`] wrapping the same bundled transport — the client type
-/// names no concrete `H`. Replaying a recorded scenario through it proves the
-/// erasure is byte-transparent: the replay server matches on body bytes.
-pub(super) async fn with_openai_boxed_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
-where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openai",
-        spec,
-        "https://api.openai.com/v1",
-    )
-    .await;
-    let openai = OpenAiCassette::new(
-        cassette.api_key("OPENAI_API_KEY"),
-        cassette.base_url(),
-        ReqwestClient::default().boxed(),
-    );
-    let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
-    cassette.finish_after_test(result).await;
-}
-
 /// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
-/// through a [`BoxedHttpClient`] carrying the supplied [`HttpMiddleware`], so
+/// through a [`DynHttpClient`] carrying the supplied [`HttpMiddleware`], so
 /// the same recorded exchange exercises the transport middleware seam and the
 /// run lifecycle hooks together (see
 /// `crates/rig-cassette/fixtures/cassettes/openai/lifecycle_matrix/`).
@@ -123,7 +99,7 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
-        ReqwestClient::default().boxed().with_middleware(middleware),
+        DynHttpClient::new(ReqwestClient::default()).with_middleware(middleware),
     );
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -217,7 +193,7 @@ pub(super) async fn with_openai_completions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, chat) = openai_completions_cassette(spec).await;
@@ -243,7 +219,7 @@ pub(super) async fn with_openai_completions_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, chat) = openai_completions_cassette(spec).await;
@@ -385,11 +361,11 @@ pub(super) async fn with_openai_transcription_cassette<F, Fut>(
 /// zero bytes. The direct path stores non-UTF-8 bodies as base64.
 pub(super) async fn with_openai_audio_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(OpenAiCassette<DirectRecordingHttpClient>) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start_via(
-        rig_cassette::http::Transport::Direct,
+        rig_cassette::http::RecordVia::Direct,
         &crate::cassettes::cassette_root(),
         "openai",
         spec,
@@ -433,7 +409,7 @@ pub(super) async fn with_openai_websocket_cassette<F, Fut>(
     let openai = OpenAiCassette::new(
         "sk-invalid-websocket-edge-matrix-key",
         cassette.base_url(),
-        bundled(),
+        rig::rig_reqwest::shared(),
     );
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -457,7 +433,11 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let openai = OpenAiCassette::new("sk-invalid-edge-matrix-key", cassette.base_url(), bundled());
+    let openai = OpenAiCassette::new(
+        "sk-invalid-edge-matrix-key",
+        cassette.base_url(),
+        rig::rig_reqwest::shared(),
+    );
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
@@ -554,7 +534,7 @@ pub(super) async fn with_openai_completions_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_completions_cassette(spec, test_body).await;

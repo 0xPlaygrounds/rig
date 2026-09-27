@@ -4,26 +4,23 @@
 use serde_json::json;
 
 use super::*;
-use crate::completion::{CompletionRequest, CompletionRequestBuilder, ToolDefinition};
-use crate::driver::{HasCompletion, HasEmbedding, HasModelListing, HasRerank, HasVerify};
+use crate::completion::{CompletionRequest, ToolDefinition};
 use crate::message::ToolChoice;
-use crate::providers::anthropic::Anthropic;
-use crate::providers::cohere::Cohere;
-use crate::providers::gemini::Gemini;
-use crate::providers::ollama::Ollama;
-use crate::providers::openai::OpenAI;
+use crate::providers::anthropic::AnthropicConfig;
+use crate::providers::cohere::CohereConfig;
+use crate::providers::gemini::GeminiConfig;
+use crate::providers::ollama::OllamaConfig;
+use crate::providers::openai::OpenAIConfig;
 use crate::providers::openai::embedding::EncodingFormat;
 use crate::providers::openai::wire::{GROQ, LLAMACPP, MISTRAL, OPENAI, PERPLEXITY, TOGETHER};
-use crate::providers::voyageai::VoyageAi;
+use crate::providers::voyageai::VoyageAiConfig;
 use crate::wire::{Mode, Wire};
 
 /// A base URL `http` refuses, so building the request fails.
 const BAD: &str = "http://bad host";
 
 fn request() -> CompletionRequest {
-    CompletionRequestBuilder::unbound("hi")
-        .max_tokens(16)
-        .build()
+    CompletionRequest::new("hi").max_tokens(16)
 }
 
 fn failure<T>(result: Result<T, EncodeError>) -> ProviderError {
@@ -54,7 +51,9 @@ fn assert_request_building(case: &str, error: &ProviderError) {
         | ProviderError::ProviderResponse(_)
         | ProviderError::InvalidAuthentication(_)
         | ProviderError::CacheExpired { .. }
-        | ProviderError::MismatchedDimensions { .. } => {
+        | ProviderError::MismatchedDimensions { .. }
+        | ProviderError::MalformedToolInput(_)
+        | ProviderError::Relayed(_) => {
             panic!("{case}: an encode failure must not classify as {error:?}")
         }
     }
@@ -87,11 +86,11 @@ fn every_encode_error_constructor_classifies_as_request_building() {
 /// before sending (`provider`, `response`).
 #[test]
 fn provider_encode_failures_classify_as_request_building() {
-    let openai = OpenAI::with_key(&OPENAI, "k").with_base_url(BAD);
-    let perplexity = OpenAI::with_key(&PERPLEXITY, "k");
-    let anthropic = Anthropic::new("k").with_base_url(BAD);
-    let gemini = Gemini::new("k").with_base_url(BAD);
-    let specific_tool = CompletionRequestBuilder::unbound("hi")
+    let openai = OpenAIConfig::with_key(&OPENAI, "k").with_base_url(BAD);
+    let perplexity = OpenAIConfig::with_key(&PERPLEXITY, "k");
+    let anthropic = AnthropicConfig::new("k").with_base_url(BAD);
+    let gemini = GeminiConfig::new("k").with_base_url(BAD);
+    let specific_tool = CompletionRequest::new("hi")
         .tool(ToolDefinition {
             name: "f".into(),
             description: "d".into(),
@@ -99,24 +98,21 @@ fn provider_encode_failures_classify_as_request_building() {
         })
         .tool_choice(ToolChoice::Specific {
             function_names: vec!["f".into()],
-        })
-        .build();
-    let unflattenable_schema = CompletionRequestBuilder::unbound("hi")
-        .tool(ToolDefinition {
-            name: "f".into(),
-            description: "d".into(),
-            parameters: json!({
-                "type": "object",
-                "$defs": 5,
-                "properties": {"a": {"$ref": "#/$defs/x"}},
-            }),
-        })
-        .build();
+        });
+    let unflattenable_schema = CompletionRequest::new("hi").tool(ToolDefinition {
+        name: "f".into(),
+        description: "d".into(),
+        parameters: json!({
+            "type": "object",
+            "$defs": 5,
+            "properties": {"a": {"$ref": "#/$defs/x"}},
+        }),
+    });
     let cases = [
         (
             "openai chat",
             failure(
-                OpenAI::with_key(&GROQ, "k")
+                OpenAIConfig::with_key(&GROQ, "k")
                     .with_base_url(BAD)
                     .completion("m")
                     .encode(request(), Mode::Unary),
@@ -140,7 +136,7 @@ fn provider_encode_failures_classify_as_request_building() {
         (
             "openai embeddings, base64",
             failure(
-                OpenAI::with_key(&OPENAI, "k")
+                OpenAIConfig::with_key(&OPENAI, "k")
                     .embedding("text-embedding-3-small", None)
                     .with_encoding_format(EncodingFormat::Base64)
                     .encode(vec!["a".into()], Mode::Unary),
@@ -150,7 +146,7 @@ fn provider_encode_failures_classify_as_request_building() {
         (
             "openai-compatible embeddings, unsupported encoding format",
             failure(
-                OpenAI::with_key(&TOGETHER, "k")
+                OpenAIConfig::with_key(&TOGETHER, "k")
                     .embedding("m", None)
                     .with_encoding_format(EncodingFormat::Float)
                     .encode(vec!["a".into()], Mode::Unary),
@@ -160,7 +156,7 @@ fn provider_encode_failures_classify_as_request_building() {
         (
             "openai-compatible embeddings, unsupported user",
             failure(
-                OpenAI::with_key(&MISTRAL, "k")
+                OpenAIConfig::with_key(&MISTRAL, "k")
                     .embedding("mistral-embed", None)
                     .with_user("u")
                     .encode(vec!["a".into()], Mode::Unary),
@@ -187,7 +183,7 @@ fn provider_encode_failures_classify_as_request_building() {
         (
             "llama.cpp specific tool choice",
             failure(
-                OpenAI::with_key(&LLAMACPP, "k")
+                OpenAIConfig::with_key(&LLAMACPP, "k")
                     .completion("m")
                     .encode(specific_tool, Mode::Unary),
             ),
@@ -207,12 +203,12 @@ fn provider_encode_failures_classify_as_request_building() {
         ),
         (
             "anthropic verify",
-            failure(HasVerify::verify(&anthropic).encode((), Mode::Unary)),
+            failure(anthropic.verify().encode((), Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (
             "anthropic models",
-            failure(anthropic.model_listing().encode((), Mode::Unary)),
+            failure(anthropic.models().encode((), Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (
@@ -232,7 +228,7 @@ fn provider_encode_failures_classify_as_request_building() {
         (
             "gemini tool schema",
             failure(
-                Gemini::new("k")
+                GeminiConfig::new("k")
                     .completion("gemini-2.5-flash")
                     .encode(unflattenable_schema, Mode::Unary),
             ),
@@ -241,7 +237,7 @@ fn provider_encode_failures_classify_as_request_building() {
         (
             "cohere embed",
             failure(
-                Cohere::new("k")
+                CohereConfig::new("k")
                     .with_base_url(BAD)
                     .embedding("embed-english-v3.0", None)
                     .encode(vec!["a".into()], Mode::Unary),
@@ -251,7 +247,7 @@ fn provider_encode_failures_classify_as_request_building() {
         (
             "voyage embed",
             failure(
-                VoyageAi::new("k")
+                VoyageAiConfig::new("k")
                     .with_base_url(BAD)
                     .embedding("voyage-3", None)
                     .encode(vec!["a".into()], Mode::Unary),
@@ -261,7 +257,7 @@ fn provider_encode_failures_classify_as_request_building() {
         (
             "ollama chat",
             failure(
-                Ollama::new()
+                OllamaConfig::new()
                     .with_base_url(BAD)
                     .completion("llama3")
                     .encode(request(), Mode::Unary),

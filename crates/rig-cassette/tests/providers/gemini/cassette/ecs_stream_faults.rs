@@ -6,7 +6,7 @@
 //! the fault without carrying the request or its credential.
 
 use bytes::Bytes;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent, AdapterUsage};
 use rig::providers::gemini::{
@@ -16,8 +16,8 @@ use rig::providers::gemini::{
         gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel},
     },
 };
-use rig::test_utils::SequencedStreamingHttpClient;
 use rig_ecs::agent::{AdditionalParams, MaxTokens, Preamble, Role};
+use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_cassette;
 use super::stream_faults::{
@@ -34,10 +34,9 @@ use crate::{
 };
 
 /// A scripted-transport model: one streaming exchange, then EOF.
-fn scripted_model(
-    chunks: Vec<Bytes>,
-) -> Bound<gemini::completion::GenerateContent, SequencedStreamingHttpClient> {
-    scripted_client(chunks).completion(GEMINI_2_5_FLASH)
+fn scripted_model(chunks: Vec<Bytes>) -> Model<gemini::completion::GenerateContent> {
+    let (client, http) = scripted_client(chunks);
+    GeminiModels::new(client, http).completion(GEMINI_2_5_FLASH)
 }
 
 /// The scripted cells' witness check, over this module's credential.

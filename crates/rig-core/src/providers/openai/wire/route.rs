@@ -2,9 +2,9 @@
 //! Explicit configuration routes override model-specific hooks and dialect defaults.
 //!
 //! ```
-//! use rig_core::providers::openai::{OpenAI, Route};
-//! let provider = OpenAI::new("key").with_route(Route::Chat);
-//! let wire = provider.chat("gpt-5.2");
+//! use rig_core::providers::openai::{OpenAI, OpenAIConfig, Route};
+//! let provider: OpenAI = OpenAIConfig::new("key").with_route(Route::Chat).client();
+//! let model = provider.completion("gpt-5.2");
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -18,11 +18,9 @@ use crate::providers::openai::responses_api::{
     ResponsesToolDefinition, SystemInstructionsPlacement,
 };
 use crate::telemetry::GenAiOperation;
-use crate::wire::{
-    Body, Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame};
 
-use super::OpenAI;
+use super::OpenAIConfig;
 use super::chat::{Chat, ChatDecoder, ChatEvent};
 
 /// Dispatch a shared expression to the selected route.
@@ -56,8 +54,8 @@ pub enum OpenAiWire {
 
 impl OpenAiWire {
     /// The wire for `model` on `provider`'s
-    /// [`completion_route`](OpenAI::completion_route).
-    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+    /// [`completion_route`](OpenAIConfig::completion_route).
+    pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         let model = model.into();
         let route = provider.route.unwrap_or_else(|| {
             provider
@@ -80,7 +78,7 @@ impl OpenAiWire {
         request: CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
-            &OpenAI,
+            &OpenAIConfig,
             &CompletionRequest,
             http::request::Builder,
         ) -> http::request::Builder,
@@ -89,7 +87,7 @@ impl OpenAiWire {
     }
 
     /// The configuration this wire speaks to.
-    pub fn provider(&self) -> &OpenAI {
+    pub fn provider(&self) -> &OpenAIConfig {
         on_route!(self, wire => &wire.provider)
     }
 
@@ -176,22 +174,20 @@ impl From<Responses> for OpenAiWire {
 
 impl Wire for OpenAiWire {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = OpenAiDecoder;
 
     fn name(&self) -> &str {
         on_route!(self, wire => wire.name())
     }
 
-    fn model(&self) -> Option<&str> {
-        on_route!(self, wire => wire.model())
+    fn id(&self) -> Option<&str> {
+        on_route!(self, wire => wire.id())
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
         on_route!(self, wire => wire.replay_issuers(model))
-    }
-
-    fn route(&self) -> Option<&str> {
-        on_route!(self, wire => wire.route())
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
@@ -209,8 +205,8 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.capabilities())
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        on_route!(self, wire => wire.telemetry(streaming))
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        on_route!(self, wire => wire.telemetry(mode))
     }
 }
 
@@ -266,10 +262,6 @@ impl Decoder<Completion> for OpenAiDecoder {
 
     fn document(&self) -> Option<serde_json::Value> {
         on_route!(self, decoder => decoder.document())
-    }
-
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        on_route!(self, decoder => decoder.continuation())
     }
 
     fn is_analysis_only(&self, frame: &WireFrame) -> bool {

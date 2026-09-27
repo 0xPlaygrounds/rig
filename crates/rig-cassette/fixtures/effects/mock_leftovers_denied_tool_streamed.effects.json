@@ -373,6 +373,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I could not add them."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "total_tokens": 1

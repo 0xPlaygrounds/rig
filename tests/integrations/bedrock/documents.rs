@@ -1,6 +1,5 @@
 //! AWS Bedrock document prompt smoke tests inspired by Anthropic document tests.
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
-use rig::prelude::*;
 
 use super::{
     BEDROCK_COMPLETION_MODEL, client,

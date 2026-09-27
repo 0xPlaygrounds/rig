@@ -3,7 +3,6 @@
 //! `agent.prompt()`, pinning the wire contract of the handrolled tool
 //! pipeline ahead of the rmcp migration.
 
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig_agent::test_utils::{parallel_tools, tool_output_serialization, zero_argument_tool};
 
@@ -25,13 +24,13 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
     with_gemini_cassette(
         "agent_tools/nonstreaming_multi_turn_executes_tools_and_reports_usage",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .preamble(FORCE_TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(add)
+                    .tool(subtract)
+                    .build();
 
             let response = agent
                 .prompt(CHAINED_PROMPT)
@@ -78,13 +77,13 @@ async fn streaming_multi_turn_executes_tools_via_builtin_driver() {
     with_gemini_cassette(
         "agent_tools/streaming_multi_turn_executes_tools_via_builtin_driver",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool(add)
-                .tool(subtract)
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .preamble(FORCE_TOOLS_PREAMBLE)
+                    .temperature(0.0)
+                    .tool(add)
+                    .tool(subtract)
+                    .build();
 
             let mut stream = agent.prompt(CHAINED_PROMPT).max_turns(5).stream();
             let observation = crate::support::collect_stream_observation(&mut stream).await;

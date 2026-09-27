@@ -7,15 +7,17 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use rig::agent::AgentBuilder;
-use rig::completion::{CompletionModel, FinishReason, Message};
+use rig::completion::{FinishReason, Message};
 use rig::message::AssistantContent;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::{CompletionResponse as ResponsesReply, ResponseStatus};
 use rig::tool::Tool;
+use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn strict_tools_opt_in_roundtrip() {
@@ -29,14 +31,12 @@ async fn strict_tools_opt_in_roundtrip() {
                 .openai
                 .completion(openai::GPT_4O)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = model
-                .completion_request("Use the add tool to add 7 and 5.")
+            let request = CompletionRequest::new("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .build();
+                .tool(rig::tool::tool_definition(&Adder));
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -80,20 +80,18 @@ async fn incomplete_response_surfaces_partial_output() {
         "responses_behaviors/incomplete_response_surfaces_partial_output",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
-            let request = model
-                .completion_request(
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-                .preamble("You are a storyteller.".to_string())
-                .max_tokens(16)
-                .build();
+            let request = CompletionRequest::new(
+                "Write a story of at least 150 words about a lighthouse keeper.",
+            )
+            .preamble("You are a storyteller.")
+            .max_tokens(16);
 
             // The cassette records a single interaction, and one call yields
             // both views of it: the normalized response, and the provider's
             // own reply in `raw`. `status` and `incomplete_details` are
             // Responses-API wire fields, so they are read off the latter.
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("an incomplete response should still convert, not error");
             let reply = ResponsesReply::deserialize(&response.raw)

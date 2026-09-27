@@ -1,3 +1,4 @@
+use rig_test_support::cassette_models::OpenAiModels;
 mod support;
 
 mod cassette {
@@ -26,11 +27,9 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
-use rig::driver::{Bind as _, Bound};
-use rig::http_client::BoxedHttpClient;
+use rig::http_client::DynHttpClient;
 use rig::providers::chatgpt;
-use rig::providers::openai::OpenAI;
-use rig::rig_reqwest::client::bundled;
+use rig::providers::openai::OpenAIConfig;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -47,30 +46,29 @@ struct CachedAuthRecord {
 /// The live ChatGPT provider configuration, credential already exchanged.
 ///
 /// `OpenAI` holds a resolved token, so the exchange — which is not a
-/// wire — runs first, on `http`: the same transport the completion then
-/// speaks over. The OAuth cache wins when there is a usable one, exactly as
+/// wire — runs first, through `OpenAI::authenticate` on `http`: the same
+/// transport the completion then speaks over. The OAuth cache wins when there is a usable one, exactly as
 /// the deleted builder's default did; otherwise the variables the dialect
 /// names describe the provider outright.
-async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
+async fn live_provider(http: &DynHttpClient) -> OpenAIConfig {
     if !has_usable_oauth_cache() && std::env::var_os("CHATGPT_ACCESS_TOKEN").is_some() {
-        return OpenAI::from_env_with(&chatgpt::DIALECT)
+        return OpenAIConfig::from_env_with(&chatgpt::DIALECT)
             .expect("the ChatGPT environment should describe a provider");
     }
 
-    let context = chatgpt::auth::Authenticator::new(
+    let authenticator = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         default_auth_file(),
         chatgpt::auth::DeviceCodeHandler::default(),
         true,
-    )
-    .auth_context(http)
-    .await
-    .expect("ChatGPT OAuth should resolve an access token");
-
-    let mut provider = OpenAI::with_key(&chatgpt::DIALECT, context.access_token);
-    if let Some(account_id) = context.account_id {
-        provider = provider.with_account_id(account_id);
-    }
+    );
+    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, "")
+        .connect(http.clone())
+        .authenticate(&authenticator)
+        .await
+        .expect("ChatGPT OAuth should resolve an access token")
+        .config()
+        .clone();
     if let Ok(base_url) =
         std::env::var("CHATGPT_API_BASE").or_else(|_| std::env::var("OPENAI_CHATGPT_API_BASE"))
     {
@@ -85,9 +83,9 @@ async fn live_provider(http: &BoxedHttpClient) -> OpenAI {
     provider
 }
 
-pub(crate) async fn live_client() -> Bound<OpenAI> {
-    let http = bundled().expect("the bundled transport should build");
-    live_provider(&http).await.bind(http)
+pub(crate) async fn live_client() -> OpenAiModels {
+    let http = rig::rig_reqwest::shared();
+    OpenAiModels::new(live_provider(&http).await, http)
 }
 
 fn has_usable_oauth_cache() -> bool {

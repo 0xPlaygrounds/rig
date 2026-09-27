@@ -8,6 +8,7 @@
     clippy::indexing_slicing
 )]
 
+use rig_core::providers::gemini::GeminiConfig;
 mod bus_support;
 mod run_support;
 
@@ -16,10 +17,8 @@ use rig_cassette::{
     effect_log::EffectLog,
 };
 use rig_core::{
-    driver::Bind,
     error::{ErrorKind, ErrorReport},
-    providers::gemini::Gemini,
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::{ErasedHandler, adapters::ModelAdapter},
 };
 use rig_ecs::{
     bus::{EffectOutcome, Handlers, PendingEffect},
@@ -67,14 +66,11 @@ fn gateway(
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|_| refused())?;
-    let model = Gemini::new(token)
+    let model = GeminiConfig::new(token)
         .with_base_url(endpoint)
-        .bind(ReqwestClient::new(http))
+        .connect(ReqwestClient::from(http))
         .completion("gemini-test");
-    Ok(ErasedHandler::new(CompletionAdapter::new(
-        "gemini-test",
-        model,
-    )))
+    Ok(ErasedHandler::new(ModelAdapter::new("gemini-test", model)))
 }
 
 /// The closure contains *all* live inputs: credentials, discovery, diagnostic

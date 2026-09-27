@@ -9,7 +9,7 @@ use std::fmt::Display;
 
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -27,13 +27,13 @@ pub use surrealdb::engine::remote::ws::{Ws, Wss};
 
 /// Vector store backed by a SurrealDB table.
 ///
-/// Queries are embedded with the same model `M` that populated the table, so
+/// Queries are embedded with the same model that populated the table, so
 /// results are meaningless under another model.
-pub struct SurrealVectorStore<C, M>
+pub struct SurrealVectorStore<C>
 where
     C: Connection,
 {
-    model: M,
+    model: rig_core::DynModel<rig_core::operation::Embedding>,
     surreal: Surreal<C>,
     documents_table: String,
     distance_function: SurrealDistanceFunction,
@@ -103,7 +103,7 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
     }
 }
 
-impl<C, M: EmbeddingModel> InsertDocuments for SurrealVectorStore<C, M>
+impl<C> InsertDocuments for SurrealVectorStore<C>
 where
     C: Connection,
 {
@@ -256,18 +256,18 @@ impl SurrealSearchFilter {
     }
 }
 
-impl<C, M: EmbeddingModel> SurrealVectorStore<C, M>
+impl<C> SurrealVectorStore<C>
 where
     C: Connection,
 {
     pub fn new(
-        model: M,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
         surreal: Surreal<C>,
         documents_table: Option<String>,
         distance_function: SurrealDistanceFunction,
     ) -> Self {
         Self {
-            model,
+            model: model.into(),
             surreal,
             documents_table: documents_table.unwrap_or_else(|| String::from("documents")),
             distance_function,
@@ -278,7 +278,10 @@ where
         &self.surreal
     }
 
-    pub fn with_defaults(model: M, surreal: Surreal<C>) -> Self {
+    pub fn with_defaults(
+        model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
+        surreal: Surreal<C>,
+    ) -> Self {
         Self::new(model, surreal, None, SurrealDistanceFunction::Cosine)
     }
 
@@ -327,7 +330,7 @@ where
     }
 }
 
-impl<C, M: EmbeddingModel> VectorStoreIndex for SurrealVectorStore<C, M>
+impl<C> VectorStoreIndex for SurrealVectorStore<C>
 where
     C: Connection,
 {

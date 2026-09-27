@@ -6,12 +6,11 @@
 //! `tests/common/ecs_matrix/world.rs`). This file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
-use rig::completion::CompletionModel;
-
-use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
+use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
+use rig_test_support::cassette_models::OpenAiModels;
 
-fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-chat"),
@@ -217,7 +216,9 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(
+    client: &OpenAiModels,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-flash"),

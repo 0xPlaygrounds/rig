@@ -1,9 +1,7 @@
 use assert_fs::TempDir;
-use rig::driver::{Bind as _, Bound};
-use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::providers::openai::OpenAI;
-use rig::rig_reqwest::client::bundled;
+use rig::providers::openai::OpenAIConfig;
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -13,7 +11,7 @@ use futures::FutureExt;
 async fn chatgpt_cassette_with_default_instructions(
     spec: impl Into<CassetteSpec>,
     default_instructions: impl Into<String>,
-) -> (ProviderCassette, Bound<OpenAI>) {
+) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "chatgpt",
@@ -21,23 +19,22 @@ async fn chatgpt_cassette_with_default_instructions(
         "https://chatgpt.com/backend-api/codex",
     )
     .await;
-    let client = OpenAI::with_key(&chatgpt::DIALECT, cassette.api_key("CHATGPT_ACCESS_TOKEN"))
-        .with_account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
-        .with_base_url(cassette.base_url())
-        .with_instructions(default_instructions)
-        .bound()
-        .expect("transport should build");
+    let client =
+        OpenAIConfig::with_key(&chatgpt::DIALECT, cassette.api_key("CHATGPT_ACCESS_TOKEN"))
+            .with_account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
+            .with_base_url(cassette.base_url())
+            .with_instructions(default_instructions);
 
     (cassette, client)
 }
 
-async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<OpenAI>) {
+async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     chatgpt_cassette_with_default_instructions(spec, "").await
 }
 
 async fn chatgpt_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, Bound<OpenAI>, TempDir) {
+) -> (ProviderCassette, OpenAIConfig, TempDir) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "chatgpt",
@@ -64,7 +61,7 @@ async fn chatgpt_noninteractive_oauth_cassette(
     // already-exchanged token, so the cache the record above seeded is read
     // first — on the very transport the completion then speaks over, and with
     // the device flow refused so a stale cache fails loudly.
-    let http = bundled().expect("transport should build");
+    let http = rig::rig_reqwest::shared();
     let context = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(auth_file),
@@ -75,23 +72,28 @@ async fn chatgpt_noninteractive_oauth_cassette(
     .await
     .expect("non-interactive ChatGPT OAuth cassette credential should resolve");
 
-    let mut provider = OpenAI::with_key(&chatgpt::DIALECT, context.access_token)
+    let mut provider = OpenAIConfig::with_key(&chatgpt::DIALECT, context.access_token)
         .with_base_url(cassette.base_url())
         .with_instructions("");
     if let Some(account_id) = context.account_id {
         provider = provider.with_account_id(account_id);
     }
 
-    (cassette, provider.bind(http), temp)
+    (cassette, provider, temp)
 }
 
 pub(super) async fn with_chatgpt_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = chatgpt_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -100,12 +102,17 @@ pub(super) async fn with_chatgpt_cassette_default_instructions<F, Fut>(
     default_instructions: impl Into<String>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) =
         chatgpt_cassette_with_default_instructions(spec, default_instructions).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -113,10 +120,15 @@ pub(super) async fn with_chatgpt_noninteractive_oauth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client, _temp) = chatgpt_noninteractive_oauth_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }

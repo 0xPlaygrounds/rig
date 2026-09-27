@@ -1,11 +1,8 @@
 //! Copilot OAuth and bootstrap smoke tests.
 
 use assert_fs::TempDir;
-use rig::driver::Bind;
-use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::prelude::*;
 use rig::providers::copilot::auth::AuthSource;
-use rig::providers::copilot::wire::Copilot;
+use rig_test_support::cassette_models::CopilotModels;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -26,26 +23,26 @@ fn required_copilot_github_access_token() -> String {
 ///
 /// This is what `Client::authorize` did: the exchange is a conversation, so
 /// it runs before the provider configuration exists rather than on it.
-async fn authorize_oauth(path: &Path) -> Copilot {
-    authorize(AuthSource::OAuth, Some(path), true)
-        .await
-        .expect("device authorization should succeed")
-}
-
-fn transport() -> BoxedHttpClient {
-    ReqwestClient::default().boxed()
+async fn authorize_oauth(path: &Path) -> CopilotModels {
+    CopilotModels::new(
+        authorize(AuthSource::OAuth, Some(path), true)
+            .await
+            .expect("device authorization should succeed"),
+        rig::rig_reqwest::shared(),
+    )
 }
 
 #[tokio::test]
 #[ignore = "requires GITHUB_COPILOT_API_KEY or COPILOT_API_KEY"]
 async fn api_key_completion_smoke() {
-    let client = authorize(AuthSource::ApiKey(required_copilot_api_key()), None, false)
-        .await
-        .expect("api key auth should succeed")
-        .bind(transport());
+    let client = CopilotModels::new(
+        authorize(AuthSource::ApiKey(required_copilot_api_key()), None, false)
+            .await
+            .expect("api key auth should succeed"),
+        rig::rig_reqwest::shared(),
+    );
 
-    let response = client
-        .agent(LIVE_MODEL)
+    let response = rig::AgentBuilder::new(client.completion(LIVE_MODEL))
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
@@ -58,17 +55,18 @@ async fn api_key_completion_smoke() {
 #[tokio::test]
 #[ignore = "requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN"]
 async fn github_access_token_completion_smoke() {
-    let client = authorize(
-        AuthSource::GitHubAccessToken(required_copilot_github_access_token()),
-        None,
-        false,
-    )
-    .await
-    .expect("bootstrap-token auth should succeed")
-    .bind(transport());
+    let client = CopilotModels::new(
+        authorize(
+            AuthSource::GitHubAccessToken(required_copilot_github_access_token()),
+            None,
+            false,
+        )
+        .await
+        .expect("bootstrap-token auth should succeed"),
+        rig::rig_reqwest::shared(),
+    );
 
-    let response = client
-        .agent(LIVE_MODEL)
+    let response = rig::AgentBuilder::new(client.completion(LIVE_MODEL))
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
@@ -97,15 +95,12 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
 
     // The second resolve reads the cache the first one wrote.
     assert_eq!(
-        authorize_oauth(token_dir).await,
-        provider,
+        authorize_oauth(token_dir).await.config,
+        provider.config,
         "cached oauth auth should resolve the same credential"
     );
 
-    let response = provider
-        .clone()
-        .bind(transport())
-        .agent(LIVE_MODEL)
+    let response = rig::AgentBuilder::new(provider.clone().completion(LIVE_MODEL))
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
@@ -114,14 +109,12 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
 
     assert_nonempty_response(&response.output);
 
-    let cached_response = authorize_oauth(token_dir)
-        .await
-        .bind(transport())
-        .agent(LIVE_MODEL)
-        .build()
-        .prompt("Reply with the single word cached.")
-        .await
-        .expect("cached completion should succeed");
+    let cached_response =
+        rig::AgentBuilder::new(authorize_oauth(token_dir).await.completion(LIVE_MODEL))
+            .build()
+            .prompt("Reply with the single word cached.")
+            .await
+            .expect("cached completion should succeed");
 
     assert_nonempty_response(&cached_response.output);
 }
@@ -147,7 +140,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
     )
     .expect("expired api key record should be written");
 
-    let client = authorize_oauth(token_dir).await.bind(transport());
+    let client = authorize_oauth(token_dir).await;
 
     let api_key_record: serde_json::Value = serde_json::from_slice(
         &fs::read(token_dir.join("api-key.json")).expect("api key record should exist"),
@@ -173,8 +166,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
         );
     }
 
-    let response = client
-        .agent(LIVE_MODEL)
+    let response = rig::AgentBuilder::new(client.completion(LIVE_MODEL))
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

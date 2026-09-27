@@ -2,17 +2,17 @@
 //! three prompts. `reasoning_content` is never replayed, so the wire-level
 //! rule tracks the call ids.
 
-use rig::completion::CompletionModel;
 use rig::providers::deepseek;
+use rig_test_support::cassette_models::OpenAiModels;
 
-use super::support::{BoundDeepSeek, with_deepseek_cassette};
+use super::support::with_deepseek_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "thinking": { "type": "enabled" } }))
 }
 
-fn model(client: BoundDeepSeek, cell: Cell) -> impl CompletionModel + 'static {
+fn model(client: OpenAiModels, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
     client.completion(cell.model)
 }
 

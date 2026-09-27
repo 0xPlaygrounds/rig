@@ -45,17 +45,21 @@ url = { workspace = true }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 fastrand = { workspace = true }
-futures-timer = { workspace = true }
 mime = { workspace = true }
-# futures-timer's default backend uses a background timer thread, which cannot
-# drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
-# the target is browser wasm — regardless of feature flags — so
-# `wasm_compat::timeout` actually fires instead of hanging. Scoped to
-# `target_os = "unknown"` (browser) rather than the whole
-# `wasm` family because the gloo-timers/setTimeout backend needs a JS host and
-# would be wrong-by-construction on WASI.
+# The transport contracts, re-exported at `http_client`, `ws_client` and
+# `wasm_compat`.
+rig-http = { path = "../rig-http", version = "0.42.0" }
+# The bundled HTTP transport, the default a provider client sends through
+# under the `reqwest` feature. Its TLS stack is chosen by `rustls` (default)
+# or `native-tls` below.
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0", optional = true, default-features = false }
+
+# The bundled websocket backend is native-only: on wasm the `tungstenite`
+# feature degrades to the websocket contract alone.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+rig-tungstenite = { path = "../rig-tungstenite", version = "0.42.0", optional = true, default-features = false }
+
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-futures-timer = { workspace = true, features = ["wasm-bindgen"] }
 # `lopdf` pulls `getrandom` through its PDF encryption support. Browser WASM
 # cannot select a randomness backend from the target triple alone, so opt in to
 # lopdf's Web Crypto backend only for Rig's supported browser target.
@@ -66,8 +70,8 @@ anyhow = { workspace = true }
 # Self-dependency: feature unification compiles the lib with `test-utils`
 # for every rig-core test target (unit, integration, doctest), so the
 # sequence laws panic in ALL of rig's own suites while staying log-only in
-# downstream builds.
-rig-core = { path = ".", features = ["test-utils", "websocket"] }
+# downstream builds. `reqwest` gives the doc examples their clients.
+rig-core = { path = ".", features = ["reqwest", "test-utils", "websocket"] }
 # streaming identity/merge law property tests
 proptest = "1"
 assert_fs = { workspace = true }
@@ -86,15 +90,41 @@ tracing-opentelemetry = { workspace = true }
 
 
 [features]
-default = ["derive"]
+# `rustls` adds no dependency by itself: it selects the TLS stack of the
+# transports the `reqwest` and `tungstenite` features bring in.
+default = ["derive", "rustls"]
 audio = []
 image = []
 derive = ["dep:rig-derive"]
-test-utils = []
+test-utils = ["rig-http/test-utils"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 # The transport-agnostic websocket contract (`ws_client`) and the provider
-# websocket sessions written against it. Adds no dependency — the contract is
-# built from `http`/`bytes`/`futures`/`url`, which rig-core already has — but
-# stays gated so the surface is opt-in, matching `audio`/`image`.
-websocket = []
+# websocket sessions written against it. Adds no dependency, but stays gated
+# so the surface is opt-in, matching `audio`/`image`.
+websocket = ["rig-http/websocket"]
+# Provider clients default to the bundled reqwest transport: `OpenAI::from_env()`
+# and every other client constructor that names no transport.
+reqwest = ["dep:rig-reqwest"]
+# The bundled tungstenite websocket backend: a Responses WebSocket session
+# opened with `connect()` and no backend. Native-only.
+tungstenite = ["websocket", "dep:rig-tungstenite"]
+# TLS for the bundled transports. Enable exactly one; `rustls` is the default.
+rustls = ["rig-reqwest?/rustls", "rig-tungstenite?/rustls"]
+native-tls = ["rig-reqwest?/native-tls", "rig-tungstenite?/native-tls"]
+
+[[test]]
+name = "reqwest_no_ca_store"
+required-features = ["reqwest"]
+
+[[test]]
+name = "websocket_handshake_rejection"
+required-features = ["tungstenite"]
+
+[[test]]
+name = "websocket_off_runtime"
+required-features = ["tungstenite"]
+
+[[test]]
+name = "streaming_conformance_websocket"
+required-features = ["tungstenite"]

@@ -35,6 +35,7 @@
 //! |---|---|
 //! | all 24 retained cells | `crates/rig-cassette/fixtures/cassettes/mistral/tool_truncation_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{low,mid,complete}_{model,agent}.yaml` |
 
+use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -42,14 +43,14 @@ use std::sync::{
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, FinishReason};
-use rig::prelude::*;
+use rig::completion::{AssistantContent, FinishReason};
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::support::{BoundMistral, with_mistral_tool_truncation_cassette_result};
+use super::support::with_mistral_tool_truncation_cassette_result;
+use rig::completion::CompletionRequest;
 
 const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
 const PROMPT: &str = "The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.";
@@ -133,17 +134,12 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    CompletionRequest::new(PROMPT)
         .preamble(PREAMBLE.to_owned())
         .tool(tool_definition())
         .additional_params(json!({ "tool_choice": "any" }))
         .max_tokens(max_tokens(cell.budget))
-        .build()
 }
 
 fn calls(choice: &[AssistantContent]) -> Vec<Value> {
@@ -193,10 +189,10 @@ impl Tool for FileReport {
     }
 }
 
-async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
+async fn run_model(client: OpenAiModels, cell: Cell) -> Observation {
     let model = client.completion(model_name(cell.model));
     match cell.transport {
-        Transport::Blocking => match model.completion(request(&model, cell)).await {
+        Transport::Blocking => match model.call(request(cell)).await {
             Ok(response) => Observation {
                 finish_reason: response.finish_reason(),
                 arguments: calls(&response.choice),
@@ -208,7 +204,7 @@ async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.stream(request(&model, cell)).await {
+            let raw = match model.stream(request(cell)) {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {
@@ -239,10 +235,9 @@ async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
     }
 }
 
-async fn run_agent(client: BoundMistral, cell: Cell) -> Observation {
+async fn run_agent(client: OpenAiModels, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
-    let agent = client
-        .agent(model_name(cell.model))
+    let agent = rig::AgentBuilder::new(client.completion(model_name(cell.model)))
         .preamble(PREAMBLE)
         .tool(FileReport {
             invocations: Arc::clone(&invocations),
@@ -276,7 +271,7 @@ async fn run_agent(client: BoundMistral, cell: Cell) -> Observation {
     }
 }
 
-async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
+async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
         Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,

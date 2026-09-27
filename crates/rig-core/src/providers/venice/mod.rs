@@ -1,13 +1,12 @@
 //! Venice model identifiers, request parameters, and typed provider responses.
 //!
-//! Configure the provider with [`crate::providers::openai::wire::VENICE`].
+//! [`from_env`] and [`new`] build a client on the [`VENICE`](crate::providers::openai::wire::VENICE) dialect.
 //! [`VeniceParameters`] supplies request extensions; [`CompletionResponse`]
 //! decodes provider-specific fields from the normalized response's `raw` value.
 //!
 //! ```no_run
-//! use rig_core::providers::openai::wire::{OpenAI, VENICE};
 //! use rig_core::providers::venice;
-//! let wire = OpenAI::from_env_with(&VENICE)?.chat(venice::QWEN3_5_9B);
+//! let model = venice::from_env()?.chat(venice::QWEN3_5_9B);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -30,3 +29,5 @@ pub use embedding::*;
 #[cfg(feature = "image")]
 pub use image_generation::*;
 pub use transcription::*;
+
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::VENICE, "Venice");

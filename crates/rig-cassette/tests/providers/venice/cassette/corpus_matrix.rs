@@ -9,13 +9,13 @@
 //! the grid missing from this file reuses a recording the corpus already
 //! had, whose producer stays where it is.
 
-use rig::completion::CompletionModel;
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
+use rig_test_support::cassette_models::OpenAiModels;
 
-use super::super::support::{BoundVenice, with_venice_cassette};
+use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion(MISTRAL_SMALL_3_2_24B),
@@ -235,7 +235,9 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(
+    client: &OpenAiModels,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::Venice,
         model: client.completion(rig::providers::venice::QWEN3_235B_A22B_THINKING),

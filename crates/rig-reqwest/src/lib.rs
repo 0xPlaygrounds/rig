@@ -9,7 +9,13 @@
         clippy::unreachable
     )
 )]
-//! The bundled reqwest HTTP transport and default transport constructors for Rig.
+//! The bundled reqwest HTTP transport for Rig.
+//!
+//! [`ReqwestClient::default()`] is the process-wide client: built once on
+//! first use and shared by every clone, so every provider client made with
+//! it shares one connection pool. Construction never fails. When reqwest
+//! cannot build its client (a host with no CA store, say), every send
+//! reports that build failure in-band.
 //!
 //! Native requests and bodies enter the captured Tokio context on each poll,
 //! using a lazy fallback when no runtime is current. Callers retain ownership;
@@ -18,61 +24,99 @@
 //! finish. Missing drivers can panic; a stopped runtime causes I/O failure.
 //!
 //! ```no_run
-//! let transport = rig_reqwest::client::bundled()?;
-//! # Ok::<(), rig_core::client::ProviderClientError>(())
+//! use rig_reqwest::ReqwestClient;
+//!
+//! let shared = ReqwestClient::default();
+//! let custom = ReqwestClient::from(rig_reqwest::reqwest::Client::new());
+//! # let _ = (shared, custom);
 //! ```
 
 pub use reqwest;
 
 /// A reqwest client implementing [`HttpClientExt`].
 ///
-/// Use [`AsRef`] to borrow the client or [`into_inner`](Self::into_inner) to
-/// recover ownership.
-#[derive(Clone, Debug, Default)]
-pub struct ReqwestClient(reqwest::Client);
+/// [`Default`] is the process-wide client, built once and shared by every
+/// clone; `From<reqwest::Client>` wraps a configured client and keeps its
+/// connection pool.
+#[derive(Clone, Debug)]
+pub struct ReqwestClient(Built);
+
+/// The process-wide client, erased behind [`DynHttpClient`].
+pub fn shared() -> DynHttpClient {
+    DynHttpClient::new(ReqwestClient::default())
+}
+
+/// What building the client produced: the client, or why reqwest refused.
+#[derive(Clone, Debug)]
+enum Built {
+    Client(Arc<reqwest::Client>),
+    /// The shared client could not be built: every send reports this, so
+    /// the failure surfaces where the first request is made rather than
+    /// where the client was named.
+    Failed(Arc<reqwest::Error>),
+}
+
+impl Default for ReqwestClient {
+    /// The process-wide client, built on first use. It never panics: a
+    /// client reqwest cannot build reports the build error on every send.
+    fn default() -> Self {
+        fn build() -> ReqwestClient {
+            ReqwestClient(match reqwest::Client::builder().build() {
+                Ok(client) => Built::Client(Arc::new(client)),
+                Err(error) => Built::Failed(Arc::new(error)),
+            })
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            static SHARED: std::sync::LazyLock<ReqwestClient> = std::sync::LazyLock::new(build);
+            SHARED.clone()
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            thread_local! {
+                static SHARED: ReqwestClient = build();
+            }
+            SHARED.with(Clone::clone)
+        }
+    }
+}
 
 impl ReqwestClient {
-    /// Wrap a configured reqwest client, retaining its connection pool.
-    #[must_use]
-    pub fn new(client: reqwest::Client) -> Self {
-        Self(client)
+    /// The reqwest client, or `None` for the shared client when reqwest
+    /// could not build it.
+    pub fn inner(&self) -> Option<&reqwest::Client> {
+        match &self.0 {
+            Built::Client(client) => Some(client),
+            Built::Failed(_) => None,
+        }
     }
 
-    /// Take the inner client back.
-    #[must_use]
-    pub fn into_inner(self) -> reqwest::Client {
-        self.0
+    /// Whether `self` and `other` are clones of one client.
+    #[cfg(test)]
+    fn same(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (Built::Client(a), Built::Client(b)) => Arc::ptr_eq(a, b),
+            (Built::Failed(a), Built::Failed(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
     }
+}
 
-    /// Erase this transport behind [`BoxedHttpClient`], for hosts that hold
-    /// one transport for many providers without naming it in their types.
-    #[must_use]
-    pub fn boxed(self) -> BoxedHttpClient {
-        BoxedHttpClient::new(self)
-    }
+/// The error every send on an unbuilt client reports.
+fn unbuilt(error: &Arc<reqwest::Error>) -> Error {
+    Error::instance(TransportBuildError(Arc::clone(error)))
 }
 
 impl From<reqwest::Client> for ReqwestClient {
     fn from(client: reqwest::Client) -> Self {
-        Self(client)
-    }
-}
-
-impl From<ReqwestClient> for BoxedHttpClient {
-    fn from(client: ReqwestClient) -> Self {
-        client.boxed()
-    }
-}
-
-impl AsRef<reqwest::Client> for ReqwestClient {
-    fn as_ref(&self) -> &reqwest::Client {
-        &self.0
+        Self(Built::Client(Arc::new(client)))
     }
 }
 
 /// A configured middleware client implementing [`HttpClientExt`].
 ///
-/// Construct the inner client with `reqwest_middleware::ClientBuilder`.
+/// Build the inner client with `reqwest_middleware::ClientBuilder`, then wrap
+/// it with `From<ClientWithMiddleware>`.
 #[cfg(any(
     feature = "reqwest-middleware-rustls",
     feature = "reqwest-middleware-native-tls"
@@ -92,22 +136,10 @@ pub struct ReqwestMiddlewareClient(reqwest_middleware::ClientWithMiddleware);
     feature = "reqwest-middleware-native-tls"
 ))]
 impl ReqwestMiddlewareClient {
-    /// Wrap a built `ClientWithMiddleware`.
-    #[must_use]
-    pub fn new(client: reqwest_middleware::ClientWithMiddleware) -> Self {
-        Self(client)
-    }
-
     /// Take the inner client back.
     #[must_use]
     pub fn into_inner(self) -> reqwest_middleware::ClientWithMiddleware {
         self.0
-    }
-
-    /// Erase this transport behind [`BoxedHttpClient`].
-    #[must_use]
-    pub fn boxed(self) -> BoxedHttpClient {
-        BoxedHttpClient::new(self)
     }
 }
 
@@ -125,38 +157,51 @@ impl From<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient 
     feature = "reqwest-middleware-rustls",
     feature = "reqwest-middleware-native-tls"
 ))]
-impl From<ReqwestMiddlewareClient> for BoxedHttpClient {
-    fn from(client: ReqwestMiddlewareClient) -> Self {
-        client.boxed()
-    }
-}
-
-#[cfg(any(
-    feature = "reqwest-middleware-rustls",
-    feature = "reqwest-middleware-native-tls"
-))]
 impl AsRef<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient {
     fn as_ref(&self) -> &reqwest_middleware::ClientWithMiddleware {
         &self.0
     }
 }
 
-pub mod client;
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
 
-/// Bring the construction traits into scope.
-pub mod prelude {
-    pub use crate::client::DefaultTransport;
-}
-
 use bytes::Bytes;
-use rig_core::http_client::{
-    BoxedHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
+use futures::future::Either;
+use rig_http::http_client::{
+    DynHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
     StreamingResponse, multipart::PartContent,
 };
-use rig_core::wasm_compat::*;
+use rig_http::wasm_compat::*;
 use std::pin::Pin;
+use std::sync::Arc;
+
+/// A transport build failure that displays the source chain and retains the
+/// original reqwest error as its source.
+#[derive(Debug)]
+struct TransportBuildError(Arc<reqwest::Error>);
+
+impl std::fmt::Display for TransportBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "could not build the bundled reqwest transport: {}",
+            self.0
+        )?;
+        let mut source = std::error::Error::source(&*self.0);
+        while let Some(cause) = source {
+            write!(f, ": {cause}")?;
+            source = cause.source();
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for TransportBuildError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.0)
+    }
+}
 
 /// Wrap a reqwest transport error as [`Error::Instance`], retaining its source.
 ///
@@ -295,10 +340,10 @@ trait RequestBuilderLike: Sized + WasmCompatSend + 'static {
     fn send_request(self) -> impl Future<Output = Result<reqwest::Response>> + WasmCompatSend;
 }
 
-impl ReqwestLike for ReqwestClient {
+impl ReqwestLike for Arc<reqwest::Client> {
     type Builder = reqwest::RequestBuilder;
     fn request_builder(&self, method: http::Method, url: String) -> Self::Builder {
-        self.0.request(method, url)
+        self.request(method, url)
     }
 }
 
@@ -454,7 +499,47 @@ macro_rules! impl_http_client_ext_via {
     };
 }
 
-impl_http_client_ext_via!(ReqwestClient);
+impl HttpClientExt for ReqwestClient {
+    fn send<T, U>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes>,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        match &self.0 {
+            Built::Client(client) => Either::Left(send_via(client, req)),
+            Built::Failed(error) => Either::Right(std::future::ready(Err(unbuilt(error)))),
+        }
+    }
+
+    fn send_multipart<U>(
+        &self,
+        req: Request<MultipartForm>,
+    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        match &self.0 {
+            Built::Client(client) => Either::Left(send_multipart_via(client, req)),
+            Built::Failed(error) => Either::Right(std::future::ready(Err(unbuilt(error)))),
+        }
+    }
+
+    fn send_streaming<T>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        match &self.0 {
+            Built::Client(client) => Either::Left(send_streaming_via(client, req)),
+            Built::Failed(error) => Either::Right(std::future::ready(Err(unbuilt(error)))),
+        }
+    }
+}
 
 impl_http_client_ext_via!(
     #[cfg(any(

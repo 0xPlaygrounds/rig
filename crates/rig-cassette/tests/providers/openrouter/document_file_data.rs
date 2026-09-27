@@ -5,12 +5,13 @@
 //! no socket, so this stays a plain unit test.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::completion::CompletionRequestBuilder;
+use rig::completion::CompletionRequest;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
-use rig::providers::openai::wire::{OPENROUTER, OpenAI};
+use rig::providers::openai::wire::Chat;
+use rig::providers::openai::wire::{OPENROUTER, OpenAIConfig};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::Value;
 
@@ -47,12 +48,8 @@ fn document_question(page_number: u8) -> RigMessage {
 
 /// The `messages` array the `OPENROUTER` dialect sends for one rig message.
 fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
-    let encoded = OpenAI::with_key(&OPENROUTER, "k")
-        .chat(MODEL)
-        .encode(
-            CompletionRequestBuilder::unbound(message).build(),
-            Mode::Unary,
-        )
+    let encoded = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), MODEL)
+        .encode(CompletionRequest::new(message), Mode::Unary)
         .expect("a base64 PDF document should encode");
     let Body::Bytes(bytes) = encoded.requests[0].body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")

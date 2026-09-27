@@ -46,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -107,7 +107,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -433,6 +433,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'll call both tools simultaneously right now!"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 700,
@@ -750,6 +761,17 @@
           "delta": {
             "delta": "text",
             "text": "silver-orchard**."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**."
           }
         },
         {

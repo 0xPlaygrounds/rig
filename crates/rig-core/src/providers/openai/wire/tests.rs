@@ -54,15 +54,17 @@ pub(super) fn recorded_json(section: &str, relative: &str) -> serde_json::Value 
 /// be serializable — and serializing it must never write the credential.
 #[test]
 fn a_serialized_configuration_carries_no_key_material() {
-    a_config_reloads_without_its_credential(&OpenAI::new("sk-secret"), "sk-secret", |openai| {
-        &openai.api_key
-    });
+    a_config_reloads_without_its_credential(
+        &OpenAIConfig::new("sk-secret"),
+        "sk-secret",
+        |openai| &openai.api_key,
+    );
 
     // And neither does a wire built from it, which is what a host actually
     // stores — on either completion endpoint.
     for wire in [
-        serde_json::to_string(&OpenAI::new("sk-secret").chat("gpt-5.2")),
-        serde_json::to_string(&OpenAI::new("sk-secret").responses("gpt-5.2")),
+        serde_json::to_string(&OpenAIConfig::new("sk-secret").chat("gpt-5.2")),
+        serde_json::to_string(&OpenAIConfig::new("sk-secret").responses("gpt-5.2")),
     ] {
         let json = wire.expect("the wire serializes");
         assert!(!json.contains("sk-secret"), "the key leaked: {json}");
@@ -76,7 +78,7 @@ fn a_serialized_configuration_carries_no_key_material() {
 #[test]
 fn a_gateway_configuration_round_trips_without_its_credential() {
     let chatgpt = crate::providers::chatgpt::DIALECT;
-    let config = OpenAI::with_key(&chatgpt, "tok-secret").with_account_id("acct-1");
+    let config = OpenAIConfig::with_key(&chatgpt, "tok-secret").with_account_id("acct-1");
     assert_eq!(
         config.instructions.as_deref(),
         chatgpt.quirks.default_instructions
@@ -85,7 +87,7 @@ fn a_gateway_configuration_round_trips_without_its_credential() {
 
     let json = serde_json::to_string(&config).expect("serializes");
     assert!(!json.contains("tok-secret"), "the token leaked: {json}");
-    let restored: OpenAI = serde_json::from_str(&json).expect("deserializes");
+    let restored: OpenAIConfig = serde_json::from_str(&json).expect("deserializes");
     assert_eq!(restored.dialect, chatgpt);
     assert_eq!(restored.account_id.as_deref(), Some("acct-1"));
     assert_eq!(restored.instructions, config.instructions);
@@ -100,24 +102,33 @@ fn a_gateway_configuration_round_trips_without_its_credential() {
     assert_eq!(restored.provider.dialect, chatgpt);
 }
 
+/// The endpoint template a wire's encoded request declares.
+fn route_of(wire: &OpenAiWire) -> Option<&'static str> {
+    use crate::wire::Wire as _;
+    let request = crate::completion::CompletionRequest::new("hi");
+    wire.encode(request, crate::wire::Mode::Unary)
+        .expect("the request encodes")
+        .route
+}
+
 /// The default completion wire is the dialect's flagship route, and it is
 /// data like the two wires it chooses between: it stores without the
 /// credential and loads back onto the same route.
 #[test]
 fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
     use crate::wire::Wire as _;
-    let openai = OpenAI::new("sk-secret").completion("gpt-5.2");
-    let groq = OpenAI::with_key(&GROQ, "gsk-secret").completion("llama-3.3-70b-versatile");
+    let openai = OpenAIConfig::new("sk-secret").completion("gpt-5.2");
+    let groq = OpenAIConfig::with_key(&GROQ, "gsk-secret").completion("llama-3.3-70b-versatile");
     assert!(matches!(openai, OpenAiWire::Responses(_)), "{openai:?}");
     assert!(matches!(groq, OpenAiWire::Chat(_)), "{groq:?}");
-    assert_eq!(openai.route(), Some("/responses"));
-    assert_eq!(groq.route(), Some("/chat/completions"));
+    assert_eq!(route_of(&openai), Some("/responses"));
+    assert_eq!(route_of(&groq), Some("/chat/completions"));
 
     for (wire, secret) in [(openai, "sk-secret"), (groq, "gsk-secret")] {
         let json = serde_json::to_string(&wire).expect("the wire serializes");
         assert!(!json.contains(secret), "the key leaked: {json}");
         let restored: OpenAiWire = serde_json::from_str(&json).expect("the wire deserializes");
-        assert_eq!(restored.model(), wire.model());
+        assert_eq!(restored.id(), wire.id());
         assert_eq!(restored.provider().dialect, wire.provider().dialect);
         assert_eq!(
             std::mem::discriminant(&restored),
@@ -133,18 +144,20 @@ fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
 /// would not survive a round trip.
 #[test]
 fn a_configured_route_overrides_the_dialects_and_round_trips() {
-    use crate::wire::Wire as _;
-    let on_chat = OpenAI::new("sk-secret").with_route(Route::Chat);
-    let on_responses = OpenAI::with_key(&GROQ, "gsk-secret").with_route(Route::Responses);
+    let on_chat = OpenAIConfig::new("sk-secret").with_route(Route::Chat);
+    let on_responses = OpenAIConfig::with_key(&GROQ, "gsk-secret").with_route(Route::Responses);
     assert_eq!(on_chat.completion_route(), Route::Chat);
     assert_eq!(on_responses.completion_route(), Route::Responses);
     assert_eq!(
-        on_chat.completion("gpt-5.2").route(),
+        route_of(&on_chat.completion("gpt-5.2")),
         Some("/chat/completions")
     );
-    assert_eq!(on_responses.completion("llama").route(), Some("/responses"));
+    assert_eq!(
+        route_of(&on_responses.completion("llama")),
+        Some("/responses")
+    );
 
-    let restored: OpenAI =
+    let restored: OpenAIConfig =
         serde_json::from_str(&serde_json::to_string(&on_chat).expect("serializes"))
             .expect("deserializes");
     assert_eq!(restored.completion_route(), Route::Chat);
@@ -153,7 +166,7 @@ fn a_configured_route_overrides_the_dialects_and_round_trips() {
         "the configured route survives storage"
     );
     // Without an override, the stored form names no route at all.
-    let json = serde_json::to_string(&OpenAI::new("sk-secret")).expect("serializes");
+    let json = serde_json::to_string(&OpenAIConfig::new("sk-secret")).expect("serializes");
     assert!(!json.contains("route"), "{json}");
 }
 
@@ -168,8 +181,8 @@ fn a_dialect_round_trips_through_its_name() {
     );
 
     // Through a whole configuration, which is how it actually travels.
-    let config = OpenAI::new("k").with_dialect(&MISTRAL);
-    let restored: OpenAI =
+    let config = OpenAIConfig::new("k").with_dialect(&MISTRAL);
+    let restored: OpenAIConfig =
         serde_json::from_str(&serde_json::to_string(&config).expect("serializes"))
             .expect("deserializes");
     assert_eq!(restored.dialect, MISTRAL);
@@ -206,7 +219,7 @@ fn every_dialect_is_reachable_by_name() {
 /// parameter; every other dialect resolves a path against its base URL.
 #[test]
 fn azure_routes_the_model_through_the_url() {
-    let azure = OpenAI::with_key(&AZURE, "k")
+    let azure = OpenAIConfig::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
         .with_api_version("2024-10-21");
     assert_eq!(
@@ -214,7 +227,7 @@ fn azure_routes_the_model_through_the_url() {
         "https://example.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2024-10-21"
     );
 
-    let openai = OpenAI::new("k");
+    let openai = OpenAIConfig::new("k");
     assert_eq!(
         openai.uri("/chat/completions", None),
         "https://api.openai.com/v1/chat/completions"
@@ -225,7 +238,7 @@ fn azure_routes_the_model_through_the_url() {
 /// started without a key gets no `Authorization` header at all.
 #[test]
 fn the_dialect_decides_the_credential_header() {
-    fn headers(provider: &OpenAI) -> http::HeaderMap {
+    fn headers(provider: &OpenAIConfig) -> http::HeaderMap {
         provider
             .authenticate(http::Request::get("https://example.invalid/"))
             .body(())
@@ -234,19 +247,19 @@ fn the_dialect_decides_the_credential_header() {
             .clone()
     }
 
-    let openai = headers(&OpenAI::new("sk-test"));
+    let openai = headers(&OpenAIConfig::new("sk-test"));
     assert_eq!(openai["authorization"], "Bearer sk-test");
 
-    let azure = headers(&OpenAI::with_key(&AZURE, "azure-key"));
+    let azure = headers(&OpenAIConfig::with_key(&AZURE, "azure-key"));
     assert_eq!(azure["api-key"], "azure-key");
     assert!(!azure.contains_key("authorization"));
 
-    let keyless = headers(&OpenAI::with_key(&LLAMACPP, ""));
+    let keyless = headers(&OpenAIConfig::with_key(&LLAMACPP, ""));
     assert!(
         !keyless.contains_key("authorization"),
         "`llama-server` rejects a request carrying a key it was not started with"
     );
-    let keyed = headers(&OpenAI::with_key(&LLAMACPP, "local"));
+    let keyed = headers(&OpenAIConfig::with_key(&LLAMACPP, "local"));
     assert_eq!(keyed["authorization"], "Bearer local");
 }
 
@@ -257,14 +270,14 @@ fn a_dialect_without_a_verify_endpoint_refuses_to_invent_one() {
     use crate::wire::{Mode, Wire};
 
     assert!(
-        OpenAI::with_key(&PERPLEXITY, "k")
-            .verify_wire()
+        OpenAIConfig::with_key(&PERPLEXITY, "k")
+            .verify()
             .encode((), Mode::Unary)
             .is_err()
     );
     assert!(
-        OpenAI::new("k")
-            .verify_wire()
+        OpenAIConfig::new("k")
+            .verify()
             .encode((), Mode::Unary)
             .is_ok()
     );
@@ -275,7 +288,7 @@ fn a_dialect_without_a_verify_endpoint_refuses_to_invent_one() {
 /// as `Authorization: Bearer`.
 #[test]
 fn azure_accepts_either_credential_under_its_own_header() {
-    fn headers(provider: &OpenAI) -> http::HeaderMap {
+    fn headers(provider: &OpenAIConfig) -> http::HeaderMap {
         provider
             .authenticate(http::Request::get("https://example.invalid/"))
             .body(())
@@ -293,11 +306,11 @@ fn azure_accepts_either_credential_under_its_own_header() {
     assert_eq!(alternative.auth, Auth::Bearer);
     assert_eq!(AZURE.api_key_env, "AZURE_API_KEY");
 
-    let keyed = headers(&OpenAI::with_key(&AZURE, "account-key"));
+    let keyed = headers(&OpenAIConfig::with_key(&AZURE, "account-key"));
     assert_eq!(keyed["api-key"], "account-key");
     assert!(!keyed.contains_key("authorization"));
 
-    let token = headers(&OpenAI::with_alternate_key(&AZURE, "entra-token"));
+    let token = headers(&OpenAIConfig::with_alternate_key(&AZURE, "entra-token"));
     assert_eq!(token["authorization"], "Bearer entra-token");
     assert!(
         !token.contains_key("api-key"),
@@ -332,7 +345,7 @@ fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
 
     // `None` behaves as the router's own default, which is the only
     // sub-provider that serves the model-routed endpoints.
-    let default = OpenAI::with_key(&HUGGINGFACE, "hf");
+    let default = OpenAIConfig::with_key(&HUGGINGFACE, "hf");
     assert_eq!(
         default
             .modality_uri(
@@ -360,7 +373,7 @@ fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
 
     // A dialect that does not route keeps its fixed path.
     assert_eq!(
-        OpenAI::new("k")
+        OpenAIConfig::new("k")
             .modality_uri("transcription", "/audio/transcriptions", "whisper-1")
             .expect("openai serves transcription"),
         "https://api.openai.com/v1/audio/transcriptions"
@@ -379,15 +392,15 @@ fn only_a_dialect_with_a_rerank_path_reranks() {
         documents: vec!["a".to_owned(), "b".to_owned()],
     };
     assert!(
-        OpenAI::new("k")
-            .reranker("any")
+        OpenAIConfig::new("k")
+            .rerank("any")
             .encode(request(), Mode::Unary)
             .is_err(),
         "OpenAI has no reranking endpoint"
     );
     assert!(
-        OpenAI::with_key(&LLAMACPP, "")
-            .reranker("bge-reranker-v2-m3")
+        OpenAIConfig::with_key(&LLAMACPP, "")
+            .rerank("bge-reranker-v2-m3")
             .encode(request(), Mode::Unary)
             .is_ok()
     );
@@ -467,7 +480,7 @@ fn every_dialects_listing_and_verify_urls_match_the_recorded_paths() {
     ];
 
     for (dialect, models, verify) in expected {
-        let provider = OpenAI::with_key(dialect, "k");
+        let provider = OpenAIConfig::with_key(dialect, "k");
         assert_eq!(
             provider.uri(dialect.quirks.models_path, None),
             *models,
@@ -494,7 +507,7 @@ fn every_dialects_listing_and_verify_urls_match_the_recorded_paths() {
 /// base URL applies to everything else.
 #[test]
 fn llamacpp_serves_its_operational_routes_unversioned() {
-    let provider = OpenAI::with_key(&LLAMACPP, "");
+    let provider = OpenAIConfig::with_key(&LLAMACPP, "");
     for route in LLAMACPP.quirks.root_relative_routes {
         assert_eq!(
             provider.uri(route, None),

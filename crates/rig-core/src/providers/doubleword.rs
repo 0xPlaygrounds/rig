@@ -1,17 +1,16 @@
 //! Doubleword's model identifiers.
 //!
-//! Configure realtime chat and embedding requests with
-//! [`crate::providers::openai::wire::DOUBLEWORD`]. Async polling and batch
+//! [`from_env`] and [`new`] build a client on the [`DOUBLEWORD`](crate::providers::openai::wire::DOUBLEWORD) dialect for
+//! realtime chat and embeddings. Async polling and batch
 //! submission are not modeled by these operations.
 //!
 //! ```no_run
 //! use rig_core::providers::doubleword;
-//! use rig_core::providers::openai::wire::{DOUBLEWORD, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let doubleword = OpenAI::from_env_with(&DOUBLEWORD)?;
+//! let doubleword = doubleword::from_env()?;
 //! let chat = doubleword.chat(doubleword::QWEN3_5_9B);
-//! let embedding = doubleword.embeddings(doubleword::QWEN3_EMBEDDING_8B, None);
+//! let embedding = doubleword.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
 //! # let _ = (chat, embedding);
 //! # Ok(())
 //! # }
@@ -33,3 +32,5 @@ pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 /// Identifier for the Qwen3 Embedding 8B model. Supported output dimensions are
 /// defined by [`crate::providers::openai::wire::DOUBLEWORD`].
 pub const QWEN3_EMBEDDING_8B: &str = "Qwen/Qwen3-Embedding-8B";
+
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::DOUBLEWORD, "Doubleword");

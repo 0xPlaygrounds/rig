@@ -48,15 +48,17 @@
 //! RIG_PROVIDER_TEST_MODE=record cargo test -p rig --test gemini --all-features \
 //!     cached_content_matrix -- --test-threads=1
 //! ```
+//!
 
 use rig::error::ProviderError;
-use rig::prelude::*;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
-use rig::providers::gemini::{self, Gemini};
+use rig::providers::gemini::{self, GeminiConfig};
+use rig_test_support::cassette_models::GeminiModels;
+use rig_test_support::cassette_models::MapWire;
 use std::time::Duration;
 
 use super::super::support::{
-    BoundGemini, always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
+    always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
     assert_recorded_response_contains, with_gemini_prompt_caching_cassette,
 };
 
@@ -141,7 +143,7 @@ fn build(cell: Cell) -> NewCachedContent {
 ///
 /// The delete runs on the failure path too: a matrix this size would leak a lot
 /// of billed caches if one assertion took the test down with it.
-async fn run_cell(client: BoundGemini, cell: Cell) {
+async fn run_cell(client: GeminiModels, cell: Cell) {
     let created: CachedContent = client
         .cached_contents()
         .create(build(cell))
@@ -338,10 +340,10 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 
     use super::super::tools_support::CountingPing;
 
-    let client = Gemini::new("not-a-real-key")
-        .with_base_url("http://127.0.0.1:1")
-        .bound()
-        .expect("transport should build");
+    let client = GeminiModels::new(
+        GeminiConfig::new("not-a-real-key").with_base_url("http://127.0.0.1:1"),
+        rig::rig_reqwest::shared(),
+    );
 
     let agent = AgentBuilder::new(
         client
@@ -850,10 +852,13 @@ async fn list_follows_the_cursor_across_pages() {
                 // Page size 1 with three caches means three pages and a cursor
                 // followed twice — the loop runs for real instead of returning
                 // everything in one response as pageSize=1000 does.
-                let listed = caches
-                    .list_with_page_size(1)
-                    .await
-                    .expect("paginated list should succeed");
+                let listed = rig::Model::new(
+                    caches.clone().wire.with_page_size(1),
+                    caches.clone().transport,
+                )
+                .list()
+                .await
+                .expect("paginated list should succeed");
                 for name in &created {
                     assert!(
                         listed.iter().any(|entry| entry.name == *name),
@@ -988,8 +993,8 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     record_telemetry_content: false,
                 };
 
-                let mut stream = rig::completion::CompletionModel::stream(&model, request)
-                    .await
+                let mut stream = model
+                    .stream(request)
                     .expect("streamed cached-content request should start");
                 let mut usage = None;
                 while let Some(item) = stream.next().await {

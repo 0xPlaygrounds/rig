@@ -693,6 +693,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Harbor label: crimson-harbor; orchard error: the orchard lookup is broken."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 330,

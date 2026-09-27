@@ -4,7 +4,7 @@
 //! channels without needing a reactor. Each [`OwnedTask`] aborts on drop so
 //! cancelled connections release their transport resources.
 
-use rig_core::{http_client::Error, wasm_compat::WasmCompatSend};
+use rig_http::{http_client::Error, wasm_compat::WasmCompatSend};
 use std::future::Future;
 use std::sync::LazyLock;
 use tokio::runtime::{Handle, Runtime};

@@ -3,12 +3,11 @@
 //! carry it identically.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;
 
 use super::super::support::{with_openai_cassette, with_openai_completions_cassette};
+use rig::completion::CompletionRequest;
 
 fn assert_request_id(id: Option<&str>, context: &str) {
     assert!(
@@ -25,8 +24,7 @@ async fn responses_nonstreaming_carries_identity() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call("Reply with exactly: identity probe")
                 .await
                 .expect("completion should succeed");
 
@@ -54,9 +52,9 @@ async fn responses_streaming_carries_identity() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O);
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
-                .await
+                .stream(CompletionRequest::new(
+                    "Reply with exactly: stream identity probe",
+                ))
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -83,8 +81,7 @@ async fn chat_completions_nonstreaming_carries_identity() {
         |client| async move {
             let model = client.chat(openai::GPT_4O);
             let response = model
-                .completion_request("Reply with exactly: identity probe")
-                .send()
+                .call("Reply with exactly: identity probe")
                 .await
                 .expect("completion should succeed");
 
@@ -109,9 +106,9 @@ async fn chat_completions_streaming_carries_identity() {
         |client| async move {
             let model = client.chat(openai::GPT_4O);
             let mut stream = model
-                .completion_request("Reply with exactly: stream identity probe")
-                .stream()
-                .await
+                .stream(CompletionRequest::new(
+                    "Reply with exactly: stream identity probe",
+                ))
                 .expect("stream should open");
 
             let mut terminal = None;
@@ -141,9 +138,7 @@ async fn agent_tool_run_reports_per_attempt_identity() {
         "response_identity/agent_tool_run_reports_per_attempt_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                 .preamble(TOOLS_PREAMBLE)
                 .tool(Adder)
                 .add_hook(probe.clone())
@@ -183,9 +178,7 @@ async fn streamed_agent_run_reports_identity() {
         "response_identity/streamed_agent_run_reports_identity",
         |client| async move {
             let probe = IdentityProbe::default();
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                 .preamble("You are a terse assistant.")
                 .add_hook(probe.clone())
                 .build();
@@ -205,6 +198,33 @@ async fn streamed_agent_run_reports_identity() {
             let finishes = probe.response_identities();
             assert_eq!(finishes.len(), 1);
             assert_eq!(finishes[0], turns[0]);
+        },
+    )
+    .await;
+}
+
+/// A model built from the string `"openai:gpt-4o"` with a key and a client
+/// sends the same request the configured client does, and replays its
+/// recording: the OpenAI wire family, from data.
+#[tokio::test]
+async fn a_model_from_a_provider_reference_replays_the_recording() {
+    with_openai_cassette(
+        "response_identity/responses_nonstreaming_carries_identity",
+        |client| async move {
+            let reference = rig::providers::registry::ProviderRef::parse("openai:gpt-4o")
+                .expect("a registered reference");
+            let config = client.openai.config.clone();
+            let http = rig_test_support::rebased::Rebased::new(
+                "https://api.openai.com/v1",
+                config.base_url.clone(),
+                client.openai.http.clone(),
+            );
+            let model = reference.completion_model_with(config.api_key, http);
+            let response = model
+                .call("Reply with exactly: identity probe")
+                .await
+                .expect("the recorded completion replays");
+            assert!(!response.text().is_empty());
         },
     )
     .await;

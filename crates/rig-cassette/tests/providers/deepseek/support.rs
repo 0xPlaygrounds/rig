@@ -1,23 +1,14 @@
 use rig::message::AssistantContent;
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::driver::Bound;
-use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
-use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
+use rig::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-/// What a DeepSeek cassette wrapper hands its test body.
-///
-/// DeepSeek is the [`DEEPSEEK`] dialect of the shared OpenAI chat wire, so
-/// the provider is that configuration bound to the bundled transport; the
-/// alias keeps every wrapper's `FnOnce` bound readable.
-pub(super) type BoundDeepSeek = Bound<OpenAI, BoxedHttpClient>;
-
-async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDeepSeek) {
+async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "deepseek",
@@ -25,22 +16,25 @@ async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, 
         "https://api.deepseek.com",
     )
     .await;
-    let bound = OpenAI::with_key(&DEEPSEEK, cassette.api_key("DEEPSEEK_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("DeepSeek transport should build");
+    let bound = OpenAIConfig::with_key(&DEEPSEEK, cassette.api_key("DEEPSEEK_API_KEY"))
+        .with_base_url(cassette.base_url());
 
     (cassette, bound)
 }
 
 pub(super) async fn with_deepseek_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
     let (cassette, bound) = deepseek_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        bound,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     crate::cassettes::checkpoint_attempt(&cassette, "deepseek", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
@@ -56,11 +50,16 @@ async fn run_deepseek_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, bound) = deepseek_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        bound,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -69,7 +68,7 @@ pub(super) async fn with_deepseek_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     run_deepseek_cassette_result(spec, test_body).await
@@ -83,7 +82,7 @@ pub(super) async fn with_deepseek_cassette_bogus_key_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let cassette = ProviderCassette::start(
@@ -95,11 +94,14 @@ where
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let bound = OpenAI::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("DeepSeek transport should build");
-    let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
+    let bound = OpenAIConfig::with_key(&DEEPSEEK, "sk-invalid-edge-matrix-key")
+        .with_base_url(cassette.base_url());
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        bound,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -111,7 +113,7 @@ pub(super) async fn with_deepseek_truncation_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     run_deepseek_cassette_result(spec, test_body).await
@@ -123,7 +125,7 @@ pub(super) async fn with_deepseek_block_order_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     run_deepseek_cassette_result(spec, test_body).await
@@ -136,7 +138,7 @@ pub(super) async fn with_deepseek_wire_shape_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     run_deepseek_cassette_result(spec, test_body).await
@@ -152,7 +154,7 @@ pub(super) async fn with_deepseek_followup_hunt_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     run_deepseek_cassette_result(spec, test_body).await
@@ -164,7 +166,7 @@ pub(super) async fn with_deepseek_stream_logprobs_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     run_deepseek_cassette_result(spec, test_body).await
@@ -281,7 +283,7 @@ impl RawStreamOutcome {
 }
 
 pub(super) async fn collect_raw_stream_outcome(
-    mut stream: rig::streaming::StreamingCompletionResponse,
+    mut stream: rig::streaming::CompletionStream,
 ) -> RawStreamOutcome {
     use futures::StreamExt as _;
     use rig::streaming::{Delta, StreamEvent};
@@ -365,10 +367,15 @@ pub(super) async fn with_deepseek_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(BoundDeepSeek) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, bound) = deepseek_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        bound,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }

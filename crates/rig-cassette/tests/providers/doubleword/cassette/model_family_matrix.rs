@@ -22,20 +22,21 @@
 //! requested text. This matrix checks transport integrity, not instruction
 //! compliance; the finish-reason matrix tests termination semantics directly.
 
-use rig::completion::CompletionModel;
 use rig::providers::{doubleword, openai};
+use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize as _;
 
-use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
+use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_text_and_terminal;
+use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Reply with the single word: family-ok";
 const CAP: u64 = 96;
 
-async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
+async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
     let model = client.completion(model_name);
     let response = model
-        .completion(model.completion_request(PROMPT).max_tokens(CAP).build())
+        .call(CompletionRequest::new(PROMPT).max_tokens(CAP))
         .await
         .expect("the advertised model should answer a blocking request");
 
@@ -183,8 +184,7 @@ async fn default_qwen_family_streaming() {
         |client| async move {
             let model = client.completion(doubleword::QWEN3_5_9B);
             let stream = model
-                .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
-                .await
+                .stream(CompletionRequest::new(PROMPT).max_tokens(CAP))
                 .expect("the default model stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("the stream should end with a terminal record");

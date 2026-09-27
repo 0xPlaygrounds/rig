@@ -1,8 +1,9 @@
 # rig-candle
 
-`rig-candle` runs validated local checkpoints through Rig's `CompletionModel`
-and agent APIs. The crate receives byte buffers and performs no filesystem or
-network access itself.
+`rig-candle` runs validated local checkpoints through Rig's model and agent
+APIs: `CandleModel::completion()` is the model a loaded checkpoint serves. The
+crate receives byte buffers and performs no filesystem or network access
+itself.
 
 ```rust,no_run
 use rig_agent::agent::AgentBuilder;
@@ -16,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         weights: std::fs::read("./model/model.safetensors")?,
     })
     .await?;
-    let agent = AgentBuilder::new(model)
+    let agent = AgentBuilder::new(model.completion())
         .preamble("You are a concise assistant.")
         .build();
     println!("{}", agent.prompt("Explain ownership briefly.").await?.output);

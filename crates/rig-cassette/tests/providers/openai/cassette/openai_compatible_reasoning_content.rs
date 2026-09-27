@@ -2,7 +2,7 @@
 //!
 //! This covers providers that return non-streaming reasoning items with a
 //! `content` array containing `reasoning_text`, as llama.cpp does.
-
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::panic::AssertUnwindSafe;
@@ -15,9 +15,7 @@ use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use futures::FutureExt;
 use rig::completion::Message;
-use rig::driver::Bound;
-use rig::prelude::*;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -37,8 +35,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
         "openai_compatible/reasoning_content_tool_roundtrip",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent("llama-cpp-reasoning-model")
+            let agent = rig::AgentBuilder::new(client.completion("llama-cpp-reasoning-model"))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(json!({
@@ -63,7 +60,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
 
 async fn with_local_reasoning_content_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(Bound<OpenAI>) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let server = LocalReasoningContentServer::start().await;
@@ -74,12 +71,15 @@ where
         &server.base_url(),
     )
     .await;
-    let client = OpenAI::new("dummy-openai-compatible-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("OpenAI-compatible cassette client should build");
+    let client =
+        OpenAIConfig::new("dummy-openai-compatible-key").with_base_url(cassette.base_url());
 
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 

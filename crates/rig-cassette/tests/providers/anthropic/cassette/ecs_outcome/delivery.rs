@@ -3,10 +3,10 @@
 //! Events are never filtered: releasing the gate resumes the same stream.
 
 use futures::StreamExt;
-use rig::error::ProviderError;
 use rig::{
-    completion::{CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities},
-    streaming::{Delta, StreamEvent, StreamEvents, StreamingCompletionResponse},
+    effect::{EffectKind, HandlerDescriptor},
+    serve::{Dispatch, Reply, Serve},
+    streaming::{Delta, StreamEvent, StreamEvents},
 };
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -20,55 +20,46 @@ enum DeltaBoundary {
     Text,
 }
 
-/// A model whose stream pauses after the selected first delta.
-pub(in super::super) struct FirstDelta<M> {
-    model: M,
+/// A model handler whose stream pauses after the selected first delta.
+pub(in super::super) struct FirstDelta<S> {
+    inner: S,
     boundary: DeltaBoundary,
 }
 
-impl<M> FirstDelta<M> {
+impl<S> FirstDelta<S> {
     /// Pause after the first tool-name or tool-arguments delta.
-    pub(in super::super) fn tool(model: M) -> Self {
+    pub(in super::super) fn tool(inner: S) -> Self {
         Self {
-            model,
+            inner,
             boundary: DeltaBoundary::Tool,
         }
     }
 
     /// Pause after the first text delta.
-    pub(in super::super) fn text(model: M) -> Self {
+    pub(in super::super) fn text(inner: S) -> Self {
         Self {
-            model,
+            inner,
             boundary: DeltaBoundary::Text,
         }
     }
 }
 
-impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, ProviderError> {
-        self.model.completion(request).await
+impl<S: Serve + 'static> Serve for FirstDelta<S> {
+    type Family = S::Family;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.inner.descriptor()
     }
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        let stream = self.model.stream(request).await?;
-        let provider = stream.provider().to_owned();
-        let message_id = stream.message_id.clone();
-        let mut gated = StreamingCompletionResponse::from_events(
-            provider,
-            gate_events(Box::pin(stream), self.boundary, Arc::new(Semaphore::new(0))),
-        );
-        gated.message_id = message_id;
-        Ok(gated)
-    }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        self.model.capabilities()
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        match self.inner.serve(kind, dispatch).await {
+            Reply::Stream(stream) => Reply::Stream(gate_events(
+                stream,
+                self.boundary,
+                Arc::new(Semaphore::new(0)),
+            )),
+            outcome => outcome,
+        }
     }
 }
 

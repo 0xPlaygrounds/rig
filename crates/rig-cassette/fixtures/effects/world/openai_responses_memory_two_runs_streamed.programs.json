@@ -236,7 +236,7 @@
             "message_id": "msg_090e23a73445605d006ab2b35c45b887d0950ba097db0b19b1",
             "done": true,
             "usage_recorded": true,
-            "stream_validated": 6
+            "stream_validated": 7
           },
           "rig_ecs::agent::ToolAccess": {
             "executable": {},
@@ -368,6 +368,17 @@
                 "id": "wire:msg_090e23a73445605d006ab2b35c45b887d0950ba097db0b19b1",
                 "kind": {
                   "kind": "message"
+                }
+              },
+              {
+                "event": "block_end",
+                "id": "wire:msg_090e23a73445605d006ab2b35c45b887d0950ba097db0b19b1",
+                "end": {
+                  "close": "text"
+                },
+                "block": {
+                  "type": "text",
+                  "text": "ready"
                 }
               },
               {

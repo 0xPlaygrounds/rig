@@ -14,17 +14,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use serde_json::Value;
 
 use rig_agent::agent::AgentBuilder;
-use rig_agent::completion::CompletionModel;
 use rig_core::completion::CompletionResponse;
 use rig_core::driver::WireDriver;
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, ToolResult, ToolResultContent, UserContent};
-use rig_core::operation::{Completion, CompletionFold};
-use rig_core::providers::anthropic::wire::Anthropic;
-use rig_core::providers::gemini::Gemini;
+use rig_core::operation::Completion;
+use rig_core::providers::anthropic::wire::AnthropicConfig;
+use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
-use rig_core::providers::openai::wire::{DEEPSEEK, OpenAI};
-use rig_core::wire::{Fold, HasCompletion, Mode, Reply, Wire, WireFrame};
+use rig_core::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
+use rig_core::wire::{Fold, Mode, Operation, Reply, Wire, WireFrame};
 
 use super::{Dialect, response_tokens, string_values, unpaired_tool_calls};
 use crate::reasoning::{TOOL_SYSTEM_PROMPT, TOOL_USER_PROMPT, WeatherTool};
@@ -40,14 +39,15 @@ pub const FOLLOW_UP: &str = "Using the weather you already retrieved, should I p
 /// without I/O: the exact normalization a live call would perform.
 pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse, ProviderError>
 where
-    W: Wire<Op = Completion>,
+    W: Wire<Op = Completion, Frame = WireFrame>,
 {
     let mut driver = WireDriver::new(wire.decoder(Mode::Unary));
     driver.push(WireFrame::Text(body.to_owned()));
     driver.finish();
-    let mut fold = CompletionFold::default();
+    let request = rig_core::completion::CompletionRequest::new("");
+    let mut fold = <Completion as Operation>::fold(&request, wire, Mode::Unary);
     for item in driver.drain() {
-        fold.absorb(item?)?;
+        fold.absorb(&item?)?;
     }
     let raw = serde_json::from_str::<Value>(body)
         .map_err(|error| ProviderError::Response(error.to_string()))?;
@@ -111,18 +111,28 @@ impl Source {
         // Decoding needs no credential; the placeholder never reaches a socket.
         let decoded = match self {
             Self::Anthropic => decode_whole_reply(
-                &Anthropic::new("decode-only").completion("claude-sonnet-4-6"),
+                &AnthropicConfig::new("decode-only")
+                    .connect(rig_reqwest::shared())
+                    .completion("claude-sonnet-4-6")
+                    .wire,
                 &body,
             ),
-            Self::OpenAiResponses => {
-                decode_whole_reply(&OpenAI::new("decode-only").responses("gpt-5.2"), &body)
-            }
+            Self::OpenAiResponses => decode_whole_reply(
+                &OpenAIConfig::new("decode-only")
+                    .connect(rig_reqwest::shared())
+                    .responses("gpt-5.2")
+                    .wire,
+                &body,
+            ),
             Self::Gemini => decode_whole_reply(
-                &GenerateContent::new(Gemini::new("decode-only"), "gemini-2.5-flash"),
+                &GenerateContent::new(GeminiConfig::new("decode-only"), "gemini-2.5-flash"),
                 &body,
             ),
             Self::DeepSeek => decode_whole_reply(
-                &OpenAI::with_key(&DEEPSEEK, "decode-only").chat("deepseek-v4-flash"),
+                &OpenAIConfig::with_key(&DEEPSEEK, "decode-only")
+                    .connect(rig_reqwest::shared())
+                    .chat("deepseek-v4-flash")
+                    .wire,
                 &body,
             ),
         };
@@ -212,10 +222,10 @@ pub struct Observation {
 pub type Observed = Arc<std::sync::Mutex<Option<Observation>>>;
 
 /// Continue the ported history on the target wire.
-pub async fn run<M>(model: M, cell: Cell) -> Observation
-where
-    M: CompletionModel + 'static,
-{
+pub async fn run(
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    cell: Cell,
+) -> Observation {
     let calls = Arc::new(AtomicUsize::new(0));
     let mut builder = AgentBuilder::new(model)
         .preamble(TOOL_SYSTEM_PROMPT)

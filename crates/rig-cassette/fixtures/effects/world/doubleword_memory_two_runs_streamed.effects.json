@@ -21,7 +21,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -58,7 +58,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -238,6 +238,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "ready"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "ready"
           }
         },
@@ -487,6 +498,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "again"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "again"
           }
         },

@@ -194,7 +194,7 @@ const RECORDED_IMAGE_REPLY: &str = r#"{"candidates":[{"content":{"parts":[{"inli
 #[test]
 fn the_wire_decodes_a_recorded_image_reply() {
     let wire = Images::new(
-        crate::providers::gemini::Gemini::new("test-key"),
+        crate::providers::gemini::GeminiConfig::new("test-key"),
         GEMINI_2_5_FLASH_IMAGE,
     );
 

@@ -1,13 +1,13 @@
 //! xAI's model identifiers and its dialect.
 //!
-//! [`DIALECT`] configures the Responses endpoint and reads `XAI_API_KEY`.
+//! [`from_env`] and [`new`] build a client on [`DIALECT`], which uses the
+//! Responses endpoint and reads `XAI_API_KEY`.
 //!
 //! ```no_run
-//! use rig_core::providers::openai::OpenAI;
 //! use rig_core::providers::xai;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let grok = OpenAI::from_env_with(&xai::DIALECT)?.completion(xai::GROK_3);
+//! let grok = xai::from_env()?.completion(xai::GROK_3);
 //! # let _ = grok;
 //! # Ok(())
 //! # }
@@ -64,3 +64,5 @@ pub const DIALECT: Dialect = Dialect {
     },
     ..Dialect::gateway("xai", "https://api.x.ai", "XAI_API_KEY")
 };
+
+crate::client::macros::openai_vendor!(DIALECT, "xAI");

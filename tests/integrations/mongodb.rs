@@ -4,12 +4,11 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
-use rig::client::DefaultTransport as _;
 use rig::mongodb::{MongoDbVectorIndex, SearchParams};
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
-    driver::Bound,
+    driver::Model,
     embeddings::EmbeddingsBuilder,
     providers::openai,
     vector_store::{InsertDocuments, VectorStoreIndex},
@@ -140,10 +139,9 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST")
+    let openai_client = openai::OpenAIConfig::new("TEST")
         .with_base_url(server.base_url())
-        .bound()
-        .unwrap();
+        .client();
 
     // Select the embedding model and generate our embeddings
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
@@ -277,10 +275,9 @@ async fn insert_documents_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::wire::OpenAI::new("TEST")
+    let openai_client = openai::OpenAIConfig::new("TEST")
         .with_base_url(server.base_url())
-        .bound()
-        .unwrap();
+        .client();
 
     let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
@@ -470,7 +467,7 @@ async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Docum
     collection
 }
 
-async fn create_embeddings(model: Bound<openai::wire::Embeddings>) -> Vec<bson::Document> {
+async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<bson::Document> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

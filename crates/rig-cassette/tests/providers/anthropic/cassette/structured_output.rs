@@ -1,10 +1,8 @@
 //! Anthropic structured output smoke test.
 
 use rig::agent::OutputMode;
-use rig::driver::Bind;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-use rig::providers::anthropic::wire::Anthropic;
+use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::test_utils::RecordingHttpClient;
 use rig_agent::test_utils::decode_structured_output;
 
@@ -62,8 +60,7 @@ async fn structured_output_smoke() {
     with_anthropic_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = client
-                .agent(CLAUDE_SONNET_4_6)
+            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
                 .output_schema::<SmokeStructuredOutput>()
                 .build();
 
@@ -85,9 +82,8 @@ async fn structured_output_smoke() {
 #[tokio::test]
 async fn classic_tool_mode_maps_through_anthropic_messages() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
-    let client = Anthropic::new("test-key").bind(http.clone());
-    let agent = client
-        .agent(CLAUDE_SONNET_4_6)
+    let client = AnthropicConfig::new("test-key");
+    let agent = rig::AgentBuilder::new(client.connect(http.clone()).completion(CLAUDE_SONNET_4_6))
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Tool)
         .build();
@@ -114,9 +110,8 @@ async fn classic_tool_mode_maps_through_anthropic_messages() {
 async fn classic_prompted_mode_maps_through_anthropic_messages() {
     let output = smoke_structured_output_value();
     let http = RecordingHttpClient::new(text_response(&output.to_string()));
-    let client = Anthropic::new("test-key").bind(http.clone());
-    let agent = client
-        .agent(CLAUDE_SONNET_4_6)
+    let client = AnthropicConfig::new("test-key");
+    let agent = rig::AgentBuilder::new(client.connect(http.clone()).completion(CLAUDE_SONNET_4_6))
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Prompted)
         .build();

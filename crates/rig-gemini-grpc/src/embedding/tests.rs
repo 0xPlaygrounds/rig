@@ -1,4 +1,4 @@
-use super::*;
+use crate::completion::rpc_error;
 
 #[test]
 fn rpc_error_preserves_status_text_without_http_status() {

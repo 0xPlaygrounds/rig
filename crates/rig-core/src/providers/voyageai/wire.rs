@@ -2,12 +2,11 @@
 //!
 //! ```no_run
 //! use rig_core::providers::voyageai::{VoyageAi, VOYAGE_3_5};
-//! let wire = VoyageAi::from_env()?.embeddings(VOYAGE_3_5, None);
+//! let wire = VoyageAi::from_env()?.embedding(VOYAGE_3_5, None);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{HasEmbedding, HasRerank};
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
@@ -35,16 +34,18 @@ const MAX_DOCUMENTS: usize = 1024;
 /// The most documents `POST /rerank` orders in one call.
 const MAX_RERANK_DOCUMENTS: usize = 1000;
 
-/// The shared configuration of a Voyage AI provider.
+/// The settings of a Voyage AI provider: serializable, and the credential
+/// is never serialized. [`connect`](Self::connect) puts it on a transport as
+/// a [`VoyageAi`](super::VoyageAi) client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VoyageAi {
+pub struct VoyageAiConfig {
     /// The API key, sent as `Authorization: Bearer`.
     pub api_key: Secret,
     /// The API root, without a trailing slash.
     pub base_url: String,
 }
 
-impl VoyageAi {
+impl VoyageAiConfig {
     /// Voyage AI with default settings.
     pub fn new(api_key: impl Into<Secret>) -> Self {
         Self {
@@ -67,7 +68,7 @@ impl VoyageAi {
     /// Build an embedding wire reporting `ndims`, or the known model width,
     /// or zero if unknown. This does not send an output-dimension override;
     /// use [`Embeddings::with_output_dimension`] for that.
-    pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         let model = model.into();
         let ndims = ndims
             .or_else(|| model_dimensions_from_identifier(&model))
@@ -83,7 +84,7 @@ impl VoyageAi {
     }
 
     /// The rerank wire for `model`.
-    pub fn rerank(&self, model: impl Into<String>) -> Rerank {
+    pub(crate) fn rerank(&self, model: impl Into<String>) -> Rerank {
         Rerank {
             provider: self.clone(),
             model: model.into(),
@@ -112,7 +113,7 @@ impl VoyageAi {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Embeddings {
     /// The provider this wire speaks to.
-    pub provider: VoyageAi,
+    pub provider: VoyageAiConfig,
     /// The model to address.
     pub model: String,
     /// The width this wire reports, from the caller or the model's published
@@ -156,13 +157,15 @@ impl Embeddings {
 
 impl Wire for Embeddings {
     type Op = Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -246,7 +249,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Rerank {
     /// The provider this wire speaks to.
-    pub provider: VoyageAi,
+    pub provider: VoyageAiConfig,
     /// The model to address.
     pub model: String,
     /// Return only the `top_k` most relevant documents. `None` returns them
@@ -281,13 +284,15 @@ impl Rerank {
 
 impl Wire for Rerank {
     type Op = RerankOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = RerankDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -402,22 +407,6 @@ impl Decoder<RerankOp> for RerankDecoder {
             .with_model(reply.model)
             .with_usage(usage)
             .with_raw(raw)));
-    }
-}
-
-impl HasEmbedding for VoyageAi {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasRerank for VoyageAi {
-    type Wire = Rerank;
-
-    fn rerank(&self, model: impl Into<String>) -> Rerank {
-        VoyageAi::rerank(self, model)
     }
 }
 

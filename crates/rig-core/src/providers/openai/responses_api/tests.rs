@@ -1,5 +1,4 @@
 use super::*;
-use crate::completion::CompletionRequestBuilder;
 use crate::error::ProviderError;
 use crate::message;
 use crate::test_utils::MockCompletionModel;
@@ -36,7 +35,7 @@ pub(super) fn folded_choice(output: Vec<Output>) -> Vec<completion::AssistantCon
 
 /// The OpenAI Responses wire, for the request-shaping assertions.
 fn openai_wire(model: &str) -> wire::Responses {
-    crate::providers::openai::OpenAI::new("dummy-key").responses(model)
+    crate::providers::openai::OpenAIConfig::new("dummy-key").responses(model)
 }
 
 /// The Responses request a wire builds for a Rig request — the one
@@ -256,21 +255,21 @@ fn reasoning_input_items(items: &[InputItem]) -> Vec<serde_json::Value> {
 /// A wire-plausible id keeps round-tripping.
 #[tokio::test]
 async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
-    use crate::completion::CompletionModel as _;
     use crate::test_utils::MockStreamEvent;
     use futures::StreamExt as _;
 
     // The constant-id shape gemini/ollama/chat-compat streams leave in
     // history, via the mock model's streaming pipeline.
     let model = MockCompletionModel::from_stream_turns([vec![
-        MockStreamEvent::reasoning_delta("thinking hard"),
+        // A minted-key part, closed before the text as every adapter closes it.
+        MockStreamEvent::reasoning("thinking hard"),
         MockStreamEvent::text("answer"),
         MockStreamEvent::final_response_with_default_usage(),
     ]]);
-    let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
-    let mut stream = model.stream(request).await.expect("mock stream");
+    let request = crate::completion::CompletionRequest::new("hi");
+    let mut stream = model.stream(request).expect("mock stream");
     while stream.next().await.is_some() {}
-    let choice = stream.snapshot();
+    let choice = stream.folded().snapshot();
     // The provenance funnel: a minted stream identity never becomes the
     // durable `Reasoning::id`, so the replayed history carries no id at
     // all — there is nothing for a serializer gate to filter, and no
@@ -803,10 +802,9 @@ fn responses_request_drops_whitespace_only_preamble() {
 
 #[test]
 fn responses_request_lifts_system_messages_to_top_level_instructions_by_default() {
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello")
-        .preamble("System one".to_string())
-        .message(completion::Message::system("System two"))
-        .build();
+    let request = crate::completion::CompletionRequest::new("Hello")
+        .preamble("System one")
+        .message(completion::Message::system("System two"));
 
     let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
         .expect("request should convert");
@@ -866,11 +864,10 @@ fn responses_wire_can_lift_all_system_messages_via_placement() {
     let wire = openai_wire("gpt-4o-mini")
         .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "again")
-        .preamble("System one".to_string())
+    let request = crate::completion::CompletionRequest::new("again")
+        .preamble("System one")
         .message(completion::Message::user("hi"))
-        .message(completion::Message::system("Mid-conversation instruction"))
-        .build();
+        .message(completion::Message::system("Mid-conversation instruction"));
 
     let req = wire_request(&wire, request);
     let serialized = serde_json::to_value(&req).expect("request should serialize");
@@ -1166,12 +1163,11 @@ fn completion_response_round_trips_echoed_metadata() {
 
 #[test]
 fn responses_request_keeps_documents_after_lifted_system_messages() {
-    let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
+    let request = crate::completion::CompletionRequest::new("Prompt")
         .message(completion::Message::system("System prompt"))
         .message(completion::Message::user("Earlier user turn"))
         .message(completion::Message::assistant("Earlier assistant turn"))
-        .document(test_document("doc1", "Document text."))
-        .build();
+        .document(test_document("doc1", "Document text."));
 
     let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
         .expect("request conversion should succeed");
@@ -2266,17 +2262,15 @@ fn file_id_document_serializes_as_input_item_content() {
 
 #[tokio::test]
 async fn responses_completion_http_non_success_preserves_status_and_body() {
-    use crate::completion::CompletionModel;
-    use crate::driver::Bound;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
     let http_client = RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-    let model = Bound::new(openai_wire("gpt-4o-mini"), http_client);
-    let request = model.completion_request("hello").build();
+    let model = crate::driver::Model::new(openai_wire("gpt-4o-mini"), http_client);
+    let request = crate::completion::CompletionRequest::new("hello");
 
     let error = model
-        .completion(request)
+        .call(request)
         .await
         .expect_err("completion should fail with non-success status");
 
@@ -2575,7 +2569,7 @@ fn output_without_usable_type_tag_decodes_to_unknown() {
 // exclusive on OpenAI's Responses API (400 `mutually_exclusive_parameters`),
 // so URL-backed PDFs must not carry the hardcoded `filename`. These tests
 // cover the `TryFrom<crate::completion::Message> for Vec<InputItem>` path
-// that `CompletionModel::completion()` requests actually go through.
+// that `Model::call` requests actually go through.
 //
 // See <https://platform.openai.com/docs/guides/pdf-files> for the
 // `input_file` content part and its `file_url` / `file_data` / `file_id`
@@ -2709,8 +2703,7 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
 /// double that carries response headers.
 mod raw_capture {
     use super::*;
-    use crate::completion::CompletionModel as _;
-    use crate::driver::Bound;
+
     use crate::test_utils::RecordingHttpClient;
 
     const REQUEST_ID: &str = "req_unit_responses_0001";
@@ -2759,13 +2752,13 @@ mod raw_capture {
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
         let mut headers = http::HeaderMap::new();
         headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
-        let model = Bound::new(
+        let model = crate::driver::Model::new(
             openai_wire("gpt-4o-mini"),
             RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers),
         );
 
         let response = model
-            .completion(model.completion_request("hello").build())
+            .call(crate::completion::CompletionRequest::new("hello"))
             .await
             .expect("completion");
 
@@ -2856,4 +2849,48 @@ fn the_last_text_signature_is_the_items() {
     let item = openai_reasoning_from_core(&reasoning).expect("identified reasoning replays");
     assert_eq!(item.signature.as_deref(), Some("final"));
     assert_eq!(item.content, ["first", "second"]);
+}
+
+/// A tool round trip in plain values: the decoded call goes back as the
+/// assistant turn, and the result names the call by its own id. Both legs
+/// reach the wire under the call's `call_id` from the recorded body, not
+/// its item id.
+#[test]
+fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
+    let response: CompletionResponse =
+        serde_json::from_value(response_with_object_top_p()).expect("response should deserialize");
+    let choice = folded_choice(response.output);
+    let Some(completion::AssistantContent::ToolCall(call)) = choice.first() else {
+        panic!("the body's one output is a call: {choice:?}");
+    };
+    let result = completion::Message::tool_result(call.wire_call_id(), "get_weather", "sunny");
+    let history = vec![
+        completion::Message::user("Weather in Paris?"),
+        completion::Message::Assistant {
+            id: None,
+            content: choice.clone(),
+        },
+        result,
+    ];
+
+    let request = CompletionRequest::try_from((
+        "gpt-4o-mini".to_string(),
+        crate::completion::CompletionRequest::from(history),
+    ))
+    .expect("request conversion should succeed");
+    let input = serde_json::to_value(&request).expect("request should serialize")["input"].clone();
+
+    let call_ids: Vec<(&str, &str)> = input
+        .as_array()
+        .expect("input should be an array")
+        .iter()
+        .filter_map(|item| Some((item["type"].as_str()?, item["call_id"].as_str()?)))
+        .collect();
+    assert_eq!(
+        call_ids,
+        [
+            ("function_call", "call_1"),
+            ("function_call_output", "call_1")
+        ]
+    );
 }

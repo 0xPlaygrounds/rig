@@ -6,15 +6,20 @@
 //! driver is `tests/common/ecs_matrix/world.rs`). This file holds the
 //! scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
-use rig::completion::CompletionModel;
-use rig::driver::{Bound, Socket};
-use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
+use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(
+    client: &GeminiModels,
+) -> Wire<
+    rig::Model<
+        rig::providers::gemini::completion::GenerateContent,
+        rig::http_client::DynHttpClient,
+    >,
+> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
         model: client.completion(GEMINI_3_FLASH_PREVIEW),

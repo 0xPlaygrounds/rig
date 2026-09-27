@@ -6,13 +6,13 @@
 //! `tests/common/ecs_matrix/world.rs`). This file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
-use rig::completion::CompletionModel;
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
+use rig_test_support::cassette_models::OpenAiModels;
 
-use super::super::support::{BoundVenice, with_venice_cassette};
+use super::super::support::with_venice_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion(MISTRAL_SMALL_3_2_24B),
@@ -237,7 +237,9 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(
+    client: &OpenAiModels,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::Venice,
         model: client.completion(rig::providers::venice::QWEN3_235B_A22B_THINKING),

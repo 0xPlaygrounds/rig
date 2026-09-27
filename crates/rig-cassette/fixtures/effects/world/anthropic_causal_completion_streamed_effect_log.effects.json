@@ -67,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -635,6 +635,17 @@
           "id": "minted:block:0",
           "delta": {
             "delta": "text",
+            "text": "Paris"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "Paris"
           }
         },

@@ -1910,11 +1910,15 @@ pub(crate) fn write_restore_timing(
 /// The first strict replay validates the program and saves complete
 /// evidence before goldens exist (`LONG_LOOP_AUDIT_REPLAY`); it does not
 /// claim golden parity. Otherwise the ordinary producer golden callback.
-pub(crate) async fn run_agent<M: rig_agent::completion::CompletionModel + Clone + 'static>(
-    wire: &super::Wire<M>,
+pub(crate) async fn run_agent<W, T>(
+    wire: &super::Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),
-) -> EffectLog {
+) -> EffectLog
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let audit = std::env::var_os("LONG_LOOP_AUDIT_REPLAY").is_some();
     if audit {
         assert_eq!(
@@ -1949,11 +1953,15 @@ pub(crate) async fn run_agent<M: rig_agent::completion::CompletionModel + Clone 
 /// A scripted cell: the rig-agent runner over one sequenced transport and
 /// the world over another built the same way, each asserted against the
 /// cell over its own fresh tree.
-pub(crate) async fn run_scripted<M: rig_agent::completion::CompletionModel + Clone + 'static>(
+pub(crate) async fn run_scripted<W, T>(
     cell: &Cell,
-    wire: impl Fn() -> super::Wire<M>,
+    wire: impl Fn() -> super::Wire<rig::driver::Model<W, T>>,
     golden: impl FnOnce(&EffectLog),
-) -> EffectLog {
+) -> EffectLog
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let lease = lease(cell).await;
     super::agent::run_agent(&wire(), cell, |_| {}).await;
     drop(lease);

@@ -42,7 +42,7 @@
 //! `prompt_cache_miss_tokens` split reaches `Usage::cached_input_tokens` on
 //! both transports.
 
-use rig::completion::{CompletionModel, Document, Message};
+use rig::completion::{Document, Message};
 use rig::message::{DocumentMediaType, DocumentSourceKind, ToolChoice, UserContent};
 use rig::providers::deepseek;
 use serde_json::{Value, json};
@@ -51,6 +51,7 @@ use super::support::{
     collect_raw_stream_outcome, recorded_interactions, recorded_request,
     with_deepseek_cassette_bogus_key_result, with_deepseek_wire_shape_cassette_result,
 };
+use rig::completion::CompletionRequest;
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 const RED_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsAtx/ZMZxgi+hcEKLNO+FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywKqxUDxqh7TUQAAAABJRU5ErkJggg==";
@@ -117,12 +118,10 @@ async fn blocking_image_base64_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
-                    model
-                        .completion_request(multimodal_prompt(red_png()))
+                .call(
+                    CompletionRequest::new(multimodal_prompt(red_png()))
                         .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
+                        .max_tokens(16),
                 )
                 .await
                 .expect_err("DeepSeek rejects an image part rather than answering without it");
@@ -148,16 +147,14 @@ async fn blocking_image_url_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
-                    model
-                        .completion_request(multimodal_prompt(UserContent::image_url(
-                            "https://example.invalid/red.png",
-                            Some(rig::message::ImageMediaType::PNG),
-                            None,
-                        )))
-                        .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
+                .call(
+                    CompletionRequest::new(multimodal_prompt(UserContent::image_url(
+                        "https://example.invalid/red.png",
+                        Some(rig::message::ImageMediaType::PNG),
+                        None,
+                    )))
+                    .additional_params(non_thinking_params())
+                    .max_tokens(16),
                 )
                 .await
                 .expect_err("DeepSeek rejects an image part rather than answering without it");
@@ -182,18 +179,16 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
-                    model
-                        .completion_request(multimodal_prompt(UserContent::Document(
-                            rig::message::Document {
-                                data: DocumentSourceKind::Base64("JVBERi0xLjQK".to_owned()),
-                                media_type: Some(DocumentMediaType::PDF),
-                                additional_params: None,
-                            },
-                        )))
-                        .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
+                .call(
+                    CompletionRequest::new(multimodal_prompt(UserContent::Document(
+                        rig::message::Document {
+                            data: DocumentSourceKind::Base64("JVBERi0xLjQK".to_owned()),
+                            media_type: Some(DocumentMediaType::PDF),
+                            additional_params: None,
+                        },
+                    )))
+                    .additional_params(non_thinking_params())
+                    .max_tokens(16),
                 )
                 .await
                 .expect_err("DeepSeek rejects a file part rather than answering without it");
@@ -218,15 +213,13 @@ async fn blocking_audio_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
-                    model
-                        .completion_request(multimodal_prompt(UserContent::audio(
-                            "aGVsbG8=",
-                            Some(rig::message::AudioMediaType::MP3),
-                        )))
-                        .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
+                .call(
+                    CompletionRequest::new(multimodal_prompt(UserContent::audio(
+                        "aGVsbG8=",
+                        Some(rig::message::AudioMediaType::MP3),
+                    )))
+                    .additional_params(non_thinking_params())
+                    .max_tokens(16),
                 )
                 .await
                 .expect_err("DeepSeek rejects an audio part rather than answering without it");
@@ -251,20 +244,18 @@ async fn blocking_video_part_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
-                    model
-                        .completion_request(multimodal_prompt(UserContent::Video(
-                            rig::message::Video {
-                                data: DocumentSourceKind::Url(
-                                    "https://example.invalid/clip.mp4".to_owned(),
-                                ),
-                                media_type: Some(rig::message::VideoMediaType::MP4),
-                                additional_params: None,
-                            },
-                        )))
-                        .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
+                .call(
+                    CompletionRequest::new(multimodal_prompt(UserContent::Video(
+                        rig::message::Video {
+                            data: DocumentSourceKind::Url(
+                                "https://example.invalid/clip.mp4".to_owned(),
+                            ),
+                            media_type: Some(rig::message::VideoMediaType::MP4),
+                            additional_params: None,
+                        },
+                    )))
+                    .additional_params(non_thinking_params())
+                    .max_tokens(16),
                 )
                 .await
                 .expect_err("DeepSeek rejects a video part rather than answering without it");
@@ -293,14 +284,12 @@ async fn blocking_image_only_message_reaches_the_wire() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![red_png()],
-                        })
-                        .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
+                .call(
+                    CompletionRequest::new(Message::User {
+                        content: vec![red_png()],
+                    })
+                    .additional_params(non_thinking_params())
+                    .max_tokens(16),
                 )
                 .await
                 .expect_err("an image-only turn is rejected, not silently emptied");
@@ -329,16 +318,11 @@ async fn streaming_image_part_reaches_the_wire() {
             // as the stream's first item, depending on how the transport
             // reports a 400 on an event-stream request; both are the provider
             // rejecting the part rather than answering without it.
-            let rendered = match model
-                .stream(
-                    model
-                        .completion_request(multimodal_prompt(red_png()))
-                        .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
-                )
-                .await
-            {
+            let rendered = match model.stream(
+                CompletionRequest::new(multimodal_prompt(red_png()))
+                    .additional_params(non_thinking_params())
+                    .max_tokens(16),
+            ) {
                 Err(error) => error.to_string(),
                 Ok(stream) => {
                     let outcome = collect_raw_stream_outcome(stream).await;
@@ -378,17 +362,15 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![
-                                UserContent::text("Reply with exactly: parts-ok"),
-                                UserContent::text("Nothing else."),
-                            ],
-                        })
-                        .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
+                .call(
+                    CompletionRequest::new(Message::User {
+                        content: vec![
+                            UserContent::text("Reply with exactly: parts-ok"),
+                            UserContent::text("Nothing else."),
+                        ],
+                    })
+                    .additional_params(non_thinking_params())
+                    .max_tokens(16),
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -423,17 +405,15 @@ async fn blocking_text_document_still_flattens_to_a_string() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request("What is the code word? Answer with just the word.")
+                .call(
+                    CompletionRequest::new("What is the code word? Answer with just the word.")
                         .document(Document {
                             id: "code-word".to_owned(),
                             text: "The code word is periwinkle.".to_owned(),
                             additional_props: Default::default(),
                         })
                         .additional_params(non_thinking_params())
-                        .max_tokens(24)
-                        .build(),
+                        .max_tokens(24),
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -460,9 +440,8 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request("Now say: history-ok")
+                .call(
+                    CompletionRequest::new("Now say: history-ok")
                         .message(Message::Assistant {
                             id: None,
                             content: vec![
@@ -483,8 +462,7 @@ async fn blocking_assistant_and_tool_history_still_flattens() {
                         })
                         .tool(crate::support::zero_arg_tool_definition("ping"))
                         .additional_params(non_thinking_params())
-                        .max_tokens(16)
-                        .build(),
+                        .max_tokens(16),
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -530,7 +508,7 @@ async fn forced_tool_choice_under_thinking_is_rejected_upstream() {
             // with one is to hand-build the body.
             let url = format!(
                 "{}/chat/completions",
-                client.wire.base_url.trim_end_matches('/')
+                client.config.base_url.trim_end_matches('/')
             );
             let api_key =
                 std::env::var("DEEPSEEK_API_KEY").unwrap_or_else(|_| "[REDACTED]".to_owned());
@@ -601,14 +579,12 @@ async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request("ping")
+                .call(
+                    CompletionRequest::new("ping")
                         .tool(crate::support::zero_arg_tool_definition("ping"))
                         .tool_choice(ToolChoice::Required)
                         .additional_params(thinking_params())
-                        .max_tokens(64)
-                        .build(),
+                        .max_tokens(64),
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -636,14 +612,12 @@ async fn rig_keeps_a_forced_tool_choice_when_thinking_is_disabled() {
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request("ping")
+                .call(
+                    CompletionRequest::new("ping")
                         .tool(crate::support::zero_arg_tool_definition("ping"))
                         .tool_choice(ToolChoice::Required)
                         .additional_params(non_thinking_params())
-                        .max_tokens(32)
-                        .build(),
+                        .max_tokens(32),
                 )
                 .await?;
             assert!(!response.choice.is_empty());
@@ -673,13 +647,9 @@ async fn chat_completion_rejects_an_unknown_model_with_the_provider_body() {
         |client| async move {
             let model = client.completion("deepseek-v9-nonexistent");
             let error = model
-                .completion(
-                    model
-                        .completion_request("hi")
+                .call(CompletionRequest::new("hi")
                         .additional_params(non_thinking_params())
-                        .max_tokens(8)
-                        .build(),
-                )
+                        .max_tokens(8))
                 .await
                 .expect_err("an unknown model is rejected");
             let rendered = error.to_string();
@@ -701,13 +671,9 @@ async fn chat_completion_rejects_a_bogus_key_with_the_provider_body() {
         |client| async move {
             let model = client.completion(MODEL);
             let error = model
-                .completion(
-                    model
-                        .completion_request("hi")
+                .call(CompletionRequest::new("hi")
                         .additional_params(non_thinking_params())
-                        .max_tokens(8)
-                        .build(),
-                )
+                        .max_tokens(8))
                 .await
                 .expect_err("a rejected key is an error");
             let rendered = error.to_string().to_lowercase();
@@ -741,16 +707,14 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
         |client| async move {
             let model = client.completion(MODEL);
             let build = || {
-                model
-                    .completion_request(cache_probe_prompt())
+                CompletionRequest::new(cache_probe_prompt())
                     .additional_params(non_thinking_params())
                     .max_tokens(8)
-                    .build()
             };
 
             // DeepSeek's own split is on the reply document; only the hit
             // half has a normalized slot.
-            let first = model.completion(build()).await?;
+            let first = model.call(build()).await?;
             let first_usage = first.raw["usage"].clone();
             let hit = first_usage["prompt_cache_hit_tokens"]
                 .as_u64()
@@ -766,7 +730,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
                 "hit + miss accounts for the whole prompt: {first_usage}"
             );
 
-            let second = model.completion(build()).await?;
+            let second = model.call(build()).await?;
             let second_usage = second.raw["usage"].clone();
             let second_hit = second_usage["prompt_cache_hit_tokens"]
                 .as_u64()
@@ -800,15 +764,13 @@ async fn streaming_repeated_prompt_reports_the_cache_split() {
         |client| async move {
             let model = client.completion(MODEL);
             let build = || {
-                model
-                    .completion_request(cache_probe_prompt())
+                CompletionRequest::new(cache_probe_prompt())
                     .additional_params(non_thinking_params())
                     .max_tokens(8)
-                    .build()
             };
 
-            let _ = collect_raw_stream_outcome(model.stream(build()).await?).await;
-            let second = collect_raw_stream_outcome(model.stream(build()).await?).await;
+            let _ = collect_raw_stream_outcome(model.stream(build())?).await;
+            let second = collect_raw_stream_outcome(model.stream(build())?).await;
             let usage = second
                 .final_record
                 .as_ref()

@@ -1,21 +1,19 @@
 //! Ollama daemon configuration and chat, embedding, and model-listing wires.
 //!
 //! ```
-//! use rig_core::providers::ollama::Ollama;
-//! let chat = Ollama::new().chat("qwen3");
-//! assert_eq!(chat.model, "qwen3");
+//! use rig_core::providers::ollama::OllamaConfig;
+//! let ollama = OllamaConfig::new().client();
+//! assert_eq!(ollama.completion("qwen3").wire.model, "qwen3");
 //! ```
 
 use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
-use crate::driver::{HasEmbedding, HasModelListing};
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
-use crate::model::{Model, ModelList};
+use crate::model::{ModelInfo, ModelList};
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -34,9 +32,11 @@ const API_KEY_ENV: &str = "OLLAMA_API_KEY";
 /// The most texts `POST /api/embed` accepts in one call.
 const MAX_DOCUMENTS: usize = 1024;
 
-/// The shared configuration of an Ollama daemon.
+/// The settings of an Ollama daemon: serializable, and the credential is
+/// never serialized. [`connect`](Self::connect) puts it on a transport as an
+/// [`Ollama`](super::Ollama) client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Ollama {
+pub struct OllamaConfig {
     /// The daemon's address.
     pub base_url: String,
     /// Bearer token for a secured daemon. Empty by default; no credential is
@@ -44,13 +44,13 @@ pub struct Ollama {
     pub api_key: Secret,
 }
 
-impl Default for Ollama {
+impl Default for OllamaConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Ollama {
+impl OllamaConfig {
     /// The local daemon, unauthenticated.
     pub fn new() -> Self {
         Self {
@@ -86,7 +86,7 @@ impl Ollama {
     }
 
     /// The chat wire for `model`.
-    pub fn chat(&self, model: impl Into<String>) -> Chat {
+    pub(crate) fn completion(&self, model: impl Into<String>) -> Chat {
         Chat {
             provider: self.clone(),
             model: model.into(),
@@ -95,7 +95,7 @@ impl Ollama {
 
     /// Build an embedding wire reporting the supplied width, known model width,
     /// or zero if unknown. The width is metadata and is not sent to the daemon.
-    pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         let model = model.into();
         let ndims = ndims
             .or_else(|| model_dimensions_from_identifier(&model))
@@ -108,7 +108,7 @@ impl Ollama {
     }
 
     /// The model-listing wire.
-    pub fn models(&self) -> Models {
+    pub(crate) fn models(&self) -> Models {
         Models {
             provider: self.clone(),
         }
@@ -135,20 +135,22 @@ impl Ollama {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Chat {
     /// The daemon this wire speaks to.
-    pub provider: Ollama,
+    pub provider: OllamaConfig,
     /// The model to address.
     pub model: String,
 }
 
 impl Wire for Chat {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = OllamaDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -183,7 +185,7 @@ impl Wire for Chat {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Embeddings {
     /// The daemon this wire speaks to.
-    pub provider: Ollama,
+    pub provider: OllamaConfig,
     /// The model to address.
     pub model: String,
     /// The width this wire reports, from the caller or the model's published
@@ -193,13 +195,15 @@ pub struct Embeddings {
 
 impl Wire for Embeddings {
     type Op = Embedding;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
     fn name(&self) -> &str {
         PROVIDER_NAME
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -273,11 +277,13 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// The daemon this wire speaks to.
-    pub provider: Ollama,
+    pub provider: OllamaConfig,
 }
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -310,32 +316,8 @@ impl Decoder<ModelListing> for ModelsDecoder {
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<ModelListing>) {
         out.push(Ok(ModelList::new(
-            reply.models.into_iter().map(Model::from).collect(),
+            reply.models.into_iter().map(ModelInfo::from).collect(),
         )));
-    }
-}
-
-impl HasCompletion for Ollama {
-    type Wire = Chat;
-
-    fn completion(&self, model: impl Into<String>) -> Chat {
-        self.chat(model)
-    }
-}
-
-impl HasEmbedding for Ollama {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasModelListing for Ollama {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
     }
 }
 

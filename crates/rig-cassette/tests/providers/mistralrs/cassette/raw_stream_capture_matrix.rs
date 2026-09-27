@@ -32,7 +32,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test mistralrs mistralrs::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_stream_capture_matrix/`.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use serde::Deserialize;
 use serde_json::Value;
@@ -55,8 +55,8 @@ const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
 /// flattened extras.
 type MistralRsTerminal = StreamingCompletionResponse<ChatUsage>;
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(64).build()
+fn request() -> CompletionRequest {
+    CompletionRequest::new(PROMPT).max_tokens(64)
 }
 
 /// The premise every streaming cell rests on: the scenario recorded exactly
@@ -77,7 +77,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.chat(model_name()), request, sink)
+            capture_sole_terminal(client.chat(model_name()), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -128,7 +128,7 @@ async fn stream_raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
-            capture_sole_terminal(client.chat(model_name()), request, sink)
+            capture_sole_terminal(client.chat(model_name()), request(), sink)
                 .await
                 .expect("stream should start");
         },

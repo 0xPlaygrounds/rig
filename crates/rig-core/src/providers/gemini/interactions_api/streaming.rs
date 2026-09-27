@@ -11,8 +11,9 @@ use crate::providers::internal::chunk_lifecycle::ChunkParts;
 use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 
 use crate::operation::Completion;
-use crate::providers::internal::wire::{self, WireEvent};
+use crate::providers::internal::wire;
 use crate::streaming;
+use crate::wire::WireEvent;
 use crate::wire::WireFrame;
 use crate::wire::{Decoder, Output};
 use serde_json::{Map, Value};

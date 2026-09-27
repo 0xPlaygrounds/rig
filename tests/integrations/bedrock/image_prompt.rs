@@ -2,7 +2,6 @@
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::message::{ImageMediaType, Message, UserContent};
-use rig::prelude::*;
 use tokio::fs;
 
 use super::{

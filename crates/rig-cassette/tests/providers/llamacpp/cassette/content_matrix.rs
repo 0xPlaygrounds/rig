@@ -28,12 +28,10 @@
 //! the fixture holds the 200 beside the error, so a maintainer looking at
 //! this failure mode does not have to guess whether the server broke.
 
-use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolResult, ToolResultContent,
     UserContent,
 };
-use rig::prelude::*;
 use serde_json::{Value, json};
 
 use crate::cassettes::{
@@ -42,6 +40,7 @@ use crate::cassettes::{
 use crate::support::{assistant_text_response, collect_stream_final_response};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequest;
 
 const NO_THINK: &str = "/no_think ";
 
@@ -66,17 +65,15 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let error = model
-                .completion(
-                    model
-                        .completion_request("Reply with exactly this and nothing else: STOPWORD")
+                .call(
+                    CompletionRequest::new("Reply with exactly this and nothing else: STOPWORD")
                         .max_tokens(64)
                         // Qwen3 opens every turn with a `<think>` block, so
                         // this matches the model's very first emitted token
                         // and the whole answer is consumed before a character
                         // of it exists. A stop sequence matching the *answer*
                         // would still leave the reasoning preamble behind.
-                        .additional_params(json!({ "stop": ["<think>"] }))
-                        .build(),
+                        .additional_params(json!({ "stop": ["<think>"] })),
                 )
                 .await
                 .expect_err("rig rejects an empty converted choice");
@@ -138,9 +135,8 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request(format!("{NO_THINK}What was the second word I said?"))
+                .call(
+                    CompletionRequest::new(format!("{NO_THINK}What was the second word I said?"))
                         .messages(vec![
                             Message::User {
                                 content: vec![UserContent::text("First word: heliotrope.")],
@@ -149,8 +145,7 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
                                 content: vec![UserContent::text("Second word: quicksilver.")],
                             },
                         ])
-                        .max_tokens(256)
-                        .build(),
+                        .max_tokens(256),
                 )
                 .await
                 .expect("consecutive same-role messages are accepted");
@@ -185,8 +180,7 @@ async fn unicode_split_across_stream_chunks_reassembles() {
     with_llamacpp_cassette(
         "content_matrix/unicode_across_chunks",
         |client| async move {
-            let agent = client
-                .agent(CASSETTE_MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
                 .preamble(
                     "Reply with exactly the text you are asked for and nothing else. \
                  No explanation, no quotes.",
@@ -270,37 +264,32 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
         move |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request(Message::User {
-                            content: vec![UserContent::ToolResult(ToolResult {
-                                call: ToolCallId::new_or_minted("call_long", 0),
-                                provider: ProviderCallId::new("call_long"),
-                                name: "dump".to_string(),
-                                content: vec![ToolResultContent::text(long_output)],
-                            })],
-                        })
-                        .preamble(
-                            "The tool result ends with a code. Reply with only that code."
-                                .to_string(),
-                        )
-                        .messages(vec![
-                            Message::User {
-                                content: vec![UserContent::text(
-                                    "What code does the dump end with?",
-                                )],
-                            },
-                            Message::Assistant {
-                                id: None,
-                                content: vec![AssistantContent::tool_call(
-                                    "call_long",
-                                    "dump",
-                                    json!({}),
-                                )],
-                            },
-                        ])
-                        .max_tokens(256)
-                        .build(),
+                .call(
+                    CompletionRequest::new(Message::User {
+                        content: vec![UserContent::ToolResult(ToolResult {
+                            call: ToolCallId::new_or_minted("call_long", 0),
+                            provider: ProviderCallId::new("call_long"),
+                            name: "dump".to_string(),
+                            content: vec![ToolResultContent::text(long_output)],
+                        })],
+                    })
+                    .preamble(
+                        "The tool result ends with a code. Reply with only that code.".to_string(),
+                    )
+                    .messages(vec![
+                        Message::User {
+                            content: vec![UserContent::text("What code does the dump end with?")],
+                        },
+                        Message::Assistant {
+                            id: None,
+                            content: vec![AssistantContent::tool_call(
+                                "call_long",
+                                "dump",
+                                json!({}),
+                            )],
+                        },
+                    ])
+                    .max_tokens(256),
                 )
                 .await
                 .expect("a long tool result should be accepted");
@@ -333,9 +322,8 @@ async fn a_system_message_plus_history_keeps_its_order() {
     with_llamacpp_cassette("content_matrix/system_plus_history", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}And what was the first one?"))
+            .call(
+                CompletionRequest::new(format!("{NO_THINK}And what was the first one?"))
                     .preamble(
                         "You are a ledger. Answer with the requested codeword only.".to_string(),
                     )
@@ -351,8 +339,7 @@ async fn a_system_message_plus_history_keeps_its_order() {
                             content: vec![UserContent::text("Codeword two is quicksilver.")],
                         },
                     ])
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("a system message plus history should be accepted");

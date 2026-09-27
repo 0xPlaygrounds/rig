@@ -462,7 +462,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1360,6 +1360,17 @@
           "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "A solar eclipse occurs when the moon passes between the Earth and the Sun, blocking all or part of the Sun's light. This alignment causes the moon to cast a shadow on the Earth, which can be observed in specific areas. There are different types of solar eclipses: total, partial, and annular, depending on the alignment and distances involved. During a total eclipse, the day briefly becomes night in the path of totality, where the moon completely covers the Sun."
           }
         },
         {

@@ -244,7 +244,7 @@ pub enum CachedContentRequest {
 }
 
 /// One page of a `cachedContents` listing.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CachedContentPage {
     /// Entries in arrival order, concatenated across pages when folded.
@@ -259,7 +259,7 @@ pub struct CachedContentPage {
 
 /// A resource, listing page, or empty acknowledgement from `cachedContents`.
 /// Malformed bodies fail decoding rather than representing absent resources.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum CachedContentReply {
     /// `create`, `get` and `update_expiry`: the resource.
     Resource(CachedContent),
@@ -306,20 +306,19 @@ impl CachedContentReply {
 /// Gemini's `cachedContents` resource: the wire for
 /// [`operation::ContextCache`].
 ///
-/// Built by [`Gemini::cached_contents`](super::Gemini::cached_contents), or
-/// on a socket by `Bound<Gemini, H>::cached_contents()`; the calls are the
-/// inherent methods of `Bound<CachedContents, H>`.
+/// Built by [`Gemini::cached_contents`](super::Gemini::cached_contents); the
+/// calls are the inherent methods of a [`Model`](crate::Model) over it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CachedContents {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
     /// Requested entries per listing page. Defaults to Gemini's cap of 1,000.
     pub page_size: usize,
 }
 
 impl CachedContents {
     /// The wire over `provider`, listing a full page at a time.
-    pub fn new(provider: super::Gemini) -> Self {
+    pub fn new(provider: super::GeminiConfig) -> Self {
         Self {
             provider,
             page_size: MAX_PAGE_SIZE,
@@ -345,22 +344,17 @@ impl CachedContents {
     }
 }
 
-impl super::Gemini {
+impl super::GeminiConfig {
     /// Build a wire for Gemini's explicit context cache (`cachedContents`).
-    pub fn cached_contents(&self) -> CachedContents {
+    pub(crate) fn cached_contents(&self) -> CachedContents {
         CachedContents::new(self.clone())
-    }
-}
-
-impl<H: Clone> crate::driver::Bound<super::Gemini, H> {
-    /// The provider's `cached_contents` wire, on this socket.
-    pub fn cached_contents(&self) -> crate::driver::Bound<CachedContents, H> {
-        crate::driver::Bound::new(self.wire.cached_contents(), self.http.clone())
     }
 }
 
 impl Wire for CachedContents {
     type Op = operation::ContextCache;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = CachedContentsDecoder;
 
     fn name(&self) -> &str {
@@ -395,17 +389,20 @@ impl Wire for CachedContents {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(
+            self.list_request(Some(cursor))?,
+            Framing::Whole,
+        ))
+    }
+
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        CachedContentsDecoder {
-            wire: self.clone(),
-            next: None,
-        }
+        CachedContentsDecoder { next: None }
     }
 }
 
 /// Decodes one `cachedContents` reply and follows a listing's cursor.
 pub struct CachedContentsDecoder {
-    wire: CachedContents,
     /// The cursor the page just interpreted named, when it named a usable one.
     next: Option<String>,
 }
@@ -434,8 +431,8 @@ impl Decoder<operation::ContextCache> for CachedContentsDecoder {
         out.push(Ok(reply));
     }
 
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        self.wire.list_request(Some(self.next.as_deref()?)).ok()
+    fn cursor(&self) -> Option<String> {
+        self.next.clone()
     }
 }
 

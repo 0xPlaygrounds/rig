@@ -1,22 +1,15 @@
 //! Mira agent completion smoke test.
 
-use rig::prelude::*;
-use rig::providers::openai::{
-    self,
-    wire::{MIRA, OpenAI},
-};
+use rig::providers::mira;
+use rig::providers::openai;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
 #[ignore = "requires MIRA_API_KEY"]
 async fn completion_smoke() {
-    let provider = OpenAI::from_env_with(&MIRA)
-        .expect("config should build from env")
-        .bound()
-        .expect("transport should build");
-    let agent = provider
-        .agent(openai::GPT_4O)
+    let provider = mira::from_env().expect("config should build from env");
+    let agent = rig::AgentBuilder::new(provider.completion(openai::GPT_4O))
         .preamble(BASIC_PREAMBLE)
         .build();
 

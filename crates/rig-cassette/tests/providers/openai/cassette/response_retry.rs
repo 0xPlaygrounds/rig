@@ -3,7 +3,6 @@
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
 use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
@@ -45,9 +44,7 @@ async fn rejected_response_is_retried_with_feedback() {
     with_openai_cassette(
         "response_retry/rejected_response_is_retried_with_feedback",
         |client| async move {
-            let response = client
-                .openai
-                .agent(openai::GPT_4O_MINI)
+            let response = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O_MINI))
                 .preamble(
                     "Follow this protocol exactly. For the initial request, reply exactly \
                  `RETRY: incomplete draft`. If the latest user message asks you to \

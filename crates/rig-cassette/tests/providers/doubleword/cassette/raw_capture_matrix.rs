@@ -38,7 +38,7 @@
 //! token budget leaves room for its hidden thinking before the one-word
 //! answer.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::openai;
 use serde::Deserialize as _;
 use serde_json::json;
@@ -52,8 +52,8 @@ use crate::support::Observed;
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(256).build()
+fn request() -> CompletionRequest {
+    CompletionRequest::new(PROMPT).max_tokens(256)
 }
 
 /// The backend usage fields Doubleword sends that no type here models.
@@ -72,7 +72,7 @@ async fn raw_round_trips_openai_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
     let sink = Observed::default();
     with_doubleword_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
-        capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone())
+        capture_completion(client.completion(DEFAULT_MODEL), request(), sink.clone())
     })
     .await
     .expect("raw_round_trips_openai_type should replay from its cassette");
@@ -109,7 +109,7 @@ async fn raw_exposes_object() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object";
     let sink = Observed::default();
     with_doubleword_cassette_result("raw_capture_matrix/raw_exposes_object", |client| {
-        capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone())
+        capture_completion(client.completion(DEFAULT_MODEL), request(), sink.clone())
     })
     .await
     .expect("raw_exposes_object should replay from its cassette");
@@ -155,7 +155,7 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_doubleword_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| capture_completion(client.completion(DEFAULT_MODEL), request(), sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");

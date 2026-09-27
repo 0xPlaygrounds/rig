@@ -5,12 +5,10 @@
 //! cassettes are read-only here.
 
 use super::*;
-use crate::completion::{CompletionModel, CompletionRequest};
-use crate::driver::Bound;
-use crate::embeddings::EmbeddingModel as _;
+use crate::completion::CompletionRequest;
 use crate::message::Message;
-use crate::model::ModelLister as _;
 use crate::test_utils::RecordingHttpClient;
+use crate::wire::Wire;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use bytes::Bytes;
 
@@ -44,8 +42,8 @@ fn cassette_body(path: &str, section: &str) -> String {
 
 /// A Copilot addressed with a token that carries no `proxy-ep=` segment, so
 /// the base URL is the default one.
-fn copilot() -> Copilot {
-    Copilot::new("tid=copilot-session-token")
+fn copilot() -> CopilotConfig {
+    CopilotConfig::new("tid=copilot-session-token")
 }
 
 fn prompt() -> CompletionRequest {
@@ -72,7 +70,9 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<String> {
 }
 
 /// The request one `encode` produced, for the envelope assertions.
-fn encoded(wire: &impl Wire<Op = Completion>) -> http::Request<Body> {
+fn encoded(
+    wire: &impl Wire<Op = Completion, Payload = crate::wire::Encoded>,
+) -> http::Request<Body> {
     let mut encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
@@ -85,7 +85,7 @@ fn dedicated_and_catalog_construction_encode_identical_requests() {
     use crate::providers::registry::{ProviderConfig, ProviderId};
     let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
-        let dedicated = Copilot::new(token).completion(model);
+        let dedicated = CopilotConfig::new(token).completion(model);
         let ProviderConfig::OpenAi(preset) = ProviderId::resolve("copilot").unwrap().config(token)
         else {
             panic!("Copilot is an OpenAI-family preset")
@@ -126,7 +126,7 @@ fn explicit_routes_keep_the_session_envelope_and_configuration() {
     use crate::providers::openai::Route;
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         for route in [Route::Chat, Route::Responses] {
-            let provider = OpenAI::with_key(&DIALECT, "session-token")
+            let provider = OpenAIConfig::with_key(&DIALECT, "session-token")
                 .with_base_url("https://gateway.invalid/copilot")
                 .with_route(route)
                 .with_system_instructions_placement(SystemInstructionsPlacement::Instructions);
@@ -145,7 +145,7 @@ fn explicit_routes_keep_the_session_envelope_and_configuration() {
 
 #[test]
 fn a_manual_copilot_wrapper_keeps_its_envelope_after_deserialization() {
-    let provider = OpenAI::new("manual-token");
+    let provider = OpenAIConfig::new("manual-token");
     for shared in [
         provider.chat("model").into(),
         provider.responses("model").into(),
@@ -233,7 +233,7 @@ fn both_routes_carry_copilots_editor_envelope() {
             request.uri().path(),
             path,
             "{:?} posts to {path}",
-            wire.model()
+            wire.id()
         );
         let headers = request.headers();
         assert_eq!(
@@ -297,7 +297,7 @@ async fn registry_request(
     cassette: &str,
 ) -> crate::test_utils::CapturedHttpRequest {
     use crate::effect::{EffectId, EffectKind};
-    use crate::http_client::BoxedHttpClient;
+    use crate::http_client::DynHttpClient;
     use crate::serve::Dispatch;
 
     let transport = RecordingHttpClient::new(Bytes::from(cassette_body(cassette, "then")));
@@ -306,7 +306,7 @@ async fn registry_request(
         .completion_handler(
             "copilot",
             reference.model(),
-            BoxedHttpClient::new(transport.clone()),
+            DynHttpClient::new(transport.clone()),
         );
     let mut request = prompt();
     request.chat_history.insert(0, Message::system("be brief"));
@@ -382,7 +382,7 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
 
     let reference = ProviderRef::configured(
         ProviderConfig::OpenAi(
-            OpenAI::with_key(&DIALECT, "")
+            OpenAIConfig::with_key(&DIALECT, "")
                 .with_base_url("https://gateway.invalid/copilot")
                 .with_route(Route::Responses)
                 .with_system_instructions_placement(SystemInstructionsPlacement::Instructions),
@@ -408,11 +408,11 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
 #[tokio::test]
 async fn the_chat_route_folds_its_recorded_turn() {
     let body = cassette_body("agent/completion_smoke.yaml", "then");
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         copilot().completion(super::super::GPT_4O),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .call(prompt())
     .await
     .expect("the recorded chat body folds");
 
@@ -431,11 +431,11 @@ async fn the_chat_route_folds_its_recorded_turn() {
 #[tokio::test]
 async fn the_responses_route_folds_its_recorded_turn() {
     let body = cassette_body("routing/codex_models_route_through_responses.yaml", "then");
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         copilot().completion(super::super::GPT_5_3_CODEX),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .call(prompt())
     .await
     .expect("the recorded responses body folds");
 
@@ -462,11 +462,11 @@ async fn a_contentless_reasoning_item_survives_the_fold() {
         "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml",
         "then",
     );
-    let response = Bound::new(
+    let response = crate::driver::Model::new(
         copilot().completion(super::super::GPT_5_3_CODEX),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .completion(prompt())
+    .call(prompt())
     .await
     .expect("the recorded responses body folds");
 
@@ -494,15 +494,19 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
         "Streaming responses arrive incrementally instead of all at once.".to_owned(),
         "Embeddings turn text into numeric vectors for similarity search.".to_owned(),
     ];
-    let bound = Bound::new(
-        copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None),
+    let bound = crate::driver::Model::new(
+        copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None),
         RecordingHttpClient::new(Bytes::from(body)),
     );
-    assert_eq!(bound.ndims(), 1536, "the width defaults from the model");
-    assert_eq!(bound.max_documents(), 1024);
+    assert_eq!(
+        bound.capabilities().ndims,
+        1536,
+        "the width defaults from the model"
+    );
+    assert_eq!(bound.capabilities().max_documents, 1024);
 
     let response = bound
-        .embed_texts_response(documents.clone())
+        .call(documents.clone())
         .await
         .expect("the recorded embeddings body folds");
     assert_eq!(response.provider, PROVIDER_NAME);
@@ -516,7 +520,7 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
 /// `"dimensions":1536` for a caller who named none.
 #[test]
 fn the_embeddings_request_sends_the_resolved_width() {
-    let wire = copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None);
+    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
     let mut encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
@@ -528,7 +532,7 @@ fn the_embeddings_request_sends_the_resolved_width() {
     assert_eq!(body["model"], serde_json::json!("text-embedding-3-small"));
 
     // The legacy Ada model accepts no width at all.
-    let ada = copilot().embeddings(super::super::TEXT_EMBEDDING_ADA_002, None);
+    let ada = copilot().embedding(super::super::TEXT_EMBEDDING_ADA_002, None);
     let mut encoded = ada
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
@@ -545,7 +549,7 @@ fn the_embeddings_request_sends_the_resolved_width() {
 /// answers a request without the envelope, regardless of the body.
 #[test]
 fn the_embeddings_route_carries_copilots_editor_envelope() {
-    let wire = copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None);
+    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
     let mut encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
@@ -587,11 +591,11 @@ fn the_embeddings_route_carries_copilots_editor_envelope() {
 #[tokio::test]
 async fn the_model_listing_folds_its_recorded_catalogue() {
     let body = cassette_body("models/list_models_smoke.yaml", "then");
-    let models = Bound::new(
+    let models = crate::driver::Model::new(
         copilot().models(),
         RecordingHttpClient::new(Bytes::from(body)),
     )
-    .list_all()
+    .call(())
     .await
     .expect("the recorded catalogue folds");
 
@@ -610,7 +614,7 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
 #[test]
 fn a_serialized_config_carries_no_credential() {
     a_config_reloads_without_its_credential(
-        &Copilot::new("tid=super-secret-session-token"),
+        &CopilotConfig::new("tid=super-secret-session-token"),
         "super-secret",
         |copilot| &copilot.api_key,
     );
@@ -618,7 +622,7 @@ fn a_serialized_config_carries_no_credential() {
     // And the wires built from it, whichever route.
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
         let json = serde_json::to_string(
-            &Copilot::new("tid=super-secret-session-token").completion(model),
+            &CopilotConfig::new("tid=super-secret-session-token").completion(model),
         )
         .expect("the wire serializes");
         assert!(!json.contains("super-secret"), "{model}: {json}");
@@ -631,22 +635,22 @@ fn a_serialized_config_carries_no_credential() {
 #[test]
 fn the_base_url_comes_from_the_token_unless_overridden() {
     assert_eq!(
-        Copilot::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;").base_url,
+        CopilotConfig::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;").base_url,
         "https://api.individual.githubcopilot.com"
     );
     assert_eq!(
-        Copilot::new("tid=abc").base_url,
+        CopilotConfig::new("tid=abc").base_url,
         "https://api.githubcopilot.com"
     );
     assert_eq!(
-        Copilot::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;")
+        CopilotConfig::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;")
             .with_base_url("https://gateway.invalid")
             .base_url,
         "https://gateway.invalid"
     );
     // A non-GitHub host in a credential is not a routing instruction.
     assert_eq!(
-        Copilot::new("tid=abc;proxy-ep=evil.invalid;").base_url,
+        CopilotConfig::new("tid=abc;proxy-ep=evil.invalid;").base_url,
         "https://api.githubcopilot.com"
     );
 }
@@ -667,7 +671,7 @@ fn wrapper_owns_the_envelope_even_when_the_shared_dialect_has_a_hook() {
         },
         ..Dialect::gateway("custom", "https://explicit.invalid", "UNUSED_KEY")
     };
-    let provider = OpenAI::with_key(&dialect, "manual-token");
+    let provider = OpenAIConfig::with_key(&dialect, "manual-token");
     for shared in [
         provider.chat("model").into(),
         provider.responses("model").into(),
@@ -737,7 +741,7 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
             for route in [Route::Chat, Route::Responses] {
                 let reference = ProviderRef::configured(
                     ProviderConfig::OpenAi(
-                        OpenAI::with_key(&DIALECT, keys[0])
+                        OpenAIConfig::with_key(&DIALECT, keys[0])
                             .with_base_url(base)
                             .with_route(route),
                     ),
@@ -763,7 +767,7 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
                     assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
                     assert_same_requests(
                         encoded(&CopilotWire {
-                            wire: Copilot::new(key)
+                            wire: CopilotConfig::new(key)
                                 .with_base_url(base)
                                 .openai()
                                 .with_route(route)
@@ -786,7 +790,7 @@ fn configured_outbound_endpoints_remain_explicit_after_rotation() {
             };
             let request = encoded(&provider.completion(model));
             assert_eq!(request.uri().host(), Some(host));
-            assert_same_requests(encoded(&Copilot::new(key).completion(model)), request);
+            assert_same_requests(encoded(&CopilotConfig::new(key).completion(model)), request);
         }
     }
 }

@@ -8,12 +8,13 @@
 use crate::error::ProviderError;
 use crate::operation::AdapterOutput;
 use crate::operation::Completion;
-use crate::providers::internal::wire::{self, WireEvent};
+use crate::providers::internal::wire;
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
 use crate::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
 use crate::wire::Decoder;
+use crate::wire::WireEvent;
 use crate::wire::WireFrame;
 use serde::{Deserialize, Serialize};
 
@@ -91,7 +92,7 @@ impl StreamingCompletionResponse {
 /// baked-in `"openai"` would mislabel them.
 ///
 /// The finish reason is left exactly as the provider reported it;
-/// [`crate::streaming::StreamingCompletionResponse`] applies the tool-call
+/// [`crate::streaming::CompletionStream`] applies the tool-call
 /// reconciliation afterwards, using the calls the stream actually emitted.
 ///
 /// The native record is serialized onto [`StreamFinal::raw`]; a

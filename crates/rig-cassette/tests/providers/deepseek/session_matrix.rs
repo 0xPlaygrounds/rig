@@ -1,8 +1,8 @@
 //! Reasoning across a session boundary on DeepSeek: see
 //! `rig_test_support::history_survival::sessions`.
 
-use super::support::{BoundDeepSeek, with_deepseek_cassette};
-use rig::completion::CompletionModel;
+use super::support::with_deepseek_cassette;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -18,11 +18,11 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: BoundDeepSeek,
+    client: OpenAiModels,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
 ) {
     (
         client.completion("deepseek-v4-flash"),

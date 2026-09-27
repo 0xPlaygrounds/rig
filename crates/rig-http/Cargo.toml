@@ -1,0 +1,44 @@
+[package]
+name = "rig-http"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "Rig's transport contracts: the HTTP client and websocket traits a transport implements, and the wasm-compatible bounds they are written with."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+futures = { workspace = true }
+futures-timer = { workspace = true }
+http = { workspace = true }
+mime = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+# futures-timer's default backend uses a background timer thread, which cannot
+# drive timers on wasm. Its wasm-bindgen (setTimeout) backend is selected
+# whenever the target is browser wasm, so `wasm_compat::timeout` fires instead
+# of hanging. Scoped to `target_os = "unknown"` because that backend needs a JS
+# host and would be wrong on WASI.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+[features]
+# The transport-agnostic websocket contract (`ws_client`). Adds no dependency.
+websocket = []
+# HTTP client doubles (`test_utils`) for tests of code that sends through an
+# `HttpClientExt`.
+test-utils = []

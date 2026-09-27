@@ -1,9 +1,7 @@
 //! AWS Bedrock raw streaming cassette coverage ported from OpenAI completions tests.
 
 use rig::bedrock;
-use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -13,6 +11,7 @@ use crate::support::{
     assert_raw_stream_tool_call_precedes_text, assert_stream_contains_zero_arg_tool_call_named,
     collect_raw_stream_observation, zero_arg_tool_definition,
 };
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
@@ -20,12 +19,10 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         "raw_streaming/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
-            let stream = model.stream(request).await.expect("stream should start");
+                .tool_choice(ToolChoice::Required);
+            let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", false).await;
         },
@@ -39,16 +36,13 @@ async fn raw_stream_text_response_smoke() {
         "raw_streaming/raw_stream_text_response_smoke",
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = model
-                .completion_request(RAW_TEXT_RESPONSE_PROMPT)
-                .preamble("Reply with exactly the requested text.".to_string())
-                .temperature(0.0)
-                .build();
+            let request = CompletionRequest::new(RAW_TEXT_RESPONSE_PROMPT)
+                .preamble("Reply with exactly the requested text.")
+                .temperature(0.0);
 
             let observation = collect_raw_stream_observation(
                 model
                     .stream(request)
-                    .await
                     .expect("raw Bedrock stream should start"),
             )
             .await;
@@ -73,17 +67,14 @@ async fn raw_stream_surfaces_two_distinct_tool_calls() {
         "raw_streaming/raw_stream_surfaces_two_distinct_tool_calls",
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
+            let request = CompletionRequest::new(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .build();
+                .tool(rig::tool::tool_definition(&BetaSignal));
 
             let observation = collect_raw_stream_observation(
                 model
                     .stream(request)
-                    .await
                     .expect("raw Bedrock stream should start"),
             )
             .await;
@@ -118,19 +109,16 @@ async fn raw_stream_emits_tool_call_before_text() {
         "raw_streaming/raw_stream_emits_tool_call_before_text",
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+            let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["lookup_harbor_label".to_string()],
-                })
-                .build();
+                });
 
             let observation = collect_raw_stream_observation(
                 model
                     .stream(request)
-                    .await
                     .expect("raw Bedrock stream should start"),
             )
             .await;

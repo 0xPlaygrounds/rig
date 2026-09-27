@@ -811,6 +811,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "wire:msg_05879b5f00b60697006ab2b35a173887d0ad161589c2fc85b0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The labels are crimson-harbor and silver-orchard."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 679,

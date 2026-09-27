@@ -1,18 +1,16 @@
 //! Model metadata returned by providers with model listing support.
 //!
-//! Use [`ModelList`] for provider responses and [`Model`] for each advertised
-//! model entry. A provider that declares a model-listing wire
-//! ([`HasModelListing`](crate::driver::HasModelListing)) reaches the catalogue
-//! through `models()` on its [`Bound`](crate::driver::Bound); a
-//! provider without one has no such method.
+//! Use [`ModelList`] for provider responses and [`ModelInfo`] for each
+//! advertised model entry. A provider with a model-listing wire returns it
+//! from `models()`; call it through a [`Model`](crate::driver::Model).
 //!
 //! ```
-//! use rig_core::model::Model;
+//! use rig_core::model::ModelInfo;
 //!
-//! let model = Model::from_id("example");
+//! let model = ModelInfo::from_id("example");
 //! assert_eq!(model.display_name(), "example");
 //! ```
 
 pub mod listing;
 
-pub use listing::{Model, ModelList, ModelLister};
+pub use listing::{ModelInfo, ModelList};

@@ -33,7 +33,6 @@
 //! answer, while the blocking path answers the same request from candidate 0
 //! alone". This cell is that claim, measured.
 
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::llamacpp;
 use serde::Deserialize;
@@ -45,6 +44,7 @@ use crate::cassettes::{
 use crate::support::assistant_text_response;
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequest;
 
 /// A prompt Qwen3 answers with a visible `<think>` pass, so
 /// `reasoning_content` is populated.
@@ -75,12 +75,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request(REASONING_PROMPT)
-                        .max_tokens(512)
-                        .build(),
-                )
+                .call(CompletionRequest::new(REASONING_PROMPT).max_tokens(512))
                 .await
                 .expect("a reasoning turn should succeed");
 
@@ -130,13 +125,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
-                .stream(
-                    model
-                        .completion_request(REASONING_PROMPT)
-                        .max_tokens(512)
-                        .build(),
-                )
-                .await
+                .stream(CompletionRequest::new(REASONING_PROMPT).max_tokens(512))
                 .expect("stream should start");
 
             let mut reasoning = String::new();
@@ -237,12 +226,10 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
         move |client| async move {
             let model = client.completion(CASSETTE_MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request(TWO_CANDIDATE_PROMPT)
+                .call(
+                    CompletionRequest::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
-                        .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
-                        .build(),
+                        .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 })),
                 )
                 .await
                 .expect("llama.cpp serves n > 1");
@@ -261,13 +248,10 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
             let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
                 .stream(
-                    model
-                        .completion_request(TWO_CANDIDATE_PROMPT)
+                    CompletionRequest::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
-                        .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
-                        .build(),
+                        .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 })),
                 )
-                .await
                 .expect("stream should start");
 
             let mut text = String::new();
@@ -362,12 +346,10 @@ async fn logprobs_survive_into_the_raw_response() {
     with_llamacpp_cassette("response_shape_matrix/logprobs", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request("/no_think Say ok.")
+            .call(
+                CompletionRequest::new("/no_think Say ok.")
                     .max_tokens(16)
-                    .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
-                    .build(),
+                    .additional_params(json!({ "logprobs": true, "top_logprobs": 2 })),
             )
             .await
             .expect("a logprobs request should succeed");

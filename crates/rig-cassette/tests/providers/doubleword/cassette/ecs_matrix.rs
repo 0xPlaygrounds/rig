@@ -6,13 +6,13 @@
 //! `tests/common/ecs_matrix/world.rs`). This file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
-use rig::completion::CompletionModel;
 use rig::providers::doubleword::{QWEN3_5_9B, QWEN3_5_397B_A17B};
+use rig_test_support::cassette_models::OpenAiModels;
 
-use super::super::support::{BoundDoubleword, with_doubleword_cassette};
+use super::super::support::with_doubleword_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion(QWEN3_5_397B_A17B),
@@ -213,7 +213,9 @@ crate::matrix::native_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(
+    client: &OpenAiModels,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         thinking: cells::ThinkingWire::Doubleword,
         model: client.completion("Qwen/Qwen3.5-397B-A17B-FP8"),

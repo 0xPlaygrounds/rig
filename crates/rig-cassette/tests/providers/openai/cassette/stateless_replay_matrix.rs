@@ -38,18 +38,17 @@
 //! Unit cells for the (de)serializers live in
 //! `crates/rig-core/src/providers/openai/responses_api/stateless_replay_tests.rs`.
 
-use rig::completion::CompletionModel;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::providers::openai;
-use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::{
     CompletionResponse as ProviderResponse, InputItem, Output,
 };
+use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_openai_cassette;
+use rig::completion::CompletionRequest;
 
 const TURN_ONE: &str = "Remember the codeword ALPHA-17. Reply exactly: ACK-1";
 const TURN_TWO: &str = "Reply with exactly the remembered codeword.";
@@ -95,26 +94,18 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 }
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, ProviderResponse) {
+async fn two_turn_conversation(client: OpenAiModels) -> (ProviderResponse, ProviderResponse) {
     let model = client.completion(openai::GPT_5_6_SOL);
+    let mut history = vec![Message::user(TURN_ONE)];
     let first = model
-        .completion(model.completion_request(TURN_ONE).build())
+        .call(history.clone())
         .await
         .expect("turn 1 should succeed");
-    let assistant = Message::Assistant {
-        id: first.message_id.clone(),
-        content: first.choice.clone(),
-    };
-    let second = model
-        .completion(
-            model
-                .completion_request(TURN_TWO)
-                .messages([Message::user(TURN_ONE), assistant])
-                .build(),
-        )
-        .await
-        .expect("turn 2 should succeed");
-    (provider_reply(&first), provider_reply(&second))
+    let first_reply = provider_reply(&first);
+    history.push(first.into());
+    history.push(Message::user(TURN_TWO));
+    let second = model.call(history).await.expect("turn 2 should succeed");
+    (first_reply, provider_reply(&second))
 }
 
 #[tokio::test]
@@ -170,7 +161,7 @@ async fn compaction_item_decodes_on_the_response() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6_SOL);
             let response = model
-                .completion(model.completion_request(TURN_ONE).build())
+                .call(CompletionRequest::new(TURN_ONE))
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);

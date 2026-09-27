@@ -8,10 +8,10 @@
 use super::{REDACTED, Secret};
 use crate::completion::CompletionRequest;
 use crate::operation::Completion;
-use crate::providers::anthropic::wire::Anthropic;
-use crate::providers::cohere::wire::Cohere;
-use crate::providers::gemini::Gemini;
-use crate::providers::openai::wire::OpenAI;
+use crate::providers::anthropic::wire::AnthropicConfig;
+use crate::providers::cohere::wire::CohereConfig;
+use crate::providers::gemini::GeminiConfig;
+use crate::providers::openai::wire::OpenAIConfig;
 use crate::wire::{Mode, Wire};
 
 #[test]
@@ -56,29 +56,32 @@ fn the_redaction_sentinel_reloads_as_no_credential() {
 #[test]
 fn a_reloaded_wire_sends_no_credential_sentinel() {
     sends_no_sentinel(
-        &OpenAI::new("sk-bearer-key").chat("gpt-5.2"),
+        &OpenAIConfig::new("sk-bearer-key").chat("gpt-5.2"),
         "sk-bearer-key",
     );
     sends_no_sentinel(
-        &OpenAI::new("sk-bearer-key").responses("gpt-5.2"),
+        &OpenAIConfig::new("sk-bearer-key").responses("gpt-5.2"),
         "sk-bearer-key",
     );
     sends_no_sentinel(
-        &Anthropic::new("sk-header-key").messages("claude-haiku-4-5"),
+        &AnthropicConfig::new("sk-header-key").completion("claude-haiku-4-5"),
         "sk-header-key",
     );
     sends_no_sentinel(
-        &Gemini::new("AIzaSyQUERY-KEY").generate_content("gemini-2.5-flash"),
+        &GeminiConfig::new("AIzaSyQUERY-KEY").completion("gemini-2.5-flash"),
         "AIzaSyQUERY-KEY",
     );
     sends_no_sentinel(
-        &Cohere::new("cohere-bearer-key").chat("command-a-03-2025"),
+        &CohereConfig::new("cohere-bearer-key").completion("command-a-03-2025"),
         "cohere-bearer-key",
     );
 
     // Not vacuous: a wire whose credential *is* the sentinel does send it,
     // which is exactly what a transparent `Deserialize` reloaded.
-    assert!(request_envelope(&OpenAI::new(REDACTED).chat("gpt-5.2")).contains("Bearer [redacted]"));
+    assert!(
+        request_envelope(&OpenAIConfig::new(REDACTED).chat("gpt-5.2"))
+            .contains("Bearer [redacted]")
+    );
 }
 
 /// A minimal request, for a test that only reads the request envelope.
@@ -98,7 +101,9 @@ fn probe_request() -> CompletionRequest {
 }
 
 /// Every URI and header one encode produced, as one searchable string.
-pub(crate) fn request_envelope<W: Wire<Op = Completion>>(wire: &W) -> String {
+pub(crate) fn request_envelope<W: Wire<Op = Completion, Payload = crate::wire::Encoded>>(
+    wire: &W,
+) -> String {
     let encoded = wire
         .encode(probe_request(), Mode::Unary)
         .expect("the request encodes");
@@ -152,7 +157,9 @@ pub(crate) fn a_config_reloads_without_its_credential<C>(
 /// serialized form sends the sentinel nowhere.
 fn sends_no_sentinel<W>(wire: &W, key: &str)
 where
-    W: Wire<Op = Completion> + serde::Serialize + serde::de::DeserializeOwned,
+    W: Wire<Op = Completion, Payload = crate::wire::Encoded>
+        + serde::Serialize
+        + serde::de::DeserializeOwned,
 {
     let sent = request_envelope(wire);
     assert!(
@@ -202,8 +209,8 @@ fn copilot_auth_context_debug_redacts_retained_credential() {
 #[test]
 fn gemini_encoded_debug_redacts_query_without_removing_authentication() -> anyhow::Result<()> {
     let key = "synthetic-gemini-query-key";
-    let encoded = Gemini::new(key)
-        .generate_content("gemini-2.5-flash")
+    let encoded = GeminiConfig::new(key)
+        .completion("gemini-2.5-flash")
         .encode(probe_request(), Mode::Unary)?;
     anyhow::ensure!(
         encoded.requests[0].uri().query() == Some("key=synthetic-gemini-query-key"),

@@ -1,13 +1,15 @@
 //! Xiaomi MiMo's endpoints and model identifiers.
 //!
-//! Configure chat requests with [`crate::providers::openai::wire::XIAOMIMIMO`].
+//! [`from_env`] and [`new`] build a client on the chat-completions
+//! [`XIAOMIMIMO`](crate::providers::openai::wire::XIAOMIMIMO) dialect, the
+//! module's primary one; [`anthropic_from_env`] and [`anthropic_new`] build a
+//! Messages-format client.
 //!
 //! ```no_run
-//! use rig_core::providers::openai::wire::{OpenAI, XIAOMIMIMO};
 //! use rig_core::providers::xiaomimimo;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = OpenAI::from_env_with(&XIAOMIMIMO)?.chat(xiaomimimo::MIMO_V2_5_PRO);
+//! let model = xiaomimimo::from_env()?.chat(xiaomimimo::MIMO_V2_5_PRO);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -28,3 +30,11 @@ pub const MIMO_V2_PRO: &str = "mimo-v2-pro";
 pub const MIMO_V2_5: &str = "mimo-v2.5";
 /// `mimo-v2.5-pro`
 pub const MIMO_V2_5_PRO: &str = "mimo-v2.5-pro";
+
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::XIAOMIMIMO, "Xiaomi MiMo");
+crate::client::macros::anthropic_vendor!(
+    crate::providers::anthropic::wire::XIAOMIMIMO,
+    "Xiaomi MiMo",
+    anthropic_from_env,
+    anthropic_new
+);

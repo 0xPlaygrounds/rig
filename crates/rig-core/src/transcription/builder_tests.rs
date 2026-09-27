@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::*;
+use crate::transcription::TranscriptionRequestBuilder;
 
 fn fields(request: TranscriptionRequest) -> Value {
     json!({
@@ -23,12 +24,12 @@ fn builds_the_requests_the_typestate_builder_built() {
 
     let cases = [
         (
-            TranscriptionRequestBuilder::new((), vec![1, 2, 3]).build(),
+            TranscriptionRequestBuilder::new(vec![1, 2, 3]).build(),
             json!({"data": [1, 2, 3], "filename": "file", "language": null, "prompt": null,
                    "temperature": null, "additional_params": null}),
         ),
         (
-            TranscriptionRequestBuilder::new((), vec![1])
+            TranscriptionRequestBuilder::new(vec![1])
                 .filename(Some("a.mp3".to_owned()))
                 .language("en".to_owned())
                 .prompt("ctx".to_owned())
@@ -38,7 +39,7 @@ fn builds_the_requests_the_typestate_builder_built() {
                    "temperature": 0.5, "additional_params": null}),
         ),
         (
-            TranscriptionRequestBuilder::new((), vec![1])
+            TranscriptionRequestBuilder::new(vec![1])
                 .additional_params(json!({"a": 1, "nested": {"x": 1}}))
                 .additional_params(json!({"b": 2, "nested": {"y": 2}}))
                 .build(),
@@ -46,14 +47,14 @@ fn builds_the_requests_the_typestate_builder_built() {
                    "temperature": null, "additional_params": {"a": 1, "b": 2, "nested": {"y": 2}}}),
         ),
         (
-            TranscriptionRequestBuilder::from_file((), &path)
+            TranscriptionRequestBuilder::from_file(&path)
                 .expect("reads")
                 .build(),
             json!({"data": [9, 8, 7], "filename": "clip.wav", "language": null, "prompt": null,
                    "temperature": null, "additional_params": null}),
         ),
         (
-            TranscriptionRequestBuilder::from_file((), &path)
+            TranscriptionRequestBuilder::from_file(&path)
                 .expect("reads")
                 .filename(None)
                 .build(),
@@ -68,7 +69,7 @@ fn builds_the_requests_the_typestate_builder_built() {
 
 #[test]
 fn a_missing_file_reports_the_read_error() {
-    let error = TranscriptionRequestBuilder::from_file((), "/nonexistent/rig/clip.wav")
+    let error = TranscriptionRequestBuilder::from_file("/nonexistent/rig/clip.wav")
         .err()
         .expect("missing file");
     assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
@@ -77,7 +78,7 @@ fn a_missing_file_reports_the_read_error() {
 /// `None` clears parameters set by earlier calls, as on every request builder.
 #[test]
 fn additional_params_none_clears() {
-    let request = TranscriptionRequestBuilder::new((), vec![1])
+    let request = TranscriptionRequestBuilder::new(vec![1])
         .additional_params(json!({"a": 1}))
         .additional_params(None)
         .build();

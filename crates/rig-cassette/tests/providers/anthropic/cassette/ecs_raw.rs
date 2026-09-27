@@ -3,14 +3,13 @@
 //! neither is copied from the other or from an effect replay.
 
 use bevy_ecs::prelude::*;
-use rig::driver::Bound;
-use rig::providers::anthropic::wire::Anthropic;
 use rig::{effect::Outcome, providers::anthropic, streaming::StreamEvent};
 use rig_ecs::{
     agent::{MaxTokens, MaxTurns, Outputs, Preamble, Retry, Turn},
     bus::{BusSet, EffectOutcome, RigSchedule, Seq, Streamed},
     systems::RigSet,
 };
+use rig_test_support::cassette_models::AnthropicModels;
 use serde_json::Value;
 
 use super::{
@@ -88,7 +87,7 @@ fn observe_turn(
     }
 }
 
-fn setup(client: &Bound<Anthropic>) -> EcsAgent {
+fn setup(client: &AnthropicModels) -> EcsAgent {
     let mut ecs = EcsAgent::new(
         client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
         "",
@@ -223,7 +222,7 @@ fn attempt_raws(world: &mut World) -> Vec<Value> {
 
 type Attempts = (Vec<Value>, Seen, Vec<Value>);
 
-async fn run_two_attempts(client: Bound<Anthropic>, streamed: bool, retry: bool) -> Attempts {
+async fn run_two_attempts(client: AnthropicModels, streamed: bool, retry: bool) -> Attempts {
     let mut ecs = setup(&client);
     ecs.app
         .world_mut()

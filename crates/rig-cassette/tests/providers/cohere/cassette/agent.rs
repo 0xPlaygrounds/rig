@@ -1,7 +1,6 @@
 //! Cassette-backed Cohere non-streaming completion coverage.
 
-use rig::completion::{AssistantContent, CompletionModel, Message};
-use rig::prelude::*;
+use rig::completion::{AssistantContent, Message};
 use rig::providers::cohere::completion::{
     CompletionResponse as CohereCompletionResponse, FinishReason,
 };
@@ -11,12 +10,12 @@ use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, assert_contains_any_case_insensitive, assert_nonempty_response,
 };
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn completion_smoke() {
     with_cohere_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
             .preamble(BASIC_PREAMBLE)
             .temperature(0.2)
             .build();
@@ -37,16 +36,14 @@ async fn usage_is_reported_from_token_counts() {
         "agent/usage_is_reported_from_token_counts",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request(BASIC_PROMPT)
-                .preamble(BASIC_PREAMBLE.to_string())
-                .build();
+            let request = CompletionRequest::new(BASIC_PROMPT)
+                .preamble(BASIC_PREAMBLE.to_string());
 
             // The normalized response carries Cohere's own payload on `raw`, so
             // both views come out of the cassette's one recorded interaction
             // rather than a second request.
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("completion should succeed");
             let raw_response = CohereCompletionResponse::deserialize(&response.raw)
@@ -100,13 +97,12 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
         "agent/max_tokens_sets_max_tokens_finish_reason",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Write a detailed fifty-word description of the ocean.")
-                .max_tokens(4)
-                .build();
+            let request =
+                CompletionRequest::new("Write a detailed fifty-word description of the ocean.")
+                    .max_tokens(4);
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("capped completion should succeed");
             let raw = CohereCompletionResponse::deserialize(&response.raw)
@@ -122,19 +118,17 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
 async fn multiturn_history_is_accepted() {
     with_cohere_cassette("agent/multiturn_history_is_accepted", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
-        let request = model
-            .completion_request("What code word did I ask you to remember?")
+        let request = CompletionRequest::new("What code word did I ask you to remember?")
             .message(Message::user(
                 "Remember the code word cobalt-orchid for my next question.",
             ))
             .message(Message::assistant(
                 "Understood. I will remember the code word cobalt-orchid.",
             ))
-            .max_tokens(32)
-            .build();
+            .max_tokens(32);
 
         let response = model
-            .completion(request)
+            .call(request)
             .await
             .expect("multi-turn history should be accepted");
         let text = response
@@ -155,18 +149,16 @@ async fn multiturn_history_is_accepted() {
 async fn stop_sequences_are_forwarded() {
     with_cohere_cassette("agent/stop_sequences_are_forwarded", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
-        let request = model
-            .completion_request("Output exactly this sequence: alpha<END>omega")
+        let request = CompletionRequest::new("Output exactly this sequence: alpha<END>omega")
             .temperature(0.0)
             .max_tokens(32)
             .additional_params(serde_json::json!({
                 "seed": 7,
                 "stop_sequences": ["<END>"]
-            }))
-            .build();
+            }));
 
         let response = model
-            .completion(request)
+            .call(request)
             .await
             .expect("stop sequence request should succeed");
         let raw = CohereCompletionResponse::deserialize(&response.raw)
@@ -183,8 +175,7 @@ async fn sampling_parameters_are_forwarded() {
         "agent/sampling_parameters_are_forwarded",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Reply with one short sentence about rain.")
+            let request = CompletionRequest::new("Reply with one short sentence about rain.")
                 .temperature(0.2)
                 .max_tokens(24)
                 .additional_params(serde_json::json!({
@@ -193,11 +184,10 @@ async fn sampling_parameters_are_forwarded() {
                     "k": 20,
                     "frequency_penalty": 0.1,
                     "presence_penalty": 0.1
-                }))
-                .build();
+                }));
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("documented sampling parameters should be accepted");
             let text = response

@@ -414,7 +414,7 @@
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -3069,6 +3069,17 @@
           "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
           "kind": {
             "kind": "message"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:msg_02c3b20b-920e-9b19-b525-25cc4643076c",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK."
           }
         },
         {

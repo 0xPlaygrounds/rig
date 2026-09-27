@@ -1,6 +1,5 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
-use rig::prelude::*;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -176,9 +175,7 @@ async fn permission_control_prompt_example() -> Result<()> {
         |client| async move {
             let scratch = ScratchFile::new("prompt")?;
 
-            let agent = client
-                .clone()
-                .agent(CASSETTE_MODEL)
+            let agent = rig::AgentBuilder::new(client.clone().completion(CASSETTE_MODEL))
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",
                 )
@@ -225,9 +222,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         |client| async move {
             let scratch = ScratchFile::new("streaming")?;
 
-            let agent = client
-                .clone()
-                .agent(CASSETTE_MODEL)
+            let agent = rig::AgentBuilder::new(client.clone().completion(CASSETTE_MODEL))
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",
                 )

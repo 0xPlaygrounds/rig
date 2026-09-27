@@ -14,10 +14,7 @@ use super::runner::AgentRunner;
 use super::typed::TypedRun;
 use crate::bus::{BusDriver, Dispatcher, ModelHandle};
 use crate::{
-    completion::{
-        CompletionModel, CompletionRequest, CompletionRequestBuilder, Document, Message,
-        PromptError, ToolDefinition,
-    },
+    completion::{CompletionRequest, Document, Message, PromptError, ToolDefinition},
     run::response::PromptResponse,
     tool::{
         ToolCatalog,
@@ -130,19 +127,16 @@ pub(crate) async fn build_prepared_completion_request(
     let allowed_tool_names = prepared.allowed_tool_names.clone();
     let output_tool_name = prepared.output_tool_name.clone();
     let max_tokens = prepared.max_tokens;
-    let builder = prepared
-        .apply(CompletionRequestBuilder::unbound(prompt))
-        .record_content_telemetry(record_telemetry_content);
+    // The agent records the input itself, so the request the provider sees
+    // carries the telemetry flag off: one span, no double recording.
+    let request = prepared.apply(CompletionRequest::new(prompt));
     let telemetry_messages = if record_telemetry_content {
-        builder.messages_for_telemetry()
+        request.messages_for_telemetry()
     } else {
         Vec::new()
     };
-    // The agent records the input itself, so the request the provider sees
-    // carries the flag off: one span, no double recording.
-    let request = builder.record_content_telemetry(false).build();
-    // The same guard the builder's own `send`/`stream` apply: an empty
-    // history or content block is a local, named error, not a remote 400.
+    // An empty history or content block is a local, named error, not a
+    // remote 400.
     request.validate_message_content()?;
 
     Ok(PreparedCompletionRequest {
@@ -167,14 +161,12 @@ pub(crate) async fn build_prepared_completion_request(
 /// # Example
 /// ```no_run
 /// use rig_agent::prelude::*;
-/// use rig_core::providers::openai::{self, OpenAI};
-/// use rig_reqwest::prelude::*;
+/// use rig_core::{Model, providers::openai::{self, OpenAI}};
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = OpenAI::from_env()?.bound()?;
+/// let model = OpenAI::from_env()?.completion(openai::GPT_5_2);
 ///
-/// let comedian_agent = openai
-///     .agent(openai::GPT_5_2)
+/// let comedian_agent = AgentBuilder::new(model)
 ///     .preamble("You are a comedian here to entertain the user using humour and jokes.")
 ///     .temperature(0.9)
 ///     .build();
@@ -281,7 +273,7 @@ impl AgentConfig {
 
     /// The default model's label as registered now (the key's tail when
     /// nothing serves it).
-    pub(crate) fn model_ref(&self) -> ModelRef {
+    pub(crate) fn model_label(&self) -> ModelRef {
         match self
             .bus
             .dispatcher()
@@ -395,7 +387,7 @@ impl Agent {
     }
 
     /// The label of this agent's default model, as registered now.
-    pub fn model_ref(&self) -> Option<ModelRef> {
+    pub fn model_label(&self) -> Option<ModelRef> {
         self.model_descriptor()
             .and_then(|descriptor| match descriptor.family {
                 rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
@@ -410,10 +402,11 @@ impl Agent {
 
     /// Register `model` on this agent's bus under `label` and return the
     /// label a run selects it by.
-    pub fn register_model<M>(&self, label: impl Into<ModelRef>, model: M) -> ModelRef
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn register_model(
+        &self,
+        label: impl Into<ModelRef>,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    ) -> ModelRef {
         let label = label.into();
         self.config.bus.register_model(&label, model);
         label
@@ -421,7 +414,7 @@ impl Agent {
 
     /// Make the model registered under `label` this agent value's default.
     /// Value semantics: clones of the agent keep their own default.
-    pub fn set_model_ref(&mut self, label: impl Into<ModelRef>) {
+    pub fn set_model_label(&mut self, label: impl Into<ModelRef>) {
         self.config.model_key = self.config.bus.model_key(label.into().as_str());
         self.config.anonymous_model = None;
     }
@@ -430,10 +423,10 @@ impl Agent {
     /// value's default. The registration is scoped to the values that
     /// select it (this agent, its clones, the runners it produces): it
     /// leaves the bus when the last of them drops or selects another model.
-    pub fn set_model<M>(&mut self, model: M)
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn set_model(
+        &mut self,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    ) {
         let anonymous = self.config.bus.register_anonymous_model(model);
         self.config.model_key = anonymous.key().clone();
         self.config.anonymous_model = Some(anonymous);
@@ -447,17 +440,17 @@ impl Agent {
         self.config.bus.owner()
     }
 
-    /// [`Agent::set_model_ref`] by value.
-    pub fn with_model_ref(mut self, label: impl Into<ModelRef>) -> Self {
-        self.set_model_ref(label);
+    /// [`Agent::set_model_label`] by value.
+    pub fn with_model_label(mut self, label: impl Into<ModelRef>) -> Self {
+        self.set_model_label(label);
         self
     }
 
     /// [`Agent::set_model`] by value.
-    pub fn with_model<M>(mut self, model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
+    pub fn with_model(
+        mut self,
+        model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    ) -> Self {
         self.set_model(model);
         self
     }

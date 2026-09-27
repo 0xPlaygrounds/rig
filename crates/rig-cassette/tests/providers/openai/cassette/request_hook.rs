@@ -9,7 +9,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::UserContent;
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette_result;
@@ -75,9 +74,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
     with_openai_cassette_result(
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();
 

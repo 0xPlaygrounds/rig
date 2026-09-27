@@ -34,6 +34,7 @@
 //! | 4 raw order | `{blocking,streaming}_{single,parallel}.yaml` |
 //! | 2 signed agent loops | `{blocking,streaming}_signed_agent_roundtrip.yaml` |
 
+use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -41,15 +42,13 @@ use std::sync::{
 
 use anyhow::{Result, ensure};
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel};
-use rig::prelude::*;
+use rig::completion::AssistantContent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::{
-    BoundOpenRouter, with_openrouter_reasoning_tool_order_cassette_result,
-};
+use super::super::support::with_openrouter_reasoning_tool_order_cassette_result;
+use rig::completion::CompletionRequest;
 
 const MODEL: &str = "anthropic/claude-haiku-4.5";
 
@@ -143,13 +142,9 @@ fn prompt(shape: Shape) -> &'static str {
     }
 }
 
-fn request(
-    model: &(impl CompletionModel + Clone),
-    cell: Cell,
-) -> rig::completion::CompletionRequest {
-    let mut builder = model
-        .completion_request(prompt(cell.shape))
-        .preamble("Reason first, then obey the requested tool calls exactly.".to_owned())
+fn request(cell: Cell) -> rig::completion::CompletionRequest {
+    let mut builder = CompletionRequest::new(prompt(cell.shape))
+        .preamble("Reason first, then obey the requested tool calls exactly.")
         .additional_params(json!({
             "reasoning": { "max_tokens": 1024 },
             "parallel_tool_calls": cell.shape == Shape::Parallel,
@@ -159,20 +154,20 @@ fn request(
     for name in expected_names(cell.shape) {
         builder = builder.tool(tool(name));
     }
-    builder.build()
+    builder
 }
 
-async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedChoice) -> Result<()> {
+async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedChoice) -> Result<()> {
     let model = client.completion(MODEL);
     let choice = match cell.transport {
-        Transport::Blocking => model.completion(request(&model, cell)).await?.choice,
+        Transport::Blocking => model.call(request(cell)).await?.choice,
         Transport::Streaming => {
-            let raw = model.stream(request(&model, cell)).await?;
+            let raw = model.stream(request(cell))?;
             let mut stream = raw;
             while let Some(item) = stream.next().await {
                 item?;
             }
-            stream.snapshot()
+            stream.folded().snapshot()
         }
     };
 
@@ -181,12 +176,11 @@ async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedChoice) -
 }
 
 async fn run_signed_agent(
-    client: BoundOpenRouter,
+    client: OpenAiModels,
     transport: Transport,
     invocations: Arc<AtomicUsize>,
 ) -> Result<()> {
-    let agent = client
-        .agent(MODEL)
+    let agent = rig::AgentBuilder::new(client.completion(MODEL))
         .preamble(
             "Reason before the requested first tool call. After its result, answer exactly DONE without calling another tool.",
         )

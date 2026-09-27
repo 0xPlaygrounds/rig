@@ -1,9 +1,8 @@
 //! OpenAI structured output coverage, including the migrated example path.
 
 use rig::agent::OutputMode;
-use rig::prelude::*;
 use rig::providers::openai;
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::OpenAIConfig;
 use rig::test_utils::RecordingHttpClient;
 use rig_agent::test_utils::decode_structured_output;
 use schemars::JsonSchema;
@@ -73,9 +72,7 @@ async fn structured_output_smoke() {
     with_openai_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                 .output_schema::<SmokeStructuredOutput>()
                 .output_mode(OutputMode::Native)
                 .build();
@@ -95,9 +92,8 @@ async fn structured_output_smoke() {
 #[tokio::test]
 async fn classic_tool_mode_maps_through_openai_responses() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
-    let client = OpenAI::new("test-key").bind(http.clone());
-    let agent = client
-        .agent(openai::GPT_4O)
+    let client = OpenAIConfig::new("test-key");
+    let agent = rig::AgentBuilder::new(client.connect(http.clone()).completion(openai::GPT_4O))
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Tool)
         .build();
@@ -128,9 +124,7 @@ async fn prompt_typed_and_output_schema() {
     with_openai_cassette(
         "structured_output/prompt_typed_and_output_schema",
         |client| async move {
-            let agent = client
-                .openai
-                .agent(openai::GPT_4O)
+            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",
                 )
@@ -153,14 +147,13 @@ async fn prompt_typed_and_output_schema() {
                 "usage should be populated"
             );
 
-            let agent_with_schema = client
-                .openai
-                .agent(openai::GPT_4O)
-                .preamble(
-                    "You are a helpful weather assistant. Respond with realistic weather data.",
-                )
-                .output_schema::<WeatherForecast>()
-                .build();
+            let agent_with_schema =
+                rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
+                    .preamble(
+                        "You are a helpful weather assistant. Respond with realistic weather data.",
+                    )
+                    .output_schema::<WeatherForecast>()
+                    .build();
             let response = agent_with_schema
                 .prompt("What's the weather forecast for Chicago?")
                 .await

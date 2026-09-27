@@ -1,15 +1,14 @@
 //! Cohere v2 history survival: tool-call ids across three prompts.
 
-use rig::completion::CompletionModel;
-
-use super::super::support::{BoundCohere, with_cohere_cassette};
+use super::super::support::with_cohere_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig_test_support::cassette_models::CohereModels;
 
 fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: BoundCohere, cell: Cell) -> impl CompletionModel + 'static {
+fn model(client: CohereModels, cell: Cell) -> rig::Model<rig::providers::cohere::Chat> {
     client.completion(cell.model)
 }
 

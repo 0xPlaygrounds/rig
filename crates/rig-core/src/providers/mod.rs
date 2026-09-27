@@ -1,11 +1,13 @@
-//! Provider configurations, endpoint wires, and model identifiers.
+//! Provider clients, their configurations, and model identifiers.
 //!
-//! Bind a configured wire to a transport to execute requests. For serialized
-//! provider selection, use [`registry::ProviderRef`] instead of a concrete type.
+//! A client, such as [`openai::OpenAI`], holds a provider's configuration on a
+//! transport and builds the models it serves. A vendor that speaks another
+//! provider's format has its own constructors, such as [`deepseek::from_env`].
+//! For a provider chosen from data, use [`registry::ProviderRef`].
 //!
 //! ```no_run
-//! use rig_core::providers::openai::{self, wire::OpenAI};
-//! let wire = OpenAI::from_env()?.chat(openai::GPT_5_2);
+//! use rig_core::providers::openai::{self, OpenAI};
+//! let model = OpenAI::from_env()?.chat(openai::GPT_5_2);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 pub mod anthropic;

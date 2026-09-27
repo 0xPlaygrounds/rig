@@ -6,7 +6,6 @@
 //! its documented `None`/zero outcome, which is exactly what these cells
 //! assert rather than skip. Dimensions ride `output_dimensionality`.
 
-use rig::embeddings::EmbeddingModel as _;
 use rig::providers::gemini;
 
 use super::super::support::with_gemini_cassette;
@@ -34,7 +33,7 @@ async fn normalized_response_is_complete() {
         |client| async move {
             let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
             let response = model
-                .embed_texts_response(inputs())
+                .call(inputs())
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -48,7 +47,7 @@ async fn raw_round_trips() {
     with_gemini_cassette("embedding_matrix/raw_round_trips", |client| async move {
         let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
         let response = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("embedding request should succeed");
 
@@ -78,11 +77,11 @@ async fn raw_route_parity() {
     with_gemini_cassette("embedding_matrix/raw_route_parity", |client| async move {
         let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
         let normalized = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("normalized call should succeed");
         let again = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("the same request should succeed again");
         let raw: gemini::embedding::gemini_api_types::EmbeddingResponse =
@@ -99,7 +98,7 @@ async fn single_text_convenience() {
         |client| async move {
             let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
             let response = model
-                .embed_text_response(EMBEDDING_INPUTS[0])
+                .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -117,7 +116,7 @@ async fn dimensions_request() {
     with_gemini_cassette("embedding_matrix/dimensions_request", |client| async move {
         let model = client.embedding(gemini::embedding::EMBEDDING_001, Some(256));
         let response = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("dimension-constrained embedding should succeed");
         for embedding in &response.embeddings {
@@ -134,7 +133,7 @@ async fn error_preserves_provider_body() {
         |client| async move {
             let model = client.embedding("no-such-embedding-model", None);
             let error = model
-                .embed_texts_response(inputs())
+                .call(inputs())
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(

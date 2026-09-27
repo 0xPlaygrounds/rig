@@ -34,7 +34,7 @@
 //! "the same bytes went out twice" from "one reply agreed with itself"; the
 //! harness replays interactions in order.
 
-use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
+use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason};
 use rig::providers::cohere::completion::{CompletionResponse, FinishReason as CohereFinishReason};
 use serde::Deserialize;
 use serde_json::Value;
@@ -42,16 +42,15 @@ use serde_json::Value;
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::raw_capture::capture_completion_pair;
 use crate::support::Observed;
+use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: parity";
 
-fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> rig::completion::CompletionRequest {
+    CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 #[tokio::test]
@@ -62,7 +61,7 @@ async fn raw_try_into_matches_completion() {
     with_cohere_cassette(
         "raw_completion_parity_matrix/raw_try_into_matches_completion",
         |client| async move {
-            capture_completion_pair(client.completion(CASSETTE_MODEL), request, sink)
+            capture_completion_pair(client.completion(CASSETTE_MODEL), request(), sink)
                 .await
                 .expect("the same request should succeed twice");
         },

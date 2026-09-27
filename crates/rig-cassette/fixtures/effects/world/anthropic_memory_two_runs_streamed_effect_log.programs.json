@@ -203,7 +203,7 @@
             "message_id": "msg_011CfLcbcSRmtBkgTuDADDu7",
             "done": true,
             "usage_recorded": true,
-            "stream_validated": 4
+            "stream_validated": 5
           },
           "rig_ecs::agent::ToolAccess": {
             "executable": {},
@@ -281,6 +281,17 @@
                 "delta": {
                   "delta": "text",
                   "text": "."
+                }
+              },
+              {
+                "event": "block_end",
+                "id": "minted:block:0",
+                "end": {
+                  "close": "text"
+                },
+                "block": {
+                  "type": "text",
+                  "text": "ready."
                 }
               },
               {

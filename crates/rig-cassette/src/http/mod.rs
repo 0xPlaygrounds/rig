@@ -373,7 +373,7 @@ where
 /// How a recording session reaches the provider. Replay never reaches it,
 /// so the transport is irrelevant then.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Transport {
+pub enum RecordVia {
     /// A local mock server proxies every request to the provider and
     /// records the exchange (the default; the client is pointed at the
     /// proxy's URL).
@@ -468,7 +468,7 @@ impl ProviderCassette {
         real_base_url: &str,
     ) -> Self {
         Self::start_via(
-            Transport::Proxy,
+            RecordVia::Proxy,
             cassette_root,
             provider,
             spec,
@@ -480,7 +480,7 @@ impl ProviderCassette {
     /// Start a session in the ambient [`CassetteMode`], using `transport` for
     /// recording only. Panics for an invalid mode, URL, or unusable replay fixture.
     pub async fn start_via(
-        transport: Transport,
+        transport: RecordVia,
         cassette_root: &Path,
         provider: &'static str,
         spec: impl Into<CassetteSpec>,
@@ -504,7 +504,7 @@ impl ProviderCassette {
     /// invalid upstream URL, missing or malformed replay fixture, or server bind
     /// failure.
     pub async fn start_at(
-        transport: Transport,
+        transport: RecordVia,
         provider: &'static str,
         spec: CassetteSpec,
         real_base_url: &str,
@@ -526,7 +526,7 @@ impl ProviderCassette {
     /// [`Self::start_at`] with failed recordings and the ledger under
     /// `attempt_root` instead of the ambient [`attempt_root`].
     pub(crate) async fn start_with_attempts(
-        transport: Transport,
+        transport: RecordVia,
         provider: &'static str,
         spec: CassetteSpec,
         real_base_url: &str,
@@ -548,7 +548,7 @@ impl ProviderCassette {
             CassetteServer::Replay(ReplayServer::start(&cassette_path, policy).await)
         } else {
             match transport {
-                Transport::Direct => CassetteServer::DirectRecording(DirectRecordingServer {
+                RecordVia::Direct => CassetteServer::DirectRecording(DirectRecordingServer {
                     base_url: upstream.origin.clone(),
                     interactions: Arc::new(Mutex::new(Vec::new())),
                     ledger: Arc::new(relay::LedgerTarget {
@@ -558,7 +558,7 @@ impl ProviderCassette {
                         origin: upstream.origin.clone(),
                     }),
                 }),
-                Transport::Proxy => {
+                RecordVia::Proxy => {
                     let server = MockServer::start_async().await;
                     server
                         .forward_to_async(&upstream.origin, |rule| {

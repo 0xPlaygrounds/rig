@@ -2,13 +2,12 @@
 //! `on_run_settled`, and durable scratchpad state, recorded against the live
 //! Gemini API.
 //!
-//! Every cell sends through a `BoxedHttpClient` carrying a `WireProbe`
+//! Every cell sends through a `DynHttpClient` carrying a `WireProbe`
 //! middleware, so one recorded exchange proves both the transport seam (the
 //! phases fired, the serialized body and response status were visible) and
 //! the hook-level lifecycle claims. All assertions hold in both cassette
 //! modes: on replay the same code paths run against the replay server.
 
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::support::with_gemini_lifecycle_cassette;
@@ -26,7 +25,9 @@ async fn middleware_phases_observe_a_unary_completion() {
         "lifecycle_matrix/middleware_unary",
         probe.clone(),
         |client| async move {
-            let agent = client.agent(MODEL).preamble(BASIC_PREAMBLE).build();
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
+                .preamble(BASIC_PREAMBLE)
+                .build();
             let response = agent
                 .prompt(BASIC_PROMPT)
                 .await
@@ -47,8 +48,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
         "lifecycle_matrix/middleware_streaming",
         probe.clone(),
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(STREAMING_PREAMBLE)
                 .add_hook(settle_hook)
                 .build();
@@ -78,8 +78,7 @@ async fn run_start_rewrite_reaches_the_provider() {
         "lifecycle_matrix/run_start_rewrite",
         WireProbe::default(),
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(BASIC_PREAMBLE)
                 .add_hook(agent_hook)
                 .build();
@@ -108,8 +107,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
         "lifecycle_matrix/entry_log_order",
         WireProbe::default(),
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble("You are a calculator. Use the add tool for arithmetic.")
                 .tool(Adder)
                 .add_hook(agent_hook)
@@ -142,8 +140,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
         "lifecycle_matrix/run_settled_tool_run",
         WireProbe::default(),
         |client| async move {
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble("You are a calculator. Use the add tool for arithmetic.")
                 .tool(Adder)
                 .add_hook(agent_hook)

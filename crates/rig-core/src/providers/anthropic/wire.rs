@@ -5,7 +5,7 @@
 //! use rig_core::providers::anthropic::{Anthropic, completion::CLAUDE_SONNET_4_6};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let wire = Anthropic::from_env()?.messages(CLAUDE_SONNET_4_6);
+//! let wire = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
 //! # Ok(())
 //! # }
 //! ```
@@ -13,13 +13,12 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
-use crate::model::{Model, ModelList};
+use crate::model::{ModelInfo, ModelList};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, Verify as VerifyOp};
 use crate::providers::internal::named_dialect;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -193,10 +192,12 @@ pub const XIAOMIMIMO: Dialect = compatible(
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );
 
-/// The shared configuration of an Anthropic-format provider.
+/// The settings of a Messages-format provider: serializable, and the
+/// credential is never serialized. [`connect`](Self::connect) puts it on a
+/// transport as an [`Anthropic`](super::Anthropic) client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Anthropic {
+pub struct AnthropicConfig {
     /// The API key, sent as `x-api-key`.
     pub api_key: Secret,
     /// The API root, without a trailing `/v1`.
@@ -209,7 +210,7 @@ pub struct Anthropic {
     pub dialect: Dialect,
 }
 
-impl Anthropic {
+impl AnthropicConfig {
     /// Anthropic itself, with default settings.
     pub fn new(api_key: impl Into<Secret>) -> Self {
         Self::with_dialect(api_key, &ANTHROPIC)
@@ -261,7 +262,7 @@ impl Anthropic {
     }
 
     /// The Messages wire for `model`.
-    pub fn messages(&self, model: impl Into<String>) -> Messages {
+    pub(crate) fn completion(&self, model: impl Into<String>) -> Messages {
         let model = model.into();
         Messages {
             default_max_tokens: self.dialect.default_max_tokens(&model),
@@ -276,14 +277,14 @@ impl Anthropic {
     }
 
     /// The model-listing wire.
-    pub fn models(&self) -> Models {
+    pub(crate) fn models(&self) -> Models {
         Models {
             provider: self.clone(),
         }
     }
 
     /// The credential-check wire.
-    pub fn verify(&self) -> Verify {
+    pub(crate) fn verify(&self) -> Verify {
         Verify {
             provider: self.clone(),
         }
@@ -318,7 +319,7 @@ pub fn normalize_base_url(base_url: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Messages {
     /// The provider this wire speaks to.
-    pub provider: Anthropic,
+    pub provider: AnthropicConfig,
     /// The model to address.
     pub model: String,
     /// What `max_tokens` defaults to when the caller sets none. Anthropic
@@ -362,18 +363,14 @@ impl Messages {
     ///
     /// ```no_run
     /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-    /// use rig_core::providers::anthropic::wire::Anthropic;
+    /// use rig_core::providers::anthropic::Anthropic;
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching();
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
+    /// messages.wire = messages.wire.with_automatic_caching();
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    /// On a [`Bound`](crate::driver::Bound) the same option is forwarded
-    /// with `bound.map_wire(|wire| wire.with_automatic_caching())`.
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self
@@ -385,12 +382,11 @@ impl Messages {
     ///
     /// ```no_run
     /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-    /// use rig_core::providers::anthropic::wire::Anthropic;
+    /// use rig_core::providers::anthropic::Anthropic;
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching_1h();
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
+    /// messages.wire = messages.wire.with_automatic_caching_1h();
     /// # Ok(())
     /// # }
     /// ```
@@ -408,13 +404,11 @@ impl Messages {
     ///
     /// ```no_run
     /// use rig_core::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
-    /// use rig_core::providers::anthropic::wire::Anthropic;
+    /// use rig_core::providers::anthropic::Anthropic;
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let messages = Anthropic::from_env()?
-    ///     .messages(CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching()
-    ///     .with_static_prefix_cache_ttl(CacheTtl::OneHour);
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
+    /// messages.wire = messages.wire.with_automatic_caching().with_static_prefix_cache_ttl(CacheTtl::OneHour);
     /// # Ok(())
     /// # }
     /// ```
@@ -493,13 +487,15 @@ impl Messages {
 
 impl Wire for Messages {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = MessagesDecoder;
 
     fn name(&self) -> &str {
         self.provider.dialect.name
     }
 
-    fn model(&self) -> Option<&str> {
+    fn id(&self) -> Option<&str> {
         Some(&self.model)
     }
 
@@ -542,11 +538,13 @@ impl Wire for Messages {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// The provider this wire speaks to.
-    pub provider: Anthropic,
+    pub provider: AnthropicConfig,
 }
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -557,11 +555,15 @@ impl Wire for Models {
         Ok(Encoded::new(self.models_request(None)?, Framing::Whole))
     }
 
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(
+            self.models_request(Some(cursor))?,
+            Framing::Whole,
+        ))
+    }
+
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder {
-            provider: self.provider.clone(),
-            next: None,
-        }
+        ModelsDecoder { next: None }
     }
 }
 
@@ -600,15 +602,14 @@ struct ModelEntry {
     display_name: String,
 }
 
-impl From<ModelEntry> for Model {
+impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        Model::new(entry.id, entry.display_name)
+        ModelInfo::new(entry.id, entry.display_name)
     }
 }
 
 /// Decodes `GET /v1/models`, following the cursor Anthropic names.
 pub struct ModelsDecoder {
-    provider: Anthropic,
     /// The cursor the last page named, when it claimed more pages.
     next: Option<String>,
 }
@@ -626,17 +627,12 @@ impl Decoder<ModelListing> for ModelsDecoder {
             .last_id
             .filter(|cursor| page.has_more && !cursor.is_empty());
         out.push(Ok(ModelList::new(
-            page.data.into_iter().map(Model::from).collect(),
+            page.data.into_iter().map(ModelInfo::from).collect(),
         )));
     }
 
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        let cursor = self.next.as_deref()?;
-        Models {
-            provider: self.provider.clone(),
-        }
-        .models_request(Some(cursor))
-        .ok()
+    fn cursor(&self) -> Option<String> {
+        self.next.clone()
     }
 }
 
@@ -645,11 +641,13 @@ impl Decoder<ModelListing> for ModelsDecoder {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Verify {
     /// The provider this wire speaks to.
-    pub provider: Anthropic,
+    pub provider: AnthropicConfig,
 }
 
 impl Wire for Verify {
     type Op = VerifyOp;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = VerifyDecoder;
 
     fn name(&self) -> &str {
@@ -669,30 +667,6 @@ impl Wire for Verify {
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         VerifyDecoder
-    }
-}
-
-impl HasCompletion for Anthropic {
-    type Wire = Messages;
-
-    fn completion(&self, model: impl Into<String>) -> Messages {
-        self.messages(model)
-    }
-}
-
-impl crate::driver::HasModelListing for Anthropic {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
-    }
-}
-
-impl crate::driver::HasVerify for Anthropic {
-    type Wire = Verify;
-
-    fn verify(&self) -> Verify {
-        Anthropic::verify(self)
     }
 }
 

@@ -1,5 +1,7 @@
 use super::*;
+use crate::completion::tests::{complete, stream_from_events};
 use base64::Engine as _;
+use futures::StreamExt;
 use rig_core::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig_core::streaming::{Delta, StreamEvent};
 
@@ -29,7 +31,7 @@ fn response(parts: Vec<proto::Part>, finish_reason: i32) -> proto::GenerateConte
 /// Drive protobuf events through the full normalized path and collect the
 /// Reasoning blocks the consumer sees.
 async fn reasoning_blocks(events: Vec<proto::GenerateContentResponse>) -> Vec<Reasoning> {
-    let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
+    let mut stream = stream_from_events(events.into_iter().map(Ok).collect());
     let mut blocks = Vec::new();
     while let Some(item) = stream.next().await {
         if let StreamEvent::BlockEnd {
@@ -154,7 +156,7 @@ async fn two_id_less_function_calls_stay_distinct() {
         proto::candidate::FinishReason::Stop as i32,
     )];
 
-    let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
+    let mut stream = stream_from_events(events.into_iter().map(Ok).collect());
     let mut correlators = Vec::new();
     while let Some(item) = stream.next().await {
         if let StreamEvent::BlockEnd {
@@ -202,7 +204,7 @@ struct Drained {
 }
 
 async fn drain(events: Vec<proto::GenerateContentResponse>) -> Drained {
-    let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
+    let mut stream = stream_from_events(events.into_iter().map(Ok).collect());
     let mut drained = Drained {
         errors: Vec::new(),
         reached_terminal: false,
@@ -320,7 +322,7 @@ fn unary_and_streaming_report_the_same_tool_protocol_error() {
     .expect("the helper must produce an error")
     .to_string();
 
-    match rig_core::completion::CompletionResponse::try_from(response) {
+    match complete(response) {
         Err(err) => assert_eq!(err.to_string(), expected),
         Ok(_) => panic!("the unary path must fail on a tool-protocol finish reason"),
     }
@@ -375,28 +377,22 @@ fn terminal_frame() -> proto::GenerateContentResponse {
     }
 }
 
-/// Drive protobuf events through the pipeline the `CompletionModel` seam
+/// Drive protobuf events through the pipeline the `Model` seam
 /// uses, returning the terminal record.
 async fn normalized_terminal(
     events: Vec<proto::GenerateContentResponse>,
 ) -> streaming::StreamFinal {
-    collect_terminal(run_wire_stream(
-        futures::stream::iter(events.into_iter().map(Ok)),
-        GrpcAdapter::default(),
-    ))
-    .await
+    collect_terminal(stream_from_events(events.into_iter().map(Ok).collect())).await
 }
 
-async fn collect_terminal(normalized: streaming::StreamingResult) -> streaming::StreamFinal {
-    let mut stream = streaming::StreamingCompletionResponse::stream(
-        super::super::completion::PROVIDER_NAME,
-        normalized,
-    );
+async fn collect_terminal(mut stream: streaming::CompletionStream) -> streaming::StreamFinal {
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
     stream
-        .response
+        .folded()
+        .terminal()
+        .cloned()
         .expect("the stream must end with a terminal record")
 }
 
@@ -406,15 +402,20 @@ async fn collect_terminal(normalized: streaming::StreamingResult) -> streaming::
 /// adapter's `terminal_record`.
 #[tokio::test]
 async fn stream_from_events_terminal_carries_raw() {
-    let mut stream = stream_from_events(futures::stream::iter(
+    let mut stream = stream_from_events(
         vec![response(vec![text_part("hi")], 0), terminal_frame()]
             .into_iter()
-            .map(Ok),
-    ));
+            .map(Ok)
+            .collect(),
+    );
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let terminal = stream.response.expect("terminal record");
+    let terminal = stream
+        .folded()
+        .terminal()
+        .cloned()
+        .expect("terminal record");
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =
@@ -424,7 +425,7 @@ async fn stream_from_events_terminal_carries_raw() {
 }
 
 /// The load-bearing streaming capture property at the seam
-/// `CompletionModel::stream` routes through: the terminal's `raw` is
+/// `Model::stream` routes through: the terminal's `raw` is
 /// Gemini's own terminal `GenerateContentResponse` — it deserializes back
 /// into that prost message and re-serializes identically — and
 /// re-normalizing that capture reproduces every normalized field. The
@@ -453,10 +454,7 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 
     // Feeding the capture back through the same pipeline tells the same
     // story as the terminal the stream produced.
-    let renormalized = collect_terminal(Box::pin(futures::stream::iter(vec![Ok(
-        StreamEvent::Final(terminal_record(&typed).expect("terminal record")),
-    )])))
-    .await;
+    let renormalized = normalized_terminal(vec![typed]).await;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);
     assert_eq!(terminal.model, renormalized.model);
@@ -490,15 +488,16 @@ async fn the_stream_names_the_gemini_service_as_reasoning_issuer() {
 async fn a_trailing_signed_part_keeps_its_signature_on_its_own_text() {
     let mut signed = text_part("");
     signed.thought_signature = b"sig".to_vec();
-    let mut stream = stream_from_events(futures::stream::iter(
+    let mut stream = stream_from_events(
         vec![
             response(vec![text_part("289")], 0),
             response(vec![signed], 0),
             terminal_frame(),
         ]
         .into_iter()
-        .map(Ok),
-    ));
+        .map(Ok)
+        .collect(),
+    );
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }

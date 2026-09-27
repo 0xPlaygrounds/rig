@@ -22,6 +22,7 @@
 //! ```not_rust
 //! OPENAI_API_KEY=... cargo run -p rig-agent --example raw_response_hook
 //! ```
+//!
 
 use anyhow::Result;
 use futures::StreamExt;
@@ -30,8 +31,7 @@ use rig_agent::{
     prelude::*,
 };
 use rig_core::providers::openai;
-use rig_core::providers::openai::wire::{OpenAI, Route};
-use rig_reqwest::prelude::*;
+use rig_core::providers::openai::{OpenAIConfig, Route};
 use serde::Deserialize;
 
 /// Prints the OpenAI-only fields of every completed call. Provider-specific by
@@ -87,9 +87,11 @@ async fn main() -> Result<()> {
     // The Chat Completions route, whose response carries `system_fingerprint`;
     // OpenAI's default route is the Responses API, so the configuration is
     // routed once and the agent follows.
-    let client = OpenAI::from_env()?.with_route(Route::Chat).bound()?;
-    let agent = client
-        .agent(openai::GPT_5_2)
+    let model = OpenAIConfig::from_env()?
+        .with_route(Route::Chat)
+        .client()
+        .completion(openai::GPT_5_2);
+    let agent = AgentBuilder::new(model)
         .preamble("Answer in one short sentence.")
         .add_hook(PrintOpenAiFields)
         .build();

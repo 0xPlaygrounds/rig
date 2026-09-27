@@ -315,8 +315,8 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// Normalized out of the OpenAI-compatible `finish_reason` vocabulary,
     /// with unrecognized values preserved verbatim. The `Stop` -> `ToolCalls`
     /// upgrade is deliberately *not* applied here: it belongs to
-    /// [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse),
-    /// the only place that sees which tool calls the reply actually emitted.
+    /// [`CompletionStream`](crate::streaming::CompletionStream), the only
+    /// place that sees which tool calls the reply actually emitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<crate::completion::FinishReason>,
     /// Provider-assigned response identifier, when the reply emitted one.

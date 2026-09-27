@@ -1,11 +1,11 @@
 //! Cassette-backed Cohere context-document coverage.
 
-use rig::completion::{CompletionModel, Document};
-use rig::prelude::*;
+use rig::completion::Document;
 use std::collections::HashMap;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
+use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn context_documents_are_accepted() {
@@ -13,7 +13,7 @@ async fn context_documents_are_accepted() {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(CASSETTE_MODEL), |builder, doc| {
+            .fold(rig::AgentBuilder::new(client.completion(CASSETTE_MODEL)), |builder, doc| {
                 builder.context(doc)
             })
             .preamble("Use the provided context documents as the authoritative source. Answer concisely.")
@@ -43,8 +43,7 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
         "context/document_metadata_and_multiple_documents_are_accepted",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = model
-                .completion_request("Which dock is assigned beacon code amber-73?")
+            let request = CompletionRequest::new("Which dock is assigned beacon code amber-73?")
                 .document(Document {
                     id: "harbor-record-1".to_string(),
                     text: "Beacon code amber-73 is assigned to Dock Seven.".to_string(),
@@ -61,11 +60,10 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
                         "harbor-registry".to_string(),
                     )]),
                 })
-                .max_tokens(32)
-                .build();
+                .max_tokens(32);
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("documents with metadata should be accepted");
             let text = response

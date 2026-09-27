@@ -10,8 +10,9 @@ use super::completion::{
 use crate::error::ProviderError;
 use crate::observe::ObservedError;
 use crate::operation::{AdapterOutput, Completion};
-use crate::providers::internal::wire::{self, WireEvent};
+use crate::providers::internal::wire;
 use crate::streaming;
+use crate::wire::WireEvent;
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Mode, ObservationSink, Output, WireFrame,
 };

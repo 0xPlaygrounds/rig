@@ -10,12 +10,13 @@
 //! cells check that too.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
+use rig_test_support::cassette_models::GeminiModels;
 use serde_json::{Value, json};
 
-use super::super::support::{BoundGemini, with_gemini_cassette};
+use super::super::support::with_gemini_cassette;
 use crate::history_survival::{Dialect, lost_tokens};
 
 const QUESTION: &str = "What is 17 squared? Answer with the number only.";
@@ -67,21 +68,25 @@ fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     }
 }
 
-async fn turn<M: CompletionModel>(
-    model: &M,
+async fn turn<W, T>(
+    model: &rig::driver::Model<W, T>,
     cell: Cell,
     history: Vec<Message>,
-) -> Vec<AssistantContent> {
+) -> Vec<AssistantContent>
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let request = request(cell, history);
     if !cell.streamed {
         return model
-            .completion(request)
+            .call(request)
             .await
             .expect("the turn completes")
             .choice
             .to_vec();
     }
-    let mut stream = model.stream(request).await.expect("the stream opens");
+    let mut stream = model.stream(request).expect("the stream opens");
     while let Some(item) = stream.next().await {
         item.expect("a stream item");
     }
@@ -98,7 +103,11 @@ fn answer(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
-async fn conversation<M: CompletionModel>(model: M, cell: Cell) {
+async fn conversation<W, T>(model: rig::driver::Model<W, T>, cell: Cell)
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let first = turn(&model, cell, vec![Message::user(QUESTION)]).await;
     assert!(answer(&first).contains("289"), "{first:?}");
     let history = vec![
@@ -209,16 +218,10 @@ fn assert_recorded(cell: Cell, scenario: &str) {
     }
 }
 
-async fn run(client: BoundGemini, cell: Cell) {
+async fn run(client: GeminiModels, cell: Cell) {
     match cell.api {
         Api::GenerateContent => conversation(client.completion(cell.model), cell).await,
-        Api::Interactions => {
-            conversation(
-                client.map_wire(|config| config.interactions(cell.model)),
-                cell,
-            )
-            .await
-        }
+        Api::Interactions => conversation(client.interactions(cell.model), cell).await,
     }
 }
 

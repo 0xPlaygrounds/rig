@@ -4590,7 +4590,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -10914,6 +10914,17 @@
           "delta": {
             "delta": "text",
             "text": "."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Rust began as a personal project by Graydon Hoare in 2006 while he worked at Mozilla. Hoare aimed to create a systems programming language that paired the performance and control of C and C++ with strong safety guarantees and modern concurrency support. Mozilla began sponsoring the project in 2009, and Rust was publicly announced in 2010. Early efforts focused on experimental language design, building a practical compiler, and assembling an open-source community.\n\nOne of Rust’s defining innovations is its ownership and borrowing system, introduced to enforce memory safety at compile time without a garbage collector. The borrow checker enforces rules about mutable and immutable references and lifetime relationships, eliminating entire classes of bugs—use-after-free, double-free, and many data races—while preserving deterministic performance. This model required careful language evolution and significant effort from compiler developers to make ergonomics acceptable to users.\n\nRust’s development accelerated with a series of milestones. Version 1.0 was released in May 2015, signifying language stability and a commitment to long-term compatibility. The same year saw the stabilization of Cargo, the package manager and build system that became central to Rust’s ecosystem. Cargo, along with crates.io (the package registry) and rustfmt (the formatter), helped create a productive developer experience that attracted hobbyists and industry adopters alike.\n\nGovernance and community practices evolved as the user base grew. In 2016 the Rust Project adopted a code of conduct and formalized a governance model with a core team and working groups to manage language design, libraries, and tooling. RFCs (Requests for Comments) provide an open process for proposing language changes, and the Rust blog, forums, and an active IRC/Discord presence maintain transparent discussion. These structures balanced innovation with careful stewardship of stability guarantees.\n\nIndustry adoption grew steadily. Companies such as Dropbox, Cloudflare, Microsoft, Amazon Web Services, and others began using Rust for performance-critical components, safety-sensitive code, and tooling. Mozilla used Rust in projects like the Servo browser engine experiment and parts of Firefox. The language’s combination of speed, safety, and cross-platform support made it attractive for systems software, networking, embedded devices, and command-line tools.\n\nRust’s tooling and compiler continued to improve. The Rust compiler (rustc) leverages LLVM for code generation, and efforts like Clippy (lints), rust-analyzer (IDE support), and improvements in incremental compilation have enhanced developer productivity. Editions — language update mechanisms introduced in 2018 — allowed nonbreaking, coordinated changes across the ecosystem. Editions helped maintain stability while permitting evolution in syntax and idioms.\n\nThe ecosystem matured with a rich set of libraries and frameworks. Tokio and async/await support enabled high-performance asynchronous programming for networking services. WebAssembly support made Rust popular for safe, fast code in browsers and serverless environments. Embedded development benefited from the no_std ecosystem and hardware abstraction layers. Academic interest and community-created learning resources also broadened Rust’s reach to new audiences.\n\nChallenges remain: the learning curve associated with ownership semantics can be steep, and compile times and tooling complexity have periodically frustrated developers. The project has addressed many issues through improved diagnostics, education, and incremental compiler work. The governance community also continues to wrestle with inclusivity, contributor burnout, and coordinating rapid growth while preserving the language’s core safety promises.\n\nToday Rust is a mature, influential language with a vibrant community and a record of steady growth. It is frequently ranked highly in developer surveys for “most loved” languages. Looking ahead, Rust’s future includes performance optimizations, improved compile-time ergonomics, expanding library support, and continued adoption in systems, cloud, embedded, and WebAssembly contexts. Its history shows a deliberate path from experimental research to practical, widely used systems programming. Its trajectory reflects thoughtful design, pragmatic governance, active community-driven innovation, and expanding worldwide industry adoption."
           }
         },
         {

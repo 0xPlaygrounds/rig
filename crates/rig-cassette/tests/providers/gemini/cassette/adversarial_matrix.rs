@@ -10,7 +10,7 @@ use crate::history_survival::adversarial::{self, Hop};
 async fn colliding_ids() {
     const SCENARIO: &str = "adversarial/colliding_ids";
     with_gemini_cassette("adversarial/colliding_ids", |client| async move {
-        adversarial::colliding_ids(&client.completion(GEMINI_3_FLASH_PREVIEW), "call_dup", None)
+        adversarial::colliding_ids(client.completion(GEMINI_3_FLASH_PREVIEW), "call_dup", None)
             .await;
     })
     .await;
@@ -21,7 +21,7 @@ async fn colliding_ids() {
 async fn out_of_order_results() {
     const SCENARIO: &str = "adversarial/out_of_order_results";
     with_gemini_cassette("adversarial/out_of_order_results", |client| async move {
-        adversarial::out_of_order_results(&client.completion(GEMINI_3_FLASH_PREVIEW), None).await;
+        adversarial::out_of_order_results(client.completion(GEMINI_3_FLASH_PREVIEW), None).await;
     })
     .await;
     adversarial::assert_carried("gemini", SCENARIO, "thought_signature", 1);
@@ -34,7 +34,7 @@ async fn three_provider_round_trip() {
         "adversarial/three_provider_round_trip",
         |client| async move {
             adversarial::round_trip_hop(
-                &client.completion(GEMINI_3_FLASH_PREVIEW),
+                client.completion(GEMINI_3_FLASH_PREVIEW),
                 Hop::Gemini,
                 None,
             )

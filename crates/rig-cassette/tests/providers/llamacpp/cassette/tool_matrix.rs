@@ -47,17 +47,14 @@
 //! raw syntax — `<tool_call>{"name": …}</tool_call>` for Qwen — as ordinary
 //! assistant text. Rig surfaces exactly what the server sent, which is right;
 //! the cell records the shape so nobody mistakes it for a rig defect later.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, ToolResult,
     ToolResultContent, UserContent,
 };
-use rig::prelude::*;
-use rig::providers::openai::wire::{LLAMACPP, OpenAI};
+use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -66,6 +63,7 @@ use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
 use crate::support::{Adder, EmptyArgs, OperationArgs, Subtract, zero_arg_tool_definition};
 
 use super::super::cassette_support::*;
+use rig::completion::CompletionRequest;
 
 const NO_THINK: &str = "/no_think ";
 
@@ -135,13 +133,11 @@ async fn a_zero_argument_tool_is_called_with_an_empty_object() {
     with_llamacpp_competent_cassette("tool_matrix/zero_argument_tool", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Ping the service."))
+            .call(
+                CompletionRequest::new(format!("{NO_THINK}Ping the service."))
                     .tool(zero_arg_tool_definition("ping"))
                     .tool_choice(ToolChoice::Required)
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("a required zero-argument tool call should succeed");
@@ -224,8 +220,7 @@ async fn a_one_argument_tool_round_trips_its_value() {
     let observed = Arc::clone(&seen);
 
     with_llamacpp_competent_cassette("tool_matrix/one_argument_tool", move |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
             .preamble("Use the population tool to answer. Report the number it returns verbatim.")
             .tool(Population { seen: observed })
             .max_tokens(512)
@@ -260,14 +255,12 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
     with_llamacpp_competent_cassette("tool_matrix/three_tools", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
+            .call(
+                CompletionRequest::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool(zero_arg_tool_definition("ping"))
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("a three-tool request should succeed");
@@ -307,15 +300,13 @@ async fn two_independent_calls_arrive_in_one_turn() {
     with_llamacpp_competent_cassette("tool_matrix/parallel_calls", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(format!(
-                        "{NO_THINK}Compute 2 + 3 and 10 - 4. Call both tools in this one turn."
-                    ))
-                    .tool(rig::tool::tool_definition(&Adder))
-                    .tool(rig::tool::tool_definition(&Subtract))
-                    .max_tokens(512)
-                    .build(),
+            .call(
+                CompletionRequest::new(format!(
+                    "{NO_THINK}Compute 2 + 3 and 10 - 4. Call both tools in this one turn."
+                ))
+                .tool(rig::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Subtract))
+                .max_tokens(512),
             )
             .await
             .expect("a parallel tool request should succeed");
@@ -392,8 +383,7 @@ async fn a_tool_that_errors_reports_the_error_back_to_the_model() {
     let calls = Arc::clone(&vault.calls);
 
     with_llamacpp_competent_cassette("tool_matrix/tool_that_errors", move |client| async move {
-        let agent = client
-            .agent(CASSETTE_MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(CASSETTE_MODEL))
             .preamble(
                 "Use the open_vault tool when asked to open the vault. If it fails, \
                  tell the user it failed and why.",
@@ -440,14 +430,12 @@ async fn tool_choice_auto_lets_the_model_decide() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_auto", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
+            .call(
+                CompletionRequest::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool_choice(ToolChoice::Auto)
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("tool_choice auto should succeed");
@@ -481,14 +469,12 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_none", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Calculate 2 - 5."))
+            .call(
+                CompletionRequest::new(format!("{NO_THINK}Calculate 2 - 5."))
                     .tool(rig::tool::tool_definition(&Adder))
                     .tool(rig::tool::tool_definition(&Subtract))
                     .tool_choice(ToolChoice::None)
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("tool_choice none should succeed");
@@ -562,13 +548,11 @@ async fn tool_choice_required_forces_a_call() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_required", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(format!("{NO_THINK}Hello there."))
+            .call(
+                CompletionRequest::new(format!("{NO_THINK}Hello there."))
                     .tool(zero_arg_tool_definition("ping"))
                     .tool_choice(ToolChoice::Required)
-                    .max_tokens(256)
-                    .build(),
+                    .max_tokens(256),
             )
             .await
             .expect("tool_choice required should succeed");
@@ -612,22 +596,20 @@ async fn tool_choice_required_forces_a_call() {
 #[tokio::test]
 async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
-    let model = OpenAI::with_key(&LLAMACPP, "")
+    let model = OpenAIConfig::with_key(&LLAMACPP, "")
         .with_base_url("http://127.0.0.1:1/v1")
-        .bind(rig::http_client::ReqwestClient::default())
+        .connect(rig::http_client::ReqwestClient::default())
         .completion(CASSETTE_MODEL);
 
     let error = model
-        .completion(
-            model
-                .completion_request(format!("{NO_THINK}Compute 2 + 3."))
+        .call(
+            CompletionRequest::new(format!("{NO_THINK}Compute 2 + 3."))
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["subtract".to_string()],
                 })
-                .max_tokens(256)
-                .build(),
+                .max_tokens(256),
         )
         .await
         .expect_err("a specific tool choice must not be sent to llama.cpp");
@@ -664,24 +646,21 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 /// that a checked fact rather than a reading.
 #[tokio::test]
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
-    let model = OpenAI::with_key(&LLAMACPP, "")
+    let model = OpenAIConfig::with_key(&LLAMACPP, "")
         .with_base_url("http://127.0.0.1:1/v1")
-        .bind(rig::http_client::ReqwestClient::default())
+        .connect(rig::http_client::ReqwestClient::default())
         .completion(CASSETTE_MODEL);
 
     let error = model
         .stream(
-            model
-                .completion_request(format!("{NO_THINK}Compute 2 + 3."))
+            CompletionRequest::new(format!("{NO_THINK}Compute 2 + 3."))
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["subtract".to_string()],
                 })
-                .max_tokens(256)
-                .build(),
+                .max_tokens(256),
         )
-        .await
         .err()
         .expect("opening the stream must fail before anything is sent");
 
@@ -703,33 +682,31 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
     with_llamacpp_competent_cassette("tool_matrix/tool_result_text", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(Message::User {
-                        content: vec![UserContent::ToolResult(ToolResult {
-                            call: ToolCallId::new_or_minted("call_text", 0),
-                            provider: ProviderCallId::new("call_text"),
-                            name: "lookup".to_string(),
-                            content: vec![ToolResultContent::text("the codeword is heliotrope")],
-                        })],
-                    })
-                    .preamble(
-                        "Answer using only the tool result you were given. \
+            .call(
+                CompletionRequest::new(Message::User {
+                    content: vec![UserContent::ToolResult(ToolResult {
+                        call: ToolCallId::new_or_minted("call_text", 0),
+                        provider: ProviderCallId::new("call_text"),
+                        name: "lookup".to_string(),
+                        content: vec![ToolResultContent::text("the codeword is heliotrope")],
+                    })],
+                })
+                .preamble(
+                    "Answer using only the tool result you were given. \
                          Repeat the codeword verbatim."
-                            .to_string(),
-                    )
-                    // A tool result answers a tool *call*: the history has to
-                    // carry the assistant turn that asked for it, or the chat
-                    // template renders an orphan tool message and the model
-                    // has nothing to answer.
-                    .messages(vec![
-                        Message::User {
-                            content: vec![UserContent::text("What is the codeword?")],
-                        },
-                        lookup_call_turn("call_text"),
-                    ])
-                    .max_tokens(512)
-                    .build(),
+                        .to_string(),
+                )
+                // A tool result answers a tool *call*: the history has to
+                // carry the assistant turn that asked for it, or the chat
+                // template renders an orphan tool message and the model
+                // has nothing to answer.
+                .messages(vec![
+                    Message::User {
+                        content: vec![UserContent::text("What is the codeword?")],
+                    },
+                    lookup_call_turn("call_text"),
+                ])
+                .max_tokens(512),
             )
             .await
             .expect("a text tool result should be accepted");
@@ -765,31 +742,29 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
     with_llamacpp_competent_cassette("tool_matrix/tool_result_json", |client| async move {
         let model = client.completion(CASSETTE_MODEL);
         let response = model
-            .completion(
-                model
-                    .completion_request(Message::User {
-                        content: vec![UserContent::ToolResult(ToolResult {
-                            call: ToolCallId::new_or_minted("call_json", 0),
-                            provider: ProviderCallId::new("call_json"),
-                            name: "lookup".to_string(),
-                            content: vec![ToolResultContent::text(
-                                json!({ "codeword": "heliotrope", "confidence": 0.99 }).to_string(),
-                            )],
-                        })],
-                    })
-                    .preamble(
-                        "Answer using only the JSON tool result you were given. \
+            .call(
+                CompletionRequest::new(Message::User {
+                    content: vec![UserContent::ToolResult(ToolResult {
+                        call: ToolCallId::new_or_minted("call_json", 0),
+                        provider: ProviderCallId::new("call_json"),
+                        name: "lookup".to_string(),
+                        content: vec![ToolResultContent::text(
+                            json!({ "codeword": "heliotrope", "confidence": 0.99 }).to_string(),
+                        )],
+                    })],
+                })
+                .preamble(
+                    "Answer using only the JSON tool result you were given. \
                          Report the codeword verbatim."
-                            .to_string(),
-                    )
-                    .messages(vec![
-                        Message::User {
-                            content: vec![UserContent::text("What is the codeword?")],
-                        },
-                        lookup_call_turn("call_json"),
-                    ])
-                    .max_tokens(512)
-                    .build(),
+                        .to_string(),
+                )
+                .messages(vec![
+                    Message::User {
+                        content: vec![UserContent::text("What is the codeword?")],
+                    },
+                    lookup_call_turn("call_json"),
+                ])
+                .max_tokens(512),
             )
             .await
             .expect("a JSON tool result should be accepted");

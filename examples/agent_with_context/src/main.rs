@@ -4,7 +4,6 @@
 
 use anyhow::Result;
 use rig::agent::AgentBuilder;
-use rig::prelude::*;
 use rig::providers::cohere::{COMMAND_A_03_2025, Cohere};
 
 const CONTEXT_DOCS: [&str; 3] = [
@@ -17,7 +16,7 @@ const CONTEXT_PROMPT: &str = "What does \"glarb-glarb\" mean?";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cohere = Cohere::from_env()?.bound()?;
+    let cohere = Cohere::from_env()?;
     let model = cohere.completion(COMMAND_A_03_2025);
     let agent = CONTEXT_DOCS
         .iter()

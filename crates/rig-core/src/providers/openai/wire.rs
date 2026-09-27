@@ -1,18 +1,21 @@
 //! OpenAI-compatible configurations, dialect policies, and endpoint wires.
-//! A [`Dialect`](crate::providers::openai::wire::Dialect) selects request and response policies; [`OpenAI`] holds
-//! credentials and overrides. Bind an endpoint wire to a transport to execute it.
+//! A [`Dialect`](crate::providers::openai::wire::Dialect) selects request
+//! and response policies; [`OpenAIConfig`](crate::providers::openai::OpenAIConfig)
+//! holds credentials and overrides. An
+//! [`OpenAI`](crate::providers::openai::OpenAI) client puts
+//! the configuration on a transport and builds each endpoint's model.
 //!
 //! ```
-//! use rig_core::providers::openai::{OpenAI, Route, wire::OpenAiWire};
-//! let provider = OpenAI::new("key").with_route(Route::Chat);
-//! assert!(matches!(provider.completion("gpt-5.2"), OpenAiWire::Chat(_)));
+//! use rig_core::providers::openai::{OpenAIConfig, Route, wire::OpenAiWire};
+//!
+//! let openai = OpenAIConfig::new("key").with_route(Route::Chat).client();
+//! assert!(matches!(openai.completion("gpt-5.2").wire, OpenAiWire::Chat(_)));
 //! ```
 
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{Bound, HasEmbedding, HasModelListing, HasRerank, HasTranscription, HasVerify};
-use crate::wire::{HasCompletion, Secret};
+use crate::wire::Secret;
 
 use super::responses_api::SystemInstructionsPlacement;
 use super::responses_api::wire::Responses;
@@ -263,7 +266,7 @@ pub struct ModelWidth {
     /// The model identifier, as the `model` field spells it.
     pub model: &'static str,
     /// Default width reported when no width is requested, or `None` if unknown.
-    /// Unknown widths report zero through [`crate::embeddings::EmbeddingModel::ndims`].
+    /// Unknown widths report zero as the embedding model's `ndims`.
     pub default: Option<usize>,
     /// The widths a request may name.
     pub accepted: AcceptedWidths,
@@ -483,11 +486,11 @@ pub struct DialectHooks {
 
 /// A dialect's modality-request headers, applied to the built request.
 pub type ModalityEnvelope =
-    fn(&OpenAI, &mut http::Request<crate::wire::Body>) -> Result<(), http::Error>;
+    fn(&OpenAIConfig, &mut http::Request<crate::wire::Body>) -> Result<(), http::Error>;
 
 /// A dialect's completion headers, applied to the authenticated request builder.
 pub type CompletionEnvelope = fn(
-    &OpenAI,
+    &OpenAIConfig,
     &crate::completion::CompletionRequest,
     http::request::Builder,
 ) -> http::request::Builder;
@@ -514,7 +517,8 @@ pub struct Quirks {
     pub auth: Auth,
     /// How the dialect addresses a model.
     pub routing: Routing,
-    /// Which completion endpoint [`OpenAI::completion`] builds: the
+    /// Which completion endpoint
+    /// [`OpenAI::completion`](crate::providers::openai::OpenAI::completion) builds: the
     /// dialect's flagship. Chat Completions is the one endpoint every
     /// dialect serves, so it is the baseline; OpenAI itself, xAI and ChatGPT
     /// serve `/responses` as their primary API and say so.
@@ -706,12 +710,12 @@ impl<'de> Deserialize<'de> for Dialect {
     }
 }
 
-/// Serializable provider configuration without a transport.
-/// Credentials are redacted and omitted from serialization. Construct endpoint
-/// wires and bind them through [`Bound`] to execute requests.
+/// The settings of an OpenAI-shaped provider: serializable, and the
+/// credential is never serialized. [`connect`](Self::connect) puts it on a
+/// transport as an [`OpenAI`](super::OpenAI) client.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OpenAI {
+pub struct OpenAIConfig {
     /// The credential. Never serialized (see [`Secret`]).
     pub api_key: Secret,
     /// The base URL every path resolves against.
@@ -758,7 +762,7 @@ pub struct OpenAI {
     pub system_instructions: Option<SystemInstructionsPlacement>,
 }
 
-impl OpenAI {
+impl OpenAIConfig {
     /// Official OpenAI, with `api_key`.
     pub fn new(api_key: impl Into<Secret>) -> Self {
         Self::with_key(&OPENAI, api_key)
@@ -828,9 +832,16 @@ impl OpenAI {
     /// route carries it and there is no default that would not silently
     /// address the wrong API.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
+        let (api_key, auth) = Self::credential_from_env(dialect)?;
+        Self::from_env_with_credential(dialect, api_key, auth)
+    }
+
+    /// The credential `dialect` reads from the environment, and how it is
+    /// sent. Alternative credentials require their own header policy; the
+    /// primary is preferred.
+    pub(crate) fn credential_from_env(dialect: &Dialect) -> Result<(String, Auth), EnvError> {
         let quirks = &dialect.quirks;
-        // Alternative credentials require their own header policy; prefer the primary.
-        let (api_key, auth) = match dialect.alternate_auth {
+        Ok(match dialect.alternate_auth {
             Some(alternative) => match env::optional(dialect.api_key_env)? {
                 Some(api_key) => (api_key, quirks.auth),
                 None => match env::optional(alternative.api_key_env)? {
@@ -847,7 +858,16 @@ impl OpenAI {
                 },
             },
             None => (env::required(dialect.api_key_env)?, quirks.auth),
-        };
+        })
+    }
+
+    /// [`Self::from_env_with`] with the credential already read.
+    pub(crate) fn from_env_with_credential(
+        dialect: &Dialect,
+        api_key: String,
+        auth: Auth,
+    ) -> Result<Self, EnvError> {
+        let quirks = &dialect.quirks;
         let mut provider = Self::with_key(dialect, api_key);
         provider.auth = auth;
         for name in [dialect.base_url_env, quirks.base_url_env_alias]
@@ -964,7 +984,8 @@ impl OpenAI {
             .unwrap_or(self.dialect.quirks.responses.system_instructions)
     }
 
-    /// Override dialect and model-specific routing for [`Self::completion`].
+    /// Override dialect and model-specific routing for the client's
+    /// [`completion`](crate::providers::openai::OpenAI::completion).
     pub fn with_route(mut self, route: Route) -> Self {
         self.route = Some(route);
         self
@@ -981,54 +1002,54 @@ impl OpenAI {
     /// xAI and ChatGPT, model-dependent routing when a dialect supplies it, and
     /// Chat Completions for other compatible gateways, unless
     /// [`with_route`](Self::with_route) chose the other one.
-    pub fn completion(&self, model: impl Into<String>) -> OpenAiWire {
+    pub(crate) fn completion(&self, model: impl Into<String>) -> OpenAiWire {
         OpenAiWire::new(self.clone(), model)
     }
 
     /// The Responses wire for `model`: `POST /responses`.
-    pub fn responses(&self, model: impl Into<String>) -> Responses {
+    pub(crate) fn responses(&self, model: impl Into<String>) -> Responses {
         Responses::new(self.clone(), model)
     }
 
     /// The chat-completions wire for `model`.
-    pub fn chat(&self, model: impl Into<String>) -> Chat {
+    pub(crate) fn chat(&self, model: impl Into<String>) -> Chat {
         Chat::new(self.clone(), model)
     }
 
     /// The embeddings wire for `model`.
-    pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         Embeddings::new(self.clone(), model, ndims)
     }
 
     /// The rerank wire for `model`.
-    pub fn reranker(&self, model: impl Into<String>) -> Rerank {
+    pub(crate) fn rerank(&self, model: impl Into<String>) -> Rerank {
         Rerank::new(self.clone(), model)
     }
 
     /// The transcription wire for `model`.
-    pub fn transcriptions(&self, model: impl Into<String>) -> Transcriptions {
+    pub(crate) fn transcription(&self, model: impl Into<String>) -> Transcriptions {
         Transcriptions::new(self.clone(), model)
     }
 
     /// The model-listing wire.
-    pub fn models(&self) -> Models {
+    pub(crate) fn models(&self) -> Models {
         Models::new(self.clone())
     }
 
     /// The credential-check wire.
-    pub fn verify_wire(&self) -> Verify {
+    pub(crate) fn verify(&self) -> Verify {
         Verify::new(self.clone())
     }
 
     /// The image-generation wire for `model`.
     #[cfg(feature = "image")]
-    pub fn images(&self, model: impl Into<String>) -> Images {
+    pub(crate) fn image_generation(&self, model: impl Into<String>) -> Images {
         Images::new(self.clone(), model)
     }
 
     /// The speech wire for `model`.
     #[cfg(feature = "audio")]
-    pub fn speech(&self, model: impl Into<String>) -> Speech {
+    pub(crate) fn audio_generation(&self, model: impl Into<String>) -> Speech {
         Speech::new(self.clone(), model)
     }
 
@@ -1169,86 +1190,6 @@ impl OpenAI {
             builder = builder.header("ChatGPT-Account-Id", account_id);
         }
         builder
-    }
-}
-
-/// Build completion wires using configured, model-specific, or dialect routing.
-impl HasCompletion for OpenAI {
-    type Wire = OpenAiWire;
-
-    fn completion(&self, model: impl Into<String>) -> OpenAiWire {
-        self.completion(model)
-    }
-}
-
-/// Explicit endpoint constructors that retain the bound transport.
-impl<H: Clone> Bound<OpenAI, H> {
-    /// The chat-completions wire for `model`, on this socket.
-    pub fn chat(&self, model: impl Into<String>) -> Bound<Chat, H> {
-        Bound::new(self.wire.chat(model), self.http.clone())
-    }
-
-    /// The Responses wire for `model`, on this socket.
-    pub fn responses(&self, model: impl Into<String>) -> Bound<Responses, H> {
-        Bound::new(self.wire.responses(model), self.http.clone())
-    }
-}
-
-impl HasEmbedding for OpenAI {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasRerank for OpenAI {
-    type Wire = Rerank;
-
-    fn rerank(&self, model: impl Into<String>) -> Rerank {
-        self.reranker(model)
-    }
-}
-
-impl HasTranscription for OpenAI {
-    type Wire = Transcriptions;
-
-    fn transcription(&self, model: impl Into<String>) -> Transcriptions {
-        self.transcriptions(model)
-    }
-}
-
-impl HasModelListing for OpenAI {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
-    }
-}
-
-impl HasVerify for OpenAI {
-    type Wire = Verify;
-
-    fn verify(&self) -> Verify {
-        self.verify_wire()
-    }
-}
-
-#[cfg(feature = "image")]
-impl crate::driver::HasImageGeneration for OpenAI {
-    type Wire = Images;
-
-    fn image_generation(&self, model: impl Into<String>) -> Images {
-        self.images(model)
-    }
-}
-
-#[cfg(feature = "audio")]
-impl crate::driver::HasAudioGeneration for OpenAI {
-    type Wire = Speech;
-
-    fn audio_generation(&self, model: impl Into<String>) -> Speech {
-        self.speech(model)
     }
 }
 

@@ -8,12 +8,11 @@ use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
 use rig::bus::Bus;
 use rig::completion::PromptError;
-use rig::driver::{Bound, Socket};
 use rig::effect::{EffectFamily, HandlerKey};
-use rig::prelude::*;
-use rig::providers::gemini::{self, Gemini};
+use rig::providers::gemini::{self};
 use rig::run::OutputMode;
 use rig_cassette::agent::AgentReplayExt;
+use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_corpus_breadth_cassette;
 use crate::goldens::{
@@ -56,8 +55,8 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
 }
 
 /// A host's bus with the model, and the host's note taker or embedding model.
-fn host_bus<H: Socket>(
-    client: &Bound<Gemini, H>,
+fn host_bus(
+    client: &GeminiModels,
     notes: bool,
     embeds: bool,
 ) -> (
@@ -71,7 +70,7 @@ fn host_bus<H: Socket>(
     driver
         .register_erased(
             model_key.clone(),
-            rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
+            rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                 "default",
                 client.completion(MODEL),
             )),
@@ -89,7 +88,7 @@ fn host_bus<H: Socket>(
         driver
             .register_erased(
                 HandlerKey::from(EMBED_KEY),
-                rig::serve::ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
+                rig::serve::ErasedHandler::new(rig::serve::adapters::ModelAdapter::new(
                     "host",
                     client.embedding(gemini::embedding::EMBEDDING_001, None),
                 )),
@@ -107,8 +106,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
         "corpus_breadth/output_tool_streamed",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
@@ -135,8 +133,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
 async fn text_delta_stop_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_breadth_cassette("corpus_breadth/text_delta_stop", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-        let agent = client
-            .agent(MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)
@@ -177,8 +174,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
         "corpus_breadth/tool_dispatch_cancelled",
         |client| async move {
             let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-            let agent = client
-                .agent(MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
@@ -247,8 +243,7 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
 async fn output_tool_unary_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_breadth_cassette("corpus_breadth/output_tool_unary", |client| async move {
         let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
-        let agent = client
-            .agent(MODEL)
+        let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .temperature(0.0)

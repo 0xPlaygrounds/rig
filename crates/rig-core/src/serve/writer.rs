@@ -81,7 +81,7 @@ impl StreamWriter {
     ) -> Result<(), SinkClosed> {
         let id = self.tool_ids.mint();
         self.output
-            .tool_call(id, ToolCallEnd::whole(name, arguments));
+            .tool_end(id, ToolCallEnd::whole(name, arguments));
         self.flush().await
     }
 

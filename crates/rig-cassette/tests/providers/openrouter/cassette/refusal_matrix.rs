@@ -77,9 +77,7 @@
 //! `crates/rig-core/src/providers/openai/wire/chat.rs`
 //! (`assistant_refusal_fallback`).
 
-use rig::completion::CompletionModel;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::providers::openai::completion::Message as OpenAiMessage;
 use rig::providers::openrouter;
 use serde::Deserialize;
@@ -92,6 +90,7 @@ use crate::support::{
     assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
     collect_stream_observation, collect_text_and_terminal, zero_arg_tool_definition,
 };
+use rig::completion::CompletionRequest;
 
 /// A request the model refuses rather than answers — and refuses *as a
 /// refusal*, not as in-schema prose.
@@ -145,14 +144,12 @@ async fn blocking_raw_model_surfaces_refusal() {
         "refusal_matrix/blocking_raw_model_surfaces_refusal",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("a refusal is content, not a transport failure");
 
@@ -180,8 +177,7 @@ async fn blocking_agent_prompt_surfaces_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_agent_prompt_surfaces_refusal",
         |client| async move {
-            let agent = client
-                .agent(REFUSING_MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(REFUSING_MODEL))
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
                 .build();
@@ -217,13 +213,11 @@ async fn blocking_raw_and_normalized_agree() {
         "refusal_matrix/blocking_raw_and_normalized_agree",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let normalized = model.completion(request).await.expect("the turn");
+            let normalized = model.call(request).await.expect("the turn");
             let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
                 .expect("raw is OpenRouter's own completion response");
             let raw_refusal = document
@@ -265,13 +259,11 @@ async fn blocking_refusal_finishes_with_stop() {
         "refusal_matrix/blocking_refusal_finishes_with_stop",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
 
             assert_eq!(
                 response.finish_reason(),
@@ -293,13 +285,11 @@ async fn blocking_usage_survives_the_refusal() {
         "refusal_matrix/blocking_usage_survives_the_refusal",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
 
             assert!(
                 response.usage.input_tokens.is_some_and(|n| n > 0),
@@ -337,14 +327,12 @@ async fn blocking_refusal_with_tools_in_request() {
         "refusal_matrix/blocking_refusal_with_tools_in_request",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
             let text = assistant_text_response(&response.choice).expect("refusal text");
             assert_nonempty_response(&text);
             assert!(
@@ -370,14 +358,12 @@ async fn blocking_refusal_with_preamble() {
         "refusal_matrix/blocking_refusal_with_preamble",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
-                .preamble("You are a helpful assistant. Answer in the schema.".to_owned())
+            let request = CompletionRequest::new(REFUSED_PROMPT)
+                .preamble("You are a helpful assistant. Answer in the schema.")
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
             let text = assistant_text_response(&response.choice).expect("refusal text");
             assert_nonempty_response(&text);
         },
@@ -400,12 +386,10 @@ async fn blocking_refusal_survives_into_history() {
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
             let first = model
-                .completion(
-                    model
-                        .completion_request(REFUSED_PROMPT)
+                .call(
+                    CompletionRequest::new(REFUSED_PROMPT)
                         .max_tokens(CAP)
-                        .additional_params(refusal_request_params("OpenAI"))
-                        .build(),
+                        .additional_params(refusal_request_params("OpenAI")),
                 )
                 .await
                 .expect("refusal turn");
@@ -420,13 +404,11 @@ async fn blocking_refusal_survives_into_history() {
             ];
 
             let second = model
-                .completion(
-                    model
-                        .completion_request("Understood. Now name one common tree species.")
+                .call(
+                    CompletionRequest::new("Understood. Now name one common tree species.")
                         .messages(history)
                         .max_tokens(CAP)
-                        .additional_params(refusal_request_params("OpenAI"))
-                        .build(),
+                        .additional_params(refusal_request_params("OpenAI")),
                 )
                 .await
                 .expect("the replayed refusal turn must be accepted by the gateway");
@@ -454,13 +436,11 @@ async fn blocking_refusal_under_a_tight_cap() {
         "refusal_matrix/blocking_refusal_under_a_tight_cap",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(32)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("refusal text"),
             );
@@ -487,13 +467,11 @@ async fn streaming_raw_model_surfaces_refusal() {
         "refusal_matrix/streaming_raw_model_surfaces_refusal",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);
@@ -520,8 +498,7 @@ async fn streaming_agent_surfaces_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_agent_surfaces_refusal",
         |client| async move {
-            let agent = client
-                .agent(REFUSING_MODEL)
+            let agent = rig::AgentBuilder::new(client.completion(REFUSING_MODEL))
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
                 .build();
@@ -547,13 +524,11 @@ async fn streaming_terminal_carries_usage_and_reason() {
         "refusal_matrix/streaming_terminal_carries_usage_and_reason",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("a refusal stream still ends with a terminal record");
 
@@ -583,14 +558,12 @@ async fn streaming_refusal_emits_no_tool_calls() {
         "refusal_matrix/streaming_refusal_emits_no_tool_calls",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
 
             assert_nonempty_response(&observed.text);
@@ -625,12 +598,10 @@ async fn transports_agree_on_the_refusal_text() {
             let model = client.completion(REFUSING_MODEL);
 
             let blocking = model
-                .completion(
-                    model
-                        .completion_request(REFUSED_PROMPT)
+                .call(
+                    CompletionRequest::new(REFUSED_PROMPT)
                         .max_tokens(CAP)
-                        .additional_params(refusal_request_params("OpenAI"))
-                        .build(),
+                        .additional_params(refusal_request_params("OpenAI")),
                 )
                 .await
                 .expect("blocking refusal turn");
@@ -639,13 +610,10 @@ async fn transports_agree_on_the_refusal_text() {
 
             let stream = model
                 .stream(
-                    model
-                        .completion_request(REFUSED_PROMPT)
+                    CompletionRequest::new(REFUSED_PROMPT)
                         .max_tokens(CAP)
-                        .additional_params(refusal_request_params("OpenAI"))
-                        .build(),
+                        .additional_params(refusal_request_params("OpenAI")),
                 )
-                .await
                 .expect("stream should connect");
             let (streamed_text, _) = collect_text_and_terminal(stream).await;
 
@@ -681,13 +649,11 @@ async fn blocking_gpt_4_1_refusal() {
         "refusal_matrix/blocking_gpt_4_1_refusal",
         |client| async move {
             let model = client.completion(SECOND_REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("refusal text"),
             );
@@ -711,13 +677,11 @@ async fn blocking_azure_routed_refusal() {
         "refusal_matrix/blocking_azure_routed_refusal",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("Azure"))
-                .build();
+                .additional_params(refusal_request_params("Azure"));
 
-            let response = model.completion(request).await.expect("refusal turn");
+            let response = model.call(request).await.expect("refusal turn");
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("refusal text"),
             );
@@ -737,13 +701,11 @@ async fn streaming_azure_routed_refusal() {
         "refusal_matrix/streaming_azure_routed_refusal",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("Azure"))
-                .build();
+                .additional_params(refusal_request_params("Azure"));
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
             assert_nonempty_response(&observed.text);
         },
@@ -766,13 +728,11 @@ async fn control_answerable_prompt_is_unchanged_blocking() {
         "refusal_matrix/control_answerable_prompt_is_unchanged_blocking",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(ANSWERABLE_PROMPT)
+            let request = CompletionRequest::new(ANSWERABLE_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let response = model.completion(request).await.expect("answered turn");
+            let response = model.call(request).await.expect("answered turn");
             let text = assistant_text_response(&response.choice).expect("answer text");
             assert!(
                 serde_json::from_str::<Value>(&text).is_ok(),
@@ -794,13 +754,11 @@ async fn control_answerable_prompt_is_unchanged_streaming() {
         "refusal_matrix/control_answerable_prompt_is_unchanged_streaming",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(ANSWERABLE_PROMPT)
+            let request = CompletionRequest::new(ANSWERABLE_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
             assert!(
                 serde_json::from_str::<Value>(&observed.text).is_ok(),
@@ -825,13 +783,11 @@ async fn control_mini_answers_inside_schema() {
         "refusal_matrix/control_mini_answers_inside_schema",
         |client| async move {
             let model = client.completion(NON_REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
+                .additional_params(refusal_request_params("OpenAI"));
 
-            let response = model.completion(request).await.expect("answered turn");
+            let response = model.call(request).await.expect("answered turn");
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("in-schema text"),
             );
@@ -854,13 +810,11 @@ async fn control_no_schema_refusal_is_plain_content() {
         "refusal_matrix/control_no_schema_refusal_is_plain_content",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request(REFUSED_PROMPT)
+            let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(pinned_only("OpenAI"))
-                .build();
+                .additional_params(pinned_only("OpenAI"));
 
-            let response = model.completion(request).await.expect("answered turn");
+            let response = model.call(request).await.expect("answered turn");
             assert_nonempty_response(
                 &assistant_text_response(&response.choice).expect("content text"),
             );
@@ -882,14 +836,12 @@ async fn control_tool_call_turn_is_unchanged() {
         "refusal_matrix/control_tool_call_turn_is_unchanged",
         |client| async move {
             let model = client.completion(REFUSING_MODEL);
-            let request = model
-                .completion_request("Call the ping tool.")
+            let request = CompletionRequest::new("Call the ping tool.")
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
-                .additional_params(pinned_only("OpenAI"))
-                .build();
+                .additional_params(pinned_only("OpenAI"));
 
-            let response = model.completion(request).await.expect("tool-call turn");
+            let response = model.call(request).await.expect("tool-call turn");
             assert!(
                 response
                     .choice

@@ -353,27 +353,6 @@ macro_rules! new_modality_span {
     };
 }
 
-/// Runs a call of the unary operation `Op` in its canonical span and records
-/// the response with [`Operation::record`](crate::wire::Operation::record) on
-/// success. Returns the call's result unchanged; errors leave only request
-/// metadata on the span.
-pub async fn instrument_modality<Op, E>(
-    provider: &str,
-    request_model: &str,
-    call: impl Future<Output = Result<Op::Response, E>>,
-) -> Result<Op::Response, E>
-where
-    Op: crate::wire::Operation<Telemetry = GenAiOperation>,
-{
-    debug_assert!(!Op::telemetry(false).is_completion());
-    let span = SpanBuilder::new(provider, request_model, Op::telemetry(false)).build();
-    let result = tracing::Instrument::instrument(call, span.clone()).await;
-    if let Ok(response) = &result {
-        Op::record(&span, response);
-    }
-    result
-}
-
 /// Builder for a canonical GenAI span.
 ///
 /// A completion operation reuses the current span when it declares
@@ -730,24 +709,6 @@ pub fn record_model_output(span: &tracing::Span, content: &[AssistantContent], e
     if let Ok(messages) = serde_json::to_string(&messages) {
         span.record("gen_ai.output.messages", messages);
     }
-}
-
-/// Provider response metadata used to populate GenAI telemetry spans.
-pub trait ProviderResponseExt {
-    /// Provider-native usage type.
-    type Usage: Serialize;
-
-    /// Returns the provider response ID, if supplied.
-    fn response_id(&self) -> Option<&str>;
-
-    /// Returns the provider response model name, if supplied.
-    fn response_model_name(&self) -> Option<&str>;
-
-    /// Returns the primary text response, when available.
-    fn text_response(&self) -> Option<String>;
-
-    /// Returns provider-native usage metrics, if supplied.
-    fn usage(&self) -> Option<Self::Usage>;
 }
 
 /// Records GenAI usage and response metadata on tracing spans.

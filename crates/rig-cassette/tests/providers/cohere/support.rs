@@ -1,9 +1,7 @@
 use futures::FutureExt;
-use rig::driver::Bound;
-use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
-use rig::providers::cohere::wire::Cohere;
+use rig::providers::cohere::wire::CohereConfig;
 use rig::tool::Tool;
+use rig_test_support::cassette_models::CohereModels;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -13,11 +11,7 @@ use crate::support::{MathError, OperationArgs};
 
 const COHERE_BASE_URL: &str = "https://api.cohere.ai";
 
-/// The Cohere config bound to the bundled transport — what a cassette test
-/// builds its models from, now that a model is a bound wire.
-pub(super) type BoundCohere = Bound<Cohere, BoxedHttpClient>;
-
-async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundCohere) {
+async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, CohereConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "cohere",
@@ -25,22 +19,25 @@ async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
         COHERE_BASE_URL,
     )
     .await;
-    let cohere = Cohere::new(cassette.api_key("COHERE_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("Cohere cassette transport should build");
+    let cohere =
+        CohereConfig::new(cassette.api_key("COHERE_API_KEY")).with_base_url(cassette.base_url());
 
     (cassette, cohere)
 }
 
 pub(super) async fn with_cohere_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(BoundCohere) -> Fut,
+    F: FnOnce(CohereModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
     let (cassette, client) = cohere_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(CohereModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     crate::cassettes::checkpoint_attempt(&cassette, "cohere", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
@@ -127,7 +124,7 @@ pub(super) async fn with_cohere_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(BoundCohere) -> Fut,
+    F: FnOnce(CohereModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_cohere_cassette(spec, test_body).await;

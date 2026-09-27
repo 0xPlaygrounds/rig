@@ -783,8 +783,8 @@ impl EffectKind {
     }
 }
 
-/// The inputs of an embedding request: the transcription of
-/// `EmbeddingModel::embed_texts` and `ImageEmbeddingModel::embed_images`.
+/// The inputs of an embedding request: the texts or images an embedding
+/// model's call embeds.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "modality", content = "inputs", rename_all = "snake_case")]
 pub enum EmbedInputs {
@@ -794,8 +794,8 @@ pub enum EmbedInputs {
     Images(Vec<Vec<u8>>),
 }
 
-/// A reranking request: the transcription of
-/// [`RerankModel::rerank`](crate::rerank::RerankModel::rerank).
+/// A reranking request: the query and documents a rerank model's call
+/// orders.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RerankRequest {
     /// The query the documents are ranked against.

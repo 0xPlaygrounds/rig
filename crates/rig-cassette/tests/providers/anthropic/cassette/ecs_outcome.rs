@@ -14,6 +14,7 @@ pub(super) use delivery::FirstDelta;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::serve::adapters::ModelAdapter;
 use rig::streaming::{Delta, StreamEvent};
 use rig_ecs::{
     agent::{DefaultMaxTurns, Failure, MaxTurns, RunResult, Settled, Temperature},
@@ -49,8 +50,9 @@ async fn cancel_after_tool_call_delta_effect_log() {
         with_anthropic_corpus_outcome_cassette(
             "corpus_outcome/cancel_after_tool_call_delta",
             |client| async move {
-                let mut ecs = EcsAgent::for_golden(
-                    delivery::FirstDelta::tool(client.completion(CLAUDE_SONNET_4_6)),
+                let model = client.completion(CLAUDE_SONNET_4_6);
+                let mut ecs = EcsAgent::for_golden_serving(
+                    |label| delivery::FirstDelta::tool(ModelAdapter::new(label, model)),
                     NOTE_PREAMBLE,
                     true,
                 );

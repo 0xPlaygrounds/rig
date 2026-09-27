@@ -1369,6 +1369,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "checkpoint-complete"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 348,

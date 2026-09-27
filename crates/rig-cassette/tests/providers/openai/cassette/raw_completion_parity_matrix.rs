@@ -1,5 +1,5 @@
 //! Typed-route parity for OpenAI: the provider-native view of a reply
-//! reproduces what `CompletionModel::completion` returns.
+//! reproduces what `Model::call` returns.
 //!
 //! # What this pins
 //!
@@ -78,22 +78,18 @@ fn ping_tool() -> ToolDefinition {
 
 /// The text-turn request, identical for both routes: `temperature: 0` keeps
 /// the two live turns of a cell as alike as the provider allows.
-fn text_request(model: &(impl rig::completion::CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(TEXT_PROMPT)
+fn text_request() -> CompletionRequest {
+    CompletionRequest::new(TEXT_PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
-fn tool_request(model: &(impl rig::completion::CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> CompletionRequest {
+    CompletionRequest::new(TOOL_PROMPT)
         .tool(ping_tool())
         .tool_choice(ToolChoice::Required)
         .temperature(0.0)
         .max_tokens(64)
-        .build()
 }
 
 fn tool_call_names(response: &CompletionResponse) -> Vec<&str> {
@@ -360,7 +356,9 @@ async fn chat_text_turn_parity() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_text_turn_parity",
-        |client| capture_completion_pair(client.openai.chat(MODEL), text_request, observed.clone()),
+        |client| {
+            capture_completion_pair(client.openai.chat(MODEL), text_request(), observed.clone())
+        },
     )
     .await
     .expect("chat_text_turn_parity should replay from its cassette");
@@ -373,7 +371,9 @@ async fn chat_tool_turn_parity() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_tool_turn_parity",
-        |client| capture_completion_pair(client.openai.chat(MODEL), tool_request, observed.clone()),
+        |client| {
+            capture_completion_pair(client.openai.chat(MODEL), tool_request(), observed.clone())
+        },
     )
     .await
     .expect("chat_tool_turn_parity should replay from its cassette");
@@ -391,7 +391,9 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
-        |client| capture_completion_pair(client.openai.chat(MODEL), text_request, observed.clone()),
+        |client| {
+            capture_completion_pair(client.openai.chat(MODEL), text_request(), observed.clone())
+        },
     )
     .await
     .expect("chat_plain_raw_completion_lacks_request_id should replay from its cassette");
@@ -568,7 +570,7 @@ async fn responses_text_turn_parity() {
         |client| {
             capture_completion_pair(
                 client.openai.completion(MODEL),
-                text_request,
+                text_request(),
                 observed.clone(),
             )
         },
@@ -591,7 +593,7 @@ async fn responses_tool_turn_parity() {
         |client| {
             capture_completion_pair(
                 client.openai.completion(MODEL),
-                tool_request,
+                tool_request(),
                 observed.clone(),
             )
         },

@@ -2,7 +2,6 @@
 
 use crate::copilot::{live_embedding_model, with_copilot_cassette};
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
-use rig::embeddings::EmbeddingModel;
 
 #[tokio::test]
 async fn embeddings_smoke() {
@@ -10,8 +9,14 @@ async fn embeddings_smoke() {
         let model = client.embedding(live_embedding_model(), None);
 
         let embeddings = model
-            .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
+            .call(
+                EMBEDDING_INPUTS
+                    .iter()
+                    .map(|input| (*input).to_string())
+                    .collect::<Vec<_>>(),
+            )
             .await
+            .map(|response| response.embeddings)
             .expect("embedding request should succeed");
 
         assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());

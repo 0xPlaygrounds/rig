@@ -8,13 +8,12 @@ use rig_core::{
 #[test]
 fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
     use super::super::{Wire, cells::ThinkingWire};
-    use rig_core::{
-        driver::Bind, providers::anthropic::wire::Anthropic, test_utils::SequencedHttpClient,
-    };
-    let model = Anthropic::new("local-test-key")
-        .messages("model")
-        .bind(SequencedHttpClient::new(vec![]))
-        .boxed();
+    use rig_core::{providers::anthropic::wire::AnthropicConfig, test_utils::SequencedHttpClient};
+    let model = AnthropicConfig::new("local-test-key")
+        .connect(rig::http_client::DynHttpClient::new(
+            SequencedHttpClient::new(vec![]),
+        ))
+        .completion("model");
     let wire = Wire {
         model,
         thinking: ThinkingWire::Anthropic,
@@ -27,7 +26,10 @@ fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
         "default model options fit the recipe"
     );
     let cached = Wire {
-        model: wire.model.map_wire(|model| model.with_automatic_caching()),
+        model: rig::Model::new(
+            wire.model.wire.with_automatic_caching(),
+            wire.model.transport,
+        ),
         ..wire
     };
     assert!(
@@ -40,12 +42,14 @@ fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
 fn model_level_options_require_intact_host_bindings() {
     use super::super::{Wire, cells::ThinkingWire};
     use rig_core::{
-        completion::CompletionModel,
-        driver::Bind,
-        providers::{gemini::Gemini, openai::OpenAI},
+        providers::{gemini::GeminiConfig, openai::OpenAIConfig},
         test_utils::SequencedHttpClient,
     };
-    fn check<M: CompletionModel + Clone + 'static>(model: M, thinking: ThinkingWire) {
+    fn check<W, T>(model: rig::driver::Model<W, T>, thinking: ThinkingWire)
+    where
+        W: rig::wire::Wire<Op = rig::operation::Completion>,
+        T: rig::driver::Transport<W>,
+    {
         let wire = Wire {
             model,
             thinking,
@@ -58,31 +62,19 @@ fn model_level_options_require_intact_host_bindings() {
             "provider-only recipes cannot erase model options"
         );
     }
-    let provider = OpenAI::new("local-test-key");
-    check(
-        provider
-            .chat("model")
-            .with_prompt_caching()
-            .bind(SequencedHttpClient::new(vec![]))
-            .boxed(),
-        ThinkingWire::OpenAiChat,
-    );
-    check(
-        provider
-            .responses("model")
-            .with_strict_tools()
-            .bind(SequencedHttpClient::new(vec![]))
-            .boxed(),
-        ThinkingWire::OpenAiResponses,
-    );
-    check(
-        Gemini::new("local-test-key")
-            .generate_content("model")
-            .with_cached_content("cachedContents/test")
-            .bind(SequencedHttpClient::new(vec![]))
-            .boxed(),
-        ThinkingWire::Gemini,
-    );
+    let http = SequencedHttpClient::new(vec![]);
+    let provider = OpenAIConfig::new("local-test-key").connect(http.clone());
+    let mut chat = provider.chat("model");
+    chat.wire = chat.wire.with_prompt_caching();
+    check(chat, ThinkingWire::OpenAiChat);
+    let mut responses = provider.responses("model");
+    responses.wire = responses.wire.with_strict_tools();
+    check(responses, ThinkingWire::OpenAiResponses);
+    let mut gemini = GeminiConfig::new("local-test-key")
+        .connect(http)
+        .completion("model");
+    gemini.wire = gemini.wire.with_cached_content("cachedContents/test");
+    check(gemini, ThinkingWire::Gemini);
 }
 
 #[test]

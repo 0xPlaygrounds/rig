@@ -7,8 +7,8 @@
 //! outcomes, not skipped. The dimensions cell is absent: Cohere's embed wire
 //! takes no dimension parameter.
 
-use rig::embeddings::{EmbeddingModel as _, ImageEmbeddingModel as _};
 use rig::providers::cohere;
+use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_cohere_cassette;
 use crate::support::{
@@ -49,7 +49,7 @@ async fn normalized_response_is_complete() {
                 .embedding(cohere::EMBED_V4, None)
                 .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let response = model
-                .embed_texts_response(inputs())
+                .call(inputs())
                 .await
                 .expect("embedding request should succeed");
             assert_normalized_embedding_response(&response, &EMBEDDING_INPUTS, &expectations());
@@ -70,7 +70,7 @@ async fn raw_round_trips() {
             .embedding(cohere::EMBED_V4, None)
             .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
         let response = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("embedding request should succeed");
 
@@ -109,11 +109,11 @@ async fn raw_route_parity() {
             .embedding(cohere::EMBED_V4, None)
             .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
         let normalized = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("normalized call should succeed");
         let again = model
-            .embed_texts_response(inputs())
+            .call(inputs())
             .await
             .expect("the same request should succeed again");
         let raw: cohere::embeddings::EmbeddingResponse =
@@ -133,7 +133,7 @@ async fn single_text_convenience() {
                 .embedding(cohere::EMBED_V4, None)
                 .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let response = model
-                .embed_text_response(EMBEDDING_INPUTS[0])
+                .call(vec![EMBEDDING_INPUTS[0].to_string()])
                 .await
                 .expect("single-text embedding should succeed");
             assert_eq!(response.embeddings.len(), 1);
@@ -153,7 +153,7 @@ async fn error_preserves_provider_body() {
                 .embedding("no-such-embedding-model", None)
                 .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let error = model
-                .embed_texts_response(inputs())
+                .call(inputs())
                 .await
                 .expect_err("a bogus model must be rejected");
             assert!(
@@ -178,15 +178,15 @@ async fn image_normalized_and_raw_round_trip() {
     with_cohere_cassette(
         "embedding_matrix/image_normalized_and_raw_round_trip",
         |client| async move {
-            let model = client.map_wire(|cohere| cohere.image_embeddings());
+            let model = client.image_embedding();
             let response = model
-                .embed_images_response(vec![decode_image(PNG_2X2)])
+                .call(vec![decode_image(PNG_2X2)])
                 .await
                 .expect("image embedding should succeed");
 
             assert_eq!(response.embeddings.len(), 1);
             assert_eq!(response.provider, "cohere");
-            assert_eq!(response.embeddings[0].vec.len(), model.ndims());
+            assert_eq!(response.embeddings[0].vec.len(), model.capabilities().ndims);
             // Cohere bills image embeds as `billed_units.images`, not tokens
             // — `Usage` is token-denominated, so no counter is reported and
             // the image count is read off the raw payload.
@@ -221,7 +221,7 @@ async fn image_normalized_and_raw_round_trip() {
             // the axis left to pin is that the capture is stable rather than
             // that a second route agrees with the first.
             let again = model
-                .embed_images_response(vec![decode_image(PNG_2X2)])
+                .call(vec![decode_image(PNG_2X2)])
                 .await
                 .expect("the same image embed should succeed again");
             // Not byte-equality: Cohere mints a fresh generation id per call,

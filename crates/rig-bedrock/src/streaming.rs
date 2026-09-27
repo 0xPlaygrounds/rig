@@ -1,27 +1,19 @@
+use crate::completion::ConverseFrame;
 use crate::types::assistant_content::{
     PROVIDER_NAME, map_stop_reason, normalize_usage, reasoning_issuer,
 };
-use crate::types::completion_request::AwsCompletionRequest;
-use crate::types::converse_output::{StopReason, TokenUsage};
-use crate::{
-    completion::{CompletionModel, resolve_request_model},
-    types::errors::{AwsSdkConverseStreamError, converse_stream_output_completion_error},
-};
-use async_stream::stream;
+use crate::types::converse_output::{InternalConverseOutput, StopReason, TokenUsage};
+use crate::types::message::RigMessage;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_core::driver::run_wire_stream;
 use rig_core::error::ProviderError;
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::{AdapterOutput, Completion, ImagePart};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
-use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
-use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
-use rig_core::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use rig_core::{
-    message::ReasoningContent, streaming::UnparseableToolInput, wasm_compat::WasmCompatSend,
-};
+use rig_core::providers::internal::wire;
+use rig_core::streaming::StreamFinal;
+use rig_core::wire::{TypedEvent, WireEvent};
+use rig_core::{message::ReasoningContent, streaming::UnparseableToolInput};
 use serde::{Deserialize, Serialize};
-use tracing_futures::Instrument;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BedrockStreamingResponse {
@@ -92,20 +84,21 @@ fn reasoning_end(state: ReasoningState, content_block_index: i32, out: &mut Adap
     );
 }
 
-/// Per-stream state with independently indexed tool calls.
+/// Per-reply state with independently indexed tool calls.
 /// The shared accumulator owns argument fragments and finalization.
 #[derive(Default)]
-struct StreamState {
+pub struct StreamState {
     tool_calls: ToolCallBridge<i32>,
     current_reasoning: Option<ReasoningState>,
     final_stop_reason: Option<StopReason>,
     /// The AWS request id read off the SDK operation output before the event
-    /// stream is opened; stamped onto the terminal record. `None` on the
-    /// events-first seam, where no SDK operation exists.
+    /// stream is opened; stamped onto the terminal record.
     provider_request_id: Option<String>,
-    /// The issuer the stream's reasoning records when it is not
+    /// The issuer the reply's reasoning records when it is not
     /// [`PROVIDER_NAME`] (see [`reasoning_issuer`]).
     reasoning_issuer: Option<&'static str>,
+    /// The unary reply's document, for the response's `raw`.
+    document: Option<serde_json::Value>,
 }
 
 /// A static, log-safe label for a stop reason: known variants map to their
@@ -281,7 +274,6 @@ fn process_event(
                         Some(issuer) => record.with_reasoning_issuer(issuer),
                         None => record,
                     };
-                    tracing::Span::current().record_token_usage(&record.usage);
                     out.final_record(record);
                 }
                 Err(err) => out.error(err.into()),
@@ -291,16 +283,67 @@ fn process_event(
     }
 }
 
-impl rig_core::wire::Decoder<Completion, aws_bedrock::ConverseStreamOutput> for StreamState {
-    type Event = aws_bedrock::ConverseStreamOutput;
+/// Emits a whole Converse reply as the events a stream sends for it.
+fn whole(state: &mut StreamState, output: InternalConverseOutput, out: &mut AdapterOutput) {
+    // The provider's own document, captured before the output is consumed
+    // into normalized content.
+    match serde_json::to_value(&output) {
+        Ok(document) => state.document = Some(document),
+        Err(error) => return out.error(error.into()),
+    }
+    let choice = match assistant_content(&output) {
+        Ok(choice) => choice,
+        Err(error) => return out.error(error),
+    };
+    out.content(&choice, ImagePart::Block);
+    let usage = output.usage().map(normalize_usage).unwrap_or_default();
+    let record = StreamFinal::new(PROVIDER_NAME, usage, serde_json::Value::Null)
+        .with_optional_provider_request_id(output.request_id())
+        .with_finish_reason(map_stop_reason(&output.stop_reason));
+    out.final_record(match state.reasoning_issuer {
+        Some(issuer) => record.with_reasoning_issuer(issuer),
+        None => record,
+    });
+}
 
-    fn classify(&self, frame: aws_bedrock::ConverseStreamOutput) -> WireEvent<Self::Event> {
+/// The assistant content of a Converse reply.
+fn assistant_content(
+    output: &InternalConverseOutput,
+) -> Result<Vec<rig_core::message::AssistantContent>, ProviderError> {
+    let message: RigMessage = output
+        .output
+        .clone()
+        .ok_or(ProviderError::Provider(
+            "Model didn't return any output".into(),
+        ))?
+        .as_message()
+        .map_err(|_| {
+            ProviderError::Provider("Failed to extract message from converse output".into())
+        })?
+        .to_owned()
+        .try_into()?;
+    match message.0 {
+        rig_core::completion::Message::Assistant { content, .. } => Ok(content),
+        _ => Err(ProviderError::Response(
+            "Converse output message was not an assistant message".to_owned(),
+        )),
+    }
+}
+
+impl rig_core::wire::Decoder<Completion, ConverseFrame> for StreamState {
+    type Event = ConverseFrame;
+
+    fn classify(&self, frame: ConverseFrame) -> WireEvent<Self::Event> {
         // The SDK handles byte decoding; only unknown union variants need
         // classification here.
-        wire::classify_typed_event(if frame.is_unknown() {
+        let unknown = matches!(&frame, ConverseFrame::Event(event) if event.is_unknown());
+        wire::classify_typed_event(if unknown {
             TypedEvent::Unrecognized {
                 event_type: "unknown".to_string(),
-                detail: format!("{frame:?}"),
+                detail: match &frame {
+                    ConverseFrame::Event(event) => format!("{event:?}"),
+                    _ => String::new(),
+                },
             }
         } else {
             TypedEvent::Modeled(frame)
@@ -308,110 +351,24 @@ impl rig_core::wire::Decoder<Completion, aws_bedrock::ConverseStreamOutput> for 
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput) {
-        process_event(self, event, out);
+        match event {
+            ConverseFrame::Opened { model, request_id } => {
+                let issuer = reasoning_issuer(&model);
+                self.reasoning_issuer = (issuer != PROVIDER_NAME).then_some(issuer);
+                self.provider_request_id = request_id;
+            }
+            ConverseFrame::Whole(output) => whole(self, *output, out),
+            ConverseFrame::Event(event) => process_event(self, event, out),
+        }
     }
 
     fn finish(&mut self, _out: &mut AdapterOutput) {
         // EOF without Bedrock's `Metadata` terminal is truncation: in-flight
         // blocks drop and no terminal record may be synthesized.
     }
-}
 
-/// Normalizes typed Converse events through the shared streaming driver.
-/// No AWS transport is required; input errors propagate through the stream.
-pub fn stream_from_events(
-    events: impl futures::Stream<Item = Result<aws_bedrock::ConverseStreamOutput, ProviderError>>
-    + WasmCompatSend
-    + 'static,
-) -> StreamingCompletionResponse {
-    StreamingCompletionResponse::stream(
-        PROVIDER_NAME,
-        run_wire_stream(events, StreamState::default()),
-    )
-}
-
-impl CompletionModel {
-    /// Open a stream normalized to rig's terminal record; the adapter maps
-    /// Bedrock's own terminal onto [`StreamFinal::raw`].
-    pub(crate) async fn stream(
-        &self,
-        completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, ProviderError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let issuer = reasoning_issuer(&request_model);
-        let system_instructions = completion_request.system_instructions().map(str::to_owned);
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = AwsCompletionRequest::for_model(
-            completion_request,
-            &request_model,
-            self.prompt_caching,
-        );
-        let span = SpanBuilder::new("aws_bedrock", &request_model, GenAiOperation::ChatStreaming)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
-
-        let mut converse_builder = self
-            .client
-            .inner()
-            .await
-            .converse_stream()
-            .model_id(request_model);
-
-        let tool_config = request.tools_config()?;
-        let output_config = request.output_config()?;
-        let additional_params = request.additional_params();
-        let inference_config = request.inference_config();
-        let system_prompt = request.system_prompt()?;
-        let prompt_with_history = request.messages()?;
-        converse_builder = converse_builder
-            .set_additional_model_request_fields(additional_params)
-            .set_inference_config(Some(inference_config))
-            .set_tool_config(tool_config)
-            .set_system(system_prompt)
-            .set_messages(Some(prompt_with_history))
-            .set_output_config(output_config);
-
-        let response = converse_builder
-            .send()
-            .instrument(span.clone())
-            .await
-            .map_err(|sdk_error| {
-                Into::<ProviderError>::into(AwsSdkConverseStreamError(sdk_error))
-            })?;
-
-        // Capture operation metadata before moving the stream; events do not
-        // carry the request ID needed by the terminal record.
-        let provider_request_id =
-            aws_sdk_bedrockruntime::operation::RequestId::request_id(&response).map(str::to_string);
-
-        // SDK receive failures terminate the transport; the shared driver
-        // classifies successfully received events.
-        let transport = stream! {
-            let mut stream = response.stream;
-            loop {
-                match stream.recv().await {
-                    Ok(Some(output)) => yield Ok(output),
-                    Ok(None) => break,
-                    Err(err) => {
-                        yield Err(converse_stream_output_completion_error(err.into_service_error()));
-                        break;
-                    }
-                }
-            }
-        };
-
-        let state = StreamState {
-            provider_request_id,
-            reasoning_issuer: (issuer != PROVIDER_NAME).then_some(issuer),
-            ..StreamState::default()
-        };
-        let stream = run_wire_stream(transport, state).instrument(span);
-        let response = StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(stream));
-        Ok(if issuer == PROVIDER_NAME {
-            response
-        } else {
-            response.with_reasoning_issuer(issuer)
-        })
+    fn document(&self) -> Option<serde_json::Value> {
+        self.document.clone()
     }
 }
 

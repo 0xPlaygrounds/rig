@@ -7,16 +7,15 @@
 //! request; whether Groq would accept it back under `reasoning` is
 //! unverified.
 
-use rig::completion::CompletionModel;
-
-use super::support::{BoundGroq, with_groq_cassette_result};
+use super::support::with_groq_cassette_result;
 use crate::history_survival::driver::{Cell, Expect, Transport};
+use rig_test_support::cassette_models::OpenAiModels;
 
 fn params() -> Option<serde_json::Value> {
     Some(serde_json::json!({ "reasoning_format": "parsed" }))
 }
 
-fn model(client: BoundGroq, cell: Cell) -> impl CompletionModel + 'static {
+fn model(client: OpenAiModels, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {
     client.completion(cell.model)
 }
 

@@ -492,6 +492,10 @@
           "id": "minted:text:0",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "the adder is broken"
           }
         },
         {
@@ -518,6 +522,15 @@
           "id": "minted:text:1",
           "end": {
             "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "",
+            "additional_params": {
+              "gemini": {
+                "thoughtSignature": "EtYCCtMCAWkUfRPeLdxZ2e2/wHpLzG9VXkuovAR1I7IVE0yLPogJqgK7a94fu/LzrFL/uaJkMp0ZjHPYtCnEbEQ5Hn0y5p3RCQ4x/5FgVUGBJPDYc08BDkkbBTBd33o9xl4MUttEh5NL7T8MEm9kwtQ7ukGCoQ3YM4qsFt089JKPPLudXXmawAL34nTKHWdwgoVzcGVOi/vYdUtc39Hx8MINCu8JXoUl1kRmr0UqeB3EmBsQ/A96zOmmkKIkZ/q84lAt27fpmqUzu0cz7MxBAQRDJKejraRtm4iivJXfyohkt+KxfOMC20440IHcQ0moANjeeIEdRaubaaL0wD+n8o7h+yMf0bbJsZWKbZQXpPUu7A+8kJAwtzlzs+hzIczYtTZtPrEKIS2jh+ByGHjq6yAQZqZ7mX25dc9/DDTbJMb8p7FR7BeXNNGpAw1r1qzEpa9/V+36Eioy"
+              }
+            }
           }
         },
         {

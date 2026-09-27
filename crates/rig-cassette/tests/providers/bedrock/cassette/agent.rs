@@ -2,7 +2,6 @@
 
 use rig::agent::AgentBuilder;
 use rig::bedrock;
-use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -57,9 +56,11 @@ async fn prompt_caching_completion_smoke() {
     with_bedrock_cassette(
         "agent/prompt_caching_completion_smoke",
         |client| async move {
-            let model = client
-                .completion(bedrock::completion::AMAZON_NOVA_LITE)
-                .with_prompt_caching();
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = rig::Model::new(
+                bedrock::completion::Converse::with_prompt_caching(model.wire),
+                model.transport,
+            );
             let agent = AgentBuilder::new(model).preamble(BASIC_PREAMBLE).build();
 
             let response = agent

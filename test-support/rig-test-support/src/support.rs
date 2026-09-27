@@ -21,7 +21,7 @@ use rig_core::streaming::StreamEvent;
 
 use rig_core::streaming::StreamedUserContent;
 
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 
 use rig_core::tool::PortableTool;
 
@@ -782,7 +782,7 @@ pub async fn collect_stream_final_response_and_provider_final(
 
 /// Assert a successful raw stream contains the named empty-argument call and, optionally, a final event.
 pub async fn assert_stream_contains_zero_arg_tool_call_named(
-    mut stream: StreamingCompletionResponse,
+    mut stream: CompletionStream,
     expected_name: &str,
     expect_final_response: bool,
 ) {
@@ -974,7 +974,7 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
 /// The observation helpers above drop the terminal record; matrices that are
 /// about what the terminal *carries* (a finish reason, usage) need it.
 pub async fn collect_text_and_terminal(
-    mut stream: StreamingCompletionResponse,
+    mut stream: CompletionStream,
 ) -> (String, Option<rig_core::streaming::StreamFinal>) {
     let mut text = String::new();
     let mut terminal = None;
@@ -1000,7 +1000,7 @@ pub async fn collect_text_and_terminal(
 /// than one terminal event; this keeps the last, exactly as
 /// [`collect_text_and_terminal`] reports it.
 pub async fn collect_required_terminal(
-    stream: StreamingCompletionResponse,
+    stream: CompletionStream,
 ) -> rig_core::streaming::StreamFinal {
     let (_, terminal) = collect_text_and_terminal(stream).await;
     terminal.expect("stream should end with a terminal record")
@@ -1014,7 +1014,7 @@ pub async fn collect_required_terminal(
 /// [`collect_sole_terminal`] drops the text, [`collect_text_and_terminal`]
 /// keeps the last of several records.
 pub async fn collect_text_and_sole_terminal(
-    mut stream: StreamingCompletionResponse,
+    mut stream: CompletionStream,
 ) -> (String, rig_core::streaming::StreamFinal) {
     let mut text = String::new();
     let mut finals = Vec::new();
@@ -1044,9 +1044,7 @@ pub async fn collect_text_and_sole_terminal(
 /// Exactly one terminal record per stream is the contract, so a stream that
 /// emitted none — or more than one — fails here instead of silently handing
 /// back the last.
-pub async fn collect_sole_terminal(
-    stream: StreamingCompletionResponse,
-) -> rig_core::streaming::StreamFinal {
+pub async fn collect_sole_terminal(stream: CompletionStream) -> rig_core::streaming::StreamFinal {
     collect_text_and_sole_terminal(stream).await.1
 }
 
@@ -1323,9 +1321,7 @@ pub fn assert_matches_recorded_token(actual: Option<&str>, recorded: Option<&str
 }
 
 /// Drain a raw provider stream into text, tool, error, and final-event observations.
-pub async fn collect_raw_stream_observation(
-    mut stream: StreamingCompletionResponse,
-) -> RawStreamObservation
+pub async fn collect_raw_stream_observation(mut stream: CompletionStream) -> RawStreamObservation
 where
 {
     let mut observation = RawStreamObservation::new();

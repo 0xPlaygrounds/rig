@@ -1,10 +1,11 @@
 //! Focused OpenAI cassette coverage for request document ordering.
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::support::assert_contains_any_case_insensitive;
+use rig::completion::CompletionRequest;
 
 const SYSTEM_INSTRUCTION: &str = "Answer with the exact token from the document only.";
 const DOCUMENT_ANSWER: &str = "violet-needle";
@@ -47,13 +48,14 @@ async fn responses_keeps_documents_after_system_before_history() {
             let response = client
                 .openai
                 .completion(openai::GPT_4O)
-                .completion_request(PROMPT)
-                .message(Message::system(SYSTEM_INSTRUCTION))
-                .message(Message::assistant("Acknowledged."))
-                .document(ordering_document())
-                .temperature(0.0)
-                .max_tokens(32)
-                .send()
+                .call(
+                    CompletionRequest::new(PROMPT)
+                        .message(Message::system(SYSTEM_INSTRUCTION))
+                        .message(Message::assistant("Acknowledged."))
+                        .document(ordering_document())
+                        .temperature(0.0)
+                        .max_tokens(32),
+                )
                 .await
                 .expect("OpenAI Responses document ordering request should succeed");
 
@@ -77,13 +79,14 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
         |client| async move {
             let response = client
                 .chat(openai::GPT_4O)
-                .completion_request(PROMPT)
-                .message(Message::system(SYSTEM_INSTRUCTION))
-                .message(Message::assistant("Acknowledged."))
-                .document(ordering_document())
-                .temperature(0.0)
-                .max_tokens(32)
-                .send()
+                .call(
+                    CompletionRequest::new(PROMPT)
+                        .message(Message::system(SYSTEM_INSTRUCTION))
+                        .message(Message::assistant("Acknowledged."))
+                        .document(ordering_document())
+                        .temperature(0.0)
+                        .max_tokens(32),
+                )
                 .await
                 .expect("OpenAI Chat Completions document ordering request should succeed");
 

@@ -23,7 +23,6 @@ use super::{
     corpus::Program,
 };
 use rig_cassette::effect_log::EffectLog;
-use rig_core::completion::CompletionModel;
 
 const PREAMBLE: &str = "You are a careful task-solving assistant. Use task_operation to inspect source facts, apply structured updates, and validate actual task state. Never invent tool results. Respect the requested sequence so each new operation uses the previous result. A returned validation error is recoverable: retry check. A failed validation is not success: inspect the referenced source and repair the state. Only answer done after check(all) reports passed for the latest revision.";
 const BASE: Program = Program {
@@ -133,11 +132,15 @@ pub(crate) fn applicable(cell: &Cell) -> bool {
     cell.name.starts_with("long_task_")
 }
 
-pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
-    wire: &Wire<M>,
+pub(crate) async fn run_world<W, T>(
+    wire: &Wire<rig::driver::Model<W, T>>,
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),
-) -> EffectLog {
+) -> EffectLog
+where
+    W: rig::wire::Wire<Op = rig::operation::Completion>,
+    T: rig::driver::Transport<W>,
+{
     let gate = SLOTS
         .lock()
         .expect("task slots")

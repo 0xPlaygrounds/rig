@@ -9,7 +9,7 @@ use crate::tool::ToolContext;
 async fn context_propagates_into_sub_agent() {
     // Inner agent: calls a context-probing tool, then answers.
     let probe = MockContextProbeTool::default();
-    let inner_model = MockCompletionModel::new([
+    let inner_model = MockCompletionModel::from_turns([
         MockTurn::tool_call("c1", "context_probe", json!({})),
         MockTurn::text("inner done"),
     ]);
@@ -20,7 +20,7 @@ async fn context_propagates_into_sub_agent() {
 
     // Outer agent: delegates to the inner agent (registered as the
     // "researcher" tool), then answers.
-    let outer_model = MockCompletionModel::new([
+    let outer_model = MockCompletionModel::from_turns([
         MockTurn::tool_call("c2", "researcher", json!({"prompt": "do research"})),
         MockTurn::text("outer done"),
     ]);

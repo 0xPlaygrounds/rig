@@ -6,17 +6,18 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
 use rig::tool::Tool;
+use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};
 use crate::cassettes::recorded_interaction_bodies;
 use crate::support::{Adder, TOOLS_PREAMBLE};
+use rig::completion::CompletionRequest;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 
@@ -31,14 +32,12 @@ async fn strict_tools_opt_in_roundtrip() {
             let model = client
                 .completion(chatgpt::GPT_5_4)
                 .map_wire(|wire| wire.with_strict_tools());
-            let request = model
-                .completion_request("Use the add tool to add 7 and 5.")
+            let request = CompletionRequest::new("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .build();
+                .tool(rig::tool::tool_definition(&Adder));
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -94,11 +93,9 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
             // `codex_sessions`. The marker prompt is kept verbatim so the
             // request still matches the recorded cassette.
             let response = model
-                .completion(
-                    model
-                        .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
-                        .preamble("Return only the requested marker.".to_string())
-                        .build(),
+                .call(
+                    CompletionRequest::new("Reply with exactly this marker: CODEX-STORE-FALSE")
+                        .preamble("Return only the requested marker."),
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
@@ -153,8 +150,7 @@ async fn explicit_preamble_and_mid_conversation_system_messages_are_instructions
             // ChatGPT rejects `system` items in `input`; the recorded request
             // body locks that the provider lifts both the preamble and later
             // system messages into the top-level `instructions` field.
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
                 .preamble("You are a concise assistant.")
                 .build();
             let mut history = vec![
@@ -185,8 +181,7 @@ async fn default_instructions_merge_with_explicit_preamble() {
         "codex_behaviors/default_instructions_merge_with_explicit_preamble",
         "Default instruction marker: always include DEFAULT-CODEX-MARKER when asked for the default marker.",
         |client| async move {
-            let agent = client
-                .agent(chatgpt::GPT_5_4)
+            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
                 .preamble("Explicit instruction marker: also include EXPLICIT-CODEX-MARKER.")
                 .build();
             let mut history = Vec::<Message>::new();

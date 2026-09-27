@@ -24,14 +24,15 @@
 //! |---|---|
 //! | all 4 | `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/{blocking,streaming}_{mistral_small,ministral_3b}.yaml` |
 
+use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
 use futures::StreamExt as _;
-use rig::completion::CompletionModel;
 use serde_json::{Value, json};
 
-use super::support::{BoundMistral, with_mistral_logprobs_rejection_cassette_result};
+use super::support::with_mistral_logprobs_rejection_cassette_result;
+use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -60,23 +61,21 @@ fn model_name(model: Model) -> &'static str {
     }
 }
 
-async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Result<()> {
+async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedError) -> Result<()> {
     let model = client.completion(model_name(cell.model));
-    let request = model
-        .completion_request("Reply with exactly: cobalt")
+    let request = CompletionRequest::new("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
-        .max_tokens(8)
-        .build();
+        .max_tokens(8);
 
     // The blocking path fails with the provider's `ProviderError`; a stream
     // fails in-band with the `ErrorReport` it was mapped to. Both display the
     // preserved Mistral body, which is what the matrix asserts on.
     let error = match cell.transport {
-        Transport::Blocking => match model.completion(request).await {
+        Transport::Blocking => match model.call(request).await {
             Ok(_) => bail!("Mistral unexpectedly accepted blocking logprobs"),
             Err(error) => error.to_string(),
         },
-        Transport::Streaming => match model.stream(request).await {
+        Transport::Streaming => match model.stream(request) {
             Err(error) => error.to_string(),
             Ok(mut stream) => loop {
                 match stream.next().await {

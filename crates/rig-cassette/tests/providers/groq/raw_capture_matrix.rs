@@ -36,7 +36,7 @@
 //! finish reason, or the request-id header fails loudly instead of covering
 //! nothing.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::json;
@@ -51,8 +51,8 @@ const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 const REQUEST_ID_HEADER: &str = "x-request-id";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(16).build()
+fn request() -> CompletionRequest {
+    CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
 /// The `x-request-id` the single recorded interaction carried.
@@ -71,7 +71,7 @@ async fn raw_is_the_verbatim_response_body() {
     with_groq_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
         capture_completion(
             client.completion(RAW_CAPTURE_MATRIX_MODEL),
-            request,
+            request(),
             sink.clone(),
         )
     })
@@ -135,7 +135,7 @@ async fn raw_exposes_queue_time() {
     with_groq_cassette_result("raw_capture_matrix/raw_exposes_queue_time", |client| {
         capture_completion(
             client.completion(RAW_CAPTURE_MATRIX_MODEL),
-            request,
+            request(),
             sink.clone(),
         )
     })
@@ -193,7 +193,7 @@ async fn normalized_fields_match_raw_renormalized() {
         |client| {
             capture_completion(
                 client.completion(RAW_CAPTURE_MATRIX_MODEL),
-                request,
+                request(),
                 sink.clone(),
             )
         },

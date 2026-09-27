@@ -6,13 +6,12 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = gemini::Gemini::from_env()?;
 //!
-//! let embeddings = provider.embeddings(gemini::EMBEDDING_001, None);
+//! let embeddings = provider.embedding(gemini::EMBEDDING_001, None);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! Bind a wire with `.bind(transport)` to obtain a [`Bound`](crate::driver::Bound)
-//! implementing the consumer-facing model traits.
+//! Pair a wire with a transport in a [`Model`](crate::driver::Model) to call it.
 
 pub mod cached_content;
 pub mod completion;
@@ -25,6 +24,7 @@ pub mod model_listing;
 pub mod streaming;
 pub mod transcription;
 
+pub use crate::client::gemini::Gemini;
 pub use cached_content::{CacheExpiry, CachedContent, CachedContents, NewCachedContent};
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
@@ -32,7 +32,6 @@ pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
 pub use model_listing::*;
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{HasCompletion, HasEmbedding, HasModelListing, HasTranscription, HasVerify};
 use crate::wire::Secret;
 
 /// Stable descriptor name for both Gemini surfaces, as records and
@@ -84,18 +83,19 @@ pub fn text_signature_at<'a>(text: &'a crate::message::Text, extras_key: &str) -
         .and_then(serde_json::Value::as_str)
 }
 
-/// Shared configuration for Gemini's GenerateContent and Interactions APIs.
-/// Endpoint wires place the key in a query parameter or header as required.
+/// The settings of Gemini's GenerateContent and Interactions APIs:
+/// serializable, and the key is never serialized. [`connect`](Self::connect)
+/// puts it on a transport as a [`Gemini`] client.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Gemini {
+pub struct GeminiConfig {
     /// The API key, redacted in `Debug` and in serialized form.
     pub api_key: Secret,
     /// The API root every wire builds its URI from.
     pub base_url: String,
 }
 
-impl Gemini {
+impl GeminiConfig {
     /// The provider configured with `api_key` and the public base URL.
     pub fn new(api_key: impl Into<Secret>) -> Self {
         Self {
@@ -135,18 +135,18 @@ impl Gemini {
     pub(crate) const INTERACTIONS_KEY_HEADER: &'static str = "x-goog-api-key";
 
     /// The `generateContent` / `streamGenerateContent` completion wire.
-    pub fn generate_content(&self, model: impl Into<String>) -> completion::GenerateContent {
+    pub(crate) fn completion(&self, model: impl Into<String>) -> completion::GenerateContent {
         completion::GenerateContent::new(self.clone(), model)
     }
 
     /// The Interactions API completion wire.
-    pub fn interactions(&self, model: impl Into<String>) -> interactions_api::Interactions {
+    pub(crate) fn interactions(&self, model: impl Into<String>) -> interactions_api::Interactions {
         interactions_api::Interactions::new(self.clone(), model)
     }
 
     /// The `batchEmbedContents` embedding wire. `ndims` defaults from the
     /// model identifier.
-    pub fn embeddings(
+    pub(crate) fn embedding(
         &self,
         model: impl Into<String>,
         ndims: Option<usize>,
@@ -155,31 +155,30 @@ impl Gemini {
     }
 
     /// The audio transcription wire.
-    pub fn transcriptions(&self, model: impl Into<String>) -> transcription::Transcriptions {
+    pub(crate) fn transcription(&self, model: impl Into<String>) -> transcription::Transcriptions {
         transcription::Transcriptions::new(self.clone(), model)
     }
 
     /// The image generation wire.
     #[cfg(feature = "image")]
     #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
-    pub fn images(&self, model: impl Into<String>) -> image_generation::Images {
+    pub(crate) fn image_generation(&self, model: impl Into<String>) -> image_generation::Images {
         image_generation::Images::new(self.clone(), model)
     }
 
-    /// Build the GenerateContent model-listing wire used by `Bound::models()`.
-    pub fn models(&self) -> model_listing::Models {
+    /// The GenerateContent model-listing wire.
+    pub(crate) fn models(&self) -> model_listing::Models {
         model_listing::Models::new(self.clone())
     }
 
-    /// The model listing wire for the Interactions family: the same
-    /// endpoint, authenticated the way Interactions authenticates.
-    pub fn interactions_models(&self) -> model_listing::InteractionsModels {
-        model_listing::InteractionsModels::new(self.clone())
+    /// The credential-check wire.
+    pub(crate) fn verify(&self) -> model_listing::VerifyKey {
+        model_listing::VerifyKey::new(self.clone())
     }
 
     /// Build a wire to retrieve an existing interaction or resume its stream.
     /// Unary reads fetch the current resource; callers control repeated polling.
-    pub fn interaction(
+    pub(crate) fn interaction(
         &self,
         interaction_id: impl Into<String>,
     ) -> interactions_api::InteractionResume {
@@ -188,7 +187,7 @@ impl Gemini {
 
     /// [`Self::interaction`], resuming a streamed read after the last event
     /// the consumer saw.
-    pub fn interaction_resumed(
+    pub(crate) fn interaction_resumed(
         &self,
         interaction_id: impl Into<String>,
         last_event_id: Option<&str>,
@@ -198,55 +197,6 @@ impl Gemini {
             Some(last_event_id) => wire.after_event(last_event_id),
             None => wire,
         }
-    }
-}
-
-impl HasCompletion for Gemini {
-    type Wire = completion::GenerateContent;
-
-    fn completion(&self, model: impl Into<String>) -> Self::Wire {
-        self.generate_content(model)
-    }
-}
-
-impl HasEmbedding for Gemini {
-    type Wire = embedding::Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Self::Wire {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasTranscription for Gemini {
-    type Wire = transcription::Transcriptions;
-
-    fn transcription(&self, model: impl Into<String>) -> Self::Wire {
-        self.transcriptions(model)
-    }
-}
-
-#[cfg(feature = "image")]
-impl crate::driver::HasImageGeneration for Gemini {
-    type Wire = image_generation::Images;
-
-    fn image_generation(&self, model: impl Into<String>) -> Self::Wire {
-        self.images(model)
-    }
-}
-
-impl HasModelListing for Gemini {
-    type Wire = model_listing::Models;
-
-    fn model_listing(&self) -> Self::Wire {
-        self.models()
-    }
-}
-
-impl HasVerify for Gemini {
-    type Wire = model_listing::VerifyKey;
-
-    fn verify(&self) -> Self::Wire {
-        model_listing::VerifyKey::new(self.clone())
     }
 }
 

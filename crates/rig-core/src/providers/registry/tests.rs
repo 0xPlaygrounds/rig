@@ -8,8 +8,8 @@ use crate::test_utils::RecordingHttpClient;
 
 /// A transport that sends nothing: every assertion here is about what is
 /// built, never about a reply.
-fn transport() -> crate::http_client::BoxedHttpClient {
-    crate::http_client::BoxedHttpClient::new(RecordingHttpClient::new("{}"))
+fn transport() -> crate::http_client::DynHttpClient {
+    crate::http_client::DynHttpClient::new(RecordingHttpClient::new("{}"))
 }
 
 /// Every registered selection has a qualified spelling that parses back to
@@ -129,7 +129,7 @@ fn model_validation_applies_to_constructors_and_structured_input() {
 fn configured_identity_never_mints_an_unregistered_or_custom_preset() {
     let custom =
         openai::wire::Dialect::gateway("private", "https://private.invalid", "PRIVATE_KEY");
-    let config = ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(&custom, ""));
+    let config = ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(&custom, ""));
     assert_eq!(config.id(), None);
     let reference = ProviderRef::configured(config, "model").unwrap();
     assert_eq!(reference.id(), None);
@@ -143,7 +143,7 @@ fn configured_identity_never_mints_an_unregistered_or_custom_preset() {
         base_url: "https://modified.invalid",
         ..openai::wire::OPENAI
     };
-    let config = ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(&modified, ""));
+    let config = ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(&modified, ""));
     assert!(
         serde_json::to_value(&config).is_err(),
         "custom dialect payload must not silently disappear"
@@ -166,7 +166,7 @@ fn anthropic_custom_dialects_are_executable_but_not_lossily_persisted() {
         },
     ] {
         let config =
-            ProviderConfig::Anthropic(anthropic::wire::Anthropic::with_dialect("", &dialect));
+            ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::with_dialect("", &dialect));
         assert!(serde_json::to_value(&config).is_err());
         let _handler = config.completion_handler("custom", "model", transport());
     }
@@ -512,14 +512,10 @@ fn equivalent_reference_and_configuration_describe_themselves_alike() {
 /// request body, in both directions.
 #[test]
 fn the_configured_instruction_placement_reaches_the_request_body() {
-    use crate::completion::CompletionRequestBuilder;
+    use crate::completion::CompletionRequest;
     use crate::wire::{Mode, Wire};
 
-    let request = || {
-        CompletionRequestBuilder::unbound("hello")
-            .preamble("be brief".to_owned())
-            .build()
-    };
+    let request = || CompletionRequest::new("hello").preamble("be brief");
     let encode = |config: ProviderConfig| {
         let ProviderConfig::OpenAi(provider) = config else {
             panic!("an OpenAI configuration");
@@ -578,7 +574,7 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
 /// request headers.
 #[test]
 fn the_configured_version_and_betas_reach_the_request_headers() {
-    use crate::completion::CompletionRequestBuilder;
+    use crate::completion::CompletionRequest;
     use crate::wire::{Mode, Wire};
 
     let json = r#"{"config":{"anthropic":{"api_key":"[redacted]","base_url":"https://api.anthropic.com","version":"2023-01-01","betas":["beta-one","beta-two"],"dialect":"anthropic"}},"model":"claude-haiku-4-5"}"#;
@@ -587,11 +583,8 @@ fn the_configured_version_and_betas_reach_the_request_headers() {
         panic!("a Messages configuration");
     };
     let mut encoded = config
-        .messages(reference.model())
-        .encode(
-            CompletionRequestBuilder::unbound("hello").build(),
-            Mode::Unary,
-        )
+        .completion(reference.model())
+        .encode(CompletionRequest::new("hello"), Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.pop().expect("one request");
     let header = |name: &str| {

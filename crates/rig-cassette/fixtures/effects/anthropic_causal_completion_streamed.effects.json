@@ -553,6 +553,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "Paris"
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 695,

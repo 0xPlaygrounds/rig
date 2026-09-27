@@ -1,8 +1,8 @@
 //! Mistral chat model identifiers and typed responses with service-tier and audio usage.
 //!
 //! ```no_run
-//! use rig_core::providers::{mistral, openai::wire::{MISTRAL, OpenAI}};
-//! let wire = OpenAI::from_env_with(&MISTRAL)?.chat(mistral::MISTRAL_SMALL);
+//! use rig_core::providers::mistral;
+//! let model = mistral::from_env()?.chat(mistral::MISTRAL_SMALL);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

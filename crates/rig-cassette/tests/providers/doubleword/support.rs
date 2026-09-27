@@ -1,8 +1,6 @@
 use futures::FutureExt;
-use rig::driver::Bound;
-use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
-use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
+use rig::providers::openai::wire::{DOUBLEWORD, OpenAIConfig};
+use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -10,12 +8,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 const DOUBLEWORD_BASE_URL: &str = "https://api.doubleword.ai/v1";
 
-/// The Doubleword dialect of the OpenAI config bound to the bundled
-/// transport — what a cassette test builds its models from, now that a model
-/// is a bound wire.
-pub(super) type BoundDoubleword = Bound<OpenAI, BoxedHttpClient>;
-
-async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDoubleword) {
+async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAIConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "doubleword",
@@ -23,22 +16,25 @@ async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
         DOUBLEWORD_BASE_URL,
     )
     .await;
-    let doubleword = OpenAI::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
+    let doubleword = OpenAIConfig::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
+        .with_base_url(cassette.base_url());
 
     (cassette, doubleword)
 }
 
 pub(super) async fn with_doubleword_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(BoundDoubleword) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
     let (cassette, client) = doubleword_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     crate::cassettes::checkpoint_attempt(&cassette, "doubleword", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
@@ -47,7 +43,7 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(BoundDoubleword) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -59,11 +55,14 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
     .await;
     // The rejected credential is this wrapper's subject.
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let client = OpenAI::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
-        .with_base_url(cassette.base_url())
-        .bound()
-        .expect("transport should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let client = OpenAIConfig::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
+        .with_base_url(cassette.base_url());
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test(result).await;
 }
 
@@ -72,11 +71,16 @@ pub(super) async fn with_doubleword_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(BoundDoubleword) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = doubleword_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        client,
+        rig::rig_reqwest::shared(),
+    )))
+    .catch_unwind()
+    .await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -184,7 +188,7 @@ pub(super) async fn with_doubleword_embedding_cassette<F, Fut>(
     test_body: F,
 ) -> Vec<RecordedEmbeddingCall>
 where
-    F: FnOnce(BoundDoubleword) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_doubleword_cassette(scenario, test_body).await;
@@ -276,7 +280,7 @@ pub(super) async fn with_doubleword_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(BoundDoubleword) -> Fut,
+    F: FnOnce(OpenAiModels) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_doubleword_cassette(spec, test_body).await;

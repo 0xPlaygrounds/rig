@@ -28,7 +28,7 @@ use rig_cassette::effect_log::{
     Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
 };
 use rig_core::{
-    completion::CompletionRequestBuilder,
+    completion::CompletionRequest,
     effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
     transcript,
@@ -215,10 +215,8 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                 run.advertise_tools(turn, prepared.tools.clone());
                 let executable = prepared.executable_tool_names.clone();
                 let allowed = prepared.allowed_tool_names.clone();
-                let request = prepared
-                    .apply(CompletionRequestBuilder::unbound(prompt))
-                    .build();
-                let response = within(model.complete(request)).await.expect("the model");
+                let request = prepared.apply(CompletionRequest::new(prompt));
+                let response = within(model.call(request)).await.expect("the model");
                 run.model_response(ModelTurn::new(
                     None,
                     response.choice,

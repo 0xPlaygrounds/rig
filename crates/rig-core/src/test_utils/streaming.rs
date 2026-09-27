@@ -301,7 +301,7 @@ impl MockStreamEvent {
                 if let Some(call_id) = call_id {
                     end = end.with_call_id(call_id);
                 }
-                out.tool_call(key, end);
+                out.tool_end(key, end);
             }
             Self::ToolCallNameDelta { id, name } => out.tool_name(&fixture_part_id(id), name),
             Self::ToolCallArgumentsDelta { id, arguments } => {
@@ -340,4 +340,29 @@ impl MockStreamEvent {
         }
         Ok(())
     }
+}
+
+/// A completion stream `provider` opened over `items`, as the driver yields
+/// them, with the reasoning `issuer` it names up front.
+#[cfg(test)]
+pub(crate) fn scripted_stream(
+    provider: &str,
+    issuer: Option<&str>,
+    items: impl futures::Stream<Item = Result<crate::streaming::StreamEvent, ProviderError>>
+    + Send
+    + 'static,
+) -> crate::streaming::CompletionStream {
+    use futures::StreamExt;
+
+    crate::streaming::Streamed::new(
+        Box::pin(items.map(|item| item.map(crate::driver::Step::Event))),
+        crate::operation::CompletionFold::opened(
+            provider,
+            issuer.map(str::to_owned),
+            crate::wire::Mode::Streaming,
+        ),
+        crate::wire::Mode::Streaming,
+        tracing::Span::none(),
+        provider,
+    )
 }

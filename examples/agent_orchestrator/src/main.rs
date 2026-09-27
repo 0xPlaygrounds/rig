@@ -1,5 +1,4 @@
 use rig::extractor::ExtractorBuilder;
-use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
 
@@ -23,9 +22,9 @@ struct TaskResults {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Bind the OpenAI Responses API to the default transport
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.completion(openai::GPT_4);
+    // The OpenAI client, from `OPENAI_API_KEY`.
+    let openai_client = OpenAI::from_env()?;
+    let model = openai_client.completion(openai::GPT_4).erase();
 
     // Note that you can also create your own semantic router for this
     // that uses a vector store under the hood

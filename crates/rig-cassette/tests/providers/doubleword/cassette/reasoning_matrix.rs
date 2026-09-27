@@ -13,21 +13,22 @@
 //! | GPT-OSS | reasoning block | reasoning deltas | `stop` / `stop` |
 //! | DeepSeek | reasoning block | reasoning deltas | `stop` / `stop` |
 
-use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::providers::{doubleword, openai};
+use rig_test_support::cassette_models::OpenAiModels;
 use serde::Deserialize as _;
 
-use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
+use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_raw_stream_observation;
+use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Compute 17 * 23. Give the number only after thinking.";
 const CAP: u64 = 128;
 
-async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
+async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
     let model = client.completion(model_name);
     let response = model
-        .completion(model.completion_request(PROMPT).max_tokens(CAP).build())
+        .call(CompletionRequest::new(PROMPT).max_tokens(CAP))
         .await
         .expect("reasoning completion should decode");
 
@@ -56,11 +57,10 @@ async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
     }));
 }
 
-async fn exercise_streaming(client: BoundDoubleword, model_name: &'static str) {
+async fn exercise_streaming(client: OpenAiModels, model_name: &'static str) {
     let model = client.completion(model_name);
     let stream = model
-        .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
-        .await
+        .stream(CompletionRequest::new(PROMPT).max_tokens(CAP))
         .expect("reasoning stream should connect");
     let observation = collect_raw_stream_observation(stream).await;
 

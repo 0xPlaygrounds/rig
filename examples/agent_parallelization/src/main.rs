@@ -1,5 +1,4 @@
 use rig::extractor::ExtractorBuilder;
-use rig::prelude::*;
 use std::future::IntoFuture;
 
 use rig::providers::openai::{self, OpenAI};
@@ -13,9 +12,9 @@ struct DocumentScore {
 }
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Bind the OpenAI Responses API to the default transport
-    let openai_client = OpenAI::from_env()?.bound()?;
-    let model = openai_client.completion(openai::GPT_4);
+    // The OpenAI client, from `OPENAI_API_KEY`.
+    let openai_client = OpenAI::from_env()?;
+    let model = openai_client.completion(openai::GPT_4).erase();
 
     let manipulation_agent = ExtractorBuilder::<DocumentScore>::new(model.clone())
         .append_preamble(

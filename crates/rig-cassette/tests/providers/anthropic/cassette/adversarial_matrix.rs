@@ -24,7 +24,7 @@ const LOOKUP: &str =
 async fn colliding_ids() {
     const SCENARIO: &str = "adversarial/colliding_ids";
     with_anthropic_cassette("adversarial/colliding_ids", |client| async move {
-        adversarial::colliding_ids(&client.completion("claude-haiku-4-5"), "toolu_dup", None).await;
+        adversarial::colliding_ids(client.completion("claude-haiku-4-5"), "toolu_dup", None).await;
     })
     .await;
     adversarial::assert_colliding_recorded("anthropic", SCENARIO);
@@ -34,7 +34,7 @@ async fn colliding_ids() {
 async fn out_of_order_results() {
     const SCENARIO: &str = "adversarial/out_of_order_results";
     with_anthropic_cassette("adversarial/out_of_order_results", |client| async move {
-        adversarial::out_of_order_results(&client.completion("claude-haiku-4-5"), thinking()).await;
+        adversarial::out_of_order_results(client.completion("claude-haiku-4-5"), thinking()).await;
     })
     .await;
     adversarial::assert_carried("anthropic", SCENARIO, "signature", 1);
@@ -45,7 +45,7 @@ async fn empty_signed_reasoning() {
     const SCENARIO: &str = "adversarial/empty_signed_reasoning";
     with_anthropic_cassette("adversarial/empty_signed_reasoning", |client| async move {
         let first = adversarial::reasoning_round_trip(
-            &client.completion("claude-sonnet-4-6"),
+            client.completion("claude-sonnet-4-6"),
             LOOKUP,
             omitted_thinking(),
             4096,
@@ -69,7 +69,7 @@ async fn empty_signed_reasoning_streamed() {
         "adversarial/empty_signed_reasoning_streamed",
         |client| async move {
             let first = adversarial::reasoning_round_trip(
-                &client.completion("claude-sonnet-4-6"),
+                client.completion("claude-sonnet-4-6"),
                 LOOKUP,
                 omitted_thinking(),
                 4096,
@@ -102,14 +102,14 @@ async fn empty_signed_reasoning_streamed() {
     );
 }
 
-/// The round trip returns home: Anthropic, Responses, Gemini, Anthropic.
+/// The round trip returns home: AnthropicModels, Responses, Gemini, Anthropic.
 #[tokio::test]
 async fn three_provider_round_trip() {
     with_anthropic_cassette(
         "adversarial/three_provider_round_trip",
         |client| async move {
             adversarial::round_trip_hop(
-                &client.completion("claude-sonnet-4-6"),
+                client.completion("claude-sonnet-4-6"),
                 Hop::Anthropic,
                 thinking(),
             )

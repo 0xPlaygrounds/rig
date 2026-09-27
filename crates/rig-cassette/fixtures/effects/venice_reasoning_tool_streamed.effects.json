@@ -1379,6 +1379,18 @@
           "end": {
             "close": "reasoning",
             "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result \"42\".\n"
+                }
+              }
+            ]
           }
         },
         {
@@ -1797,6 +1809,18 @@
           "end": {
             "close": "reasoning",
             "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "The tool returned 42. The user requested \"just the number\".\n"
+                }
+              }
+            ]
           }
         },
         {
@@ -1820,6 +1844,17 @@
           "delta": {
             "delta": "text",
             "text": "2"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "\n\n42"
           }
         },
         {

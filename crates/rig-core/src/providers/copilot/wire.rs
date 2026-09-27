@@ -3,10 +3,11 @@
 //! Chat Completions otherwise. Credentials must be exchanged before encoding.
 //!
 //! ```no_run
-//! use rig_core::providers::copilot::{wire::Copilot, GPT_4O};
+//! use rig_core::providers::copilot::{Copilot, GPT_4O};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let wire = Copilot::from_env()?.completion(GPT_4O).with_edits_intent();
+//! let mut model = Copilot::from_env()?.completion(GPT_4O);
+//! model.wire = model.wire.with_edits_intent();
 //! # Ok(())
 //! # }
 //! ```
@@ -15,24 +16,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
-use crate::driver::{HasEmbedding, HasModelListing};
 use crate::error::EncodeError;
-use crate::model::{Model, ModelList};
+use crate::model::{ModelInfo, ModelList};
 use crate::operation::{Completion, ModelListing};
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// Copilot's embeddings wire is the shared one, pointed at Copilot by
-/// [`Copilot::embeddings`]; the editor envelope is the dialect's modality
+/// [`Copilot::embedding`](crate::providers::copilot::Copilot::embedding); the editor envelope is the dialect's modality
 /// hook.
 pub use crate::providers::openai::wire::Embeddings;
 use crate::providers::openai::wire::{
-    Dialect, DialectHooks, EmbeddingQuirks, OpenAI, OpenAiDecoder, OpenAiWire, Quirks,
+    Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, OpenAiDecoder, OpenAiWire, Quirks,
     ResponsesQuirks, Route,
 };
 use crate::telemetry::GenAiOperation;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
 };
 
 use super::{CopilotIntent, PROVIDER_NAME};
@@ -104,7 +103,7 @@ static HOOKS: DialectHooks = DialectHooks {
 
 /// The same envelope calculation serves the dialect hook and the public wrapper.
 fn completion_envelope(
-    provider: &OpenAI,
+    provider: &OpenAIConfig,
     request: &CompletionRequest,
     mut builder: http::request::Builder,
     intent: CopilotIntent,
@@ -133,19 +132,19 @@ pub fn routes_through_responses(model: &str) -> bool {
 /// The credential is an *exchanged* Copilot session token, not a GitHub
 /// OAuth token: see the module docs and [`Self::from_auth`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Copilot {
+pub struct CopilotConfig {
     /// The exchanged session token. Never serialized (see [`Secret`]).
     pub api_key: Secret,
     /// The API root every path resolves against.
     pub base_url: String,
 }
 
-impl Copilot {
+impl CopilotConfig {
     /// Configure Copilot with an exchanged session token.
     /// Derive a permitted endpoint from `proxy-ep=` when present, otherwise use
     /// the default. Explicit base-URL settings override token-derived routing.
     pub fn new(api_key: impl Into<Secret>) -> Self {
-        credential_of(&OpenAI::with_key(&DIALECT, api_key))
+        credential_of(&OpenAIConfig::with_key(&DIALECT, api_key))
     }
 
     /// Configure Copilot from an exchanged auth context.
@@ -183,7 +182,7 @@ impl Copilot {
     }
 
     /// The completion wire for `model`, on whichever route answers it.
-    pub fn completion(&self, model: impl Into<String>) -> CopilotWire {
+    pub(crate) fn completion(&self, model: impl Into<String>) -> CopilotWire {
         self.wire_for(model)
     }
 
@@ -197,20 +196,20 @@ impl Copilot {
 
     /// Build an embedding wire with Copilot's editor headers and optional usage.
     /// Use `ndims` when supplied, otherwise the shared wire's model default.
-    pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         Embeddings::new(self.openai(), model, ndims)
     }
 
     /// The model-listing wire.
-    pub fn models(&self) -> Models {
+    pub(crate) fn models(&self) -> Models {
         Models {
             provider: self.clone(),
         }
     }
 
     /// Convert to shared configuration with Copilot's dialect and explicit endpoint.
-    fn openai(&self) -> OpenAI {
-        OpenAI::with_key(&DIALECT, self.api_key.clone()).with_base_url(self.base_url.clone())
+    fn openai(&self) -> OpenAIConfig {
+        OpenAIConfig::with_key(&DIALECT, self.api_key.clone()).with_base_url(self.base_url.clone())
     }
 
     /// Resolve `path` against the base URL.
@@ -308,8 +307,8 @@ impl CopilotWire {
 
 /// The Copilot credential behind the shared configuration
 /// [`Copilot::new`] resolves its endpoint through.
-fn credential_of(provider: &OpenAI) -> Copilot {
-    Copilot {
+fn credential_of(provider: &OpenAIConfig) -> CopilotConfig {
+    CopilotConfig {
         api_key: provider.api_key.clone(),
         base_url: provider.base_url.clone(),
     }
@@ -317,22 +316,20 @@ fn credential_of(provider: &OpenAI) -> Copilot {
 
 impl Wire for CopilotWire {
     type Op = Completion;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = OpenAiDecoder;
 
     fn name(&self) -> &str {
         self.wire.name()
     }
 
-    fn model(&self) -> Option<&str> {
-        self.wire.model()
+    fn id(&self) -> Option<&str> {
+        self.wire.id()
     }
 
-    fn replay_issuers(&self, model: Option<&str>) -> Vec<String> {
+    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
         self.wire.replay_issuers(model)
-    }
-
-    fn route(&self) -> Option<&str> {
-        self.wire.route()
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
@@ -347,22 +344,22 @@ impl Wire for CopilotWire {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        self.wire.capabilities()
+        Wire::capabilities(&self.wire)
     }
 
-    fn telemetry(&self, streaming: bool) -> GenAiOperation {
-        self.wire.telemetry(streaming)
+    fn telemetry(&self, mode: Mode) -> GenAiOperation {
+        self.wire.telemetry(mode)
     }
 }
 
 /// Copilot's model-listing wire.
 ///
 /// `GET /models` answers with the whole catalogue, so
-/// [`Decoder::continuation`] keeps its default `None`.
+/// [`Decoder::cursor`] keeps its default `None`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// Which Copilot, and how to reach it.
-    pub provider: Copilot,
+    pub provider: CopilotConfig,
 }
 
 /// Catalogue entry with model identity, vendor, and modality under `capabilities.type`.
@@ -392,14 +389,14 @@ pub struct ModelsReply {
 
 impl ModelsReply {
     /// The catalogue as normalized models.
-    pub fn into_models(self) -> Vec<Model> {
-        self.data.into_iter().map(Model::from).collect()
+    pub fn into_models(self) -> Vec<ModelInfo> {
+        self.data.into_iter().map(ModelInfo::from).collect()
     }
 }
 
-impl From<ModelEntry> for Model {
+impl From<ModelEntry> for ModelInfo {
     fn from(entry: ModelEntry) -> Self {
-        let mut model = Model::from_id(entry.id);
+        let mut model = ModelInfo::from_id(entry.id);
         model.name = entry.name;
         model.owned_by = entry.vendor;
         if let Some(capabilities) = entry.capabilities {
@@ -427,6 +424,8 @@ impl Decoder<ModelListing> for ModelsDecoder {
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -449,30 +448,6 @@ impl Wire for Models {
 
     fn decoder(&self, _mode: Mode) -> ModelsDecoder {
         ModelsDecoder
-    }
-}
-
-impl HasCompletion for Copilot {
-    type Wire = CopilotWire;
-
-    fn completion(&self, model: impl Into<String>) -> CopilotWire {
-        self.completion(model)
-    }
-}
-
-impl HasEmbedding for Copilot {
-    type Wire = Embeddings;
-
-    fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
-        self.embeddings(model, ndims)
-    }
-}
-
-impl HasModelListing for Copilot {
-    type Wire = Models;
-
-    fn model_listing(&self) -> Models {
-        self.models()
     }
 }
 

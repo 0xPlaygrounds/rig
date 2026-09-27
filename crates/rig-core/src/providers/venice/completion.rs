@@ -55,17 +55,16 @@ pub enum WebSearchMode {
 /// using [`Self::into_additional_params`]:
 ///
 /// ```no_run
-/// use rig_core::completion::CompletionRequestBuilder;
+/// use rig_core::completion::CompletionRequest;
 /// use rig_core::providers::venice::{VeniceParameters, WebSearchMode};
 ///
-/// let request = CompletionRequestBuilder::unbound("Summarize today's Rust news.")
+/// let request = CompletionRequest::new("Summarize today's Rust news.")
 ///     .additional_params(
 ///         VeniceParameters::new()
 ///             .enable_web_search(WebSearchMode::On)
 ///             .enable_web_citations(true)
 ///             .into_additional_params(),
-///     )
-///     .build();
+///     );
 /// ```
 ///
 /// Every field is optional; omitted fields are left to Venice's own defaults

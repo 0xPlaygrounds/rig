@@ -27,7 +27,7 @@ fn thinking_tokens_survive_the_real_conversion() {
             ),
         ]);
 
-    let converted = CompletionResponse::try_from(VertexGenerateContentOutput(response))
+    let converted = crate::types::completion_response::tests::complete(response)
         .expect("a response with content should convert");
 
     assert_eq!(converted.usage.reasoning_tokens, Some(222));

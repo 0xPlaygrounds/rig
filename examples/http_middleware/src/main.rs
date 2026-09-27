@@ -6,11 +6,12 @@
 //! streaming call, before the stream is consumed. Requires `ANTHROPIC_API_KEY`.
 
 use anyhow::{Context, Result};
-use rig::driver::Bind;
-use rig::http_client::{BoxedHttpClient, HeaderMap, HeaderValue, HttpMiddleware, Method, Uri};
+use rig::http_client::{
+    DynHttpClient, HeaderMap, HeaderValue, HttpMiddleware, Method, ReqwestClient, Uri,
+};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::providers::anthropic::wire::Anthropic;
+use rig::providers::anthropic::Anthropic;
 use rig::wasm_compat::WasmBoxedFuture;
 
 /// Adds a beta header to every outgoing request and prints the wire traffic
@@ -75,16 +76,17 @@ impl HttpMiddleware for WireLogger {
 async fn main() -> Result<()> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set")?;
 
-    // Erase the default transport, then attach the middleware — no provider
-    // code involved; the same handle could back every provider a host builds.
-    let http_client = BoxedHttpClient::new(rig::http_client::ReqwestClient::default())
-        .with_middleware(WireLogger);
+    // Wrap the bundled client with the middleware; any client can take the
+    // same handle with `with_http`.
+    let http_client = DynHttpClient::new(ReqwestClient::default()).with_middleware(WireLogger);
 
-    let agent = Anthropic::new(api_key)
-        .bind(http_client)
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-        .preamble("You are a helpful assistant.")
-        .build();
+    let agent = AgentBuilder::new(
+        Anthropic::new(api_key)
+            .with_http(http_client)
+            .completion(anthropic::completion::CLAUDE_SONNET_4_6),
+    )
+    .preamble("You are a helpful assistant.")
+    .build();
 
     let response = agent.prompt("What is 2 + 2?").await?.output;
     println!("Response: {response}");

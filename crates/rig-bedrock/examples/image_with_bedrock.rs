@@ -7,6 +7,7 @@ use rig_core::{
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_agent::prelude::*;
+use rig_bedrock::client::BedrockRuntime;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use tracing::info;
 
@@ -19,9 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = rig_bedrock::client::Client::from_env()?;
-    let agent = client
-        .agent(AMAZON_NOVA_LITE)
+    let agent = AgentBuilder::new(BedrockRuntime::from_env().completion(AMAZON_NOVA_LITE))
         .preamble("You are an image describer.")
         .temperature(0.5)
         .build();

@@ -53,7 +53,7 @@
 //! with a string `encrypted_content`; cell 6 requires a chunk whose delta
 //! carries `tool_calls` and a chunk finishing with `"tool_calls"`.
 
-use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
+use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::message::ToolChoice;
 use rig::providers::openai;
 use rig::streaming::StreamFinal;
@@ -79,24 +79,19 @@ const REASONING_PROMPT: &str = "A train leaves at 09:30 and travels 150 km at 60
      At what time does it arrive? Reply with only the time in HH:MM.";
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
+fn request() -> CompletionRequest {
+    CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .build()
 }
 
 /// The reasoning request shape the `reasoning_roundtrip` module uses
 /// (`effort: "medium"`), with a summary asked for; the provider adds
 /// `reasoning.encrypted_content` to `include` on every reasoning request.
-fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(REASONING_PROMPT)
-        .additional_params(json!({
-            "reasoning": { "effort": "medium", "summary": "auto" }
-        }))
-        .build()
+fn reasoning_request() -> CompletionRequest {
+    CompletionRequest::new(REASONING_PROMPT).additional_params(json!({
+        "reasoning": { "effort": "medium", "summary": "auto" }
+    }))
 }
 
 fn ping_tool() -> ToolDefinition {
@@ -109,14 +104,12 @@ fn ping_tool() -> ToolDefinition {
 
 /// The forced tool call `raw_completion_parity_matrix` records: `required`
 /// leaves the model no text-only exit.
-fn tool_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model
-        .completion_request(TOOL_PROMPT)
+fn tool_request() -> CompletionRequest {
+    CompletionRequest::new(TOOL_PROMPT)
         .tool(ping_tool())
         .tool_choice(ToolChoice::Required)
         .temperature(0.0)
         .max_tokens(64)
-        .build()
 }
 
 /// Chat premise: the request asked for usage on the stream and the last
@@ -186,7 +179,7 @@ async fn chat_stream_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed",
-        |client| capture_terminal(client.openai.chat(MODEL), request, observed.clone()),
+        |client| capture_terminal(client.openai.chat(MODEL), request(), observed.clone()),
     )
     .await
     .expect("chat_stream_raw_round_trips_typed should replay from its cassette");
@@ -236,7 +229,7 @@ async fn chat_stream_raw_exposes_service_tier() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier",
-        |client| capture_terminal(client.openai.chat(MODEL), request, observed.clone()),
+        |client| capture_terminal(client.openai.chat(MODEL), request(), observed.clone()),
     )
     .await
     .expect("chat_stream_raw_exposes_service_tier should replay from its cassette");
@@ -274,7 +267,7 @@ async fn responses_stream_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_round_trips_typed",
-        |client| capture_terminal(client.openai.completion(MODEL), request, observed.clone()),
+        |client| capture_terminal(client.openai.completion(MODEL), request(), observed.clone()),
     )
     .await
     .expect("responses_stream_raw_round_trips_typed should replay from its cassette");
@@ -320,7 +313,7 @@ async fn responses_stream_raw_exposes_status() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_exposes_status",
-        |client| capture_terminal(client.openai.completion(MODEL), request, observed.clone()),
+        |client| capture_terminal(client.openai.completion(MODEL), request(), observed.clone()),
     )
     .await
     .expect("responses_stream_raw_exposes_status should replay from its cassette");
@@ -380,7 +373,7 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
         |client| {
             capture_terminal(
                 client.openai.completion(REASONING_MODEL),
-                reasoning_request,
+                reasoning_request(),
                 observed.clone(),
             )
         },
@@ -479,7 +472,7 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     let observed = Observed::default();
     with_openai_cassette_result(
         "raw_stream_capture_matrix/chat_tool_call_stream_raw_round_trips_typed",
-        |client| capture_terminal(client.openai.chat(MODEL), tool_request, observed.clone()),
+        |client| capture_terminal(client.openai.chat(MODEL), tool_request(), observed.clone()),
     )
     .await
     .expect("chat_tool_call_stream_raw_round_trips_typed should replay from its cassette");

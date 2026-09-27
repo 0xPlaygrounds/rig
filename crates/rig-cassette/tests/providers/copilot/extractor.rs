@@ -1,14 +1,14 @@
 //! Copilot extractor smoke test.
 
-use rig::prelude::*;
-
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
 #[tokio::test]
 async fn extractor_smoke() {
     with_copilot_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = client.extractor::<SmokePerson>(LIVE_MODEL).build();
+        let extractor =
+            rig::extractor::ExtractorBuilder::<SmokePerson>::new(client.completion(LIVE_MODEL))
+                .build();
 
         let response = extractor
             .extract(EXTRACTOR_TEXT)

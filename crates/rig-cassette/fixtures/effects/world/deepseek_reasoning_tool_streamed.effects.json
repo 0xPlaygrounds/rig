@@ -180,7 +180,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -552,6 +552,18 @@
           "end": {
             "close": "reasoning",
             "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
+                }
+              }
+            ]
           }
         },
         {
@@ -960,6 +972,18 @@
           "end": {
             "close": "reasoning",
             "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "42"
+                }
+              }
+            ]
           }
         },
         {
@@ -974,6 +998,17 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
+            "text": "42"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
             "text": "42"
           }
         },

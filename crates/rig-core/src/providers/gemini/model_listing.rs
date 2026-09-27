@@ -1,7 +1,7 @@
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::{
-    model::{Model, ModelList, listing},
+    model::{ModelInfo, ModelList, listing},
     operation::{ModelListing, Verify},
     providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
@@ -57,7 +57,7 @@ fn normalize_gemini_model_id(name: &str) -> Option<String> {
     }
 }
 
-impl TryFrom<ListModelEntry> for Model {
+impl TryFrom<ListModelEntry> for ModelInfo {
     type Error = MissingModelIdError;
 
     fn try_from(value: ListModelEntry) -> Result<Self, Self::Error> {
@@ -70,7 +70,7 @@ impl TryFrom<ListModelEntry> for Model {
             .or_else(|| normalize_gemini_model_id(&value.name))
             .ok_or(MissingModelIdError)?;
 
-        let mut model = Model::from_id(id);
+        let mut model = ModelInfo::from_id(id);
         model.name = value.display_name;
         model.description = value.description;
         model.context_length = value
@@ -95,7 +95,7 @@ fn list_models_path(page_token: Option<&str>) -> String {
 /// A decoded model page with an optional nonempty continuation cursor.
 #[derive(Debug)]
 struct ListingPage {
-    models: Vec<Model>,
+    models: Vec<ModelInfo>,
     next_cursor: Option<String>,
 }
 
@@ -108,7 +108,7 @@ fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ProviderErr
         .models
         .into_iter()
         .map(|entry| {
-            Model::try_from(entry)
+            ModelInfo::try_from(entry)
                 .map_err(|error| listing::parse_error("Gemini", path, error, body))
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -138,7 +138,7 @@ enum Auth {
 
 /// One page's request, after `page_token` when a page named one.
 fn list_models_request(
-    provider: &super::Gemini,
+    provider: &super::GeminiConfig,
     auth: Auth,
     page_token: Option<&str>,
 ) -> Result<http::Request<Body>, EncodeError> {
@@ -162,18 +162,20 @@ fn list_models_request(
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
 }
 
 impl Models {
     /// Build the wire over `provider`.
-    pub fn new(provider: super::Gemini) -> Self {
+    pub fn new(provider: super::GeminiConfig) -> Self {
         Self { provider }
     }
 }
 
 impl Wire for Models {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -188,8 +190,15 @@ impl Wire for Models {
         ))
     }
 
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(
+            list_models_request(&self.provider, Auth::Query, Some(cursor))?,
+            Framing::Whole,
+        ))
+    }
+
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder::new(self.provider.clone(), Auth::Query)
+        ModelsDecoder::default()
     }
 }
 
@@ -198,18 +207,20 @@ impl Wire for Models {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InteractionsModels {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
 }
 
 impl InteractionsModels {
     /// Build the wire over `provider`.
-    pub fn new(provider: super::Gemini) -> Self {
+    pub fn new(provider: super::GeminiConfig) -> Self {
         Self { provider }
     }
 }
 
 impl Wire for InteractionsModels {
     type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
     fn name(&self) -> &str {
@@ -224,27 +235,23 @@ impl Wire for InteractionsModels {
         ))
     }
 
+    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
+        Ok(Encoded::new(
+            list_models_request(&self.provider, Auth::Header, Some(cursor))?,
+            Framing::Whole,
+        ))
+    }
+
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        ModelsDecoder::new(self.provider.clone(), Auth::Header)
+        ModelsDecoder::default()
     }
 }
 
-/// Decode model pages and follow cursors using the original authentication mode.
+/// Decode model pages and name the cursor the wire follows.
+#[derive(Default)]
 pub struct ModelsDecoder {
-    provider: super::Gemini,
-    auth: Auth,
     /// The cursor the page just interpreted named, when it named a usable one.
     next: Option<String>,
-}
-
-impl ModelsDecoder {
-    fn new(provider: super::Gemini, auth: Auth) -> Self {
-        Self {
-            provider,
-            auth,
-            next: None,
-        }
-    }
 }
 
 impl Decoder<ModelListing> for ModelsDecoder {
@@ -270,9 +277,8 @@ impl Decoder<ModelListing> for ModelsDecoder {
         }
     }
 
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        let cursor = self.next.as_deref()?;
-        list_models_request(&self.provider, self.auth, Some(cursor)).ok()
+    fn cursor(&self) -> Option<String> {
+        self.next.clone()
     }
 }
 
@@ -280,18 +286,20 @@ impl Decoder<ModelListing> for ModelsDecoder {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VerifyKey {
     /// The provider this wire speaks to.
-    pub provider: super::Gemini,
+    pub provider: super::GeminiConfig,
 }
 
 impl VerifyKey {
     /// Build the wire over `provider`.
-    pub fn new(provider: super::Gemini) -> Self {
+    pub fn new(provider: super::GeminiConfig) -> Self {
         Self { provider }
     }
 }
 
 impl Wire for VerifyKey {
     type Op = Verify;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
     type Decoder = VerifyKeyDecoder;
 
     fn name(&self) -> &str {

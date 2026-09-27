@@ -3,6 +3,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig_test_support::cassette_models::MapWire;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 

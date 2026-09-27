@@ -230,7 +230,7 @@
             "message_id": null,
             "done": true,
             "usage_recorded": true,
-            "stream_validated": 3
+            "stream_validated": 4
           },
           "rig_ecs::agent::ToolAccess": {
             "executable": {},
@@ -312,6 +312,17 @@
                 "id": "minted:text:0",
                 "delta": {
                   "delta": "text",
+                  "text": "ready"
+                }
+              },
+              {
+                "event": "block_end",
+                "id": "minted:text:0",
+                "end": {
+                  "close": "text"
+                },
+                "block": {
+                  "type": "text",
                   "text": "ready"
                 }
               },

@@ -6,13 +6,13 @@
 //! assert_eq!(ModelListing::NAME, "model_listing");
 //! ```
 
-use super::One;
+use super::Events;
 use crate::error::ProviderError;
-use crate::model::{Model, ModelList};
-use crate::wire::{Fold, Operation, Reply};
+use crate::model::{ModelInfo, ModelList};
+use crate::wire::{Fold, Mode, Operation, Reply, Wire};
 
-/// Lists provider models, concatenating pages requested through
-/// [`Decoder::continuation`](crate::wire::Decoder::continuation).
+/// Lists provider models, concatenating the pages a reply's
+/// [`Decoder::cursor`](crate::wire::Decoder::cursor) names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelListing;
 
@@ -21,7 +21,7 @@ impl Operation for ModelListing {
     type Event = ModelList;
     type Response = ModelList;
     type Capabilities = ();
-    type Output = One<Self>;
+    type Output = Events<Self>;
     type Fold = ModelListingFold;
     type Telemetry = ();
 
@@ -31,7 +31,11 @@ impl Operation for ModelListing {
         true
     }
 
-    fn telemetry(_streaming: bool) -> Self::Telemetry {}
+    fn fold<W: Wire<Op = Self>>(_request: &Self::Request, _wire: &W, _mode: Mode) -> Self::Fold {
+        ModelListingFold::default()
+    }
+
+    fn telemetry(_mode: Mode) -> Self::Telemetry {}
 
     fn with_route(error: ProviderError, provider: &str, path: &str) -> ProviderError {
         crate::model::listing::with_route(error, provider, path)
@@ -41,12 +45,12 @@ impl Operation for ModelListing {
 /// Concatenates the pages of a model listing, in arrival order.
 #[derive(Default)]
 pub struct ModelListingFold {
-    models: Vec<Model>,
+    models: Vec<ModelInfo>,
 }
 
 impl Fold<ModelListing> for ModelListingFold {
-    fn absorb(&mut self, page: ModelList) -> Result<(), ProviderError> {
-        self.models.extend(page);
+    fn absorb(&mut self, page: &ModelList) -> Result<(), ProviderError> {
+        self.models.extend(page.iter().cloned());
         Ok(())
     }
 

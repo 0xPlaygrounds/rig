@@ -78,9 +78,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini stream_terminal_matrix -- --test-threads=1`
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
@@ -89,6 +88,7 @@ use super::super::support::{
     assert_recorded_stream_finishes_early, last_frame_total_tokens,
     with_gemini_stream_terminal_cassette,
 };
+use rig::completion::CompletionRequest;
 
 /// The prompt that reliably makes Gemini take two code-execution rounds, and
 /// therefore emit an intermediate `finishReason`.
@@ -164,7 +164,7 @@ struct Drained {
     last_item_was_terminal: bool,
 }
 
-async fn drain(mut stream: rig::streaming::StreamingCompletionResponse) -> Drained {
+async fn drain(mut stream: rig::streaming::CompletionStream) -> Drained {
     let mut text = String::new();
     let mut terminals = 0;
     let mut last_item_was_terminal = false;
@@ -182,9 +182,9 @@ async fn drain(mut stream: rig::streaming::StreamingCompletionResponse) -> Drain
     }
     Drained {
         text,
-        choice: stream.snapshot(),
+        choice: stream.folded().snapshot(),
         terminals,
-        terminal: stream.response.clone(),
+        terminal: stream.folded().terminal().cloned(),
         last_item_was_terminal,
     }
 }
@@ -200,19 +200,12 @@ async fn two_terminal_stream_keeps_the_text_after_the_first_finish() {
         "stream_terminal_matrix/two_terminal_stream_keeps_the_text_after_the_first_finish",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
-            )
-            .await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 states(&drained.text, FIRST_ROUND_VALUE),
@@ -250,14 +243,13 @@ async fn two_terminal_stream_blocking_twin_has_the_same_answer() {
         "stream_terminal_matrix/two_terminal_stream_blocking_twin_has_the_same_answer",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
-            let response = CompletionModel::completion(&model, request)
+            let response = model
+                .call(request)
                 .await
                 .expect("blocking turn should convert");
             assert!(
@@ -278,12 +270,12 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer",
         |client| async move {
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .temperature(0.0)
-                .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+            let agent =
+                rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .temperature(0.0)
+                    .max_tokens(2000)
+                    .additional_params(code_execution_params())
+                    .build();
 
             let mut stream = agent.prompt(TWO_ROUND_PROMPT).stream();
             let mut answer = String::new();
@@ -320,19 +312,12 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
         "stream_terminal_matrix/two_terminal_stream_terminal_carries_the_last_usage",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
-            )
-            .await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             let terminal = drained.terminal.expect("the turn should complete");
             // Gemini's usage is cumulative per chunk, so a terminal built at
@@ -381,8 +366,7 @@ async fn two_terminal_stream_with_visible_thoughts() {
         "stream_terminal_matrix/two_terminal_stream_with_visible_thoughts",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(3000)
                 .additional_params(json!({
@@ -390,15 +374,9 @@ async fn two_terminal_stream_with_visible_thoughts() {
                     "generationConfig": {
                         "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
                     }
-                }))
-                .build();
+                }));
 
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
-            )
-            .await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 states(&drained.text, FIRST_ROUND_VALUE),
@@ -428,19 +406,12 @@ async fn gemini_3_flash_does_not_emit_the_intermediate_finish() {
         "stream_terminal_matrix/gemini_3_flash_does_not_emit_the_intermediate_finish",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = model
-                .completion_request(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(3000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
-            )
-            .await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 states(&drained.text, FIRST_ROUND_VALUE),
@@ -468,19 +439,15 @@ async fn two_terminal_stream_through_raw_stream() {
         "stream_terminal_matrix/two_terminal_stream_through_raw_stream",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(TWO_ROUND_PROMPT)
+            let request = CompletionRequest::new(TWO_ROUND_PROMPT)
                 .temperature(0.0)
                 .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
+                .additional_params(code_execution_params());
 
             // The terminal record carries Gemini's own terminal type on
             // `raw`, so this pins the fix on the provider-native record as
             // well as the normalized one.
-            let mut stream = CompletionModel::stream(&model, request)
-                .await
-                .expect("stream should open");
+            let mut stream = model.stream(request).expect("stream should open");
             let mut text = String::new();
             let mut natives = 0;
             while let Some(item) = stream.next().await {
@@ -529,24 +496,17 @@ async fn two_terminal_stream_unicode_answer_after_the_first_finish() {
         "stream_terminal_matrix/two_terminal_stream_unicode_answer_after_the_first_finish",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "You must call the code execution tool twice as two separate executions. \
+            let request = CompletionRequest::new(
+                "You must call the code execution tool twice as two separate executions. \
                  Execution 1: run only print(6 * 7). Then, after seeing that number, \
                  Execution 2: run only print(6 * 7 + 100). Never combine them. \
                  Finally reply with exactly: résultats ✅ <first> et <second>.",
-                )
-                .temperature(0.0)
-                .max_tokens(2000)
-                .additional_params(code_execution_params())
-                .build();
-
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
             )
-            .await;
+            .temperature(0.0)
+            .max_tokens(2000)
+            .additional_params(code_execution_params());
+
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 drained.text.contains("résultats"),
@@ -573,21 +533,14 @@ async fn single_terminal_text_stream_is_unchanged() {
         "stream_terminal_matrix/single_terminal_text_stream_is_unchanged",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Reply with exactly the word PONG.")
+            let request = CompletionRequest::new("Reply with exactly the word PONG.")
                 .temperature(0.0)
                 .max_tokens(400)
                 .additional_params(json!({
                     "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                }))
-                .build();
+                }));
 
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
-            )
-            .await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(drained.text.contains("PONG"), "got {:?}", drained.text);
             assert_eq!(drained.terminals, 1);
@@ -610,8 +563,7 @@ async fn single_terminal_tool_call_stream_is_unchanged() {
         "stream_terminal_matrix/single_terminal_tool_call_stream_is_unchanged",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("What is 41 plus 1? Use the add tool.")
+            let request = CompletionRequest::new("What is 41 plus 1? Use the add tool.")
                 .temperature(0.0)
                 .max_tokens(1000)
                 .tools(vec![rig::completion::ToolDefinition {
@@ -625,15 +577,9 @@ async fn single_terminal_tool_call_stream_is_unchanged() {
                         },
                         "required": ["x", "y"]
                     }),
-                }])
-                .build();
+                }]);
 
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
-            )
-            .await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 drained
@@ -655,21 +601,14 @@ async fn max_tokens_truncated_stream_still_reports_length() {
         "stream_terminal_matrix/max_tokens_truncated_stream_still_reports_length",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Write 300 words about lighthouses.")
+            let request = CompletionRequest::new("Write 300 words about lighthouses.")
                 .temperature(0.0)
                 .max_tokens(32)
                 .additional_params(json!({
                     "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                }))
-                .build();
+                }));
 
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
-            )
-            .await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert_eq!(
                 drained
@@ -691,23 +630,17 @@ async fn thinking_stream_terminal_is_unchanged() {
         "stream_terminal_matrix/thinking_stream_terminal_is_unchanged",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("How many minutes are in two days? Answer with the number.")
-                .temperature(0.0)
-                .max_tokens(2000)
-                .additional_params(json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true }
-                    }
-                }))
-                .build();
+            let request =
+                CompletionRequest::new("How many minutes are in two days? Answer with the number.")
+                    .temperature(0.0)
+                    .max_tokens(2000)
+                    .additional_params(json!({
+                        "generationConfig": {
+                            "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true }
+                        }
+                    }));
 
-            let drained = drain(
-                CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open"),
-            )
-            .await;
+            let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(
                 states(&drained.text, "2880"),
@@ -732,10 +665,10 @@ async fn thinking_stream_terminal_is_unchanged() {
 
 mod unit {
     use futures::StreamExt;
-    use rig::completion::{CompletionModel, FinishReason};
+    use rig::completion::FinishReason;
     use rig::message::AssistantContent;
-    use rig::prelude::*;
-    use rig::providers::gemini::{self, Gemini};
+
+    use rig::providers::gemini::{self, GeminiConfig};
     use rig::streaming::{Delta, StreamEvent};
     use rig_core::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
 
@@ -781,12 +714,11 @@ mod unit {
     where
         T: rig::http_client::HttpClientExt + Clone + std::fmt::Debug + Send + Sync + 'static,
     {
-        let client = Gemini::new("test-key").bind(http_client);
-        let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-        let request = model.completion_request("hello").build();
-        let mut stream = CompletionModel::stream(&model, request)
-            .await
-            .expect("stream should open");
+        let model = GeminiConfig::new("test-key")
+            .connect(http_client)
+            .completion(gemini::completion::GEMINI_2_5_FLASH);
+        let request = rig::completion::CompletionRequest::new("hello");
+        let mut stream = model.stream(request).expect("stream should open");
 
         let mut run = Run {
             text: String::new(),
@@ -830,7 +762,7 @@ mod unit {
                 }
             }
         }
-        run.response = stream.response.clone();
+        run.response = stream.folded().terminal().cloned();
         run
     }
 

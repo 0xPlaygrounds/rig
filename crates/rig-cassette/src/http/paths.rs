@@ -221,7 +221,7 @@ async fn both_constructors_replay_from_an_external_fixture_root() {
     for direct in [false, true] {
         let cassette = if direct {
             ProviderCassette::start_via(
-                Transport::Direct,
+                RecordVia::Direct,
                 &root,
                 "example",
                 "unary",

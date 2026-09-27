@@ -1,6 +1,6 @@
 use super::*;
 use crate::driver::WireDriver;
-use crate::providers::gemini::Gemini;
+use crate::providers::gemini::GeminiConfig;
 
 #[test]
 fn parse_models_page_accepts_omitted_empty_models_list() {
@@ -157,7 +157,7 @@ fn parse_models_page_returns_parse_error_when_entry_has_no_usable_id() {
 /// same reason `list_models_path` is pinned above.
 #[test]
 fn models_sends_the_credential_as_the_last_query_pair() {
-    let encoded = Models::new(Gemini::new("test-key"))
+    let encoded = Models::new(GeminiConfig::new("test-key"))
         .encode((), Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.first().expect("one request");
@@ -174,7 +174,7 @@ fn models_sends_the_credential_as_the_last_query_pair() {
 /// header instead, and must not also leak it into the query.
 #[test]
 fn interactions_models_sends_the_credential_as_a_header_only() {
-    let encoded = InteractionsModels::new(Gemini::new("test-key"))
+    let encoded = InteractionsModels::new(GeminiConfig::new("test-key"))
         .encode((), Mode::Unary)
         .expect("the request encodes");
     let request = encoded.requests.first().expect("one request");
@@ -200,7 +200,7 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
     const PAGE_ONE: &str = r#"{"models":[{"description":"Stable version of Gemini 2.5 Flash, our mid-size multimodal model that supports up to 1 million tokens, released in June of 2025.","displayName":"Gemini 2.5 Flash","inputTokenLimit":1048576,"maxTemperature":2,"name":"models/gemini-2.5-flash","outputTokenLimit":65536,"supportedGenerationMethods":["generateContent","countTokens","createCachedContent","batchGenerateContent"],"temperature":1,"thinking":true,"topK":64,"topP":0.95,"version":"001"},{"description":"Stable release (June 17th, 2025) of Gemini 2.5 Pro","displayName":"Gemini 2.5 Pro","inputTokenLimit":1048576,"maxTemperature":2,"name":"models/gemini-2.5-pro","outputTokenLimit":65536,"supportedGenerationMethods":["generateContent","countTokens","createCachedContent","batchGenerateContent"],"temperature":1,"thinking":true,"topK":64,"topP":0.95,"version":"2.5"}],"nextPageToken":"page-two"}"#;
     const PAGE_TWO: &str = r#"{"models":[{"displayName":"Gemini 2.5 Flash-Lite","inputTokenLimit":1048576,"name":"models/gemini-2.5-flash-lite","outputTokenLimit":65536}]}"#;
 
-    let wire = Models::new(Gemini::new("test-key"));
+    let wire = Models::new(GeminiConfig::new("test-key"));
     let ids = |driver: &mut WireDriver<ModelListing, ModelsDecoder>, page: &str| {
         driver.push(WireFrame::Text(page.to_owned()));
         driver
@@ -216,7 +216,9 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
 
     let mut first = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
     let mut listed = ids(&mut first, PAGE_ONE);
-    let continuation = first.continuation().expect("page one named a cursor");
+    let cursor = first.cursor().expect("page one named a cursor");
+    let continuation = wire.page(&cursor).expect("the next page encodes");
+    let continuation = &continuation.requests[0];
     assert_eq!(continuation.uri().path(), "/v1beta/models");
     assert_eq!(
         continuation.uri().query(),
@@ -235,7 +237,7 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
         ],
     );
     assert!(
-        second.continuation().is_none(),
+        second.cursor().is_none(),
         "a page naming no cursor ends the listing",
     );
 }

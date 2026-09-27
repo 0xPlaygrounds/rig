@@ -6,20 +6,21 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let provider = cohere::Cohere::from_env()?;
 //!
-//! let command_a = provider.chat(cohere::COMMAND_A_03_2025);
-//! let embeddings = provider.embeddings(cohere::EMBED_V4, None);
+//! let command_a = provider.completion(cohere::COMMAND_A_03_2025);
+//! let embeddings = provider.embedding(cohere::EMBED_V4, None);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! Bind a wire to a transport to obtain a [`crate::driver::Bound`] model.
+//! Pair a wire with a transport in a [`crate::Model`] to send it.
 
 pub mod completion;
 pub mod embeddings;
 pub mod streaming;
 pub mod wire;
 
-pub use wire::{Chat, Cohere, Embeddings, ImageEmbeddings};
+pub use crate::client::cohere::Cohere;
+pub use wire::{Chat, CohereConfig, Embeddings, ImageEmbeddings};
 
 /// `command-a-plus-05-2026` completion model
 pub const COMMAND_A_PLUS_05_2026: &str = "command-a-plus-05-2026";

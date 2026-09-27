@@ -67,8 +67,7 @@
 //! Every cell re-reads its own fixture and fails if the recorded turn stopped
 //! having the shape the cell is about.
 
-use rig::completion::{CompletionModel, FinishReason};
-use rig::prelude::*;
+use rig::completion::FinishReason;
 use rig::providers::openai;
 use rig::providers::openai::completion::{
     AssistantContent, Choice, CompletionResponse as ChatCompletionResponse, Message as ChatMessage,
@@ -79,6 +78,7 @@ use serde_json::{Value, json};
 use super::super::support::with_openai_truncation_cassette;
 use crate::cassettes;
 use crate::support::{Adder, assistant_text_response, collect_text_and_terminal};
+use rig::completion::CompletionRequest;
 
 /// OpenAI's documented floor for the field, and far below what any reasoning
 /// model needs to say anything — so the whole budget goes to hidden reasoning
@@ -115,13 +115,10 @@ async fn chat_blocking_reasoning_budget_exhausted() {
         "truncated_turn_matrix/chat_blocking_reasoning_budget_exhausted",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
             let response = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect("a truncated turn is a diagnostic, not a malformed response");
 
@@ -142,12 +139,9 @@ async fn chat_blocking_o4_mini_budget_exhausted() {
         "truncated_turn_matrix/chat_blocking_o4_mini_budget_exhausted",
         |client| async move {
             let model = client.openai.chat("o4-mini");
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
-            let response = model.completion(request).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
         },
@@ -169,13 +163,11 @@ async fn chat_blocking_gpt_5_1_budget_exhausted() {
             // default effort this prompt yields partial *text* under the same
             // cap (cell 8's shape). Asking for high effort makes the reasoning
             // consume the whole budget, which is the shape this cell is about.
-            let request = model
-                .completion_request(LONG_PROMPT)
+            let request = CompletionRequest::new(LONG_PROMPT)
                 .max_tokens(TINY_CAP)
-                .additional_params(json!({ "reasoning_effort": "high" }))
-                .build();
+                .additional_params(json!({ "reasoning_effort": "high" }));
 
-            let response = model.completion(request).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
         },
@@ -195,12 +187,9 @@ async fn chat_blocking_usage_survives_the_empty_turn() {
         "truncated_turn_matrix/chat_blocking_usage_survives_the_empty_turn",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
-            let response = model.completion(request).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert!(response.usage.input_tokens.is_some_and(|n| n > 0));
             assert_eq!(response.usage.output_tokens, Some(TINY_CAP));
@@ -224,15 +213,12 @@ async fn chat_blocking_raw_and_normalized_agree() {
         "truncated_turn_matrix/chat_blocking_raw_and_normalized_agree",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
             // One turn, two views of it: the provider's own reply read back out
             // of `CompletionResponse::raw`, and the normalized response beside
             // it.
-            let response = model.completion(request).await.expect("raw turn");
+            let response = model.call(request).await.expect("raw turn");
             let reply = ChatCompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized openai::completion::CompletionResponse");
 
@@ -262,13 +248,11 @@ async fn chat_blocking_tools_present_budget_exhausted() {
         "truncated_turn_matrix/chat_blocking_tools_present_budget_exhausted",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request("What is 3 + 4? Use the add tool.")
+            let request = CompletionRequest::new("What is 3 + 4? Use the add tool.")
                 .max_tokens(TINY_CAP)
-                .tool(rig::tool::tool_definition(&Adder))
-                .build();
+                .tool(rig::tool::tool_definition(&Adder));
 
-            let response = model.completion(request).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
             assert!(response.choice.is_empty());
@@ -288,7 +272,9 @@ async fn chat_blocking_agent_reports_the_truncation() {
     with_openai_truncation_cassette(
         "truncated_turn_matrix/chat_blocking_agent_reports_the_truncation",
         |client| async move {
-            let agent = client.chat.agent("gpt-5-nano").max_tokens(TINY_CAP).build();
+            let agent = rig::AgentBuilder::new(client.chat.completion("gpt-5-nano"))
+                .max_tokens(TINY_CAP)
+                .build();
 
             // rig-agent already has a purpose-built message for this state;
             // before the fix it was unreachable, because the provider layer
@@ -325,12 +311,9 @@ async fn chat_blocking_partial_text_truncation() {
         "truncated_turn_matrix/chat_blocking_partial_text_truncation",
         |client| async move {
             let model = client.openai.chat(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
-            let response = model.completion(request).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
             assert!(
@@ -356,12 +339,9 @@ async fn chat_streaming_reasoning_budget_exhausted() {
         "truncated_turn_matrix/chat_streaming_reasoning_budget_exhausted",
         |client| async move {
             let model = client.openai.chat("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (text, terminal) = collect_text_and_terminal(stream).await;
 
             assert!(text.is_empty());
@@ -384,12 +364,9 @@ async fn chat_streaming_partial_text_truncation() {
         "truncated_turn_matrix/chat_streaming_partial_text_truncation",
         |client| async move {
             let model = client.openai.chat(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (text, terminal) = collect_text_and_terminal(stream).await;
 
             assert!(!text.is_empty());
@@ -416,23 +393,12 @@ async fn chat_transports_agree_on_truncation() {
             let model = client.openai.chat("gpt-5-nano");
 
             let blocking = model
-                .completion(
-                    model
-                        .completion_request(LONG_PROMPT)
-                        .max_tokens(TINY_CAP)
-                        .build(),
-                )
+                .call(CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP))
                 .await
                 .expect("blocking truncated turn");
 
             let stream = model
-                .stream(
-                    model
-                        .completion_request(LONG_PROMPT)
-                        .max_tokens(TINY_CAP)
-                        .build(),
-                )
-                .await
+                .stream(CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP))
                 .expect("streaming truncated turn");
             let (streamed_text, terminal) = collect_text_and_terminal(stream).await;
 
@@ -461,9 +427,9 @@ async fn chat_blocking_completed_turn_is_unaffected() {
         "truncated_turn_matrix/chat_blocking_completed_turn_is_unaffected",
         |client| async move {
             let model = client.openai.chat(openai::GPT_4O_MINI);
-            let request = model.completion_request("Reply with the word OK.").build();
+            let request = CompletionRequest::new("Reply with the word OK.");
 
-            let response = model.completion(request).await.expect("completed turn");
+            let response = model.call(request).await.expect("completed turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
             assert!(!response.choice.is_empty());
@@ -486,12 +452,9 @@ async fn responses_blocking_reasoning_budget_exhausted() {
         "truncated_turn_matrix/responses_blocking_reasoning_budget_exhausted",
         |client| async move {
             let model = client.openai.completion("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
-            let response = model.completion(request).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
         },
@@ -509,12 +472,9 @@ async fn responses_streaming_reasoning_budget_exhausted() {
         "truncated_turn_matrix/responses_streaming_reasoning_budget_exhausted",
         |client| async move {
             let model = client.openai.completion("gpt-5-nano");
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
-            let stream = model.stream(request).await.expect("stream should connect");
+            let stream = model.stream(request).expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
 
             assert_eq!(
@@ -536,12 +496,9 @@ async fn responses_blocking_partial_text_truncation() {
         "truncated_turn_matrix/responses_blocking_partial_text_truncation",
         |client| async move {
             let model = client.openai.completion(openai::GPT_4O_MINI);
-            let request = model
-                .completion_request(LONG_PROMPT)
-                .max_tokens(TINY_CAP)
-                .build();
+            let request = CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP);
 
-            let response = model.completion(request).await.expect("truncated turn");
+            let response = model.call(request).await.expect("truncated turn");
 
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
             assert!(
@@ -566,23 +523,13 @@ async fn cross_surface_truncation_parity() {
         |client| async move {
             let responses_model = client.openai.completion("gpt-5-nano");
             let responses = responses_model
-                .completion(
-                    responses_model
-                        .completion_request(LONG_PROMPT)
-                        .max_tokens(TINY_CAP)
-                        .build(),
-                )
+                .call(CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP))
                 .await
                 .expect("responses truncated turn");
 
             let chat_model = client.openai.chat("gpt-5-nano");
             let chat = chat_model
-                .completion(
-                    chat_model
-                        .completion_request(LONG_PROMPT)
-                        .max_tokens(TINY_CAP)
-                        .build(),
-                )
+                .call(CompletionRequest::new(LONG_PROMPT).max_tokens(TINY_CAP))
                 .await
                 .expect("chat truncated turn");
 

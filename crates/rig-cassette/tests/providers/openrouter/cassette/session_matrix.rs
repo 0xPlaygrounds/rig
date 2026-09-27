@@ -1,8 +1,8 @@
 //! Reasoning across a session boundary on OpenRouter: see
 //! `rig_test_support::history_survival::sessions`.
 
-use super::super::support::{BoundOpenRouter, with_openrouter_cassette};
-use rig::completion::CompletionModel;
+use super::super::support::with_openrouter_cassette;
+use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::history_survival::sessions::{self, Cell};
 
@@ -18,11 +18,11 @@ const CELL: Cell = Cell {
 };
 
 fn models(
-    client: BoundOpenRouter,
+    client: OpenAiModels,
 ) -> (
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
-    impl CompletionModel + Clone + 'static,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
+    rig::Model<rig::providers::openai::wire::OpenAiWire>,
 ) {
     (
         client.completion("anthropic/claude-haiku-4.5"),

@@ -5,11 +5,11 @@
 //! place the reason for the failure appears.
 
 use axum::http;
-use rig::completion::CompletionModel;
 use rig::error::ProviderError;
 
 use super::super::support::with_cohere_cassette;
 use crate::support::BASIC_PROMPT;
+use rig::completion::CompletionRequest;
 
 const UNKNOWN_MODEL: &str = "command-does-not-exist";
 
@@ -19,10 +19,10 @@ async fn completion_error_preserves_status_and_body() {
         "errors/completion_error_preserves_status_and_body",
         |client| async move {
             let model = client.completion(UNKNOWN_MODEL);
-            let request = model.completion_request(BASIC_PROMPT).build();
+            let request = CompletionRequest::new(BASIC_PROMPT);
 
             let error = model
-                .completion(request)
+                .call(request)
                 .await
                 .expect_err("an unknown model should fail");
 

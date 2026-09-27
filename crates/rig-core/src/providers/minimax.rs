@@ -1,14 +1,16 @@
 //! MiniMax's endpoints and model identifiers.
 //!
 //! Global and China configurations support chat-completions and Messages wires,
-//! using `MINIMAX_API_KEY`.
+//! using `MINIMAX_API_KEY`. [`from_env`] and [`new`] build a client on the
+//! chat-completions [`MINIMAX`](crate::providers::openai::wire::MINIMAX)
+//! dialect; [`anthropic_from_env`] and [`anthropic_new`] build a Messages-format
+//! client.
 //!
 //! ```no_run
 //! use rig_core::providers::minimax;
-//! use rig_core::providers::openai::wire::{MINIMAX, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = OpenAI::from_env_with(&MINIMAX)?.chat(minimax::MINIMAX_M2_7);
+//! let model = minimax::from_env()?.chat(minimax::MINIMAX_M2_7);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -37,3 +39,11 @@ pub const MINIMAX_M2_1: &str = "MiniMax-M2.1";
 pub const MINIMAX_M2_1_HIGHSPEED: &str = "MiniMax-M2.1-highspeed";
 /// `MiniMax-M2`
 pub const MINIMAX_M2: &str = "MiniMax-M2";
+
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::MINIMAX, "MiniMax");
+crate::client::macros::anthropic_vendor!(
+    crate::providers::anthropic::wire::MINIMAX,
+    "MiniMax",
+    anthropic_from_env,
+    anthropic_new
+);

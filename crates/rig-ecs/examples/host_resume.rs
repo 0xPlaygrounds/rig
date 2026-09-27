@@ -8,13 +8,12 @@ use rig_cassette::{
     ecs::{EffectLogResource, Replay, ReplayPlugin},
     effect_log::EffectLog,
 };
+use rig_core::providers::openai::OpenAIConfig;
 use rig_core::{
-    completion::CompletionRequestBuilder,
-    driver::Bind,
+    completion::CompletionRequest,
     effect::EffectKind,
     error::{ErrorKind, ErrorReport},
-    providers::openai::wire::OpenAI,
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::{ErasedHandler, adapters::ModelAdapter},
     test_utils::RecordingHttpClient,
 };
 use rig_ecs::{
@@ -34,11 +33,12 @@ fn app() -> App {
 }
 
 fn assemble() -> ErasedHandler {
-    let model = OpenAI::new("demonstration-only")
+    let model = OpenAIConfig::new("demonstration-only")
         .with_base_url("http://offline.invalid/v1")
-        .bind(RecordingHttpClient::new(BODY))
+        .client()
+        .with_http(RecordingHttpClient::new(BODY))
         .chat("demo");
-    ErasedHandler::new(CompletionAdapter::new("demo", model))
+    ErasedHandler::new(ModelAdapter::new("demo", model))
 }
 
 fn finish(app: &mut App) -> Result<EffectLog, ErrorReport> {
@@ -72,7 +72,7 @@ fn main() -> Result<(), ErrorReport> {
     live.world_mut().spawn(PendingEffect::new(
         KEY,
         EffectKind::Completion {
-            request: CompletionRequestBuilder::unbound("hello").build(),
+            request: CompletionRequest::new("hello"),
             stream: false,
         },
     ));

@@ -2,7 +2,7 @@
 //! a scripted model (each request pops the next answer), a streaming
 //! scripted model (each request streams the next answer, a word at a
 //! time), a few tools, and an app with both plugins that exits when a run
-//! ends. A real `CompletionAdapter` and real tools register under the same
+//! ends. A real `ModelAdapter` and real tools register under the same
 //! keys with the same `Serve` trait.
 
 #![allow(

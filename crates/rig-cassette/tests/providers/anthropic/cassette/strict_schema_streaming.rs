@@ -1,19 +1,20 @@
 //! Live-recorded streaming coverage for Anthropic strict tools.
 
 use rig::completion::ToolDefinition;
-use rig::driver::Bound;
+use rig::driver::Model;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
+use rig_test_support::cassette_models::AnthropicModels;
+use rig_test_support::cassette_models::MapWire;
 use serde_json::{Value, json};
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::collect_raw_stream_observation;
+use rig::completion::CompletionRequest;
 
 async fn assert_streaming_strict_tool_call(
-    client: Bound<Anthropic>,
+    client: AnthropicModels,
     tool_name: &str,
     prompt: &str,
     parameters: Value,
@@ -36,7 +37,7 @@ async fn assert_streaming_strict_tool_call(
 }
 
 async fn assert_model_streaming_tool_call(
-    model: Bound<Messages>,
+    model: Model<Messages>,
     tool_name: &str,
     prompt: &str,
     parameters: Value,
@@ -44,9 +45,8 @@ async fn assert_model_streaming_tool_call(
     expected_arguments: Value,
     output_schema: Option<schemars::Schema>,
 ) {
-    let request = model
-        .completion_request(prompt)
-        .preamble("Call the requested tool exactly once with the requested values.".to_string())
+    let request = CompletionRequest::new(prompt)
+        .preamble("Call the requested tool exactly once with the requested values.")
         .max_tokens(1024)
         .tool_choice(tool_choice)
         .tool(ToolDefinition {
@@ -54,13 +54,11 @@ async fn assert_model_streaming_tool_call(
             description: "Record the requested values in a streaming strict tool call.".to_string(),
             parameters,
         })
-        .output_schema(output_schema)
-        .build();
+        .output_schema(output_schema);
 
     let observation = collect_raw_stream_observation(
         model
             .stream(request)
-            .await
             .expect("strict streaming request should start"),
     )
     .await;

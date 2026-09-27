@@ -403,6 +403,17 @@
           }
         },
         {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "I'll add 17 and 25 for you."
+          }
+        },
+        {
           "event": "final",
           "usage": {
             "input_tokens": 329,
@@ -814,6 +825,17 @@
           "delta": {
             "delta": "text",
             "text": "."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          },
+          "block": {
+            "type": "text",
+            "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
           }
         },
         {

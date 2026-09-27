@@ -37,7 +37,7 @@
 //! request-id header, so the terminal's `provider_request_id` is `None` —
 //! pinned as the documented outcome.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
@@ -48,8 +48,8 @@ use crate::support::Observed;
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
-    model.completion_request(PROMPT).max_tokens(16).build()
+fn request() -> CompletionRequest {
+    CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
 // ================================================================
@@ -62,7 +62,9 @@ async fn stream_raw_reads_back_as_terminal_type() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
+        },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
@@ -98,7 +100,9 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider",
-        |client| capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, sink.clone()),
+        |client| {
+            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
+        },
     )
     .await
     .expect("stream_raw_exposes_terminal_cost_and_provider should replay from its cassette");

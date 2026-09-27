@@ -1,20 +1,18 @@
 //! OpenRouter model identifiers, routing preferences, and typed chat responses.
 //!
-//! Configure requests with [`crate::providers::openai::wire::OPENROUTER`].
+//! [`from_env`] and [`new`] build a client on the [`OPENROUTER`](crate::providers::openai::wire::OPENROUTER) dialect.
 //! [`ProviderPreferences`] supplies the request's `provider` extension;
 //! [`CompletionResponse`] reads provider-specific fields from `raw`.
 //!
 //! ```no_run
-//! use rig_core::completion::CompletionRequestBuilder;
-//! use rig_core::providers::openai::wire::{OPENROUTER, OpenAI};
+//! use rig_core::completion::CompletionRequest;
 //! use rig_core::providers::openrouter::{self, ProviderPreferences};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let sonar = OpenAI::from_env_with(&OPENROUTER)?.chat(openrouter::PERPLEXITY_SONAR_PRO);
+//! let sonar = openrouter::from_env()?.chat(openrouter::PERPLEXITY_SONAR_PRO);
 //!
-//! let request = CompletionRequestBuilder::unbound("What is Rig?")
-//!     .additional_params(ProviderPreferences::new().cheapest().to_json())
-//!     .build();
+//! let request = CompletionRequest::new("What is Rig?")
+//!     .additional_params(ProviderPreferences::new().cheapest().to_json());
 //! # let _ = (sonar, request);
 //! # Ok(())
 //! # }
@@ -33,3 +31,5 @@ pub use transcription::{
     CHIRP_3, GPT_4O_MINI_TRANSCRIBE, GPT_4O_TRANSCRIBE, WHISPER_1, WHISPER_LARGE_V3,
     WHISPER_LARGE_V3_TURBO,
 };
+
+crate::client::macros::openai_vendor!(crate::providers::openai::wire::OPENROUTER, "OpenRouter");

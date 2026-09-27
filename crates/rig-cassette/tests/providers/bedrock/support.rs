@@ -12,26 +12,50 @@ use aws_smithy_runtime_api::client::runtime_components::RuntimeComponents;
 use aws_smithy_runtime_api::http::StatusCode;
 use aws_smithy_types::body::SdkBody;
 use futures::FutureExt;
-use rig::bedrock::client::Client;
+use rig::Model;
+use rig::bedrock::client::BedrockRuntime;
+use rig::bedrock::{completion::Converse, embedding::Embeddings};
 
 use crate::cassettes::{
     CassetteMode, CassetteSpec, DirectHttpRequest, DirectHttpResponse, DirectRecorder,
     ProviderCassette,
 };
 
+/// The recorded Bedrock runtime, building each model over it.
+#[derive(Clone)]
+pub(super) struct Bedrock(pub BedrockRuntime);
+
+impl Bedrock {
+    pub(super) fn completion(&self, model: &str) -> Model<Converse, BedrockRuntime> {
+        Model::new(Converse::new(model), self.0.clone())
+    }
+
+    pub(super) fn embedding(
+        &self,
+        model: &str,
+        ndims: Option<usize>,
+    ) -> Model<Embeddings, BedrockRuntime> {
+        Model::new(Embeddings::new(model, ndims), self.0.clone())
+    }
+
+    pub(super) fn agent(&self, model: &str) -> rig::agent::AgentBuilder {
+        rig::agent::AgentBuilder::new(self.completion(model))
+    }
+}
+
 const BEDROCK_REAL_BASE_URL: &str = "https://bedrock-runtime.us-east-1.amazonaws.com";
 const BEDROCK_REGION: &str = "us-east-1";
 
-async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
+async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bedrock) {
     match CassetteMode::current() {
         CassetteMode::Replay => replay_bedrock_cassette(spec).await,
         CassetteMode::Record => record_bedrock_cassette(spec).await,
     }
 }
 
-async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
+async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bedrock) {
     let cassette = ProviderCassette::start_via(
-        rig_cassette::http::Transport::Direct,
+        rig_cassette::http::RecordVia::Direct,
         &crate::cassettes::cassette_root(),
         "bedrock",
         spec,
@@ -51,14 +75,14 @@ async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCass
         .load()
         .await;
     let aws_client = aws_sdk_bedrockruntime::Client::new(&sdk_config);
-    let client = Client::from(aws_client);
+    let client = Bedrock(BedrockRuntime::from(aws_client));
 
     (cassette, client)
 }
 
-async fn record_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
+async fn record_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bedrock) {
     let cassette = ProviderCassette::start_via(
-        rig_cassette::http::Transport::Direct,
+        rig_cassette::http::RecordVia::Direct,
         &crate::cassettes::cassette_root(),
         "bedrock",
         spec,
@@ -78,7 +102,7 @@ async fn record_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCass
         .http_client(RecordingBedrockHttpClient::new(recorder))
         .build();
     let aws_client = aws_sdk_bedrockruntime::Client::from_conf(bedrock_config);
-    let client = Client::from(aws_client);
+    let client = Bedrock(BedrockRuntime::from(aws_client));
 
     (cassette, client)
 }
@@ -207,7 +231,7 @@ impl HttpConnector for RecordingBedrockConnector {
 
 pub(super) async fn with_bedrock_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Client) -> Fut,
+    F: FnOnce(Bedrock) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = bedrock_cassette(spec).await;

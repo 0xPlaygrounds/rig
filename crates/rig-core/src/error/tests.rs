@@ -808,3 +808,80 @@ fn request_building_failures_share_one_shape() {
         assert_eq!(error.boundary(), AdapterErrorBoundary::Request);
     }
 }
+
+/// A relayed failure keeps the provider's reply it was reported with: the
+/// preserved response reads back through the error, and the error reports as
+/// the relayed report unchanged.
+#[test]
+fn a_relayed_report_keeps_its_provider_response() {
+    let report = ErrorReport::from(&http_error(503));
+    let relayed = ProviderError::Relayed(Box::new(report.clone()));
+    assert_eq!(
+        relayed.provider_response(),
+        report.provider_response.as_ref()
+    );
+    assert_eq!(relayed.provider_response_body(), Some("body"));
+    assert_eq!(
+        relayed.provider_response_status(),
+        Some(StatusCode::SERVICE_UNAVAILABLE)
+    );
+    assert_eq!(relayed.kind(), ErrorKind::ProviderResponse);
+    assert!(relayed.is_retryable());
+    assert_eq!(ErrorReport::from(&relayed), report);
+}
+
+/// The transport's facts reach a relayed report as they reach the reply it
+/// preserves: an absent request id and absent headers are filled, and the
+/// report reads them back.
+#[test]
+fn a_relayed_report_takes_the_transport_s_request_id_and_headers() {
+    let report = ErrorReport::from(&ProviderError::ProviderResponse(
+        ProviderResponseError::new(StatusCode::SERVICE_UNAVAILABLE, "body"),
+    ));
+    assert_eq!(report.request_id, None);
+    let mut headers = http::HeaderMap::new();
+    headers.insert("retry-after", http::HeaderValue::from_static("7"));
+    let relayed = ProviderError::Relayed(Box::new(report))
+        .with_provider_request_id(Some("req_1".to_owned()))
+        .with_response_headers(Some(headers));
+    assert_eq!(relayed.provider_request_id(), Some("req_1"));
+    assert_eq!(
+        relayed
+            .provider_response()
+            .and_then(|response| response.headers.as_ref())
+            .and_then(|headers| headers.get("retry-after")),
+        Some(&http::HeaderValue::from_static("7"))
+    );
+    assert_eq!(
+        ErrorReport::from(&relayed).request_id.as_deref(),
+        Some("req_1")
+    );
+
+    // A captured id is kept.
+    let kept = ProviderError::Relayed(Box::new(ErrorReport::from(&relayed)))
+        .with_provider_request_id(Some("req_2".to_owned()));
+    assert_eq!(kept.provider_request_id(), Some("req_1"));
+}
+
+/// A status and a code the transport reports beside a relayed report reach
+/// it as they reach the reply it preserves, and the report reads them. The
+/// report keeps the origin's retry verdict.
+#[test]
+fn a_relayed_report_takes_the_transport_s_status_and_code() {
+    let report = ErrorReport::from(&ProviderError::ProviderResponse(
+        ProviderResponseError::without_status("throttled"),
+    ));
+    assert_eq!((report.http_status, report.code.as_deref()), (None, None));
+    let retryable = report.retryable;
+    let relayed = ProviderError::Relayed(Box::new(report))
+        .with_provider_status(Some(StatusCode::TOO_MANY_REQUESTS))
+        .with_provider_code(Some("ThrottlingException".to_owned()));
+    assert_eq!(
+        relayed.provider_response_status(),
+        Some(StatusCode::TOO_MANY_REQUESTS)
+    );
+    let filled = ErrorReport::from(&relayed);
+    assert_eq!(filled.http_status, Some(429));
+    assert_eq!(filled.code.as_deref(), Some("ThrottlingException"));
+    assert_eq!(relayed.is_retryable(), retryable);
+}
