@@ -33,28 +33,21 @@ impl Transport<Generation> for Scripted {
     fn send(
         &self,
         _request: CompletionRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<CompletionRequest, CandleFrame>>
-        + rig_core::wasm_compat::WasmCompatSend
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<CandleFrame>, ProviderError> {
         let events = std::mem::take(
             &mut *self
                 .0
                 .lock()
                 .map_err(|_| ProviderError::Provider("the script lock was poisoned".to_owned()))?,
         );
-        Ok(async move {
+        Ok(Sending::later(async move {
             Opened::new(futures::stream::iter(
                 events
                     .into_iter()
                     .map(|event| Ok(CandleFrame::Event(event))),
             ))
-        })
+        }))
     }
 }
 

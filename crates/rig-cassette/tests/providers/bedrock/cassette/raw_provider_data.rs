@@ -14,9 +14,8 @@ use rig::bedrock;
 use rig::bedrock::client::BedrockRuntime;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig::bedrock::types::converse_output::InternalConverseOutput;
-use rig::driver::{Model, Observation, Opened, Transport};
+use rig::driver::{Exchange, Model, Sending, Transport};
 use rig::error::ProviderError;
-use rig::wire::Mode;
 
 use super::super::support::with_bedrock_cassette;
 use rig::completion::CompletionRequest;
@@ -49,28 +48,23 @@ impl Transport<Converse> for Keep {
     fn send(
         &self,
         payload: ConverseRequest,
-        mode: Mode,
-        observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
-        let sent = Transport::<Converse>::send(&self.runtime, payload, mode, observation)?;
+        exchange: Exchange,
+    ) -> Result<Sending<ConverseFrame>, ProviderError> {
+        let sent = Transport::<Converse>::send(&self.runtime, payload, exchange)?;
         let outputs = Arc::clone(&self.outputs);
-        Ok(async move {
-            let mut opened = sent.await;
-            opened.frames = Box::pin(opened.frames.inspect(
-                move |frame: &Result<ConverseFrame, ProviderError>| {
+        Ok(Sending::each(sent.map(move |opened| {
+            let outputs = Arc::clone(&outputs);
+            opened.map_frames(move |frames| {
+                frames.inspect(move |frame: &Result<ConverseFrame, ProviderError>| {
                     if let Ok(ConverseFrame::Whole(output)) = frame {
                         outputs
                             .lock()
                             .expect("kept outputs should not be poisoned")
                             .push((**output).clone());
                     }
-                },
-            ));
-            opened
-        })
+                })
+            })
+        })))
     }
 }
 

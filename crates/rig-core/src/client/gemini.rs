@@ -93,7 +93,7 @@ impl Gemini {
 
     /// The models this API key can use, every page followed.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        self.model(self.config.models()).call(()).await
+        self.model(self.config.models()).list().await
     }
 
     /// Check that the provider accepts the configured key. A 401 or 403

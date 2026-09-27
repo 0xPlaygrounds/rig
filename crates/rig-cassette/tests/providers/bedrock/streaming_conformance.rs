@@ -10,12 +10,11 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig_core::completion::{CompletionRequest, FinishReason};
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, WireInput, event_frame, fixtures::drain,
 };
-use rig_core::wire::Mode;
 
 type Events = Vec<Result<aws_bedrock::ConverseStreamOutput, ProviderError>>;
 
@@ -27,12 +26,8 @@ impl Transport<Converse> for Scripted {
     fn send(
         &self,
         payload: ConverseRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<ConverseFrame>, ProviderError> {
         let events = std::mem::take(
             &mut *self
                 .0
@@ -43,7 +38,7 @@ impl Transport<Converse> for Scripted {
             model: payload.model,
             request_id: None,
         };
-        Ok(async move {
+        Ok(Sending::later(async move {
             Opened::new(futures::stream::iter(
                 std::iter::once(Ok(opened)).chain(
                     events
@@ -51,7 +46,7 @@ impl Transport<Converse> for Scripted {
                         .map(|event| event.map(ConverseFrame::Event)),
                 ),
             ))
-        })
+        }))
     }
 }
 

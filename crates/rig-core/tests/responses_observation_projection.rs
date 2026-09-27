@@ -1,9 +1,8 @@
 //! The Responses wire projects its boundary facts into observation.
 //!
-//! `Decoder::project` is the only path left: the per-request payload observer
-//! the client layer attached is gone, so the driver projects each reply
-//! payload itself ([`rig_core::driver`]) and the decoder writes through
-//! `ObservationSink`. Nothing else in the suite covers *this* wire's
+//! The wire's `Encoded` names the projector: the HTTP transport projects each
+//! reply payload itself ([`rig_core::driver`]) and the projector writes
+//! through `ObservationSink`. Nothing else in the suite covers *this* wire's
 //! projector — `observe/adapter/tests.rs` exercises the seam through gemini —
 //! so emptying `responses_api::wire::project_payload` would otherwise cost
 //! usage, verdict and response-id telemetry silently, with every test green.

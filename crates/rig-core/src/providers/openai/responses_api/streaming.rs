@@ -13,9 +13,7 @@ use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
 use crate::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
-use crate::wire::Decoder;
-use crate::wire::WireEvent;
-use crate::wire::WireFrame;
+use crate::wire::{Decoder, End, Out, WireEvent, WireFrame};
 use serde::{Deserialize, Serialize};
 
 use super::{CompletionResponse, Output};
@@ -1037,7 +1035,29 @@ impl Decoder<Completion> for ResponsesDecoder {
         )
     }
 
-    fn interpret(&mut self, event: ResponsesEvent, out: &mut AdapterOutput) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Completion>) {
+        self.interpret_event(event, out);
+        if let Some(document) = self.document.take() {
+            out.document(document);
+        }
+        if self.finished {
+            out.end_reply();
+        }
+    }
+
+    fn end(&mut self, out: &mut Out<'_, Completion>, end: End) {
+        match end {
+            End::Eof => self.finish(out),
+            End::Failed => self.flush_before_terminal_error(out),
+        }
+        if let Some(document) = self.document.take() {
+            out.document(document);
+        }
+    }
+}
+
+impl ResponsesDecoder {
+    pub(crate) fn interpret_event(&mut self, event: ResponsesEvent, out: &mut AdapterOutput) {
         if self.finished {
             return;
         }
@@ -1071,18 +1091,6 @@ impl Decoder<Completion> for ResponsesDecoder {
         // Tool calls the provider fully delivered are content: they flush
         // before the terminal error reaches the consumer.
         self.accumulator.flush_tool_calls(out);
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        self.document.clone()
-    }
-
-    fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
-        super::wire::project_payload(payload, sink);
-    }
-
-    fn is_finished(&self) -> bool {
-        self.finished
     }
 }
 

@@ -13,9 +13,7 @@ use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 use crate::operation::Completion;
 use crate::providers::internal::wire;
 use crate::streaming;
-use crate::wire::WireEvent;
-use crate::wire::WireFrame;
-use crate::wire::{Decoder, Output};
+use crate::wire::{Decoder, Out, WireEvent, WireFrame};
 use serde_json::{Map, Value};
 
 /// Recognized Interactions SSE tags. Listed events must decode fully;
@@ -97,8 +95,6 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
 pub struct InteractionsDecoder {
     /// Thought boundaries inferred from content transitions and signatures.
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// A provider error ended the turn; later frames must not produce output.
-    failed: bool,
     /// Open function calls keyed by step index, retaining argument deltas.
     /// Its id minter is shared with whole calls to prevent local identity collisions.
     open_function_steps: ToolCallBridge<u32>,
@@ -110,12 +106,13 @@ impl Default for InteractionsDecoder {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 crate::streaming::MintKind::Reasoning,
             ),
-            failed: false,
             open_function_steps: ToolCallBridge::new(),
         }
     }
 }
 
+/// EOF without `interaction.completed` is truncation, not successful
+/// completion, so the decoder adds nothing at the end of the reply.
 impl Decoder<Completion> for InteractionsDecoder {
     type Event = InteractionsEvent;
 
@@ -123,11 +120,7 @@ impl Decoder<Completion> for InteractionsDecoder {
         classify_interactions_frame(&frame.as_str())
     }
 
-    fn interpret(&mut self, event: InteractionsEvent, out: &mut Output<Completion>) {
-        if self.failed {
-            return;
-        }
-
+    fn interpret(&mut self, event: InteractionsEvent, out: &mut Out<'_, Completion>) {
         let event = match event {
             InteractionsEvent::Sse(event) => event,
             // Unary content uses the same lifecycle so block ordering matches streaming.
@@ -300,23 +293,15 @@ impl Decoder<Completion> for InteractionsDecoder {
             }
             event @ InteractionSseEvent::Error { .. } => {
                 // Preserve modeled error fields without inventing an HTTP status
-                // for an in-band failure.
-                self.failed = true;
+                // for an in-band failure, and stop: later frames cannot
+                // report the turn complete.
                 let body = serde_json::to_string(&event).unwrap_or_default();
                 out.push(Err(crate::error::ProviderError::from_provider_body(body)));
+                out.end_reply();
             }
             InteractionSseEvent::InteractionCreated { .. }
             | InteractionSseEvent::InteractionStatusUpdate { .. } => {}
         }
-    }
-
-    fn finish(&mut self, _out: &mut Output<Completion>) {
-        // EOF without interaction.completed is truncation, not successful completion.
-    }
-
-    fn is_finished(&self) -> bool {
-        // Stop after terminal errors so later unknown frames cannot escape the failure gate.
-        self.failed
     }
 }
 

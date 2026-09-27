@@ -14,13 +14,14 @@
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
 
-use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Opened, Sending, Transport};
 use rig_core::embeddings;
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::operation::{Embedding, EmbeddingCapabilities, Events};
+use rig_core::operation::Embedding;
 use rig_core::providers::internal::wire;
-use rig_core::wire::{Decoder, Mode, Output, Sink, Wire};
-use rig_core::wire::{TypedEvent, WireEvent};
+use rig_core::wire::{
+    Capabilities, Decoder, Descriptor, End, Mode, Out, TypedEvent, Wire, WireEvent,
+};
 
 use super::GeminiGrpc;
 use super::proto::{self, EmbedContentRequest};
@@ -47,16 +48,10 @@ impl Wire for Embeddings {
     type Frame = (String, proto::EmbedContentResponse);
     type Decoder = EmbeddingsDecoder;
 
-    fn name(&self) -> &str {
-        super::completion::PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(100, self.ndims)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(super::completion::PROVIDER_NAME)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::embedding(100, self.ndims))
     }
 
     fn encode(
@@ -91,26 +86,14 @@ impl Transport<Embeddings> for GeminiGrpc {
     fn send(
         &self,
         requests: Vec<(String, EmbedContentRequest)>,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<
-            Output = Opened<
-                Vec<(String, EmbedContentRequest)>,
-                (String, proto::EmbedContentResponse),
-            >,
-        >
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<(String, proto::EmbedContentResponse)>, ProviderError> {
         let mut client = self
             .grpc_client()
             .map_err(|error| ProviderError::Provider(error.to_string()))?;
         // Sequential calls, each completed inside the send so they run under
         // the attempt's span; the first RPC error ends the batch.
-        Ok(async move {
+        Ok(Sending::later(async move {
             let mut frames = Vec::with_capacity(requests.len());
             for (text, request) in requests {
                 match client.embed_content(request).await {
@@ -122,7 +105,7 @@ impl Transport<Embeddings> for GeminiGrpc {
                 }
             }
             Opened::new(futures::stream::iter(frames))
-        })
+        }))
     }
 }
 
@@ -143,7 +126,7 @@ impl Decoder<Embedding, (String, proto::EmbedContentResponse)> for EmbeddingsDec
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, (document, response): Self::Event, _out: &mut Events<Embedding>) {
+    fn interpret(&mut self, (document, response): Self::Event, _out: &mut Out<'_, Embedding>) {
         match response.embedding {
             Some(embedding) => self.embeddings.push(embeddings::Embedding {
                 document,
@@ -157,7 +140,10 @@ impl Decoder<Embedding, (String, proto::EmbedContentResponse)> for EmbeddingsDec
         }
     }
 
-    fn finish(&mut self, out: &mut Output<Embedding>) {
+    fn end(&mut self, out: &mut Out<'_, Embedding>, end: End) {
+        if end != End::Eof {
+            return;
+        }
         // gRPC: the native answers are prost messages, not JSON, and
         // `EmbedContent` reports no usage or response id; `raw` stays `Null`.
         out.push(match self.failure.take() {

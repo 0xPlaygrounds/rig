@@ -40,9 +40,8 @@ fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
 }
 
 /// A model as a handler under `label`. Completion, text-embedding and
-/// rerank models serve their effect families; the operation decides how
-/// ([`ServeOperation`]). The model is erased to its operation, so one
-/// adapter type serves every wire and transport.
+/// rerank models serve their effect families. The model is erased to its
+/// operation, so one adapter type serves every wire and transport.
 pub struct ModelAdapter<Op: Operation> {
     label: ModelRef,
     model: DynModel<Op>,
@@ -58,52 +57,24 @@ impl<Op: Operation> ModelAdapter<Op> {
     }
 }
 
-/// How a model performing this operation serves its effect family: the
-/// descriptor it advertises, and the call an effect becomes.
-pub trait ServeOperation: Operation {
-    /// The effect family the model serves.
-    type Family: crate::effect::Served;
-
-    /// The handler descriptor for a model labelled `label`.
-    fn descriptor(label: &ModelRef, capabilities: Self::Capabilities) -> HandlerDescriptor;
-
-    /// Serve `kind` through `model`, or refuse an effect of another family.
-    fn serve(
-        model: &DynModel<Self>,
-        kind: EffectKind,
-        dispatch: Dispatch,
-    ) -> impl Future<Output = Reply> + WasmCompatSend;
-}
-
-impl<Op: ServeOperation> Serve for ModelAdapter<Op> {
-    type Family = Op::Family;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        Op::descriptor(&self.label, self.model.capabilities())
-    }
-
-    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        Op::serve(&self.model, kind, dispatch).await
-    }
-}
-
 /// Unary and streaming completions both route here; the descriptor carries
 /// the model's label and capability snapshot.
-impl ServeOperation for Completion {
+impl Serve for ModelAdapter<Completion> {
     type Family = family::Completion;
 
-    fn descriptor(label: &ModelRef, capabilities: Self::Capabilities) -> HandlerDescriptor {
+    fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: crate::effect::model_key(label.as_str()),
+            key: crate::effect::model_key(self.label.as_str()),
             family: FamilyDescriptor::Completion {
-                model: label.clone(),
-                capabilities,
+                model: self.label.clone(),
+                capabilities: self.model.capabilities().completion,
             },
             layers: Vec::new(),
         }
     }
 
-    async fn serve(model: &DynModel<Self>, kind: EffectKind, dispatch: Dispatch) -> Reply {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        let model = &self.model;
         let context = dispatch.adapter_context();
         match kind {
             EffectKind::Completion {
@@ -142,14 +113,15 @@ impl ServeOperation for Completion {
 }
 
 /// A text embedding model embeds texts and refuses images.
-impl ServeOperation for Embedding {
+impl Serve for ModelAdapter<Embedding> {
     type Family = family::Embed;
 
-    fn descriptor(label: &ModelRef, capabilities: Self::Capabilities) -> HandlerDescriptor {
+    fn descriptor(&self) -> HandlerDescriptor {
+        let capabilities = self.model.capabilities();
         HandlerDescriptor {
-            key: crate::effect::embed_key(label.as_str()),
+            key: crate::effect::embed_key(self.label.as_str()),
             family: FamilyDescriptor::Embed {
-                model: label.to_string(),
+                model: self.label.to_string(),
                 dims: Some(capabilities.ndims),
                 max_documents: capabilities.max_documents,
                 modality: EmbedModality::Text,
@@ -158,7 +130,8 @@ impl ServeOperation for Embedding {
         }
     }
 
-    async fn serve(model: &DynModel<Self>, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        let model = &self.model;
         match kind {
             EffectKind::Embed {
                 inputs: EmbedInputs::Texts(texts),
@@ -187,21 +160,23 @@ impl ServeOperation for Embedding {
     }
 }
 
-impl ServeOperation for Rerank {
+/// A reranking model orders documents for a query.
+impl Serve for ModelAdapter<Rerank> {
     type Family = family::Rerank;
 
-    fn descriptor(label: &ModelRef, capabilities: Self::Capabilities) -> HandlerDescriptor {
+    fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: crate::effect::rerank_key(label.as_str()),
+            key: crate::effect::rerank_key(self.label.as_str()),
             family: FamilyDescriptor::Rerank {
-                model: label.to_string(),
-                max_documents: capabilities,
+                model: self.label.to_string(),
+                max_documents: self.model.capabilities().max_documents,
             },
             layers: Vec::new(),
         }
     }
 
-    async fn serve(model: &DynModel<Self>, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        let model = &self.model;
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model

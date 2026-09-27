@@ -21,7 +21,7 @@ use crate::image_generation::{ImageGenerationRequest, NormalizeImageGenerationRe
 use crate::operation::ImageGeneration;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
+    Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame,
 };
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -175,12 +175,8 @@ impl Wire for Images {
     type Frame = crate::wire::WireFrame;
     type Decoder = ImagesDecoder;
 
-    fn name(&self) -> &str {
-        super::PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(super::PROVIDER_NAME).model(self.model.as_str())
     }
 
     fn encode(&self, request: ImageGenerationRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -217,7 +213,7 @@ impl Decoder<ImageGeneration> for ImagesDecoder {
         )
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<ImageGeneration>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, ImageGeneration>) {
         out.push(event.normalize(super::PROVIDER_NAME));
     }
 }

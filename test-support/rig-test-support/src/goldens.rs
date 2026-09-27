@@ -1493,7 +1493,8 @@ impl MockRerank {
     /// The mock reranker: its local wire over this runtime.
     pub fn model() -> rig_core::Model<rig_core::driver::Local<rig_core::operation::Rerank>, Self> {
         rig_core::Model::new(
-            rig_core::driver::Local::new("mock").with_capabilities(16),
+            rig_core::driver::Local::new("mock")
+                .with_capabilities(rig_core::wire::Capabilities::rerank(16)),
             Self,
         )
     }
@@ -1505,18 +1506,11 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
     fn send(
         &self,
         request: rig_core::operation::RerankRequest,
-        _mode: rig_core::wire::Mode,
-        _observation: Option<rig_core::driver::Observation>,
+        _exchange: rig_core::driver::Exchange,
     ) -> Result<
-        impl Future<
-            Output = rig_core::driver::Opened<
-                rig_core::operation::RerankRequest,
-                Result<rig_core::rerank::RerankResponse, rig_core::error::ProviderError>,
-            >,
-        >
-        + Send
-        + 'static
-        + use<>,
+        rig_core::driver::Sending<
+            Result<rig_core::rerank::RerankResponse, rig_core::error::ProviderError>,
+        >,
         rig_core::error::ProviderError,
     > {
         let mut results: Vec<rig_core::rerank::RerankResult> = request
@@ -1532,7 +1526,9 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
         results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
         let mut response = rig_core::rerank::RerankResponse::new(results, "mock");
         response.model = Some("mock-rerank".to_owned());
-        Ok(async move { rig_core::driver::Opened::new(futures::stream::iter([Ok(Ok(response))])) })
+        Ok(rig_core::driver::Sending::later(async move {
+            rig_core::driver::Opened::new(futures::stream::iter([Ok(Ok(response))]))
+        }))
     }
 }
 

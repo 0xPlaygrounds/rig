@@ -1793,7 +1793,8 @@ struct ProbeRerank {
 impl ProbeRerank {
     fn model(self) -> rig_core::Model<rig_core::driver::Local<rig_core::operation::Rerank>, Self> {
         rig_core::Model::new(
-            rig_core::driver::Local::new("probe").with_capabilities(self.max_documents),
+            rig_core::driver::Local::new("probe")
+                .with_capabilities(rig_core::wire::Capabilities::rerank(self.max_documents)),
             self,
         )
     }
@@ -1805,22 +1806,11 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
     fn send(
         &self,
         request: rig_core::operation::RerankRequest,
-        _mode: rig_core::wire::Mode,
-        _observation: Option<rig_core::driver::Observation>,
-    ) -> Result<
-        impl Future<
-            Output = rig_core::driver::Opened<
-                rig_core::operation::RerankRequest,
-                Result<RerankResponse, ProviderError>,
-            >,
-        >
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: rig_core::driver::Exchange,
+    ) -> Result<rig_core::driver::Sending<Result<RerankResponse, ProviderError>>, ProviderError>
+    {
         let failure = self.failure;
-        Ok(async move {
+        Ok(rig_core::driver::Sending::later(async move {
             match failure {
                 Some(message) => {
                     rig_core::driver::Opened::failed(ProviderError::Response(message.to_owned()))
@@ -1841,7 +1831,7 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
                     ),
                 ))])),
             }
-        })
+        }))
     }
 }
 

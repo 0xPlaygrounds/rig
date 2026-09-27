@@ -28,11 +28,10 @@ use rig_agent::{
     completion::{CompletionRequest, FinishReason, Usage},
     streaming::{StreamEvent, StreamFinal},
 };
-use rig_core::driver::{Local, Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
 use rig_core::operation::{AdapterOutput, Completion};
-use rig_core::wire::Mode;
 
 /// The full answer costs this many output tokens; anything less is truncated.
 const ANSWER_COST: u64 = 40;
@@ -63,15 +62,8 @@ impl Transport<Local<Completion>> for Budgeted {
     fn send(
         &self,
         request: CompletionRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<CompletionRequest, Result<StreamEvent, ProviderError>>>
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<Result<StreamEvent, ProviderError>>, ProviderError> {
         let (text, reason) = answer_under(request.max_tokens);
         let mut out = AdapterOutput::new();
         out.text(text);
@@ -79,7 +71,7 @@ impl Transport<Local<Completion>> for Budgeted {
             StreamFinal::new("budgeted", Usage::default(), serde_json::Value::Null)
                 .with_finish_reason(reason),
         );
-        Ok(std::future::ready(Opened::new(stream::iter(
+        Ok(Sending::opened(Opened::new(stream::iter(
             out.into_items().into_iter().map(Ok),
         ))))
     }

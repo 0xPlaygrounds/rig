@@ -56,9 +56,8 @@ use rig::bedrock;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig::bedrock::types::converse_output::InternalConverseOutput;
 use rig::completion::CompletionResponse as RigCompletionResponse;
-use rig::driver::{Model, Observation, Opened, Transport};
+use rig::driver::{Exchange, Model, Opened, Sending, Transport};
 use rig::error::ProviderError;
-use rig::wire::Mode;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -86,15 +85,11 @@ impl Transport<Converse> for Reply {
     fn send(
         &self,
         payload: ConverseRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<ConverseFrame>, ProviderError> {
         let output = self.0.clone();
         let request_id = output.request_id().map(str::to_owned);
-        Ok(async move {
+        Ok(Sending::later(async move {
             Opened::new(futures::stream::iter([
                 Ok(ConverseFrame::Opened {
                     model: payload.model,
@@ -102,7 +97,7 @@ impl Transport<Converse> for Reply {
                 }),
                 Ok(ConverseFrame::Whole(Box::new(output))),
             ]))
-        })
+        }))
     }
 }
 

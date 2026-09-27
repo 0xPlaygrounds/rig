@@ -174,7 +174,7 @@ pub struct Reasoning {
     /// Ordered reasoning content blocks.
     pub content: Vec<ReasoningContent>,
     /// The service that issued this reasoning, stamped when a completion is
-    /// decoded: the wire's [`Wire::name`](crate::wire::Wire::name), or the
+    /// decoded: the wire's [`Descriptor::name`](crate::wire::Descriptor::name), or the
     /// model vendor where several transports serve the same models (Claude
     /// on Bedrock records `anthropic`). Signatures, encrypted and redacted
     /// payloads and reasoning ids only mean something to their issuer, so a

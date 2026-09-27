@@ -13,14 +13,11 @@ impl Transport<GenerateContent> for Scripted {
     fn send(
         &self,
         _request: GenerateContentRequest,
-        mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<GenerateContentRequest, GrpcFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        exchange: Exchange,
+    ) -> Result<Sending<GrpcFrame>, ProviderError> {
+        let mode = exchange.mode;
         let replies = std::mem::take(&mut *self.0.lock().expect("script lock"));
-        Ok(async move {
+        Ok(Sending::later(async move {
             Opened::new(futures::stream::iter(replies.into_iter().map(
                 move |reply| {
                     reply.map(|reply| match mode {
@@ -29,7 +26,7 @@ impl Transport<GenerateContent> for Scripted {
                     })
                 },
             )))
-        })
+        }))
     }
 }
 
@@ -734,12 +731,8 @@ impl Transport<GenerateContent> for Recording {
     fn send(
         &self,
         request: GenerateContentRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<GenerateContentRequest, GrpcFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<GrpcFrame>, ProviderError> {
         self.0.lock().expect("recording lock").push(request);
         let reply = GenerateContentResponse {
             candidates: vec![crate::proto::Candidate {
@@ -752,11 +745,11 @@ impl Transport<GenerateContent> for Recording {
             }],
             ..Default::default()
         };
-        Ok(async move {
+        Ok(Sending::later(async move {
             Opened::new(futures::stream::iter([Ok(GrpcFrame::Whole(Box::new(
                 reply,
             )))]))
-        })
+        }))
     }
 }
 

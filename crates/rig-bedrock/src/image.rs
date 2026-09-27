@@ -13,13 +13,12 @@ use crate::types::assistant_content::PROVIDER_NAME;
 use crate::types::errors::AwsSdkInvokeModelError;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
-use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Opened, Sending, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
-use rig_core::operation::{Events, ImageGeneration};
+use rig_core::operation::ImageGeneration;
 use rig_core::providers::internal::wire;
-use rig_core::wire::{Decoder, Mode, Sink, Wire};
-use rig_core::wire::{TypedEvent, WireEvent};
+use rig_core::wire::{Decoder, Descriptor, Mode, Out, TypedEvent, Wire, WireEvent};
 
 pub use crate::completion::{
     AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,
@@ -52,12 +51,8 @@ impl Wire for Images {
     type Frame = Vec<u8>;
     type Decoder = ImagesDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
     }
 
     fn encode(
@@ -75,7 +70,7 @@ impl Wire for Images {
     }
 
     fn decoder(&self, _mode: Mode) -> ImagesDecoder {
-        ImagesDecoder::default()
+        ImagesDecoder
     }
 }
 
@@ -83,14 +78,10 @@ impl Transport<Images> for BedrockRuntime {
     fn send(
         &self,
         payload: InvokeModel,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<InvokeModel, Vec<u8>>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<Vec<u8>>, ProviderError> {
         let runtime = self.clone();
-        Ok(async move {
+        Ok(Sending::later(async move {
             let sent = runtime
                 .inner()
                 .await
@@ -106,22 +97,17 @@ impl Transport<Images> for BedrockRuntime {
                     let request_id =
                         aws_sdk_bedrockruntime::operation::RequestId::request_id(&response)
                             .map(str::to_owned);
-                    Opened {
-                        request_id,
-                        ..Opened::new(futures::stream::iter([Ok(response.body.into_inner())]))
-                    }
+                    Opened::new(futures::stream::iter([Ok(response.body.into_inner())]))
+                        .with_request_id(request_id)
                 }
                 Err(sdk_error) => Opened::failed(AwsSdkInvokeModelError(sdk_error).into()),
             }
-        })
+        }))
     }
 }
 
 /// Decodes the one `TextToImageResponse` an image request returns.
-#[derive(Default)]
-pub struct ImagesDecoder {
-    document: Option<serde_json::Value>,
-}
+pub struct ImagesDecoder;
 
 impl Decoder<ImageGeneration, Vec<u8>> for ImagesDecoder {
     type Event = Vec<u8>;
@@ -130,7 +116,7 @@ impl Decoder<ImageGeneration, Vec<u8>> for ImagesDecoder {
         wire::classify_typed_event(TypedEvent::Modeled(body))
     }
 
-    fn interpret(&mut self, body: Vec<u8>, out: &mut Events<ImageGeneration>) {
+    fn interpret(&mut self, body: Vec<u8>, out: &mut Out<'_, ImageGeneration>) {
         let decoded = String::from_utf8(body)
             .map_err(|error| ProviderError::Response(error.to_string()))
             .and_then(|body| {
@@ -138,13 +124,9 @@ impl Decoder<ImageGeneration, Vec<u8>> for ImagesDecoder {
                     .map_err(|error| ProviderError::Response(error.to_string()))
             })
             .and_then(|response| {
-                self.document = Some(serde_json::to_value(&response)?);
+                out.document(serde_json::to_value(&response)?);
                 response.normalize(PROVIDER_NAME)
             });
         out.push(decoded);
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        self.document.clone()
     }
 }

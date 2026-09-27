@@ -1,73 +1,17 @@
 //! Buffered embedding, reranking, transcription, image, and audio operations.
 //!
 //! ```
-//! use rig_core::operation::EmbeddingCapabilities;
+//! use rig_core::wire::Capabilities;
 //!
-//! let capabilities = EmbeddingCapabilities::new(32, 768).declaring(Some(768));
+//! let capabilities = Capabilities::embedding(32, 768).declaring(Some(768));
 //! assert_eq!(capabilities.declared, Some(768));
 //! ```
 
-use super::{Events, Take};
+use super::Take;
 use crate::embeddings::Embedding as Vector;
 use crate::error::ProviderError;
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Fold, Mode, Operation, Reply, Wire};
-
-/// Embedding batch limit, resolved dimensions, and optional caller-declared width.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct EmbeddingCapabilities {
-    /// The most documents the provider embeds in one request.
-    pub max_documents: usize,
-    /// The dimensionality of the returned vectors.
-    pub ndims: usize,
-    /// Width explicitly requested by the caller, not inferred from model metadata.
-    /// `None` and zero disable declared-width validation.
-    pub declared: Option<usize>,
-}
-
-impl EmbeddingCapabilities {
-    /// The capability pair for a wire, with no width declared.
-    pub const fn new(max_documents: usize, ndims: usize) -> Self {
-        Self {
-            max_documents,
-            ndims,
-            declared: None,
-        }
-    }
-
-    /// Record the width the caller named, when they named one.
-    ///
-    /// A wire that still holds the caller's `Option<usize>` states it here;
-    /// one that collapsed it to a resolved width at construction has
-    /// nothing to state and leaves this `None`.
-    pub const fn declaring(mut self, declared: Option<usize>) -> Self {
-        self.declared = declared;
-        self
-    }
-
-    /// Returns [`ProviderError::MismatchedDimensions`] for the first width
-    /// differing from a positive caller declaration. Otherwise succeeds.
-    pub(crate) fn honour_declaration(
-        &self,
-        provider: &str,
-        widths: impl IntoIterator<Item = usize>,
-    ) -> Result<(), ProviderError> {
-        // Zero is rig's sentinel for an unknown width, never a claim about
-        // one: a model absent from every table this build knows resolves to
-        // it, and treating that as a declaration would fail every reply.
-        let Some(requested) = self.declared.filter(|declared| *declared > 0) else {
-            return Ok(());
-        };
-        let Some(returned) = widths.into_iter().find(|width| *width != requested) else {
-            return Ok(());
-        };
-        Err(ProviderError::MismatchedDimensions {
-            provider: provider.to_owned(),
-            requested,
-            returned,
-        })
-    }
-}
+use crate::wire::{Call, Capabilities, End, Fold, Mode, Operation, Ready, Reply};
 
 /// A reranking request: the query, the documents to order, and the batch
 /// limit's subject.
@@ -89,12 +33,9 @@ macro_rules! modality_operation {
         $op:ident {
             request: $request:ty,
             response: $response:ty,
-            capabilities: $capabilities:ty,
             telemetry: $telemetry:ident,
-            name: $name:literal,
             fold: $fold:ty,
             seed: $seed:expr,
-            $(accept: $accept:expr,)?
         }
     ) => {
         $(#[$doc])*
@@ -105,74 +46,111 @@ macro_rules! modality_operation {
             type Request = $request;
             type Event = $response;
             type Response = $response;
-            type Capabilities = $capabilities;
-            type Output = Events<Self>;
-            type Fold = $fold;
-            type Telemetry = GenAiOperation;
-
-            const NAME: &'static str = $name;
+            type Fold = Traced<Self, $fold>;
 
             fn is_terminal(_event: &Self::Event) -> bool {
                 true
             }
 
-            fn fold<W: Wire<Op = Self>>(
-                request: &Self::Request,
-                _wire: &W,
-                _mode: Mode,
-            ) -> Self::Fold {
-                #[allow(clippy::redundant_closure_call)]
-                ($seed)(request)
-            }
-
-            fn telemetry(_mode: Mode) -> Self::Telemetry {
-                GenAiOperation::$telemetry
-            }
-
-            fn stamp_reply(response: &mut Self::Response, reply: &Reply) {
-                if response.provider_request_id.is_none() {
-                    response
-                        .provider_request_id
-                        .clone_from(&reply.provider_request_id);
-                }
-                if response.raw.is_null() {
-                    response.raw.clone_from(&reply.raw);
-                }
-            }
-
-            fn span(
-                provider: &str,
-                model: Option<&str>,
-                telemetry: Self::Telemetry,
-                _request: &Self::Request,
-            ) -> tracing::Span {
+            fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold {
+                let telemetry = call
+                    .wire
+                    .telemetry
+                    .map_or(GenAiOperation::$telemetry, |telemetry| telemetry(call.mode));
                 debug_assert!(!telemetry.is_completion());
-                SpanBuilder::new(provider, model.unwrap_or_default(), telemetry).build()
-            }
-
-            fn record(span: &tracing::Span, response: &Self::Response) {
-                span.record_response(
-                    response.response_id.as_deref(),
-                    response.model.as_deref(),
-                    &response.usage,
-                );
-            }
-
-            /// A streamed reply's one event is its response.
-            fn record_event(span: &tracing::Span, event: &Self::Event) {
-                Self::record(span, event);
-            }
-
-            $(
-                fn accept(
-                    capabilities: &Self::Capabilities,
-                    provider: &str,
-                    response: &Self::Response,
-                ) -> Result<(), ProviderError> {
-                    #[allow(clippy::redundant_closure_call)]
-                    ($accept)(capabilities, provider, response)
+                let span = SpanBuilder::new(
+                    call.wire.name,
+                    call.wire.model.unwrap_or_default(),
+                    telemetry,
+                )
+                .build();
+                call.instrument(span.clone());
+                #[allow(clippy::redundant_closure_call)]
+                let inner = ($seed)(request, &*call);
+                Traced {
+                    inner,
+                    span,
+                    mode: call.mode,
+                    record: |span, response| {
+                        span.record_response(
+                            response.response_id.as_deref(),
+                            response.model.as_deref(),
+                            &response.usage,
+                        )
+                    },
                 }
-            )?
+            }
+        }
+    };
+}
+
+/// A fold whose reply is recorded on the call's telemetry span: a unary
+/// call records its response, a stream records its one event.
+pub struct Traced<Op: Operation, F> {
+    inner: F,
+    span: tracing::Span,
+    mode: Mode,
+    record: fn(&tracing::Span, &Op::Response),
+}
+
+impl<Op: Operation, F: Default> Default for Traced<Op, F> {
+    /// A fold that records nothing: the one a decoder driven by hand needs.
+    fn default() -> Self {
+        Self {
+            inner: F::default(),
+            span: tracing::Span::none(),
+            mode: Mode::Unary,
+            record: |_, _| {},
+        }
+    }
+}
+
+impl<Op, F> Fold<Op> for Traced<Op, F>
+where
+    Op: Operation<Event = <Op as Operation>::Response>,
+    F: Fold<Op>,
+{
+    fn absorb(&mut self, event: &Op::Event) -> Result<(), ProviderError> {
+        if self.mode == Mode::Streaming {
+            (self.record)(&self.span, event);
+        }
+        self.inner.absorb(event)
+    }
+
+    fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError> {
+        let response = self.inner.finish(reply)?;
+        if self.mode == Mode::Unary {
+            (self.record)(&self.span, &response);
+        }
+        Ok(response)
+    }
+
+    fn push(&mut self, item: Result<Op::Event, ProviderError>, ready: &mut Ready<Op>) {
+        self.inner.push(item, ready);
+    }
+
+    fn unknown(&mut self, payload: crate::streaming::UnknownPayload, ready: &mut Ready<Op>) {
+        self.inner.unknown(payload, ready);
+    }
+
+    fn settle(&mut self, ready: &mut Ready<Op>, end: Option<End>) {
+        self.inner.settle(ready, end);
+    }
+}
+
+/// Write the transport request id and the reply document onto a modality
+/// response that did not name its own.
+macro_rules! stamp_reply {
+    ($response:ty) => {
+        |response: &mut $response, reply: &Reply| {
+            if response.provider_request_id.is_none() {
+                response
+                    .provider_request_id
+                    .clone_from(&reply.provider_request_id);
+            }
+            if response.raw.is_null() {
+                response.raw.clone_from(&reply.raw);
+            }
         }
     };
 }
@@ -182,16 +160,9 @@ modality_operation!(
     Embedding {
         request: Vec<String>,
         response: crate::embeddings::EmbeddingResponse,
-        capabilities: EmbeddingCapabilities,
         telemetry: Embeddings,
-        name: "embedding",
         fold: Embedded,
-        seed: |texts: &Vec<String>| Embedded::over(texts.clone()),
-        accept: |capabilities: &EmbeddingCapabilities,
-                 provider: &str,
-                 response: &crate::embeddings::EmbeddingResponse| {
-            capabilities.honour_declaration(provider, response.embeddings.iter().map(|e| e.vec.len()))
-        },
+        seed: |texts: &Vec<String>, call: &Call<'_>| Embedded::over(texts.clone(), call),
     }
 );
 
@@ -200,18 +171,12 @@ modality_operation!(
     ImageEmbedding {
         request: Vec<Vec<u8>>,
         response: crate::embeddings::ImageEmbeddingResponse,
-        capabilities: EmbeddingCapabilities,
         telemetry: Embeddings,
-        name: "image_embedding",
         fold: Embedded,
-        seed: |images: &Vec<Vec<u8>>| Embedded::over(
+        seed: |images: &Vec<Vec<u8>>, call: &Call<'_>| Embedded::over(
             images.iter().map(|bytes| crate::embeddings::image_document(bytes)).collect(),
+            call,
         ),
-        accept: |capabilities: &EmbeddingCapabilities,
-                 provider: &str,
-                 response: &crate::embeddings::ImageEmbeddingResponse| {
-            capabilities.honour_declaration(provider, response.embeddings.iter().map(|e| e.vec.len()))
-        },
     }
 );
 
@@ -220,11 +185,9 @@ modality_operation!(
     Rerank {
         request: RerankRequest,
         response: crate::rerank::RerankResponse,
-        capabilities: usize,
         telemetry: Rerank,
-        name: "rerank",
         fold: Take<Self>,
-        seed: |_: &_| Take::default(),
+        seed: |_: &_, _: &Call<'_>| Take::stamping(stamp_reply!(crate::rerank::RerankResponse)),
     }
 );
 
@@ -233,11 +196,9 @@ modality_operation!(
     Transcription {
         request: crate::transcription::TranscriptionRequest,
         response: crate::transcription::TranscriptionResponse,
-        capabilities: (),
         telemetry: Transcription,
-        name: "transcription",
         fold: Take<Self>,
-        seed: |_: &_| Take::default(),
+        seed: |_: &_, _: &Call<'_>| Take::stamping(stamp_reply!(crate::transcription::TranscriptionResponse)),
     }
 );
 
@@ -247,11 +208,9 @@ modality_operation!(
     ImageGeneration {
         request: crate::image_generation::ImageGenerationRequest,
         response: crate::image_generation::ImageGenerationResponse,
-        capabilities: (),
         telemetry: ImageGeneration,
-        name: "image_generation",
         fold: Take<Self>,
-        seed: |_: &_| Take::default(),
+        seed: |_: &_, _: &Call<'_>| Take::stamping(stamp_reply!(crate::image_generation::ImageGenerationResponse)),
     }
 );
 
@@ -261,21 +220,23 @@ modality_operation!(
     AudioGeneration {
         request: crate::audio_generation::AudioGenerationRequest,
         response: crate::audio_generation::AudioGenerationResponse,
-        capabilities: (),
         telemetry: AudioGeneration,
-        name: "audio_generation",
         fold: Take<Self>,
-        seed: |_: &_| Take::default(),
+        seed: |_: &_, _: &Call<'_>| Take::stamping(stamp_reply!(crate::audio_generation::AudioGenerationResponse)),
     }
 );
 
 /// Accumulates vectors in reply order and pairs them positionally with request
-/// documents. Finishing rejects missing replies or unequal vector/document counts.
-/// Usage is summed; other metadata comes from the first reply. It sees each
-/// reply by reference, so it copies the vectors it keeps.
+/// documents. Finishing rejects missing replies, unequal vector/document
+/// counts, and widths that contradict the width the caller declared. Usage is
+/// summed; other metadata comes from the first reply. It sees each reply by
+/// reference, so it copies the vectors it keeps.
 #[derive(Default)]
 pub struct Embedded {
     documents: Vec<String>,
+    /// The provider and capabilities the replies are checked against.
+    provider: String,
+    capabilities: Capabilities,
     vectors: Vec<Vec<f64>>,
     /// The first reply's metadata; usage sums across replies.
     metadata: Option<Metadata>,
@@ -292,10 +253,13 @@ struct Metadata {
 }
 
 impl Embedded {
-    /// A fold that will zip its vectors onto `documents`.
-    pub fn over(documents: Vec<String>) -> Self {
+    /// A fold that will zip its vectors onto `documents`, for the model
+    /// `call` describes.
+    pub fn over(documents: Vec<String>, call: &Call<'_>) -> Self {
         Self {
             documents,
+            provider: call.wire.name.to_owned(),
+            capabilities: call.wire.capabilities,
             ..Self::default()
         }
     }
@@ -316,6 +280,8 @@ impl Embedded {
 
     /// The vectors, paired with the inputs they belong to.
     fn zipped(self) -> Result<(Vec<Vector>, Metadata, crate::completion::Usage), ProviderError> {
+        self.capabilities
+            .honour_declaration(&self.provider, self.vectors.iter().map(Vec::len))?;
         if self.vectors.len() != self.documents.len() {
             return Err(ProviderError::Response(format!(
                 "provider returned {} embeddings for {} documents",
@@ -364,7 +330,7 @@ impl Fold<Embedding> for Embedded {
             provider_request_id: metadata.provider_request_id,
             raw: metadata.raw,
         };
-        Embedding::stamp_reply(&mut response, &reply);
+        stamp(&mut response.provider_request_id, &mut response.raw, &reply);
         Ok(response)
     }
 }
@@ -398,7 +364,18 @@ impl Fold<ImageEmbedding> for Embedded {
             provider_request_id: metadata.provider_request_id,
             raw: metadata.raw,
         };
-        ImageEmbedding::stamp_reply(&mut response, &reply);
+        stamp(&mut response.provider_request_id, &mut response.raw, &reply);
         Ok(response)
+    }
+}
+
+/// Fill a response's request id and document from the reply when the
+/// provider named neither.
+fn stamp(provider_request_id: &mut Option<String>, raw: &mut serde_json::Value, reply: &Reply) {
+    if provider_request_id.is_none() {
+        provider_request_id.clone_from(&reply.provider_request_id);
+    }
+    if raw.is_null() {
+        raw.clone_from(&reply.raw);
     }
 }

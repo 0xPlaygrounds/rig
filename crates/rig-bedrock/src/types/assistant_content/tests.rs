@@ -8,9 +8,8 @@ use crate::types::{
 use crate::completion::{Converse, ConverseFrame, ConverseRequest};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
 use rig_core::error::ProviderError;
-use rig_core::wire::{Mode, Wire as _};
 use rig_core::{
     completion,
     message::{AssistantContent, ReasoningContent},
@@ -31,26 +30,20 @@ impl Transport<Converse> for Reply {
     fn send(
         &self,
         payload: ConverseRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<ConverseRequest, ConverseFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<ConverseFrame>, ProviderError> {
         let output = self.0.clone();
         let request_id = output.request_id().map(str::to_owned);
-        Ok(async move {
-            Opened {
-                request_id: request_id.clone(),
-                ..Opened::new(futures::stream::iter([
-                    Ok(ConverseFrame::Opened {
-                        model: payload.model,
-                        request_id,
-                    }),
-                    Ok(ConverseFrame::Whole(Box::new(output))),
-                ]))
-            }
-        })
+        Ok(Sending::later(async move {
+            Opened::new(futures::stream::iter([
+                Ok(ConverseFrame::Opened {
+                    model: payload.model,
+                    request_id: request_id.clone(),
+                }),
+                Ok(ConverseFrame::Whole(Box::new(output))),
+            ]))
+            .with_request_id(request_id)
+        }))
     }
 }
 
@@ -780,11 +773,11 @@ fn claude_on_bedrock_shares_anthropic_reasoning() {
             output_schema: None,
             record_telemetry_content: false,
         };
-        let issuers = Converse::new(model)
-            .replay_issuers(None)
-            .expect("Converse scopes its history");
-        let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
-        rig_core::message::retain_replayable_reasoning(&mut request.chat_history, &issuers);
+        // What Converse keeps of a history before it encodes it.
+        rig_core::message::retain_replayable_reasoning(
+            &mut request.chat_history,
+            &[crate::types::assistant_content::reasoning_issuer(model)],
+        );
         match &request.chat_history[1] {
             Message::Assistant { content, .. } => content
                 .iter()
@@ -865,11 +858,11 @@ fn decoded_bedrock_reasoning_records_the_models_issuer_and_replays_to_it() {
         record_telemetry_content: false,
     };
     let mut scoped = request;
-    let issuers = Converse::new(claude)
-        .replay_issuers(None)
-        .expect("Converse scopes its history");
-    let issuers: Vec<&str> = issuers.iter().map(String::as_str).collect();
-    rig_core::message::retain_replayable_reasoning(&mut scoped.chat_history, &issuers);
+    // What Converse keeps of a history before it encodes it.
+    rig_core::message::retain_replayable_reasoning(
+        &mut scoped.chat_history,
+        &[crate::types::assistant_content::reasoning_issuer(claude)],
+    );
     let Message::Assistant { content, .. } = &scoped.chat_history[1] else {
         panic!("the assistant turn survives");
     };

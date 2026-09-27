@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Local, Model, Step, Transport};
+use super::{Model, Transport};
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
@@ -19,15 +19,14 @@ use crate::model::{ModelInfo, ModelList};
 use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
-use crate::operation::{Completion, Events, ModelListing};
+use crate::operation::{AdapterOutput, Completion, ModelListing, ModelPage};
 use crate::streaming::{StreamEvent, StreamFinal};
 use crate::test_utils::{
     HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient,
     RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
 };
 use crate::wire::{
-    Body, Decoder, Encoded, Fold, Mode, ObservationSink, Operation, Output, Reply, Sink, Wire,
-    WireEvent, WireFrame,
+    Body, Decoder, Descriptor, Encoded, End, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
 
 /// Fold one reply of `wire` over `http`.
@@ -48,8 +47,8 @@ where
     }
 }
 
-/// The driver's own events for one streamed reply of `wire` over `http`,
-/// before any fold step.
+/// The items of one streamed reply of `wire` over `http`, as the driver
+/// yields them.
 pub(crate) fn stream<W, H>(
     wire: &W,
     http: &H,
@@ -63,19 +62,9 @@ where
     W: Wire,
     H: Transport<W>,
 {
-    let steps = Model::new(wire.clone(), http.clone()).run(
-        request,
-        Mode::Streaming,
-        context,
-        tracing::Span::none(),
-    )?;
-    Ok(steps.filter_map(|step| {
-        futures::future::ready(match step {
-            Ok(Step::Event(event)) => Some(Ok(event)),
-            Ok(Step::Opened(_) | Step::Closed(_)) => None,
-            Err(error) => Some(Err(error)),
-        })
-    }))
+    let mut streamed =
+        Model::new(wire.clone(), http.clone()).open(request, Mode::Streaming, context)?;
+    Ok(futures::stream::poll_fn(move |cx| streamed.poll_step(cx)))
 }
 
 // ── the fake completion wire ────────────────────────────────────────────
@@ -154,7 +143,7 @@ impl Decoder<Completion> for EchoDecoder {
         })
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<Completion>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Completion>) {
         match event {
             // The unary shape synthesizes the stream's events rather than
             // carrying a second content mapping.
@@ -184,8 +173,10 @@ impl Decoder<Completion> for EchoDecoder {
             }
         }
     }
+}
 
-    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
+impl EchoDecoder {
+    fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(value) = serde_json::from_slice::<serde_json::Value>(payload) else {
             return;
         };
@@ -210,7 +201,7 @@ impl Decoder<Completion> for EchoDecoder {
     }
 }
 
-fn terminal(out: &mut Output<Completion>, usage: Usage) {
+fn terminal(out: &mut AdapterOutput, usage: Usage) {
     out.close_active_blocks();
     out.final_record(
         StreamFinal::new(
@@ -231,12 +222,8 @@ impl Wire for Echo {
     type Frame = WireFrame;
     type Decoder = EchoDecoder;
 
-    fn name(&self) -> &str {
-        "echo"
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some("echo-1")
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new("echo").model("echo-1")
     }
 
     fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -245,8 +232,9 @@ impl Wire for Echo {
         }))?;
         let request =
             http::Request::post("https://echo.invalid/v1/messages").body(Body::Bytes(body))?;
-        let encoded =
-            Encoded::new(request, self.framing).with_request_id_header(self.request_id_header);
+        let encoded = Encoded::new(request, self.framing)
+            .with_request_id_header(self.request_id_header)
+            .with_projection(EchoDecoder::project);
         Ok(if self.relaxed_content_type {
             encoded.with_relaxed_content_type()
         } else {
@@ -767,9 +755,7 @@ async fn a_failed_unary_call_projects_the_reply_it_failed_on() {
 struct Catalogue;
 
 #[derive(Default)]
-struct CatalogueDecoder {
-    next: Option<String>,
-}
+struct CatalogueDecoder;
 
 #[derive(serde::Deserialize)]
 struct Page {
@@ -788,15 +774,11 @@ impl Decoder<ModelListing> for CatalogueDecoder {
         }
     }
 
-    fn interpret(&mut self, page: Self::Event, out: &mut Output<ModelListing>) {
-        self.next = page.next;
-        out.push(Ok(ModelList::new(
-            page.data.into_iter().map(ModelInfo::from_id).collect(),
-        )));
-    }
-
-    fn cursor(&self) -> Option<String> {
-        self.next.clone()
+    fn interpret(&mut self, page: Self::Event, out: &mut Out<'_, ModelListing>) {
+        out.push(Ok(ModelPage {
+            models: ModelList::new(page.data.into_iter().map(ModelInfo::from_id).collect()),
+            next: page.next,
+        }));
     }
 }
 
@@ -806,23 +788,21 @@ impl Wire for Catalogue {
     type Frame = WireFrame;
     type Decoder = CatalogueDecoder;
 
-    fn name(&self) -> &str {
-        "echo"
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new("echo")
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = http::Request::get("https://echo.invalid/v1/models").body(Body::empty())?;
-        Ok(Encoded::new(request, Framing::Whole))
-    }
-
-    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
-        let request = http::Request::get(format!("https://echo.invalid/v1/models?after={cursor}"))
-            .body(Body::empty())?;
+    fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
+        let uri = match cursor {
+            Some(cursor) => format!("https://echo.invalid/v1/models?after={cursor}"),
+            None => "https://echo.invalid/v1/models".to_owned(),
+        };
+        let request = http::Request::get(uri).body(Body::empty())?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        CatalogueDecoder::default()
+        CatalogueDecoder
     }
 }
 
@@ -833,7 +813,7 @@ async fn a_paged_listing_follows_every_continuation() {
         MockHttpResponse::success(r#"{"data":["c"]}"#),
     ]);
     let bound = Model::new(Catalogue, http.clone());
-    let models = bound.call(()).await.expect("both pages decode");
+    let models = bound.list().await.expect("both pages decode");
     assert_eq!(
         models
             .iter()
@@ -855,6 +835,21 @@ async fn a_paged_listing_follows_every_continuation() {
     );
 }
 
+/// One call reads one page, whatever cursor it names.
+#[tokio::test]
+async fn a_listing_call_reads_one_page() {
+    let http = SequencedHttpClient::new([MockHttpResponse::success(
+        r#"{"data":["a","b"],"next":"b"}"#,
+    )]);
+    let page = Model::new(Catalogue, http.clone())
+        .call(None)
+        .await
+        .expect("the page decodes");
+    assert_eq!(page.models.len(), 2);
+    assert_eq!(page.next.as_deref(), Some("b"));
+    assert_eq!(http.requests().len(), 1);
+}
+
 #[tokio::test]
 async fn a_listing_that_repeats_its_cursor_stops_after_the_repeated_page() {
     // The second page names the cursor that fetched it, so the next request
@@ -865,7 +860,7 @@ async fn a_listing_that_repeats_its_cursor_stops_after_the_repeated_page() {
         MockHttpResponse::success(r#"{"data":["never"]}"#),
     ]);
     let bound = Model::new(Catalogue, http.clone());
-    let models = bound.call(()).await.expect("the fetched pages decode");
+    let models = bound.list().await.expect("the fetched pages decode");
     assert_eq!(
         models
             .iter()
@@ -887,7 +882,7 @@ async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
     });
     let http = SequencedHttpClient::new(pages);
     let bound = Model::new(Catalogue, http.clone());
-    let models = bound.call(()).await.expect("the fetched pages decode");
+    let models = bound.list().await.expect("the fetched pages decode");
     assert_eq!(models.len(), super::MAX_CONTINUATION_PAGES);
     assert_eq!(http.requests().len(), super::MAX_CONTINUATION_PAGES);
 }
@@ -928,68 +923,21 @@ fn warnings_of(body: impl std::future::Future<Output = ()>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// A streamed listing yields each page's models as it arrives, follows the
-/// same cursors, and finishes to what a call folds.
-#[tokio::test]
-async fn a_streamed_listing_yields_every_page_and_finishes_to_the_call() {
-    let pages = || {
-        SequencedHttpClient::new([
-            MockHttpResponse::success(r#"{"data":["a","b"],"next":"b"}"#),
-            MockHttpResponse::success(r#"{"data":["c"]}"#),
-        ])
-    };
-    let called = Model::new(Catalogue, pages())
-        .call(())
-        .await
-        .expect("both pages decode");
-
-    let http = pages();
-    let mut stream = Model::new(Catalogue, http.clone())
-        .stream(())
-        .expect("the listing opens");
-    let mut events = Vec::new();
-    while let Some(page) = stream.next().await {
-        let page = page.expect("each page decodes");
-        events.push(
-            page.iter()
-                .map(|model| model.id.clone())
-                .collect::<Vec<_>>(),
-        );
-    }
-    assert_eq!(events, vec![vec!["a", "b"], vec!["c"]]);
-    let streamed = stream.finish().expect("the pages fold");
-    assert_eq!(
-        serde_json::to_value(&streamed).expect("json"),
-        serde_json::to_value(&called).expect("json")
-    );
-    assert_eq!(http.requests().len(), 2);
-}
-
-/// The page guards hold in both modes: a repeated cursor stops after the
-/// repeated page and a cursor that keeps changing stops at the ceiling,
-/// each with its warning.
+/// A repeated cursor stops after the repeated page and a cursor that keeps
+/// changing stops at the ceiling, each with its warning.
 #[test]
-fn a_streamed_listing_keeps_the_cursor_guards() {
-    let repeated = || {
-        SequencedHttpClient::new([
-            MockHttpResponse::success(r#"{"data":["a"],"next":"b"}"#),
-            MockHttpResponse::success(r#"{"data":["b"],"next":"b"}"#),
-            MockHttpResponse::success(r#"{"data":["never"]}"#),
-        ])
-    };
-    let http = repeated();
+fn a_listing_warns_when_a_cursor_guard_stops_it() {
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"data":["a"],"next":"b"}"#),
+        MockHttpResponse::success(r#"{"data":["b"],"next":"b"}"#),
+    ]);
     let warnings = warnings_of(async {
-        let stream = Model::new(Catalogue, http.clone())
-            .stream(())
-            .expect("the listing opens");
-        let events = stream.collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 2, "the repeated page is the last");
+        let models = Model::new(Catalogue, http.clone())
+            .list()
+            .await
+            .expect("the listing decodes");
+        assert_eq!(models.len(), 2, "the repeated page is the last");
     });
-    assert_eq!(
-        http.requests().len(),
-        2,
-        "the repeated cursor is not re-sent"
-    );
     assert!(
         warnings
             .iter()
@@ -1002,16 +950,11 @@ fn a_streamed_listing_keeps_the_cursor_guards() {
     });
     let http = SequencedHttpClient::new(pages);
     let warnings = warnings_of(async {
-        let mut stream = Model::new(Catalogue, http.clone())
-            .stream(())
-            .expect("the listing opens");
-        while let Some(page) = stream.next().await {
-            page.expect("each page decodes");
-        }
-        let models = stream.finish().expect("the pages fold");
-        assert_eq!(models.len(), super::MAX_CONTINUATION_PAGES);
+        Model::new(Catalogue, http.clone())
+            .list()
+            .await
+            .expect("the listing decodes");
     });
-    assert_eq!(http.requests().len(), super::MAX_CONTINUATION_PAGES);
     assert!(
         warnings
             .iter()
@@ -1057,142 +1000,38 @@ async fn a_streamed_embedding_yields_one_event_and_finishes_to_the_call() {
     );
 }
 
-// ── an operation the crate never heard of ──────────────────────────────
-
-#[derive(Clone, Debug, PartialEq)]
-struct VideoRequest {
-    frames: usize,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct SkeletonFrame {
-    index: usize,
-    last: bool,
-}
-
-#[derive(Debug, Default, PartialEq)]
-struct PoseTrack {
-    frames: Vec<SkeletonFrame>,
-}
-
-struct PoseEstimation;
-
-impl Operation for PoseEstimation {
-    type Request = VideoRequest;
-    type Event = SkeletonFrame;
-    type Response = PoseTrack;
-    type Capabilities = ();
-    type Output = Events<Self>;
-    type Fold = PoseTrack;
-    type Telemetry = ();
-    const NAME: &'static str = "pose_estimation";
-    fn is_terminal(frame: &SkeletonFrame) -> bool {
-        frame.last
-    }
-    fn fold<W: Wire<Op = Self>>(_: &VideoRequest, _: &W, _: Mode) -> PoseTrack {
-        PoseTrack::default()
-    }
-    fn telemetry(_: Mode) {}
-}
-
-impl Fold<PoseEstimation> for PoseTrack {
-    fn absorb(&mut self, frame: &SkeletonFrame) -> Result<(), ProviderError> {
-        self.frames.push(frame.clone());
-        Ok(())
-    }
-    fn finish(self, _: Reply) -> Result<PoseTrack, ProviderError> {
-        Ok(self)
-    }
-}
-
-/// The runtime: one skeleton per video frame, the last one marked.
-#[derive(Clone)]
-struct Runtime;
-
-impl Transport<Local<PoseEstimation>> for Runtime {
-    fn send(
-        &self,
-        request: VideoRequest,
-        _mode: Mode,
-        _observation: Option<super::Observation>,
-    ) -> Result<
-        impl std::future::Future<
-            Output = super::Opened<VideoRequest, Result<SkeletonFrame, ProviderError>>,
-        >
-        + crate::wasm_compat::WasmCompatSend
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
-        let frames = (0..request.frames).map(move |index| {
-            Ok(Ok(SkeletonFrame {
-                index,
-                last: index + 1 == request.frames,
-            }))
-        });
-        Ok(std::future::ready(super::Opened::new(
-            futures::stream::iter(frames.collect::<Vec<_>>()),
-        )))
-    }
-}
-
-fn track(frames: usize) -> PoseTrack {
-    PoseTrack {
-        frames: (0..frames)
-            .map(|index| SkeletonFrame {
-                index,
-                last: index + 1 == frames,
-            })
-            .collect(),
-    }
-}
-
-/// An operation the crate never heard of calls and streams through the one
-/// driver, typed and erased.
-#[tokio::test]
-async fn an_unknown_operation_calls_and_streams_typed_and_erased() {
-    let model = Model::new(Local::<PoseEstimation>::new("pose"), Runtime);
-    assert_eq!(
-        model.call(VideoRequest { frames: 3 }).await.ok(),
-        Some(track(3))
-    );
-
-    let mut stream = model
-        .stream(VideoRequest { frames: 3 })
-        .expect("the stream opens");
-    let mut frames = Vec::new();
-    while let Some(frame) = stream.next().await {
-        frames.push(frame.expect("a skeleton"));
-    }
-    assert_eq!(frames, track(3).frames);
-    assert_eq!(stream.finish().ok(), Some(track(3)));
-
-    let erased: super::DynModel<PoseEstimation> = model.erase();
-    let spawned = tokio::spawn(erased.call(VideoRequest { frames: 2 }));
-    assert_eq!(spawned.await.expect("the call runs").ok(), Some(track(2)));
-    let streamed = erased
-        .stream(VideoRequest { frames: 2 })
-        .expect("the erased stream opens")
-        .collect::<Vec<_>>()
-        .await;
-    assert_eq!(
-        streamed.into_iter().map(Result::ok).collect::<Vec<_>>(),
-        track(2).frames.into_iter().map(Some).collect::<Vec<_>>()
-    );
-}
-
 // ── telemetry ──────────────────────────────────────────────────────────
 
+/// A completion's span is named for the mode the call runs in.
 #[test]
 fn the_completion_operation_names_its_span_by_mode() {
-    assert_eq!(
-        Completion::telemetry(crate::wire::Mode::Unary),
-        crate::telemetry::GenAiOperation::Chat
-    );
-    assert_eq!(
-        Completion::telemetry(crate::wire::Mode::Streaming),
-        crate::telemetry::GenAiOperation::ChatStreaming
-    );
+    use tracing::subscriber::with_default;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorded = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
+    let subscriber = tracing_subscriber::registry().with(RecordFields {
+        recorded: recorded.clone(),
+    });
+    with_default(subscriber, || {
+        let unary = Model::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+        futures::executor::block_on(unary.call(prompt())).expect("the reply decodes");
+        let streaming = Model::new(
+            Echo::streaming(),
+            MockStreamingClient {
+                sse_bytes: Bytes::from_static(STREAM_BODY.as_bytes()),
+            },
+        );
+        let stream = streaming.stream(prompt()).expect("the stream opens");
+        futures::executor::block_on(stream.collect::<Vec<_>>());
+    });
+    let names: Vec<_> = recorded
+        .lock()
+        .expect("no panic held the lock")
+        .iter()
+        .filter(|(field, _)| field == "gen_ai.operation.name")
+        .map(|(_, value)| value.clone())
+        .collect();
+    assert_eq!(names, vec!["chat", "chat_streaming"]);
 }
 
 #[tokio::test]
@@ -1372,10 +1211,10 @@ impl Decoder<Completion> for GuardedDecoder {
 
     /// Every frame decodes and none of them delivers content: the state the
     /// guard exists for, reached without a second frame vocabulary.
-    fn interpret(&mut self, _event: (), _out: &mut Output<Completion>) {}
+    fn interpret(&mut self, _event: (), _out: &mut Out<'_, Completion>) {}
 
-    fn finish(&mut self, out: &mut Output<Completion>) {
-        if self.whole {
+    fn end(&mut self, out: &mut Out<'_, Completion>, end: End) {
+        if self.whole && end == End::Eof {
             out.error(ProviderError::Response(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
@@ -1389,8 +1228,8 @@ impl Wire for Guarded {
     type Frame = WireFrame;
     type Decoder = GuardedDecoder;
 
-    fn name(&self) -> &str {
-        "guarded"
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new("guarded")
     }
 
     fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -1451,8 +1290,8 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         type Payload = Encoded;
         type Frame = WireFrame;
         type Decoder = EchoDecoder;
-        fn name(&self) -> &str {
-            "echo"
+        fn describe(&self) -> Descriptor<'_> {
+            Descriptor::new("echo")
         }
         fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
             let one =
@@ -1472,8 +1311,8 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         type Payload = Encoded;
         type Frame = WireFrame;
         type Decoder = EchoDecoder;
-        fn name(&self) -> &str {
-            "echo"
+        fn describe(&self) -> Descriptor<'_> {
+            Descriptor::new("echo")
         }
         fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
             let request = http::Request::post("https://echo.invalid/a")

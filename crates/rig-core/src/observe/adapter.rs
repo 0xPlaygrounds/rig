@@ -144,7 +144,7 @@ pub struct ObservedError {
 
 impl ObservedError {
     /// Emit this envelope as the attempt's error-envelope fact, scrubbed.
-    pub fn emit(self, sink: &mut dyn crate::wire::ObservationSink) {
+    pub fn emit(self, sink: &mut ObservationSink<'_>) {
         let code = self.code.map(|code| match code {
             serde_json::Value::String(code) => sink.scrub(&code),
             serde_json::Value::Number(code) => code.to_string(),
@@ -429,9 +429,9 @@ impl AdapterAttempt {
         self.context.emit(Some(self.number), event);
     }
 
-    /// Project a payload's facts through the decoder that understands it.
-    pub(crate) fn project(&mut self, project: impl FnOnce(&mut dyn crate::wire::ObservationSink)) {
-        project(self);
+    /// Project a payload's facts through the projector that understands it.
+    pub(crate) fn project(&mut self, project: impl FnOnce(&mut ObservationSink<'_>)) {
+        project(&mut ObservationSink { attempt: self });
     }
 
     pub(crate) fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>) {
@@ -492,18 +492,29 @@ impl Drop for AdapterAttempt {
     }
 }
 
-/// The projection surface a decoder writes its observation facts through.
-impl crate::wire::ObservationSink for AdapterAttempt {
-    fn emit(&mut self, event: AdapterEvent) {
-        AdapterAttempt::emit(self, event);
+/// Where a payload projector writes its observation facts.
+///
+/// A projector reads verdicts, usage, ids and error envelopes off a raw
+/// payload before normalization discards them. Text it forwards must go
+/// through [`Self::scrub`]: a payload can echo credentials.
+pub struct ObservationSink<'a> {
+    attempt: &'a mut AdapterAttempt,
+}
+
+impl ObservationSink<'_> {
+    /// Record one boundary fact.
+    pub fn emit(&mut self, event: AdapterEvent) {
+        self.attempt.emit(event);
     }
 
-    fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>) {
-        AdapterAttempt::provider(self, verdict, response_id);
+    /// Record the provider's verdict, and the response id it named.
+    pub fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>) {
+        self.attempt.provider(verdict, response_id);
     }
 
-    fn scrub(&self, value: &str) -> String {
-        self.text(value)
+    /// Bound and redact diagnostic text from the payload.
+    pub fn scrub(&self, value: &str) -> String {
+        self.attempt.text(value)
     }
 }
 
@@ -526,9 +537,9 @@ impl AdapterSlot {
         }
     }
 
-    /// Project a reply payload's facts through the decoder that understands
-    /// it.
-    pub(crate) fn project(&self, project: impl FnOnce(&mut dyn crate::wire::ObservationSink)) {
+    /// Project a reply payload's facts through the projector that
+    /// understands it.
+    pub(crate) fn project(&self, project: impl FnOnce(&mut ObservationSink<'_>)) {
         if let Some(attempt) = self
             .0
             .lock()

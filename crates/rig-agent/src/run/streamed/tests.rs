@@ -1680,7 +1680,7 @@ fn canonical(events: impl IntoIterator<Item = StreamEvent>) -> Vec<StreamEvent> 
     for event in events {
         sink.push(Ok(event));
     }
-    rig_core::wire::Sink::<rig_core::operation::Completion>::finish(&mut sink);
+    sink.finish();
     sink.into_items()
         .into_iter()
         .map(|item| item.expect("valid provider event"))

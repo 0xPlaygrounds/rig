@@ -14,7 +14,7 @@ impl MockEmbeddingModel {
     fn model() -> rig_core::Model<rig_core::driver::Local<rig_core::operation::Embedding>, Self> {
         rig_core::Model::new(
             rig_core::driver::Local::new("mock")
-                .with_capabilities(rig_core::operation::EmbeddingCapabilities::new(4, 3)),
+                .with_capabilities(rig_core::wire::Capabilities::embedding(4, 3)),
             Self,
         )
     }
@@ -26,18 +26,11 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
     fn send(
         &self,
         texts: Vec<String>,
-        _mode: rig_core::wire::Mode,
-        _observation: Option<rig_core::driver::Observation>,
+        _exchange: rig_core::driver::Exchange,
     ) -> Result<
-        impl Future<
-            Output = rig_core::driver::Opened<
-                Vec<String>,
-                Result<rig_core::embeddings::EmbeddingResponse, rig_core::error::ProviderError>,
-            >,
-        >
-        + Send
-        + 'static
-        + use<>,
+        rig_core::driver::Sending<
+            Result<rig_core::embeddings::EmbeddingResponse, rig_core::error::ProviderError>,
+        >,
         rig_core::error::ProviderError,
     > {
         let response = rig_core::embeddings::EmbeddingResponse::new(
@@ -50,9 +43,9 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
                 .collect(),
             "mock",
         );
-        Ok(std::future::ready(rig_core::driver::Opened::new(
-            futures::stream::iter([Ok(Ok(response))]),
-        )))
+        Ok(rig_core::driver::Sending::opened(
+            rig_core::driver::Opened::new(futures::stream::iter([Ok(Ok(response))])),
+        ))
     }
 }
 

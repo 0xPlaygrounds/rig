@@ -10,7 +10,7 @@ use crate::providers::internal::wire;
 use crate::streaming::{self, BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
 use crate::wire::WireEvent;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, ObservationSink, WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, ObservationSink, Out, WireFrame,
 };
 use std::collections::HashMap;
 
@@ -231,6 +231,8 @@ impl ThinkingState {
 }
 
 /// Decode unary and streamed Messages replies into canonical content and terminal events.
+/// EOF without `message_delta` is truncation: open blocks stay partial, and
+/// no terminal record is synthesized.
 pub struct MessagesDecoder {
     /// Selected dialect's provider name for terminal records.
     provider: &'static str,
@@ -555,7 +557,18 @@ impl Decoder<Completion> for MessagesDecoder {
         })
     }
 
-    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Completion>) {
+        self.interpret_event(event, out);
+        // Stop after errors so later frames cannot report a failed turn as
+        // completed.
+        if self.failed {
+            out.end_reply();
+        }
+    }
+}
+
+impl MessagesDecoder {
+    fn interpret_event(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
@@ -624,16 +637,11 @@ impl Decoder<Completion> for MessagesDecoder {
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput) {
-        // EOF without `message_delta` is truncation: open blocks stay
-        // partial, and no terminal record may be synthesized.
-    }
-
     /// Messages metadata projected before normalization can discard it: the
     /// stop reason, the model, the message id, the usage and any error
     /// envelope, on the unary reply and on the stream's `message_start`,
     /// `message_delta` and `error` events.
-    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
+    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(payload) = serde_json::from_slice::<ObservedPayload>(payload) else {
             return;
         };
@@ -676,11 +684,6 @@ impl Decoder<Completion> for MessagesDecoder {
         if let Some(error) = payload.error {
             error.emit(sink);
         }
-    }
-
-    fn is_finished(&self) -> bool {
-        // Stop after errors so later frames cannot report a failed turn as completed.
-        self.failed
     }
 }
 

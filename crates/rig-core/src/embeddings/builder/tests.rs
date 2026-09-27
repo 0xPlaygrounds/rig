@@ -4,15 +4,14 @@ use crate::error::ProviderError;
 use crate::test_utils::{MockMultiTextDocument, MockTextDocument};
 
 use super::EmbeddingsBuilder;
-use crate::driver::{Local, Model, Observation, Opened, Transport};
+use crate::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use crate::embeddings::EmbeddingResponse;
-use crate::operation::EmbeddingCapabilities;
 use crate::test_utils::MockEmbeddings;
-use crate::wire::Mode;
+use crate::wire::Capabilities;
 
 /// The mock embedding wire at a chosen batch size.
 fn batches(max_documents: usize) -> Local<crate::operation::Embedding> {
-    Local::new("mock").with_capabilities(EmbeddingCapabilities::new(max_documents, 10))
+    Local::new("mock").with_capabilities(Capabilities::embedding(max_documents, 10))
 }
 
 fn definitions_multiple_text() -> Vec<MockMultiTextDocument> {
@@ -230,17 +229,10 @@ impl Transport<Local<crate::operation::Embedding>> for SlowFirstBatchModel {
     fn send(
         &self,
         documents: Vec<String>,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Result<EmbeddingResponse, ProviderError>>>
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<Result<EmbeddingResponse, ProviderError>>, ProviderError> {
         let model = self.clone();
-        Ok(async move {
+        Ok(Sending::later(async move {
             let this = &model;
             let nth = this.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if nth == 0 {
@@ -249,7 +241,7 @@ impl Transport<Local<crate::operation::Embedding>> for SlowFirstBatchModel {
             Opened::new(futures::stream::iter([Ok(Ok(MockEmbeddings::embed(
                 documents,
             )))]))
-        })
+        }))
     }
 }
 
@@ -276,17 +268,10 @@ impl Transport<Local<crate::operation::Embedding>> for DescendingLatencyModel {
     fn send(
         &self,
         documents: Vec<String>,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Result<EmbeddingResponse, ProviderError>>>
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<Result<EmbeddingResponse, ProviderError>>, ProviderError> {
         let model = self.clone();
-        Ok(async move {
+        Ok(Sending::later(async move {
             let this = &model;
             let nth = this
                 .batches
@@ -298,7 +283,7 @@ impl Transport<Local<crate::operation::Embedding>> for DescendingLatencyModel {
             Opened::new(futures::stream::iter([Ok(Ok(MockEmbeddings::embed(
                 documents,
             )))]))
-        })
+        }))
     }
 }
 
@@ -456,15 +441,8 @@ impl Transport<Local<crate::operation::Embedding>> for OneAtATimeReversedLatency
     fn send(
         &self,
         documents: Vec<String>,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<Vec<String>, Result<EmbeddingResponse, ProviderError>>>
-        + Send
-        + 'static
-        + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<Result<EmbeddingResponse, ProviderError>>, ProviderError> {
         // Earlier texts wait longer, so completion order is close to the
         // reverse of submission order. Texts are named `d{doc}t{i}`, so the
         // position is what follows the last `t`; if that ever stops parsing
@@ -482,12 +460,12 @@ impl Transport<Local<crate::operation::Embedding>> for OneAtATimeReversedLatency
             )));
         };
         let delay = 60u64.saturating_sub(position * 10);
-        Ok(async move {
+        Ok(Sending::later(async move {
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
             Opened::new(futures::stream::iter([Ok(Ok(MockEmbeddings::embed(
                 documents,
             )))]))
-        })
+        }))
     }
 }
 

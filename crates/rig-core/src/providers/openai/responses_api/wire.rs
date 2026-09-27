@@ -11,7 +11,8 @@ use crate::observe::ObservedError;
 use crate::operation::Completion;
 use crate::providers::openai::wire::{OpenAIConfig, ResponsesContract};
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing, Mode, ObservationSink, Wire,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Capabilities, Descriptor, Encoded, Framing,
+    Mode, ObservationSink, Wire,
 };
 use serde::{Deserialize, Serialize};
 
@@ -40,7 +41,7 @@ pub struct Responses {
 impl Responses {
     pub(crate) fn encode_with_headers(
         &self,
-        request: completion::CompletionRequest,
+        mut request: completion::CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
             &OpenAIConfig,
@@ -48,6 +49,11 @@ impl Responses {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
+        crate::providers::openai::wire::scope_reasoning(
+            &self.provider.dialect,
+            &self.model,
+            &mut request,
+        );
         let quirks = &self.provider.dialect.quirks.responses;
         // The codex gateway only ever answers with an event stream, and
         // names no content type on it. It is asked for one whatever the
@@ -79,7 +85,8 @@ impl Responses {
         };
         let encoded = Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header)
-            .with_route(Some(self.provider.dialect.quirks.responses.path));
+            .with_route(Some(self.provider.dialect.quirks.responses.path))
+            .with_projection(project_payload);
         Ok(if codex {
             encoded.with_relaxed_content_type()
         } else {
@@ -211,19 +218,15 @@ impl Wire for Responses {
     type Frame = crate::wire::WireFrame;
     type Decoder = ResponsesDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
-        Some(crate::providers::openai::wire::replay_issuers(
-            &self.provider.dialect,
-            model.unwrap_or(&self.model),
-        ))
+    /// The xAI contract does not compose native structured output with tools.
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::completion(
+                ProviderCapabilities::default().with_native_output_tool_composition(
+                    self.provider.dialect.quirks.responses.contract != ResponsesContract::Xai,
+                ),
+            ))
     }
 
     fn encode(
@@ -255,13 +258,6 @@ impl Wire for Responses {
         }
         decoder
     }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        // The xAI contract does not compose native structured output with tools.
-        ProviderCapabilities::default().with_native_output_tool_composition(
-            self.provider.dialect.quirks.responses.contract != ResponsesContract::Xai,
-        )
-    }
 }
 
 /// Normalize a whole Responses body through the decoder and completion fold.
@@ -273,7 +269,7 @@ pub(crate) fn fold_body(
 ) -> Result<completion::CompletionResponse, crate::error::ProviderError> {
     use super::streaming::ResponsesEvent;
     use crate::operation::AdapterOutput;
-    use crate::wire::{Decoder, Fold, Mode, Reply, Sink};
+    use crate::wire::{Fold, Mode, Reply};
 
     let reply = Reply {
         provider: provider.to_owned(),
@@ -282,10 +278,10 @@ pub(crate) fn fold_body(
     };
     let mut decoder = ResponsesDecoder::new(provider, ResponsesStreamOptions::strict());
     let mut out = AdapterOutput::new();
-    decoder.interpret(ResponsesEvent::Whole(Box::new(response)), &mut out);
+    decoder.interpret_event(ResponsesEvent::Whole(Box::new(response)), &mut out);
 
     let mut fold = crate::operation::CompletionFold::opened(provider, None, Mode::Unary);
-    for item in Sink::<Completion>::drain(&mut out) {
+    for item in out.drain() {
         fold.absorb(&item?)?;
     }
     fold.finish(reply)
@@ -353,7 +349,7 @@ struct Payload {
 /// The unary reply is the response object itself; a stream event wraps that
 /// object under `response` (`response.created`, `.completed`, `.failed`,
 /// `.incomplete`) or, for `error`, carries the envelope's fields itself.
-pub(crate) fn project_payload(payload: &[u8], sink: &mut dyn ObservationSink) {
+pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
     let Ok(payload) = serde_json::from_slice::<Payload>(payload) else {
         return;
     };

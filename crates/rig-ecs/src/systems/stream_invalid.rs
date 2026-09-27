@@ -10,9 +10,9 @@
 use super::*;
 use rig_core::{
     message::{ToolCall, ToolCallId, ToolFunction},
-    operation::{AdapterOutput, Completion, CompletionFold},
+    operation::{AdapterOutput, CompletionFold},
     streaming::{BlockId, Delta, StreamEvent},
-    wire::{Fold, Sink},
+    wire::Fold,
 };
 
 /// Return the successful event count before the first error, or the full length.
@@ -72,7 +72,7 @@ pub(super) fn delivered_prefix(events: &[StreamEvent]) -> Option<Vec<AssistantCo
     for event in events {
         sink.push(Ok(event.clone()));
     }
-    Sink::<Completion>::finish(&mut sink);
+    sink.finish();
     let mut fold = CompletionFold::default();
     for item in sink.drain() {
         fold.absorb(&item.ok()?).ok()?;

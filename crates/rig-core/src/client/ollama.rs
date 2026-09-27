@@ -49,6 +49,6 @@ impl Ollama {
 
     /// The models the daemon serves.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        self.model(self.config.models()).call(()).await
+        self.model(self.config.models()).list().await
     }
 }

@@ -30,11 +30,11 @@ use rig_agent::{
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_core::driver::{Local, Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
 use rig_core::error::ProviderError;
 use rig_core::operation::AdapterOutput;
 use rig_core::operation::Completion;
-use rig_core::wire::Mode;
+use rig_core::wire::{Capabilities, Mode};
 use rig_core::{
     error::ErrorKind,
     message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction, UserContent},
@@ -368,7 +368,7 @@ fn stream_from_script(
 }
 
 type FakeFrame = Result<StreamEvent, ProviderError>;
-type FakeReply = Pin<Box<dyn Future<Output = Opened<CompletionRequest, FakeFrame>> + Send>>;
+type FakeReply = Pin<Box<dyn Future<Output = Opened<FakeFrame>> + Send>>;
 type FakeSend = dyn Fn(CompletionRequest, Mode) -> Result<FakeReply, ProviderError> + Send + Sync;
 
 /// A test completion runtime: `send` answers each attempt. It is the
@@ -402,10 +402,10 @@ type FakeModel = Model<Local<Completion>, Fake>;
 
 /// The local completion wire of `provider`.
 fn wire(provider: &'static str, composes_native_output_with_tools: bool) -> Local<Completion> {
-    Local::new(provider).with_capabilities(
+    Local::new(provider).with_capabilities(Capabilities::completion(
         ProviderCapabilities::new()
             .with_native_output_tool_composition(composes_native_output_with_tools),
-    )
+    ))
 }
 
 /// A reply of `events`, ready at once.
@@ -417,26 +417,20 @@ fn replied(events: Vec<StreamEvent>) -> FakeReply {
 
 /// A whole `response`: its events as an adapter emits them, its `raw` the
 /// reply's document.
-fn answered(response: CompletionResponse) -> Opened<CompletionRequest, FakeFrame> {
+fn answered(response: CompletionResponse) -> Opened<FakeFrame> {
     let mut out = AdapterOutput::new();
     out.response(&response, rig_core::operation::ImagePart::Block);
-    Opened {
-        document: Some(response.raw.clone()),
-        ..Opened::new(stream::iter(out.into_items().into_iter().map(Ok)))
-    }
+    Opened::new(stream::iter(out.into_items().into_iter().map(Ok)))
+        .with_document(response.raw.clone())
 }
 
 impl Transport<Local<Completion>> for Fake {
     fn send(
         &self,
         request: CompletionRequest,
-        mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<CompletionRequest, FakeFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
-        (self.send)(request, mode)
+        exchange: Exchange,
+    ) -> Result<Sending<FakeFrame>, ProviderError> {
+        (self.send)(request, exchange.mode).map(Sending::later)
     }
 }
 
@@ -1510,7 +1504,7 @@ fn pending_unary_model(started: Arc<Notify>, dropped: Arc<AtomicUsize>) -> FakeM
                 Box::pin(async move {
                     let _guard = DropGuard(dropped);
                     started.notify_one();
-                    std::future::pending::<Opened<CompletionRequest, FakeFrame>>().await
+                    std::future::pending::<Opened<FakeFrame>>().await
                 }) as FakeReply
             }
             Mode::Streaming => replied(Vec::new()),

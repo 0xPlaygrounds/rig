@@ -1,6 +1,6 @@
 use super::*;
 use crate::test_utils::RecordingHttpClient;
-use crate::wire::Wire;
+use crate::wire::Capabilities;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
 fn voyage() -> VoyageAiConfig {
@@ -89,15 +89,19 @@ fn an_unset_option_is_absent_from_the_request() {
 #[test]
 fn an_embedding_wire_reports_the_width_it_asked_for() {
     assert_eq!(
-        voyage().embedding("voyage-3.5", None).capabilities(),
-        EmbeddingCapabilities::new(1024, 1024)
+        voyage()
+            .embedding("voyage-3.5", None)
+            .describe()
+            .capabilities,
+        Capabilities::embedding(1024, 1024)
     );
     assert_eq!(
         voyage()
             .embedding("voyage-3.5", None)
             .with_output_dimension(256)
-            .capabilities(),
-        EmbeddingCapabilities::new(1024, 256),
+            .describe()
+            .capabilities,
+        Capabilities::embedding(1024, 256),
         "a vector store sizes its index from `ndims`, so asking Voyage for a \
          narrower vector must change what the wire reports"
     );
@@ -168,8 +172,15 @@ fn a_rerank_wire_declares_the_batch_limit() {
         voyage().rerank("rerank-2.5"),
         RecordingHttpClient::new(RERANK_BODY),
     );
-    assert_eq!(voyage().rerank("rerank-2.5").capabilities(), 1000);
-    assert_eq!(bound.capabilities(), 1000);
+    assert_eq!(
+        voyage()
+            .rerank("rerank-2.5")
+            .describe()
+            .capabilities
+            .max_documents,
+        1000
+    );
+    assert_eq!(bound.capabilities().max_documents, 1000);
 }
 
 #[test]

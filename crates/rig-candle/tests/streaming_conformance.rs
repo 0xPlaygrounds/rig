@@ -11,13 +11,12 @@ use rig_candle::{
     GenerationEvent,
 };
 use rig_core::completion::{CompletionRequest, FinishReason};
-use rig_core::driver::{Model, Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
 use rig_core::error::ProviderError;
 use rig_core::streaming::{BlockId, ToolCallEnd};
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, event_frame, fixtures::drain,
 };
-use rig_core::wire::Mode;
 
 type CandleEvent = GenerationEvent;
 
@@ -29,25 +28,21 @@ impl Transport<Generation> for Scripted {
     fn send(
         &self,
         _request: CompletionRequest,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<CompletionRequest, CandleFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<CandleFrame>, ProviderError> {
         let events = std::mem::take(
             &mut *self
                 .0
                 .lock()
                 .map_err(|_| ProviderError::Provider("script lock poisoned".to_owned()))?,
         );
-        Ok(async move {
+        Ok(Sending::later(async move {
             Opened::new(futures::stream::iter(
                 events
                     .into_iter()
                     .map(|event| event.map(CandleFrame::Event)),
             ))
-        })
+        }))
     }
 }
 

@@ -5,9 +5,8 @@ use super::*;
 use crate::completion::{CompletionResponse, Usage};
 use crate::error::ProviderError;
 use crate::message::{DocumentSourceKind, Image, Reasoning, ReasoningContent};
-use crate::operation::{AdapterOutput, Completion, ImagePart};
+use crate::operation::{AdapterOutput, ImagePart};
 use crate::streaming::{BlockId, CompletionStream, StreamFinal, ToolCallEnd, UnparseableToolInput};
-use crate::wire::Sink;
 
 /// A relayed stream of `items`, as the bus and a handler deliver one.
 fn relayed(items: Vec<Result<StreamEvent, ProviderError>>) -> CompletionStream {
@@ -354,7 +353,7 @@ fn stream_of(
         }
     }
     out.final_record(terminal());
-    Sink::<Completion>::finish(&mut out);
+    out.finish();
     out.into_items()
 }
 
@@ -609,7 +608,7 @@ fn a_stream_without_a_terminal_ends_with_an_error() {
     let mut out = AdapterOutput::new();
     apply(&mut out, Call::TextStart(0));
     apply(&mut out, Call::TextDelta(0, "cut".into()));
-    Sink::<Completion>::finish(&mut out);
+    out.finish();
     let updates = updates_of(out.into_items());
     assert!(matches!(updates.last(), Some(Err(report)) if report.message.contains("terminal")));
     assert!(

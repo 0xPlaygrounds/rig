@@ -13,8 +13,7 @@ use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::model::{ModelInfo, ModelList};
 use crate::operation::{
-    Embedding, EmbeddingCapabilities, ModelListing, Rerank as RerankOp, Transcription,
-    Verify as VerifyOp,
+    Embedding, ModelListing, ModelPage, Rerank as RerankOp, Transcription, Verify as VerifyOp,
 };
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::completion::Usage;
@@ -23,7 +22,8 @@ use crate::providers::openai::embedding::{
 };
 use crate::transcription::TranscriptionRequest;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
+    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent,
+    WireFrame,
 };
 
 #[cfg(feature = "image")]
@@ -237,7 +237,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<Embedding>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Embedding>) {
         if event.usage.is_none() && self.requires_usage {
             out.push(Err(ProviderError::Response(format!(
                 "{} embedding response omitted required usage",
@@ -284,21 +284,17 @@ impl Wire for Embeddings {
     type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        // Only an explicit nonzero declaration permits reply-width mismatch checks.
-        EmbeddingCapabilities::new(
-            self.provider.dialect.quirks.embedding.max_documents,
-            self.resolved_ndims(),
-        )
-        .declaring(self.ndims)
+    /// Only an explicit nonzero declaration permits reply-width mismatch checks.
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name)
+            .model(self.model.as_str())
+            .capabilities(
+                Capabilities::embedding(
+                    self.provider.dialect.quirks.embedding.max_documents,
+                    self.resolved_ndims(),
+                )
+                .declaring(self.ndims),
+            )
     }
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -496,7 +492,7 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<Transcription>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Transcription>) {
         use crate::transcription::NormalizeTranscriptionResponse;
 
         match serde_json::to_value(&event) {
@@ -515,12 +511,8 @@ impl Wire for Transcriptions {
     type Frame = crate::wire::WireFrame;
     type Decoder = TranscriptionsDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
     }
 
     fn encode(&self, request: TranscriptionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -676,7 +668,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
     fn interpret(
         &mut self,
         event: Self::Event,
-        out: &mut Output<crate::operation::ImageGeneration>,
+        out: &mut Out<'_, crate::operation::ImageGeneration>,
     ) {
         use crate::image_generation::ImageGenerationResponse;
         use base64::Engine;
@@ -717,12 +709,8 @@ impl Wire for Images {
     type Frame = crate::wire::WireFrame;
     type Decoder = ImagesDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
     }
 
     fn encode(
@@ -848,7 +836,7 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
     fn interpret(
         &mut self,
         event: Self::Event,
-        out: &mut Output<crate::operation::AudioGeneration>,
+        out: &mut Out<'_, crate::operation::AudioGeneration>,
     ) {
         use base64::Engine;
 
@@ -887,12 +875,8 @@ impl Wire for Speech {
     type Frame = crate::wire::WireFrame;
     type Decoder = SpeechDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
     }
 
     fn encode(
@@ -1035,9 +1019,12 @@ impl Decoder<ModelListing> for ModelsDecoder {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<ModelListing>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, ModelListing>) {
         let models = event.data.into_iter().map(ModelInfo::from).collect();
-        out.push(Ok(ModelList::new(models)));
+        out.push(Ok(ModelPage {
+            models: ModelList::new(models),
+            next: None,
+        }));
     }
 }
 
@@ -1047,11 +1034,12 @@ impl Wire for Models {
     type Frame = crate::wire::WireFrame;
     type Decoder = ModelsDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name)
     }
 
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
+    /// The catalogue is one page, so a cursor never follows.
+    fn encode(&self, _cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
@@ -1141,7 +1129,7 @@ impl Decoder<RerankOp> for RerankDecoder {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<RerankOp>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, RerankOp>) {
         let raw = serde_json::to_value(&event).unwrap_or(serde_json::Value::Null);
         let usage = event
             .usage
@@ -1176,16 +1164,12 @@ impl Wire for Rerank {
     type Frame = crate::wire::WireFrame;
     type Decoder = RerankDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn capabilities(&self) -> usize {
-        self.provider.dialect.quirks.rerank.max_documents
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::rerank(
+                self.provider.dialect.quirks.rerank.max_documents,
+            ))
     }
 
     fn encode(
@@ -1254,8 +1238,8 @@ impl Wire for Verify {
     type Frame = crate::wire::WireFrame;
     type Decoder = VerifyDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name)
     }
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {

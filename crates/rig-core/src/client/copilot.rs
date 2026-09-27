@@ -45,7 +45,7 @@ impl Copilot {
 
     /// The models this session can use.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        self.model(self.config.models()).call(()).await
+        self.model(self.config.models()).list().await
     }
 
     /// A client on this client's transport, configured with the session

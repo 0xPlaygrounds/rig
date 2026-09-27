@@ -13,7 +13,7 @@ use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
 use crate::message::{self, MimeType};
 use crate::telemetry::GenAiOperation;
-use crate::wire::Mode;
+use crate::wire::{Descriptor, Mode};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use serde_json::{Map, Value};
 use url::form_urlencoded;
@@ -51,26 +51,21 @@ impl crate::wire::Wire for Interactions {
     type Frame = crate::wire::WireFrame;
     type Decoder = streaming::InteractionsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn telemetry(&self, mode: Mode) -> GenAiOperation {
-        match mode {
-            Mode::Unary => GenAiOperation::Interactions,
-            Mode::Streaming => GenAiOperation::InteractionsStreaming,
-        }
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .telemetry(|mode| match mode {
+                Mode::Unary => GenAiOperation::Interactions,
+                Mode::Streaming => GenAiOperation::InteractionsStreaming,
+            })
     }
 
     fn encode(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         mode: crate::wire::Mode,
     ) -> Result<crate::wire::Encoded, EncodeError> {
+        crate::message::retain_replayable_reasoning(&mut request.chat_history, &[PROVIDER_NAME]);
         // `stream` is part of the request body on this wire, so the mode is
         // in the bytes as well as in the path.
         let streaming = matches!(mode, crate::wire::Mode::Streaming);
@@ -151,20 +146,12 @@ impl crate::wire::Wire for InteractionResume {
     type Frame = crate::wire::WireFrame;
     type Decoder = streaming::InteractionsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
     /// The interaction names its own model; this wire addresses no model id.
-    fn id(&self) -> Option<&str> {
-        None
-    }
-
-    fn telemetry(&self, mode: Mode) -> GenAiOperation {
-        match mode {
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME).telemetry(|mode| match mode {
             Mode::Unary => GenAiOperation::Interactions,
             Mode::Streaming => GenAiOperation::InteractionsStreaming,
-        }
+        })
     }
 
     /// Reads an existing interaction, so the request carries no body and the

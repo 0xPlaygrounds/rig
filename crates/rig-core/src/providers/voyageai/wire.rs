@@ -10,10 +10,11 @@ use crate::client::env::{self, EnvError};
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
-use crate::operation::{Embedding, EmbeddingCapabilities, Rerank as RerankOp, RerankRequest};
+use crate::operation::{Embedding, Rerank as RerankOp, RerankRequest};
 use crate::rerank::{RerankResponse, RerankResult};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
+    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
+    WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -161,12 +162,10 @@ impl Wire for Embeddings {
     type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::embedding(MAX_DOCUMENTS, self.ndims))
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -195,10 +194,6 @@ impl Wire for Embeddings {
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         EmbeddingsDecoder
     }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(MAX_DOCUMENTS, self.ndims)
-    }
 }
 
 /// Decodes one `/embeddings` reply.
@@ -211,7 +206,7 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
         crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["data"])
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Output<Embedding>) {
+    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, Embedding>) {
         let raw = match serde_json::to_value(&reply) {
             Ok(raw) => raw,
             Err(error) => {
@@ -288,12 +283,10 @@ impl Wire for Rerank {
     type Frame = crate::wire::WireFrame;
     type Decoder = RerankDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::rerank(MAX_RERANK_DOCUMENTS))
     }
 
     fn encode(&self, request: RerankRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -320,10 +313,6 @@ impl Wire for Rerank {
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         RerankDecoder
-    }
-
-    fn capabilities(&self) -> usize {
-        MAX_RERANK_DOCUMENTS
     }
 }
 
@@ -372,7 +361,7 @@ impl Decoder<RerankOp> for RerankDecoder {
         )
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Output<RerankOp>) {
+    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, RerankOp>) {
         let reply = match reply {
             RerankReply::Reply(reply) => reply,
             // Preserve the provider body; the driver adds the actual HTTP status.

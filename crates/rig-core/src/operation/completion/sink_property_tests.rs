@@ -183,7 +183,7 @@ fn canonical(
     for item in items {
         out.push(item);
     }
-    Sink::<Completion>::finish(&mut out);
+    out.finish();
     out.into_items()
 }
 
@@ -226,7 +226,7 @@ fn once(self_closing: bool, steps: Vec<Step>) -> Vec<Result<StreamEvent, Provide
     for step in steps {
         apply(&mut out, step);
     }
-    Sink::<Completion>::finish(&mut out);
+    out.finish();
     out.into_items()
 }
 
@@ -470,7 +470,7 @@ fn an_error_item_passed_to_error_finishes_the_call_it_reports() {
             &mut out,
             Step::ToolEnd(0, UnparseableToolInput::EmptyObject),
         );
-        Sink::<Completion>::finish(&mut out);
+        out.finish();
         assert_eq!(tool_calls(&out.into_items()), 0, "relayed: {relayed}");
     }
 }
@@ -493,7 +493,7 @@ fn a_report_of_empty_input_does_not_end_a_call_without_arguments() {
         },
     )));
     apply(&mut out, Step::ToolEnd(0, UnparseableToolInput::Error));
-    Sink::<Completion>::finish(&mut out);
+    out.finish();
     assert_eq!(
         tool_calls(&out.into_items()),
         1,
@@ -646,7 +646,7 @@ fn sink_over(items: &[Result<StreamEvent, ErrorReport>]) -> Vec<Result<StreamEve
         );
         drained.extend(out.drain());
     }
-    Sink::<Completion>::finish(&mut out);
+    out.finish();
     drained.extend(out.drain());
     drained
         .iter()

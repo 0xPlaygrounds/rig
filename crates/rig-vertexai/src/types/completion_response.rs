@@ -7,12 +7,11 @@ use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
 };
-use rig_core::operation::{AdapterOutput, Completion, ImagePart};
+use rig_core::operation::{Completion, ImagePart};
 use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
 use rig_core::providers::internal::wire;
 use rig_core::streaming::StreamFinal;
-use rig_core::wire::Decoder;
-use rig_core::wire::{TypedEvent, WireEvent};
+use rig_core::wire::{Decoder, Out, TypedEvent, WireEvent};
 
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
@@ -43,10 +42,7 @@ pub fn map_finish_reason(
 /// Decodes Vertex AI's whole `GenerateContent` reply into the events a
 /// stream sends for it; a streamed call re-emits the same reply.
 #[derive(Default)]
-pub struct VertexDecoder {
-    /// The reply's document, for the response's `raw`.
-    document: Option<serde_json::Value>,
-}
+pub struct VertexDecoder;
 
 impl Decoder<Completion, vertexai::model::GenerateContentResponse> for VertexDecoder {
     type Event = vertexai::model::GenerateContentResponse;
@@ -58,14 +54,18 @@ impl Decoder<Completion, vertexai::model::GenerateContentResponse> for VertexDec
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, response: Self::Event, out: &mut AdapterOutput) {
+    fn interpret(
+        &mut self,
+        response: vertexai::model::GenerateContentResponse,
+        out: &mut Out<'_, Completion>,
+    ) {
         // The provider's own document, captured before the response is
         // consumed into normalized content.
         let raw = match serde_json::to_value(&response) {
             Ok(raw) => raw,
             Err(error) => return out.error(error.into()),
         };
-        self.document = Some(raw.clone());
+        out.document(raw.clone());
         let choice = match assistant_content(&response) {
             Ok(choice) => choice,
             Err(error) => return out.error(error),
@@ -85,10 +85,6 @@ impl Decoder<Completion, vertexai::model::GenerateContentResponse> for VertexDec
                     Some(response.response_id.clone()).filter(|id| !id.is_empty()),
                 ),
         );
-    }
-
-    fn document(&self) -> Option<serde_json::Value> {
-        self.document.clone()
     }
 }
 

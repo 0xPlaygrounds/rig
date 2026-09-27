@@ -9,13 +9,14 @@
 //! ```
 
 use aws_smithy_types::Blob;
-use rig_core::driver::{Observation, Opened, Transport};
+use rig_core::driver::{Exchange, Opened, Sending, Transport};
 use rig_core::embeddings::{self, Embedding};
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::operation::{EmbeddingCapabilities, Events};
+
 use rig_core::providers::internal::wire;
-use rig_core::wire::{Decoder, Mode, Output, Sink, Wire};
-use rig_core::wire::{TypedEvent, WireEvent};
+use rig_core::wire::{
+    Capabilities, Decoder, Descriptor, End, Mode, Out, TypedEvent, Wire, WireEvent,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::client::BedrockRuntime;
@@ -83,16 +84,13 @@ impl Wire for Embeddings {
     type Frame = EmbeddingFrame;
     type Decoder = EmbeddingsDecoder;
 
-    fn name(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(1024, self.ndims.unwrap_or_default())
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::embedding(
+                1024,
+                self.ndims.unwrap_or_default(),
+            ))
     }
 
     fn encode(&self, texts: Vec<String>, _mode: Mode) -> Result<EmbeddingBatch, EncodeError> {
@@ -122,17 +120,13 @@ impl Transport<Embeddings> for BedrockRuntime {
     fn send(
         &self,
         batch: EmbeddingBatch,
-        _mode: Mode,
-        _observation: Option<Observation>,
-    ) -> Result<
-        impl Future<Output = Opened<EmbeddingBatch, EmbeddingFrame>> + Send + 'static + use<>,
-        ProviderError,
-    > {
+        _exchange: Exchange,
+    ) -> Result<Sending<EmbeddingFrame>, ProviderError> {
         let runtime = self.clone();
         // Every call completes inside the send, so the calls run under the
         // attempt's span; sequential requests limit load against account
         // quotas.
-        Ok(async move {
+        Ok(Sending::later(async move {
             let client = runtime.inner().await.clone();
             let mut frames = Vec::with_capacity(batch.texts.len());
             for (document, body) in batch.texts {
@@ -157,7 +151,7 @@ impl Transport<Embeddings> for BedrockRuntime {
                 }));
             }
             Opened::new(futures::stream::iter(frames))
-        })
+        }))
     }
 }
 
@@ -181,7 +175,7 @@ impl Decoder<rig_core::operation::Embedding, EmbeddingFrame> for EmbeddingsDecod
     fn interpret(
         &mut self,
         frame: EmbeddingFrame,
-        out: &mut Events<rig_core::operation::Embedding>,
+        out: &mut Out<'_, rig_core::operation::Embedding>,
     ) {
         let EmbeddingFrame::Embedded { document, response } = frame else {
             if let EmbeddingFrame::Failed(error) = frame {
@@ -205,7 +199,10 @@ impl Decoder<rig_core::operation::Embedding, EmbeddingFrame> for EmbeddingsDecod
         });
     }
 
-    fn finish(&mut self, out: &mut Output<rig_core::operation::Embedding>) {
+    fn end(&mut self, out: &mut Out<'_, rig_core::operation::Embedding>, end: End) {
+        if end != End::Eof {
+            return;
+        }
         out.push(match self.failure.take() {
             None => Ok(embeddings::EmbeddingResponse::new(
                 std::mem::take(&mut self.embeddings),

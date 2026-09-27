@@ -13,10 +13,10 @@ use serde_json::json;
 
 use crate::embeddings;
 use crate::error::EncodeError;
-use crate::operation::EmbeddingCapabilities;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
+    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent,
+    WireFrame,
 };
 
 /// `gemini-embedding-001` embedding model (3072 dimensions by default)
@@ -73,12 +73,10 @@ impl Wire for Embeddings {
     type Frame = crate::wire::WireFrame;
     type Decoder = EmbeddingsDecoder;
 
-    fn name(&self) -> &str {
-        super::PROVIDER_NAME
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(super::PROVIDER_NAME)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::embedding(1024, self.ndims))
     }
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
@@ -125,10 +123,6 @@ impl Wire for Embeddings {
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         EmbeddingsDecoder
     }
-
-    fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(1024, self.ndims)
-    }
 }
 
 /// Decode a `batchEmbedContents` reply containing vectors without usage or identity.
@@ -142,7 +136,7 @@ impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
         classify_marker_keyed_frame(&frame.as_str(), &["embeddings"])
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<crate::operation::Embedding>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, crate::operation::Embedding>) {
         let vectors = event
             .embeddings
             .into_iter()

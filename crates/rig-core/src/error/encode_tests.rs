@@ -208,7 +208,7 @@ fn provider_encode_failures_classify_as_request_building() {
         ),
         (
             "anthropic models",
-            failure(anthropic.models().encode((), Mode::Unary)),
+            failure(anthropic.models().encode(None, Mode::Unary)),
             "RequestError: invalid uri character",
         ),
         (

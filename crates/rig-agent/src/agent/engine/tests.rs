@@ -30,7 +30,7 @@ use crate::tool::{
     Tool, ToolContext, ToolExecutionError, ToolSet,
     server::{ToolServer, ToolServerHandle},
 };
-use rig_core::driver::Local;
+use rig_core::driver::{Exchange, Local, Sending};
 use rig_core::error::ProviderError;
 use rig_core::message::{
     AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
@@ -6092,33 +6092,24 @@ impl rig_core::driver::Transport<Local<Completion>> for PausingScript {
     fn send(
         &self,
         payload: crate::completion::CompletionRequest,
-        mode: rig_core::wire::Mode,
-        observation: Option<rig_core::driver::Observation>,
+        exchange: Exchange,
     ) -> Result<
-        impl Future<
-            Output = rig_core::driver::Opened<
-                crate::completion::CompletionRequest,
-                Result<StreamEvent, rig_core::error::ProviderError>,
-            >,
-        >
-        + rig_core::wasm_compat::WasmCompatSend
-        + 'static
-        + use<>,
+        Sending<Result<StreamEvent, rig_core::error::ProviderError>>,
         rig_core::error::ProviderError,
     > {
         let this = self.clone();
-        Ok(async move {
-            this.inspect_and_pause(&payload).await;
-            match rig_core::driver::Transport::<Local<Completion>>::send(
-                &this.inner,
-                payload,
-                mode,
-                observation,
-            ) {
-                Ok(sending) => sending.await,
-                Err(error) => rig_core::driver::Opened::failed(error),
-            }
-        })
+        Ok(Sending::each(
+            futures::stream::once(async move {
+                this.inspect_and_pause(&payload).await;
+                rig_core::driver::Transport::<Local<Completion>>::send(
+                    &this.inner,
+                    payload,
+                    exchange,
+                )
+                .unwrap_or_else(|error| Sending::opened(rig_core::driver::Opened::failed(error)))
+            })
+            .flatten(),
+        ))
     }
 }
 

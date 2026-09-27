@@ -1356,12 +1356,16 @@ fn the_mode_chooses_the_query_and_the_framing_and_the_key_is_a_header() {
 fn the_interactions_wire_keeps_its_span_names() {
     let wire = interactions_wire();
     assert_eq!(
-        Wire::telemetry(&wire, crate::wire::Mode::Unary),
-        GenAiOperation::Interactions
+        wire.describe()
+            .telemetry
+            .map(|telemetry| telemetry(crate::wire::Mode::Unary)),
+        Some(GenAiOperation::Interactions)
     );
     assert_eq!(
-        Wire::telemetry(&wire, crate::wire::Mode::Streaming),
-        GenAiOperation::InteractionsStreaming
+        wire.describe()
+            .telemetry
+            .map(|telemetry| telemetry(crate::wire::Mode::Streaming)),
+        Some(GenAiOperation::InteractionsStreaming)
     );
 }
 

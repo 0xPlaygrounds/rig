@@ -29,7 +29,7 @@ use crate::providers::internal::{
     with_query_pairs,
 };
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
+    Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame,
 };
 
 /// The `cachedContents` collection path.
@@ -233,9 +233,12 @@ pub enum CachedContentRequest {
     Create(NewCachedContent),
     /// `GET /v1beta/cachedContents/<id>`; answers with the resource.
     Get(String),
-    /// `GET /v1beta/cachedContents?pageSize=…`, followed on `nextPageToken`;
-    /// answers with the pages' entries.
-    List,
+    /// `GET /v1beta/cachedContents?pageSize=…`, after `page_token` when
+    /// continuing; answers with one page.
+    List {
+        /// The previous page's `nextPageToken`; `None` for the first page.
+        page_token: Option<String>,
+    },
     /// `PATCH /v1beta/cachedContents/<id>?updateMask=…`; answers with the
     /// resource.
     UpdateExpiry { name: String, expiry: CacheExpiry },
@@ -281,9 +284,20 @@ impl CachedContentReply {
         }
     }
 
-    /// The entries `list` asks for, as the fold concatenated the pages. An
-    /// empty collection is answered with the empty object, which is
-    /// [`Self::Acknowledged`].
+    /// The cursor of the page after this one. An empty cursor counts as
+    /// absent: re-sending an empty `pageToken` returns the same page forever.
+    pub fn next_page_token(&self) -> Option<String> {
+        match self {
+            Self::Page(page) => page
+                .next_page_token
+                .clone()
+                .filter(|token| !token.is_empty()),
+            _ => None,
+        }
+    }
+
+    /// The entries of one listing page. An empty collection is answered
+    /// with the empty object, which is [`Self::Acknowledged`].
     pub fn entries(self) -> Result<Vec<CachedContent>, ProviderError> {
         match self {
             Self::Page(page) => Ok(page.cached_contents),
@@ -357,8 +371,8 @@ impl Wire for CachedContents {
     type Frame = crate::wire::WireFrame;
     type Decoder = CachedContentsDecoder;
 
-    fn name(&self) -> &str {
-        super::PROVIDER_NAME
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(super::PROVIDER_NAME)
     }
 
     /// A resource call never streams, so both modes send the one request.
@@ -374,7 +388,9 @@ impl Wire for CachedContents {
             CachedContentRequest::Get(name) => {
                 http::Request::get(self.provider.uri(&resource_path(&name)?)).body(Body::empty())?
             }
-            CachedContentRequest::List => self.list_request(None)?,
+            CachedContentRequest::List { page_token } => {
+                self.list_request(page_token.as_deref())?
+            }
             CachedContentRequest::UpdateExpiry { name, expiry } => {
                 let (patch, mask) = expiry_patch(expiry)?;
                 // Handle validation prevents query injection and retargeting the patch.
@@ -389,23 +405,13 @@ impl Wire for CachedContents {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn page(&self, cursor: &str) -> Result<Encoded, EncodeError> {
-        Ok(Encoded::new(
-            self.list_request(Some(cursor))?,
-            Framing::Whole,
-        ))
-    }
-
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        CachedContentsDecoder { next: None }
+        CachedContentsDecoder
     }
 }
 
-/// Decodes one `cachedContents` reply and follows a listing's cursor.
-pub struct CachedContentsDecoder {
-    /// The cursor the page just interpreted named, when it named a usable one.
-    next: Option<String>,
-}
+/// Decodes one `cachedContents` reply.
+pub struct CachedContentsDecoder;
 
 impl Decoder<operation::ContextCache> for CachedContentsDecoder {
     type Event = CachedContentReply;
@@ -419,20 +425,8 @@ impl Decoder<operation::ContextCache> for CachedContentsDecoder {
         })
     }
 
-    fn interpret(&mut self, mut reply: Self::Event, out: &mut Output<operation::ContextCache>) {
-        if let CachedContentReply::Page(page) = &mut reply {
-            // An empty cursor counts as absent: re-sending an empty
-            // `pageToken` returns the same page forever.
-            self.next = page
-                .next_page_token
-                .take()
-                .filter(|token| !token.is_empty());
-        }
+    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, operation::ContextCache>) {
         out.push(Ok(reply));
-    }
-
-    fn cursor(&self) -> Option<String> {
-        self.next.clone()
     }
 }
 

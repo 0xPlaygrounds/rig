@@ -1,9 +1,7 @@
 use crate::driver::WireDriver;
-use crate::operation::AdapterOutput;
 use crate::operation::Completion;
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, ToolCallEnd};
-use crate::wire::Decoder;
-use crate::wire::WireEvent;
+use crate::wire::{Decoder, Out, WireEvent};
 
 /// A scripted adapter: each frame index replays its preloaded batch.
 struct Scripted {
@@ -17,15 +15,13 @@ impl Decoder<Completion, usize> for Scripted {
         WireEvent::Known(frame)
     }
 
-    fn interpret(&mut self, event: usize, out: &mut AdapterOutput) {
+    fn interpret(&mut self, event: usize, out: &mut Out<'_, Completion>) {
         if let Some(batch) = self.batches.get_mut(event) {
             for event in std::mem::take(batch) {
                 out.push(Ok(event));
             }
         }
     }
-
-    fn finish(&mut self, _out: &mut AdapterOutput) {}
 }
 
 fn drive(batches: Vec<Vec<StreamEvent>>) {

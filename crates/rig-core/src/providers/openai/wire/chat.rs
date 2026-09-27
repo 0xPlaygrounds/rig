@@ -25,8 +25,8 @@ use crate::providers::openai::completion::{
 };
 use crate::streaming::{BlockId, Delta, MintKind, StreamEvent, ToolCallEnd, UnparseableToolInput};
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Decoder, Encoded, Framing, Mode,
-    ObservationSink, Output, Wire, WireEvent, WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Capabilities, Decoder, Descriptor, Encoded,
+    End, Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
 
 use super::dto::{
@@ -56,7 +56,7 @@ pub struct Chat {
 impl Chat {
     pub(crate) fn encode_with_headers(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
             &OpenAIConfig,
@@ -64,6 +64,7 @@ impl Chat {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
+        super::scope_reasoning(&self.provider.dialect, &self.model, &mut request);
         let quirks = &self.provider.dialect.quirks;
         // Azure's deployment URL remains pinned to the handle, not a request override.
         let uri = self.provider.uri(
@@ -135,6 +136,7 @@ impl Chat {
         };
         Ok(Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header)
+            .with_projection(ChatDecoder::project)
             .with_route(Some(self.provider.dialect.quirks.completion_path)))
     }
 
@@ -756,19 +758,16 @@ impl Wire for Chat {
     type Frame = crate::wire::WireFrame;
     type Decoder = ChatDecoder;
 
-    fn name(&self) -> &str {
-        self.provider.dialect.name
-    }
-
-    fn id(&self) -> Option<&str> {
-        Some(&self.model)
-    }
-
-    fn replay_issuers(&self, model: Option<&str>) -> Option<Vec<String>> {
-        Some(super::replay_issuers(
-            &self.provider.dialect,
-            model.unwrap_or(&self.model),
-        ))
+    /// Format deferral permits tool composition; dialects without schema
+    /// support require the agent's tool-mode enforcement instead.
+    fn describe(&self) -> Descriptor<'_> {
+        Descriptor::new(self.provider.dialect.name)
+            .model(self.model.as_str())
+            .capabilities(Capabilities::completion(
+                ProviderCapabilities::default().with_native_output_tool_composition(
+                    self.provider.dialect.quirks.supports_response_format,
+                ),
+            ))
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
@@ -780,14 +779,6 @@ impl Wire for Chat {
             self.provider.dialect.name,
             self.provider.dialect.quirks,
             mode,
-        )
-    }
-
-    fn capabilities(&self) -> ProviderCapabilities {
-        // Format deferral permits tool composition; dialects without schema support
-        // require the agent's tool-mode enforcement instead.
-        ProviderCapabilities::default().with_native_output_tool_composition(
-            self.provider.dialect.quirks.supports_response_format,
         )
     }
 }
@@ -908,7 +899,7 @@ impl ChatDecoder {
     }
 
     /// One `chat.completion.chunk`.
-    fn interpret_chunk(&mut self, mut frame: ChatFrame, out: &mut Output<Completion>) {
+    fn interpret_chunk(&mut self, mut frame: ChatFrame, out: &mut AdapterOutput) {
         self.saw_any_valid_frame = true;
         self.absorb_metadata(&mut frame);
         let Some(choice) = frame.into_primary() else {
@@ -1088,7 +1079,7 @@ impl ChatDecoder {
 
     /// The unary `chat.completion` body: synthesize the events a stream of
     /// the same turn would have pushed.
-    fn interpret_whole(&mut self, mut frame: ChatFrame, out: &mut Output<Completion>) {
+    fn interpret_whole(&mut self, mut frame: ChatFrame, out: &mut AdapterOutput) {
         self.saw_any_valid_frame = true;
         let Some(choice) = frame.primary() else {
             out.error(ProviderError::Response(
@@ -1221,7 +1212,7 @@ impl ChatDecoder {
     }
 
     /// Build and push the provider's terminal record.
-    fn emit_terminal(&mut self, out: &mut Output<Completion>) {
+    fn emit_terminal(&mut self, out: &mut AdapterOutput) {
         // A gateway's reasoning belongs to the upstream model that produced it.
         let issuer = self
             .quirks
@@ -1253,7 +1244,7 @@ impl ChatDecoder {
     }
 }
 
-use crate::operation::Completion;
+use crate::operation::{AdapterOutput, Completion};
 
 impl Decoder<Completion> for ChatDecoder {
     type Event = ChatEvent;
@@ -1297,7 +1288,7 @@ impl Decoder<Completion> for ChatDecoder {
         })
     }
 
-    fn interpret(&mut self, event: ChatEvent, out: &mut Output<Completion>) {
+    fn interpret(&mut self, event: ChatEvent, out: &mut Out<'_, Completion>) {
         match event {
             ChatEvent::Chunk(frame) => self.interpret_chunk(frame, out),
             ChatEvent::Whole(frame) => self.interpret_whole(frame, out),
@@ -1319,9 +1310,23 @@ impl Decoder<Completion> for ChatDecoder {
                 self.failed = true;
             }
         }
+        // A failed turn ends the reply: later frames cannot report it
+        // complete.
+        if self.failed {
+            out.end_reply();
+        }
     }
 
-    fn finish(&mut self, out: &mut Output<Completion>) {
+    fn end(&mut self, out: &mut Out<'_, Completion>, end: End) {
+        match end {
+            End::Eof => self.finish(out),
+            End::Failed => self.flush_before_terminal_error(out),
+        }
+    }
+}
+
+impl ChatDecoder {
+    fn finish(&mut self, out: &mut AdapterOutput) {
         // Tool calls the provider fully delivered are content, so a truncated
         // reply still flushes them. Partial calls drop in the accumulator.
         let output_length_truncation = matches!(
@@ -1361,7 +1366,7 @@ impl Decoder<Completion> for ChatDecoder {
         self.emit_terminal(out);
     }
 
-    fn flush_before_terminal_error(&mut self, out: &mut Output<Completion>) {
+    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
         // Fully-delivered tool calls flush before the terminal error reaches
         // the consumer, so a first-`Err`-stop consumer sees them too.
         for slot in self.open_tool_calls.drain_ordered() {
@@ -1369,15 +1374,11 @@ impl Decoder<Completion> for ChatDecoder {
         }
     }
 
-    fn is_finished(&self) -> bool {
-        self.failed
-    }
-
     /// Verdict, model, response id, usage and error envelope, read off a raw
     /// payload before normalization discards them. The driver calls it for
     /// the unary reply and for every stream frame without anyone having to
     /// attach it.
-    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
+    pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(payload) = serde_json::from_slice::<ObservedPayload>(payload) else {
             return;
         };

@@ -387,15 +387,13 @@ impl crate::wire::Decoder<Completion> for ChatDecoder {
         })
     }
 
-    fn interpret(&mut self, event: ChatEvent, out: &mut AdapterOutput) {
+    /// EOF without message-end is truncation, not successful completion, so
+    /// the decoder adds nothing at the end of the reply.
+    fn interpret(&mut self, event: ChatEvent, out: &mut crate::wire::Out<'_, Completion>) {
         match event {
             ChatEvent::Stream(event) => self.interpret_stream(event, out),
             ChatEvent::Reply(reply) => self.interpret_reply(reply, out),
         }
-    }
-
-    fn finish(&mut self, _out: &mut AdapterOutput) {
-        // EOF without message-end is truncation, not successful completion.
     }
 }
 

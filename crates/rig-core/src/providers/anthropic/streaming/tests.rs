@@ -31,7 +31,7 @@ fn interpret_items(
     event: StreamingEvent,
 ) -> Vec<Result<StreamEvent, ProviderError>> {
     let mut out = AdapterOutput::new();
-    adapter.interpret(event, &mut out);
+    adapter.interpret_event(event, &mut out);
     out.into_items()
 }
 
@@ -44,7 +44,7 @@ fn interpret_all(
 ) -> Vec<Result<StreamEvent, ProviderError>> {
     let mut out = AdapterOutput::new();
     for event in events {
-        adapter.interpret(event, &mut out);
+        adapter.interpret_event(event, &mut out);
     }
     out.into_items()
 }
@@ -1240,7 +1240,7 @@ async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
     let mut adapter = adapter();
     let mut out = AdapterOutput::new();
 
-    adapter.interpret(
+    adapter.interpret_event(
         StreamingEvent::ContentBlockStart {
             index: 0,
             content_block: Content::ServerToolUse {
@@ -1256,7 +1256,7 @@ async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         "server_tool_use start should be accumulated until its input JSON is complete"
     );
 
-    adapter.interpret(
+    adapter.interpret_event(
         StreamingEvent::ContentBlockDelta {
             index: 0,
             delta: ContentDelta::InputJsonDelta {
@@ -1270,14 +1270,14 @@ async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         "server_tool_use input JSON should not be emitted as a Rig tool-call delta"
     );
 
-    adapter.interpret(StreamingEvent::ContentBlockStop { index: 0 }, &mut out);
+    adapter.interpret_event(StreamingEvent::ContentBlockStop { index: 0 }, &mut out);
     assert_eq!(
         out.len(),
         1,
         "server_tool_use stop should produce completed raw metadata"
     );
 
-    adapter.interpret(
+    adapter.interpret_event(
         StreamingEvent::ContentBlockStart {
             index: 1,
             content_block: Content::WebSearchToolResult {
@@ -1298,7 +1298,7 @@ async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         "web_search_tool_result block should produce raw metadata"
     );
 
-    adapter.interpret(
+    adapter.interpret_event(
         StreamingEvent::ContentBlockStart {
             index: 2,
             content_block: Content::Text {
@@ -1309,7 +1309,7 @@ async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         },
         &mut out,
     );
-    adapter.interpret(
+    adapter.interpret_event(
         StreamingEvent::ContentBlockDelta {
             index: 2,
             delta: ContentDelta::TextDelta {
@@ -1318,7 +1318,7 @@ async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         },
         &mut out,
     );
-    adapter.interpret(
+    adapter.interpret_event(
         StreamingEvent::ContentBlockDelta {
             index: 2,
             delta: ContentDelta::CitationsDelta {
@@ -1335,7 +1335,7 @@ async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
         },
         &mut out,
     );
-    adapter.interpret(message_delta("end_turn", PartialUsage::default()), &mut out);
+    adapter.interpret_event(message_delta("end_turn", PartialUsage::default()), &mut out);
 
     let mut stream = opened(out.into_items());
     while stream.next().await.is_some() {}
@@ -1517,7 +1517,7 @@ fn novel_nested_delta_type_is_a_known_noop() {
 
     let mut adapter = adapter();
     let mut out = AdapterOutput::new();
-    adapter.interpret(event, &mut out);
+    adapter.interpret_event(event, &mut out);
     assert!(out.is_empty(), "an unmodeled nested delta is a no-op");
 }
 
@@ -1539,7 +1539,7 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
     let crate::wire::WireEvent::Known(event) = adapter.classify(start) else {
         panic!("message_start must classify Known");
     };
-    adapter.interpret(event, &mut out);
+    adapter.interpret_event(event, &mut out);
 
     let delta = WireFrame::Text(
         r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7,"input_tokens":3,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0}}"#
@@ -1548,7 +1548,7 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
     let crate::wire::WireEvent::Known(event) = adapter.classify(delta) else {
         panic!("message_delta must classify Known");
     };
-    adapter.interpret(event, &mut out);
+    adapter.interpret_event(event, &mut out);
 
     let terminal = out
         .iter()
@@ -1625,7 +1625,7 @@ fn top_level_error_event_surfaces_as_a_provider_error() {
 
     let mut adapter = adapter();
     let mut out = AdapterOutput::new();
-    adapter.interpret(event, &mut out);
+    adapter.interpret_event(event, &mut out);
 
     assert_eq!(out.len(), 1, "the error envelope maps to one error item");
     let Some(Err(error)) = out.into_items().pop() else {
@@ -1646,7 +1646,7 @@ fn message_start_with_null_message_is_a_known_noop() {
 
     let mut adapter = adapter();
     let mut out = AdapterOutput::new();
-    adapter.interpret(event, &mut out);
+    adapter.interpret_event(event, &mut out);
     assert!(out.is_empty(), "a message-less message_start is a no-op");
 }
 
@@ -1657,7 +1657,7 @@ async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
     adapter.message_id = Some("msg_1".to_string());
     adapter.response_model = Some(CLAUDE_OPUS_4_8.to_string());
     out.text("hi");
-    adapter.interpret(
+    adapter.interpret_event(
         message_delta(
             "max_tokens",
             PartialUsage {
@@ -1704,7 +1704,7 @@ async fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_c
         crate::streaming::BlockId::wire("toolu_1"),
         ToolCallEnd::whole("add", json!({"x": 1})).with_tool_id("toolu_1"),
     );
-    adapter.interpret(message_delta("end_turn", PartialUsage::default()), &mut out);
+    adapter.interpret_event(message_delta("end_turn", PartialUsage::default()), &mut out);
 
     let mut stream = opened(out.into_items());
     while stream.next().await.is_some() {}
@@ -2130,8 +2130,8 @@ fn an_empty_tool_use_id_is_minted_not_keyed_on_the_empty_string() {
 
 /// The Messages projection, driven through [`crate::driver`].
 ///
-/// The projector is reached as [`crate::wire::Decoder::project`], which the
-/// driver calls on every raw payload — the rejection body included — so
+/// The projector rides on the wire's [`crate::wire::Encoded`], and the HTTP
+/// transport calls it on every raw payload — the rejection body included — so
 /// these cells exercise the wire and the driver together rather than the
 /// projector in isolation. That is the only way the *closure* facts
 /// (`Started`, `Response`, `Finished`) are observable at all: they belong to
