@@ -284,6 +284,7 @@
             "output_tokens": 83,
             "total_tokens": 484,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -857,6 +858,7 @@
             "output_tokens": 11,
             "total_tokens": 635,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -1375,6 +1377,7 @@
             "output_tokens": 53,
             "total_tokens": 827,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -1939,6 +1942,7 @@
             "output_tokens": 11,
             "total_tokens": 855,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -2552,6 +2556,7 @@
             "output_tokens": 59,
             "total_tokens": 976,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -3211,6 +3216,7 @@
             "output_tokens": 11,
             "total_tokens": 1004,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -3919,6 +3925,7 @@
             "output_tokens": 47,
             "total_tokens": 1198,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -4673,6 +4680,7 @@
             "output_tokens": 11,
             "total_tokens": 1226,
             "cached_input_tokens": 1152,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -5460,6 +5468,7 @@
             "output_tokens": 3,
             "total_tokens": 1285,
             "cached_input_tokens": 1152,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": "msg_051d233ca58f0224006ab3969764bc87d09b4c9d1cf8e6e5c0",

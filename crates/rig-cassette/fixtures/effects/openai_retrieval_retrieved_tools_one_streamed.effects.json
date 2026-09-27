@@ -209,6 +209,7 @@
             "output_tokens": 18,
             "total_tokens": 96,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -221,7 +222,8 @@
             "usage": {
               "input_tokens": 78,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 18,
               "output_tokens_details": {
@@ -370,6 +372,7 @@
             "output_tokens": 18,
             "total_tokens": 96,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
@@ -382,7 +385,8 @@
             "usage": {
               "input_tokens": 78,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 18,
               "output_tokens_details": {
@@ -572,6 +576,7 @@
             "output_tokens": 3,
             "total_tokens": 107,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": "msg_06d2eb07f6220f2a006ab3969572e487d0898a7a7cdf5c3a87",
@@ -584,7 +589,8 @@
             "usage": {
               "input_tokens": 104,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 3,
               "output_tokens_details": {
@@ -645,6 +651,7 @@
             "output_tokens": 3,
             "total_tokens": 107,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
@@ -657,7 +664,8 @@
             "usage": {
               "input_tokens": 104,
               "input_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "output_tokens": 3,
               "output_tokens_details": {
