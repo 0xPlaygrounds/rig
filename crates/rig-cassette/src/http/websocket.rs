@@ -6,17 +6,18 @@
 //!
 //! A turn is one fixture interaction, in the same format as HTTP exchanges:
 //! the request is the connection's upgrade (path and scrubbed headers) with
-//! the client's message as its body, and the response is `101` with the
-//! messages the provider sent until the next client message, as `data:` lines.
-//! Replay matches turns in order; a turn that is not the next one, or a
-//! connection that stays unread, fails the replay when the session finishes.
+//! the client's message as its body, and the response is `101` with the text
+//! the provider sent until the next client message, as `data:` lines. Replay
+//! plays turns strictly in order: a message that is not the next turn's, or
+//! one sent before the previous turn was read, is refused, and a turn left
+//! unplayed or unread fails the replay when the session finishes.
 //!
 //! ```no_run
 //! # use rig_cassette::http::websocket::WebSocketCassette;
 //! # async fn test(live: impl rig_core::ws_client::WebSocketClientExt) {
+//! let root = std::path::Path::new("fixtures/cassettes");
 //! let cassette =
-//!     WebSocketCassette::start("fixtures/cassettes".as_ref(), "openai", "websocket/turn", "https://api.openai.com/v1")
-//!         .await;
+//!     WebSocketCassette::start(root, "openai", "websocket/turn", "https://api.openai.com/v1").await;
 //! let backend = cassette.backend(live);
 //! // ... connect through `backend` and run the turns ...
 //! cassette.finish().await;
@@ -73,6 +74,16 @@ struct Replay {
     next: usize,
     inbound: VecDeque<String>,
     misses: Vec<String>,
+    /// `finish` checked the replay; the drop guard has nothing to add.
+    checked: bool,
+}
+
+impl Drop for Replay {
+    fn drop(&mut self) {
+        if !self.checked && !std::thread::panicking() {
+            panic!("a websocket cassette replay was dropped without `finish`");
+        }
+    }
 }
 
 struct ReplayTurn {
@@ -84,6 +95,9 @@ struct ReplayTurn {
 impl WebSocketCassette {
     /// Start a session for `scenario` beneath `cassette_root`, in the ambient
     /// [`CassetteMode`]. Panics for a missing or malformed replay fixture.
+    /// Replay is always in order: [`CassetteSpec::unordered`] does not apply.
+    /// A turn answers `101`, so the account-failure classification of error
+    /// statuses never sees one.
     pub async fn start(
         cassette_root: &Path,
         provider: &'static str,
@@ -155,6 +169,7 @@ impl WebSocketCassette {
                     next: 0,
                     inbound: VecDeque::new(),
                     misses: Vec::new(),
+                    checked: false,
                 })))
             }
         };
@@ -197,9 +212,10 @@ impl WebSocketCassette {
         } = self;
         match session {
             Session::Replay(replay) => {
-                let replay = replay
+                let mut replay = replay
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
+                replay.checked = true;
                 if let Some(message) = replay.failure(&cassette_path) {
                     panic!("{message}");
                 }
@@ -229,7 +245,14 @@ impl WebSocketCassette {
                     .finish()
                     .await
                 }
-                Err(payload) => std::panic::resume_unwind(payload),
+                Err(payload) => {
+                    // The test's own panic is the report.
+                    replay
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .checked = true;
+                    std::panic::resume_unwind(payload)
+                }
             },
             Session::Recording { cassette, turns } => {
                 record_turns(&cassette, &turns).await;
@@ -283,6 +306,13 @@ impl Replay {
                 self.next
             ));
         }
+        if !self.inbound.is_empty() {
+            failures.push(format!(
+                "left {} recorded message(s) of turn {} unread",
+                self.inbound.len(),
+                self.next.saturating_sub(1)
+            ));
+        }
         if !self.misses.is_empty() {
             failures.push(format!(
                 "received unexpected message(s):\n{}",
@@ -301,6 +331,13 @@ impl Replay {
     /// Match a sent message against the next recorded turn and queue its
     /// replies.
     fn send(&mut self, text: &str) -> Result<(), String> {
+        if !self.inbound.is_empty() {
+            return Err(format!(
+                "turn {} was sent with {} message(s) of the previous turn unread",
+                self.next,
+                self.inbound.len()
+            ));
+        }
         let Some(turn) = self.turns.get(self.next) else {
             return Err(format!("no recorded turn left for {text}"));
         };
@@ -375,6 +412,18 @@ impl<B: WebSocketClientExt> WebSocketClientExt for CassetteSocket<B> {
                             let miss = format!("connected to {path}, recorded {}", turn.path);
                             state.misses.push(miss);
                         }
+                        // The handshake authenticates the connection: it must
+                        // carry what an HTTP request to the provider must.
+                        for required in state.policy.required_request_headers() {
+                            let present = headers.iter().any(|(name, value)| {
+                                name.eq_ignore_ascii_case(required) && !value.trim().is_empty()
+                            });
+                            if !present {
+                                state
+                                    .misses
+                                    .push(format!("the handshake carried no {required} header"));
+                            }
+                        }
                     }
                     Ok(Box::new(Replaying(replay)) as BoxedWebSocketConnection)
                 }
@@ -416,10 +465,18 @@ impl WebSocketConnection for Recording {
     fn recv(&mut self) -> WasmBoxedFuture<'_, http_client::Result<Option<Frame>>> {
         Box::pin(async move {
             let received = self.inner.recv().await;
-            if let Ok(Some(Frame::Text(text))) = &received
+            // A binary message the client reads as UTF-8 text is kept as text.
+            let text = match &received {
+                Ok(Some(Frame::Text(text))) => Some(text.clone()),
+                Ok(Some(Frame::Binary(bytes))) => String::from_utf8(bytes.to_vec()).ok(),
+                _ => None,
+            };
+            // A message before the first send belongs to no turn and is not
+            // kept; the Responses protocol sends none.
+            if let Some(text) = text
                 && let Some(turn) = self.turns().last_mut()
             {
-                turn.received.push(text.clone());
+                turn.received.push(text);
             }
             received
         })
@@ -456,11 +513,14 @@ impl WebSocketConnection for Replaying {
         Box::pin(std::future::ready(sent))
     }
 
-    /// The recording ends where the provider stopped sending: past it, the
-    /// peer is gone.
+    /// Each read yields once before it answers, as a network read would, so
+    /// turns sent at once contend for the connection. The recording ends
+    /// where the provider stopped sending: past it, the peer is gone.
     fn recv(&mut self) -> WasmBoxedFuture<'_, http_client::Result<Option<Frame>>> {
-        let next = self.replay().inbound.pop_front().map(Frame::Text);
-        Box::pin(std::future::ready(Ok(next)))
+        Box::pin(async move {
+            YieldOnce(false).await;
+            Ok(self.replay().inbound.pop_front().map(Frame::Text))
+        })
     }
 
     fn close(
@@ -468,6 +528,25 @@ impl WebSocketConnection for Replaying {
         _frame: Option<CloseFrame>,
     ) -> WasmBoxedFuture<'_, http_client::Result<()>> {
         Box::pin(std::future::ready(Ok(())))
+    }
+}
+
+/// Yields to the executor once, then completes.
+struct YieldOnce(bool);
+
+impl Future for YieldOnce {
+    type Output = ();
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
+        if self.0 {
+            return std::task::Poll::Ready(());
+        }
+        self.0 = true;
+        cx.waker().wake_by_ref();
+        std::task::Poll::Pending
     }
 }
 

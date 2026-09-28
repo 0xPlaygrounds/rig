@@ -112,7 +112,7 @@ bytes = { workspace = true }
 http = { workspace = true }
 proptest = "1"
 reqwest = { workspace = true, features = ["json", "stream"] }
-# The live websocket cells install rustls' process-wide provider: this test
+# The websocket cassette wrapper installs rustls' process-wide provider: this test
 # graph enables both `ring` (httpmock) and `aws-lc-rs` (reqwest), so the
 # tungstenite connector cannot pick one on its own.
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }

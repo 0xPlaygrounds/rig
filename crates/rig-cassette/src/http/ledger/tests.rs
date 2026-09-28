@@ -74,6 +74,50 @@ event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{
     );
 }
 
+/// A recorded WebSocket turn is a `GET` whose message is a
+/// `response.create`: it stores what the `POST` would, unless it opts out.
+#[test]
+fn a_websocket_turn_stores_its_response_unless_it_opts_out() {
+    let turn = b"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_w\"}}\n\n\
+data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_w\"}}\n\n";
+    let create = br#"{"type":"response.create","model":"gpt-4o-mini","input":"hi"}"#;
+    assert_eq!(
+        ids(&created_resources(
+            "openai",
+            "https://api.openai.com",
+            "GET",
+            "/v1/responses",
+            create,
+            turn
+        )),
+        [("resp_w", "https://api.openai.com/v1/responses/resp_w")]
+    );
+    let unstored = br#"{"type":"response.create","store":false,"input":"hi"}"#;
+    assert!(
+        created_resources(
+            "openai",
+            "https://api.openai.com",
+            "GET",
+            "/v1/responses",
+            unstored,
+            turn
+        )
+        .is_empty()
+    );
+    // Any other `GET` reads rather than creates.
+    assert!(
+        created_resources(
+            "openai",
+            "https://api.openai.com",
+            "GET",
+            "/v1/responses",
+            b"",
+            turn
+        )
+        .is_empty()
+    );
+}
+
 #[test]
 fn files_caches_and_interactions_map_to_their_delete_urls() {
     assert_eq!(

@@ -218,11 +218,14 @@ async fn a_connection_to_another_path_fails_the_replay() {
         .connect(elsewhere, ConnectOptions::new())
         .await
         .expect("connects");
-    for turn in ["one", "two"] {
+    for (turn, events) in [("one", 2), ("two", 1)] {
         connection
             .send(Frame::Text(create(turn)))
             .await
             .expect("send");
+        for _ in 0..events {
+            text(&mut connection).await;
+        }
     }
     let failure = AssertUnwindSafe(replay.finish())
         .catch_unwind()
@@ -233,4 +236,95 @@ async fn a_connection_to_another_path_fails_the_replay() {
         .cloned()
         .unwrap_or_default();
     assert!(message.contains("/v1/realtime"), "{message}");
+}
+
+#[tokio::test]
+async fn a_turn_sent_before_the_previous_one_was_read_fails_the_replay() {
+    let root = assert_fs::TempDir::new().expect("temp dir");
+    record_two_turns(root.path()).await;
+
+    let (replay, _) = session(CassetteMode::Replay, root.path()).await;
+    let mut connection = replay
+        .backend(Scripted::default())
+        .connect(handshake(), ConnectOptions::new())
+        .await
+        .expect("connects");
+    connection
+        .send(Frame::Text(create("one")))
+        .await
+        .expect("send");
+    connection
+        .send(Frame::Text(create("two")))
+        .await
+        .expect_err("the first turn was not read");
+    let failure = AssertUnwindSafe(replay.finish())
+        .catch_unwind()
+        .await
+        .expect_err("the replay fails");
+    let message = failure
+        .downcast_ref::<String>()
+        .cloned()
+        .unwrap_or_default();
+    assert!(message.contains("unread"), "{message}");
+}
+
+#[tokio::test]
+async fn a_replay_dropped_without_finish_panics() {
+    let root = assert_fs::TempDir::new().expect("temp dir");
+    record_two_turns(root.path()).await;
+
+    let (replay, _) = session(CassetteMode::Replay, root.path()).await;
+    let dropped = std::panic::catch_unwind(AssertUnwindSafe(|| drop(replay)));
+    assert!(
+        dropped.is_err(),
+        "the drop guard reports an unchecked replay"
+    );
+}
+
+/// A turn that stores its response (no `store: false`) is created state the
+/// recorder cannot see deleted: the recording is refused and kept aside.
+#[tokio::test]
+async fn a_recording_that_stores_a_response_is_refused() {
+    let root = assert_fs::TempDir::new().expect("temp dir");
+    let (recording, path) = session(CassetteMode::Record, root.path()).await;
+    let created = json!({ "type": "response.created", "response": { "id": "resp_kept" } });
+    let live = Scripted::turns(vec![vec![created.to_string()]]);
+    let mut connection = recording
+        .backend(live)
+        .connect(handshake(), ConnectOptions::new())
+        .await
+        .expect("connects");
+    connection
+        .send(Frame::Text(create("stored")))
+        .await
+        .expect("send");
+    text(&mut connection).await;
+    let failure = AssertUnwindSafe(recording.finish())
+        .catch_unwind()
+        .await
+        .expect_err("the recording is refused");
+    let message = failure
+        .downcast_ref::<String>()
+        .cloned()
+        .unwrap_or_default();
+    assert!(message.contains("resp_kept"), "{message}");
+    assert!(!path.exists(), "the fixture was not written");
+
+    // The same turn with `store: false` creates nothing and is written.
+    let root = assert_fs::TempDir::new().expect("temp dir");
+    let (recording, path) = session(CassetteMode::Record, root.path()).await;
+    let live = Scripted::turns(vec![vec![created.to_string()]]);
+    let mut connection = recording
+        .backend(live)
+        .connect(handshake(), ConnectOptions::new())
+        .await
+        .expect("connects");
+    let unstored = json!({ "type": "response.create", "store": false, "input": "x" });
+    connection
+        .send(Frame::Text(unstored.to_string()))
+        .await
+        .expect("send");
+    text(&mut connection).await;
+    recording.finish().await;
+    assert!(path.exists());
 }

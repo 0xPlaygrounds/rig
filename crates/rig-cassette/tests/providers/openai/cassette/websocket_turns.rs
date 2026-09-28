@@ -2,7 +2,8 @@
 //! streams its events, chains when asked, runs an agent's tool loop, and a
 //! dropped or queued turn stays in step. Recorded with the bundled
 //! tungstenite backend against `wss://api.openai.com/v1/responses`; replay
-//! needs no network.
+//! needs no network. Every turn sends `store: false`, so a recording leaves
+//! no response stored on the account.
 
 use std::sync::{Arc, Mutex};
 
@@ -25,6 +26,16 @@ use crate::support::{
     TOOLS_PROMPT, assert_mentions_expected_number, assert_nonempty_response,
     collect_stream_final_response,
 };
+
+/// `prompt`, stored nowhere.
+fn ask(prompt: &str) -> CompletionRequest {
+    unstored(CompletionRequest::new(prompt))
+}
+
+fn unstored(mut request: CompletionRequest) -> CompletionRequest {
+    request.additional_params = Some(serde_json::json!({ "store": false }));
+    request
+}
 
 fn extract_text(choice: &[AssistantContent]) -> String {
     choice
@@ -55,12 +66,12 @@ async fn chained_turns_after_a_warmup() {
 
             let warmup = Model::new(socket.wire.clone().warmup(), socket.transport.clone());
             let warmed = warmup
-                .call(
+                .call(unstored(
                     CompletionRequest::new(
                         "You will answer a follow-up question about websocket mode.",
                     )
                     .preamble("Be precise and concise."),
-                )
+                ))
                 .await
                 .expect("warmup");
             assert!(
@@ -72,7 +83,9 @@ async fn chained_turns_after_a_warmup() {
             );
 
             let mut stream = socket
-                .stream("Explain the benefit of websocket mode in one sentence.")
+                .stream(ask(
+                    "Explain the benefit of websocket mode in one sentence.",
+                ))
                 .expect("stream opens");
             let mut streamed = String::new();
             let mut fragments = 0;
@@ -88,7 +101,7 @@ async fn chained_turns_after_a_warmup() {
             assert_eq!(extract_text(&first.choice), streamed);
 
             let chained = socket
-                .call("Now restate that as three very short bullet points.")
+                .call(ask("Now restate that as three very short bullet points."))
                 .await
                 .expect("chained turn");
             assert_nonempty_response(&extract_text(&chained.choice));
@@ -118,6 +131,7 @@ async fn agent_tool_loop() {
                 .expect("connects");
             let agent = rig::AgentBuilder::new(socket.clone())
                 .preamble(TOOLS_PREAMBLE)
+                .additional_params(serde_json::json!({ "store": false }))
                 .tool(Adder)
                 .tool(Subtract)
                 .build();
@@ -150,6 +164,7 @@ async fn agent_streaming_tool_loop() {
                 .expect("connects");
             let agent = rig::AgentBuilder::new(socket.clone())
                 .preamble(STREAMING_TOOLS_PREAMBLE)
+                .additional_params(serde_json::json!({ "store": false }))
                 .tool(Adder)
                 .tool(Subtract)
                 .build();
@@ -182,7 +197,7 @@ async fn dropped_and_queued_turns() {
                 .expect("connects");
 
             let mut dropped = socket
-                .stream("Count from 1 to 40, one number per line.")
+                .stream(ask("Count from 1 to 40, one number per line."))
                 .expect("stream opens");
             let mut seen = false;
             while let Some(item) = dropped.next().await {
@@ -195,7 +210,7 @@ async fn dropped_and_queued_turns() {
             drop(dropped);
 
             let after = socket
-                .call("Reply with exactly the word: pineapple")
+                .call(ask("Reply with exactly the word: pineapple"))
                 .await
                 .expect("the turn after a dropped one");
             let text = extract_text(&after.choice).to_lowercase();
@@ -205,8 +220,8 @@ async fn dropped_and_queued_turns() {
             );
 
             let (one, two) = tokio::join!(
-                socket.call("Reply with exactly the word: apple"),
-                socket.call("Reply with exactly the word: banana"),
+                socket.call(ask("Reply with exactly the word: apple")),
+                socket.call(ask("Reply with exactly the word: banana")),
             );
             let (one, two) = (one.expect("first queued"), two.expect("second queued"));
             assert!(extract_text(&one.choice).to_lowercase().contains("apple"));
@@ -282,11 +297,11 @@ async fn events_have_the_shape_the_transport_reads() {
                 .expect("connects");
 
             let first = socket
-                .call("Say hello in three words.")
+                .call(ask("Say hello in three words."))
                 .await
                 .expect("first");
             let second = socket
-                .call("Say goodbye in three words.")
+                .call(ask("Say goodbye in three words."))
                 .await
                 .expect("second");
             assert_nonempty_response(&extract_text(&first.choice));
@@ -335,7 +350,9 @@ async fn gpt_5_5_streams_a_turn() {
                 .await
                 .expect("connects");
             let mut stream = socket
-                .stream("Explain one benefit of websocket mode in one sentence.")
+                .stream(ask(
+                    "Explain one benefit of websocket mode in one sentence.",
+                ))
                 .expect("stream opens");
             let mut streamed = String::new();
             while let Some(item) = stream.next().await {

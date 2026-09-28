@@ -130,9 +130,10 @@ pub fn append(path: &Path, entries: &[LedgerEntry]) {
 }
 
 /// The resources a successful reply created. `origin` is the provider's
-/// scheme and host; `path` the request path the recording saw. A Responses
-/// or Interactions request that sets `store: false` creates nothing, and an
-/// error reply creates nothing.
+/// scheme and host; `path` the request path the recording saw. A WebSocket
+/// turn (a `GET` whose message is a `response.create`) creates what the
+/// `POST` it stands in for would. A Responses or Interactions request that
+/// sets `store: false` creates nothing, and an error reply creates nothing.
 pub fn created_resources(
     provider: &str,
     origin: &str,
@@ -141,7 +142,7 @@ pub fn created_resources(
     request_body: &[u8],
     response_body: &[u8],
 ) -> Vec<CreatedResource> {
-    if !method.eq_ignore_ascii_case("POST") {
+    if !method.eq_ignore_ascii_case("POST") && !is_websocket_create(method, request_body) {
         return Vec::new();
     }
     let path = path.split('?').next().unwrap_or(path).trim_end_matches('/');
@@ -193,6 +194,16 @@ fn resource_kind(provider: &str, path: &str) -> Option<ResourceKind> {
 
 /// The id a creation reply names: the object's `id`, or a Gemini resource
 /// `name`. A stream names it on its creation event.
+/// Whether a recorded `GET` is a WebSocket turn opening a response.
+fn is_websocket_create(method: &str, request_body: &[u8]) -> bool {
+    method.eq_ignore_ascii_case("GET")
+        && serde_json::from_slice::<Value>(request_body)
+            .ok()
+            .is_some_and(|request| {
+                request.get("type").and_then(Value::as_str) == Some("response.create")
+            })
+}
+
 fn created_id(kind: ResourceKind, document: &Value) -> Option<String> {
     let owner = match kind {
         ResourceKind::Response => document.get("response").unwrap_or(document),
