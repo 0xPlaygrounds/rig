@@ -11,6 +11,7 @@ use crate::completion;
 use crate::driver::{Exchange, Model, Opened, Opening, Transport};
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
+use crate::observe::{AdapterErrorBoundary, AdapterSlot};
 use crate::operation::{Completion, Turn};
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, ResponseChunk, ResponseChunkKind, ResponsesDecoder, StreamingCompletionChunk,
@@ -904,6 +905,9 @@ pub struct ResponseCreate {
     request: super::CompletionRequest,
     #[serde(skip_serializing_if = "Option::is_none")]
     generate: Option<bool>,
+    /// The endpoint template observation groups the turn under.
+    #[serde(skip)]
+    route: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -955,6 +959,7 @@ impl Wire for ResponsesSocket {
             kind: ResponseCreateKind::ResponseCreate,
             request,
             generate: self.generate,
+            route: self.responses.provider.dialect.quirks.responses.path,
         })
     }
 
@@ -976,6 +981,8 @@ const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone)]
 pub struct ResponsesWebSocket {
     session: Arc<futures::lock::Mutex<Session>>,
+    /// The credentials the handshake carried, scrubbed from observations.
+    secrets: Arc<[String]>,
     event_timeout: Option<Duration>,
     drain_timeout: Duration,
     chaining: bool,
@@ -1013,10 +1020,18 @@ impl ResponsesWebSocket {
                 closed: false,
                 failed: false,
             })),
+            secrets: Arc::from([]),
             event_timeout: None,
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
             chaining: false,
         }
+    }
+
+    /// Scrub the credentials `handshake` carried from the observations of
+    /// every turn.
+    pub(crate) fn scrubbing<B>(mut self, handshake: &http::Request<B>) -> Self {
+        self.secrets = crate::observe::handshake_secrets(handshake);
+        self
     }
 
     /// Fail a turn when no event arrives for `timeout`. `None` waits
@@ -1070,44 +1085,57 @@ impl ResponsesWebSocket {
 }
 
 impl Transport<ResponsesSocket> for ResponsesWebSocket {
-    fn send(&self, mut payload: ResponseCreate, _exchange: Exchange) -> Opening<WireFrame> {
+    fn send(&self, payload: ResponseCreate, exchange: Exchange) -> Opening<WireFrame> {
         let session = Arc::clone(&self.session);
-        let (event_timeout, drain_timeout, chaining) =
-            (self.event_timeout, self.drain_timeout, self.chaining);
+        let secrets = Arc::clone(&self.secrets);
+        let timeouts = (self.event_timeout, self.drain_timeout);
+        let chaining = self.chaining;
+        let observation = exchange.observation;
         Opening::new(async move {
             // Turns queue here: the connection carries one at a time.
             let mut session = session.lock_owned().await;
-            session.ensure_open()?;
-            if session.dirty {
-                session.drain(event_timeout, drain_timeout).await?;
-            }
-            let chained = &mut payload.request.additional_parameters.previous_response_id;
-            if chaining && chained.is_none() {
-                chained.clone_from(&session.chain.previous_response_id);
-            }
-            let text = serde_json::to_string(&payload)?;
-            // Set before the write: a write cut off midway may still have
-            // reached the provider, whose reply must not reach the next turn.
-            session.dirty = true;
-            if let Err(error) = session.socket.send(Frame::Text(text)).await {
-                session.mark_failed();
-                return Err(websocket_provider_error(error));
-            }
-            Ok(Opened::new(turn(session, event_timeout)))
+            // The attempt begins when the turn is next, never while queued
+            // or unpolled.
+            let slot = observation.map(|context| {
+                let slot = AdapterSlot::default();
+                slot.install(context.attempt_with_secrets(
+                    &http::Method::GET,
+                    payload.route,
+                    secrets,
+                ));
+                slot
+            });
+            let mut opened = match session
+                .open(payload, chaining, timeouts, slot.as_ref())
+                .await
+            {
+                Ok(()) => {
+                    // The turn's answer is the connection's upgrade.
+                    if let Some(slot) = &slot {
+                        slot.response(http::StatusCode::SWITCHING_PROTOCOLS);
+                    }
+                    Opened::new(turn(session, timeouts.0, slot.clone()))
+                }
+                Err(error) => Opened::failed(error),
+            };
+            opened.slot = slot;
+            Ok(opened)
         })
     }
 }
 
-/// One turn's frames, ending at its terminal event. The connection is
-/// released before the last item is yielded: the driver stops reading at
-/// the reply's end, so code after that yield would not run.
+/// One turn's frames, ending at its terminal event. Each payload the turn
+/// reads is projected onto its attempt. The connection is released before
+/// the last item is yielded: the driver stops reading at the reply's end,
+/// so code after that yield would not run.
 fn turn(
     mut session: futures::lock::OwnedMutexGuard<Session>,
     event_timeout: Option<Duration>,
+    slot: Option<AdapterSlot>,
 ) -> impl futures::Stream<Item = Result<WireFrame, ProviderError>> + WasmCompatSend + 'static {
     async_stream::stream! {
         loop {
-            let text = match session.next_text(event_timeout).await {
+            let text = match session.next_text(event_timeout, slot.as_ref()).await {
                 Ok(text) => text,
                 Err(error) => {
                     drop(session);
@@ -1115,13 +1143,19 @@ fn turn(
                     return;
                 }
             };
-            match session.chain.read(text) {
+            let lifecycle = session.chain.read(&text);
+            if !matches!(lifecycle, Lifecycle::Skip)
+                && let Some(slot) = &slot
+            {
+                slot.project(|sink| super::wire::project_payload(text.as_bytes(), sink));
+            }
+            match lifecycle {
                 Lifecycle::Skip => {}
-                Lifecycle::Frame(frame) => yield Ok(WireFrame::Text(frame)),
-                Lifecycle::Last(frame) => {
+                Lifecycle::Frame => yield Ok(WireFrame::Text(text)),
+                Lifecycle::Last(lowered) => {
                     session.dirty = false;
                     drop(session);
-                    yield Ok(WireFrame::Text(frame));
+                    yield Ok(WireFrame::Text(lowered.unwrap_or(text)));
                     return;
                 }
                 Lifecycle::Fail(error) => {
@@ -1151,16 +1185,46 @@ impl Session {
         self.failed = true;
     }
 
+    /// Ready the connection for a turn and send its event: drain a dropped
+    /// turn, chain when asked, and write.
+    async fn open(
+        &mut self,
+        mut payload: ResponseCreate,
+        chaining: bool,
+        (event_timeout, drain_timeout): (Option<Duration>, Duration),
+        slot: Option<&AdapterSlot>,
+    ) -> Result<(), ProviderError> {
+        self.ensure_open()?;
+        if self.dirty {
+            self.drain(event_timeout, drain_timeout, slot).await?;
+        }
+        let chained = &mut payload.request.additional_parameters.previous_response_id;
+        if chaining && chained.is_none() {
+            chained.clone_from(&self.chain.previous_response_id);
+        }
+        let text = serde_json::to_string(&payload)?;
+        // Set before the write: a write cut off midway may still have
+        // reached the provider, whose reply must not reach the next turn.
+        self.dirty = true;
+        if let Err(error) = self.socket.send(Frame::Text(text)).await {
+            self.mark_failed();
+            transport_failed(slot);
+            return Err(websocket_provider_error(error));
+        }
+        Ok(())
+    }
+
     /// Read the dropped turn to its end, within `drain_timeout`.
     async fn drain(
         &mut self,
         event_timeout: Option<Duration>,
         drain_timeout: Duration,
+        slot: Option<&AdapterSlot>,
     ) -> Result<(), ProviderError> {
         let drained = crate::wasm_compat::timeout(drain_timeout, async {
             loop {
-                let text = self.next_text(event_timeout).await?;
-                if let Lifecycle::Last(_) | Lifecycle::Fail(_) = self.chain.read(text) {
+                let text = self.next_text(event_timeout, slot).await?;
+                if let Lifecycle::Last(_) | Lifecycle::Fail(_) = self.chain.read(&text) {
                     return Ok(());
                 }
             }
@@ -1174,6 +1238,7 @@ impl Session {
             Ok(Err(error)) => Err(error),
             Err(_) => {
                 self.mark_failed();
+                transport_failed(slot);
                 Err(ProviderError::Provider(format!(
                     "Timed out reading a dropped OpenAI websocket turn to its end after \
                      {drain_timeout:?}"
@@ -1185,6 +1250,18 @@ impl Session {
     /// The next text payload. A timeout, a transport failure, a close frame
     /// or the peer hanging up fails the connection.
     async fn next_text(
+        &mut self,
+        event_timeout: Option<Duration>,
+        slot: Option<&AdapterSlot>,
+    ) -> Result<String, ProviderError> {
+        let read = self.read_text(event_timeout).await;
+        if read.is_err() {
+            transport_failed(slot);
+        }
+        read
+    }
+
+    async fn read_text(
         &mut self,
         event_timeout: Option<Duration>,
     ) -> Result<String, ProviderError> {
@@ -1233,10 +1310,11 @@ impl Session {
 enum Lifecycle {
     /// The previous turn's trailing `response.done`.
     Skip,
-    /// A frame of the turn, for the decoder.
-    Frame(String),
-    /// The turn's last frame, for the decoder.
-    Last(String),
+    /// A frame of the turn, for the decoder as it arrived.
+    Frame,
+    /// The turn's last frame, for the decoder: as it arrived, or lowered to
+    /// the body it carries.
+    Last(Option<String>),
     /// The turn failed.
     Fail(ProviderError),
 }
@@ -1276,16 +1354,16 @@ impl Probe {
 impl Chain {
     /// Read one server event by its type: update the chain and say what the
     /// event is for the turn. Content is left to the decoder.
-    fn read(&mut self, text: String) -> Lifecycle {
-        let Ok(probe) = serde_json::from_str::<Probe>(&text) else {
-            return Lifecycle::Frame(text);
+    fn read(&mut self, text: &str) -> Lifecycle {
+        let Ok(probe) = serde_json::from_str::<Probe>(text) else {
+            return Lifecycle::Frame;
         };
         match probe.kind.as_str() {
             "response.completed" | "response.incomplete" => {
                 self.previous_response_id = probe.response_id();
                 self.pending_done_response_id = probe.response_id();
                 match probe.status() {
-                    Some("completed" | "incomplete") | None => Lifecycle::Last(text),
+                    Some("completed" | "incomplete") | None => Lifecycle::Last(None),
                     Some(_) => Lifecycle::Fail(terminal_failure(&probe)),
                 }
             }
@@ -1297,7 +1375,7 @@ impl Chain {
             "error" => {
                 self.previous_response_id = None;
                 self.pending_done_response_id = None;
-                match serde_json::from_str::<ResponsesWebSocketErrorEvent>(&text) {
+                match serde_json::from_str::<ResponsesWebSocketErrorEvent>(text) {
                     Ok(error) => Lifecycle::Fail(provider_error_from_event(&error)),
                     Err(error) => Lifecycle::Fail(error.into()),
                 }
@@ -1322,7 +1400,7 @@ impl Chain {
                 // is the decoder's whole-body shape.
                 match body.map(terminal_response_result) {
                     Some(Ok(response)) => match serde_json::to_string(&response) {
-                        Ok(body) => Lifecycle::Last(body),
+                        Ok(body) => Lifecycle::Last(Some(body)),
                         Err(error) => Lifecycle::Fail(error.into()),
                     },
                     Some(Err(error)) => Lifecycle::Fail(error),
@@ -1333,8 +1411,15 @@ impl Chain {
                     )),
                 }
             }
-            _ => Lifecycle::Frame(text),
+            _ => Lifecycle::Frame,
         }
+    }
+}
+
+/// Mark the attempt's failure as the connection's, not the provider's.
+fn transport_failed(slot: Option<&AdapterSlot>) {
+    if let Some(slot) = slot {
+        slot.error_boundary(AdapterErrorBoundary::Transport);
     }
 }
 

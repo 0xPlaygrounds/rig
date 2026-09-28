@@ -542,3 +542,232 @@ fn websocket_frame_to_text_maps_control_frames() {
         .expect_err("a reasonless close still ends the turn");
     assert!(error.to_string().contains("without a close reason"));
 }
+
+// Observation: a turn is an attempt on the bus.
+
+/// A connection that answers the first write with `frames`, then stalls.
+struct Scripted(std::collections::VecDeque<Frame>, bool);
+
+impl WebSocketConnection for Scripted {
+    fn send(
+        &mut self,
+        _frame: Frame,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, http_client::Result<()>> {
+        self.1 = true;
+        Box::pin(std::future::ready(Ok(())))
+    }
+
+    fn recv(
+        &mut self,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, http_client::Result<Option<Frame>>> {
+        match self.0.pop_front().filter(|_| self.1) {
+            Some(frame) => Box::pin(std::future::ready(Ok(Some(frame)))),
+            None => Box::pin(std::future::pending()),
+        }
+    }
+
+    fn close(
+        &mut self,
+        _frame: Option<CloseFrame>,
+    ) -> crate::wasm_compat::WasmBoxedFuture<'_, http_client::Result<()>> {
+        Box::pin(std::future::ready(Ok(())))
+    }
+}
+
+/// A key no pattern would recognize: only the handshake names it secret.
+const SECRET_KEY: &str = "observed-7f3a9c-credential";
+
+/// A model over a scripted connection that scrubs the handshake's key.
+fn observed_model(
+    frames: impl IntoIterator<Item = String>,
+    event_timeout: Option<Duration>,
+) -> Model<ResponsesSocket, ResponsesWebSocket> {
+    let wire = OpenAIConfig::new(SECRET_KEY)
+        .with_base_url("https://api.openai.com/v1")
+        .responses("gpt-5.4");
+    let handshake = websocket_request(&wire).expect("handshake builds");
+    let connection = Scripted(frames.into_iter().map(Frame::Text).collect(), false);
+    let transport = ResponsesWebSocket::from_connection(Box::new(connection))
+        .scrubbing(&handshake)
+        .event_timeout(event_timeout);
+    Model::new(ResponsesSocket::new(wire), transport)
+}
+
+/// Every adapter event `run` records, in order.
+async fn adapter_events<F, Fut>(run: F) -> Vec<crate::observe::AdapterEvent>
+where
+    F: FnOnce(crate::observe::AdapterContext) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let log = Arc::new(crate::observe::ObservationLog::default());
+    let context = crate::observe::AdapterContext::new(
+        log.clone(),
+        crate::observe::Subject::default(),
+        "websocket",
+    );
+    run(context).await;
+    log.trace()
+        .observations
+        .iter()
+        .filter_map(|observation| match &observation.action {
+            crate::observe::Action::Adapter { observation } => Some(observation.event.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Drain one observed stream of `model`.
+async fn observe_turn<W, T>(model: &Model<W, T>) -> Vec<crate::observe::AdapterEvent>
+where
+    W: Wire<Op = Completion>,
+    T: Transport<W>,
+{
+    adapter_events(|context| async move {
+        let mut stream = model
+            .stream_observed(completion::CompletionRequest::new("hello"), context)
+            .expect("stream opens");
+        while futures::StreamExt::next(&mut stream).await.is_some() {}
+    })
+    .await
+}
+
+/// The Responses conformance fixture's frames, as websocket messages.
+fn fixture_messages() -> Vec<String> {
+    let fixture = crate::test_utils::streaming_conformance::fixtures::openai_responses::fixture();
+    fixture
+        .text_frames
+        .iter()
+        .chain(&fixture.tool_call_frames)
+        .chain(&fixture.terminal_frames)
+        .filter_map(|frame| frame.as_bytes().cloned())
+        .flat_map(|bytes| {
+            String::from_utf8_lossy(&bytes)
+                .lines()
+                .filter_map(|line| line.strip_prefix("data:").map(str::trim))
+                .filter(|data| !data.is_empty() && *data != "[DONE]")
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn an_observed_turn_has_the_shape_of_an_observed_http_stream() {
+    use crate::observe::{AdapterEnding, AdapterEvent};
+
+    let messages = fixture_messages();
+    let body: String = messages
+        .iter()
+        .map(|message| format!("data: {message}\n\n"))
+        .collect();
+    let http = OpenAIConfig::new(SECRET_KEY)
+        .connect(crate::test_utils::SequencedStreamingHttpClient::new(vec![
+            Ok(bytes::Bytes::from(body)),
+        ]))
+        .responses("gpt-5.4");
+    let over_http = observe_turn(&http).await;
+    let over_websocket = observe_turn(&observed_model(messages, None)).await;
+
+    // The same facts in the same order. Only the method and status differ:
+    // a turn is a message on a connection a GET upgraded, not a POST.
+    let shape = |events: &[AdapterEvent]| -> Vec<AdapterEvent> {
+        events
+            .iter()
+            .cloned()
+            .map(|event| match event {
+                AdapterEvent::Started { route, .. } => AdapterEvent::Started {
+                    method: String::new(),
+                    route,
+                },
+                AdapterEvent::Response { .. } => AdapterEvent::Response { status: 0 },
+                event => event,
+            })
+            .collect()
+    };
+    assert_eq!(shape(&over_websocket), shape(&over_http));
+    assert!(
+        matches!(
+            over_websocket.first(),
+            Some(AdapterEvent::Started { method, route }) if method == "GET" && route == "/responses"
+        ),
+        "{over_websocket:?}"
+    );
+    assert!(over_websocket.contains(&AdapterEvent::Response { status: 101 }));
+    assert!(
+        over_websocket
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::Usage { .. })),
+        "the projector read the terminal's usage: {over_websocket:?}"
+    );
+    assert_eq!(
+        over_websocket.last(),
+        Some(&AdapterEvent::Finished {
+            ending: AdapterEnding::Terminal
+        })
+    );
+}
+
+#[tokio::test]
+async fn an_observed_turn_scrubs_the_handshake_credentials() {
+    use crate::observe::{AdapterEnding, AdapterEvent};
+
+    let error = json!({
+        "type": "error",
+        "error": {
+            "code": "invalid_api_key",
+            "message": format!("Incorrect API key provided: {SECRET_KEY}"),
+        },
+    });
+    let events = observe_turn(&observed_model([error.to_string()], None)).await;
+    let envelope = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::ErrorEnvelope { error } => Some(error.clone()),
+            _ => None,
+        })
+        .expect("the error envelope is projected");
+    let recorded = serde_json::to_string(&envelope).expect("serializes");
+    assert!(!recorded.contains(SECRET_KEY), "{recorded}");
+    assert!(
+        matches!(
+            events.last(),
+            Some(AdapterEvent::Finished {
+                ending: AdapterEnding::Error { .. }
+            })
+        ),
+        "{events:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_connection_failure_closes_the_attempt_at_the_transport() {
+    use crate::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
+
+    let events = observe_turn(&observed_model([], Some(Duration::from_millis(20)))).await;
+    assert!(
+        matches!(
+            events.last(),
+            Some(AdapterEvent::Finished {
+                ending: AdapterEnding::Error {
+                    boundary: AdapterErrorBoundary::Transport,
+                    ..
+                }
+            })
+        ),
+        "{events:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_unpolled_turn_reports_no_attempt() {
+    let model = observed_model(fixture_messages(), None);
+    let events = adapter_events(|context| async move {
+        drop(
+            model
+                .stream_observed(completion::CompletionRequest::new("hello"), context)
+                .expect("stream opens"),
+        );
+    })
+    .await;
+    assert!(events.is_empty(), "{events:?}");
+}

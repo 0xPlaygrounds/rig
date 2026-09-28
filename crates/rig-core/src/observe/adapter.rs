@@ -339,6 +339,19 @@ impl AdapterContext {
         Some(attempt)
     }
 
+    /// Begins a send over a connection authenticated earlier, scrubbing the
+    /// credentials its handshake carried (see [`handshake_secrets`]).
+    pub(crate) fn attempt_with_secrets(
+        &self,
+        method: &http::Method,
+        route: &str,
+        secrets: Arc<[String]>,
+    ) -> Option<AdapterAttempt> {
+        let mut attempt = self.begin(method, route)?;
+        attempt.secrets = secrets.to_vec();
+        Some(attempt)
+    }
+
     fn emit(&self, attempt: Option<u64>, event: AdapterEvent) {
         self.emit_with_analysis(attempt, event, None);
     }
@@ -400,6 +413,12 @@ impl AdapterContext {
             error_boundary: None,
         })
     }
+}
+
+/// The credentials `request` carries, for scrubbing the attempts sent over
+/// the connection it opens.
+pub(crate) fn handshake_secrets<B>(request: &http::Request<B>) -> Arc<[String]> {
+    scrub::request_secrets(request).into()
 }
 
 /// The request owns this guard until completion or cancellation.
