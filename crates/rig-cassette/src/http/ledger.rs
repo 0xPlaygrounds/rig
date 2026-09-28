@@ -192,8 +192,6 @@ fn resource_kind(provider: &str, path: &str) -> Option<ResourceKind> {
     }
 }
 
-/// The id a creation reply names: the object's `id`, or a Gemini resource
-/// `name`. A stream names it on its creation event.
 /// Whether a recorded `GET` is a WebSocket turn opening a response.
 fn is_websocket_create(method: &str, request_body: &[u8]) -> bool {
     method.eq_ignore_ascii_case("GET")
@@ -204,6 +202,8 @@ fn is_websocket_create(method: &str, request_body: &[u8]) -> bool {
             })
 }
 
+/// The id a creation reply names: the object's `id`, or a Gemini resource
+/// `name`. A stream names it on its creation event.
 fn created_id(kind: ResourceKind, document: &Value) -> Option<String> {
     let owner = match kind {
         ResourceKind::Response => document.get("response").unwrap_or(document),

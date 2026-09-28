@@ -10,14 +10,16 @@
 //! the provider sent until the next client message, as `data:` lines. Replay
 //! plays turns strictly in order: a message that is not the next turn's, or
 //! one sent before the previous turn was read, is refused, and a turn left
-//! unplayed or unread fails the replay when the session finishes.
+//! unplayed or unread fails the replay when the session finishes. Close
+//! frames and read errors are not recorded: replay ends where the text ends.
+//! A session records one connection at a time.
 //!
 //! ```no_run
 //! # use rig_cassette::http::websocket::WebSocketCassette;
 //! # async fn test(live: impl rig_core::ws_client::WebSocketClientExt) {
 //! let root = std::path::Path::new("fixtures/cassettes");
-//! let cassette =
-//!     WebSocketCassette::start(root, "openai", "websocket/turn", "https://api.openai.com/v1").await;
+//! let origin = "https://api.openai.com/v1";
+//! let cassette = WebSocketCassette::start(root, "openai", "websocket/turn", origin).await;
 //! let backend = cassette.backend(live);
 //! // ... connect through `backend` and run the turns ...
 //! cassette.finish().await;
