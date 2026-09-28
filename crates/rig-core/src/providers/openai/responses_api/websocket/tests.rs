@@ -4,7 +4,7 @@ use crate::providers::openai::OpenAIConfig;
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ResponseError, ResponseObject, ResponsesUsage,
 };
-use crate::ws_client::CloseFrame;
+use crate::ws_client::{CloseFrame, WebSocketConnection};
 use serde_json::json;
 
 /// The wire a session is opened over.
@@ -245,12 +245,20 @@ fn sample_response(status: ResponseStatus) -> CompletionResponse {
     }
 }
 
+/// A warmup wire says so on every event it encodes; no HTTP-only flag is
+/// sent.
 #[test]
-fn warmup_options_serialize_generate_false() {
-    let options = ResponsesWebSocketCreateOptions::warmup();
-    let json = serde_json::to_value(options).expect("options should serialize");
-
-    assert_eq!(json, json!({ "generate": false }));
+fn a_warmup_wire_encodes_generate_false() {
+    let wire = ResponsesSocket::new(test_wire("https://api.openai.com/v1")).warmup();
+    let event = wire
+        .encode(completion::CompletionRequest::new("hello"), Mode::Streaming)
+        .expect("encodes");
+    assert_eq!(event.generate(), Some(false));
+    let json = serde_json::to_value(&event).expect("serializes");
+    assert_eq!(json["type"], "response.create");
+    assert_eq!(json["generate"], false);
+    assert!(json.get("stream").is_none(), "{json}");
+    assert!(json.get("route").is_none(), "{json}");
 }
 
 /// The handshake request carries the endpoint path and the wire's own auth
@@ -284,35 +292,44 @@ fn websocket_request_rejects_an_unsupported_base_url_scheme() {
     assert!(!error.is_retryable());
 }
 
+/// A `response.done` for the response the last turn ended with is that
+/// turn's trailer: skipped once, never read as this turn's end.
 #[test]
-fn parse_done_event_exposes_response_id() {
-    let payload = json!({
-        "type": "response.done",
-        "response": {
-            "id": "resp_done_1",
-            "status": "completed"
-        }
+fn the_previous_turns_trailing_done_is_skipped_once() {
+    let mut chain = Chain::default();
+    let completed = json!({
+        "type": "response.completed",
+        "response": serde_json::to_value(sample_response(ResponseStatus::Completed))
+            .expect("serializes"),
     });
-
-    let event = parse_server_event(&payload.to_string())
-        .expect("done event should deserialize")
-        .expect("done event should not be skipped");
-
     assert!(matches!(
-        event,
-        ResponsesWebSocketEvent::Done(ResponsesWebSocketDoneEvent { .. })
+        chain.read(&completed.to_string()),
+        Lifecycle::Last(_)
     ));
-    assert_eq!(event.response_id(), Some("resp_done_1"));
-    assert!(event.is_terminal());
+    let trailer = json!({
+        "type": "response.done",
+        "response": { "id": "resp_123", "status": "completed" },
+    })
+    .to_string();
+    assert!(matches!(chain.read(&trailer), Lifecycle::Skip));
+    // A second one is not a trailer: without a body it ends the turn.
+    let Lifecycle::Fail(error) = chain.read(&trailer) else {
+        panic!("a bodiless done that is not a trailer fails the turn");
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("before a terminal response body was available"),
+        "{error}"
+    );
 }
 
-#[test]
-fn parse_response_completed_event_is_terminal() {
-    let payload = json!({
+fn completed_event(id: &str) -> Value {
+    json!({
         "type": "response.completed",
         "sequence_number": 12,
         "response": {
-            "id": "resp_completed_1",
+            "id": id,
             "object": "response",
             "created_at": 0,
             "status": "completed",
@@ -325,129 +342,181 @@ fn parse_response_completed_event_is_terminal() {
             "output": [],
             "tools": []
         }
-    });
-
-    let event = parse_server_event(&payload.to_string())
-        .expect("response event should deserialize")
-        .expect("response event should not be skipped");
-
-    assert!(matches!(event, ResponsesWebSocketEvent::Response(_)));
-    assert!(event.is_terminal());
-    assert_eq!(event.response_id(), Some("resp_completed_1"));
+    })
 }
 
-#[test]
-fn parse_live_output_item_added_event() {
-    let payload = json!({
-        "type": "response.output_item.added",
-        "item": {
-            "id": "msg_036471c3a72c147b0069ae7848d68881959773fd2d99e3d98a",
-            "type": "message",
-            "status": "in_progress",
-            "content": [],
-            "role": "assistant"
-        },
-        "output_index": 0,
-        "sequence_number": 2
-    });
-
-    let event = parse_server_event(&payload.to_string())
-        .expect("output item event should parse")
-        .expect("output item event should not be skipped");
-
-    assert!(matches!(event, ResponsesWebSocketEvent::Item(_)));
-}
-
-#[test]
-fn parse_live_content_part_added_event() {
-    let payload = json!({
-        "type": "response.content_part.added",
-        "content_index": 0,
-        "item_id": "msg_036471c3a72c147b0069ae7848d68881959773fd2d99e3d98a",
-        "output_index": 0,
-        "part": {
-            "type": "output_text",
-            "annotations": [],
-            "logprobs": [],
-            "text": ""
-        },
-        "sequence_number": 3
-    });
-
-    let event = parse_server_event(&payload.to_string())
-        .expect("content part event should parse")
-        .expect("content part event should not be skipped");
-
-    assert!(matches!(event, ResponsesWebSocketEvent::Item(_)));
-}
-
-#[test]
-fn parse_live_output_text_delta_event() {
-    let payload = json!({
+fn text_delta_event() -> String {
+    json!({
         "type": "response.output_text.delta",
         "content_index": 0,
         "delta": "Web",
-        "item_id": "msg_023af0f0a91bc2a90069ae788612e881958345bb156915ba29",
+        "item_id": "msg_1",
         "logprobs": [],
-        "obfuscation": "2YYErYq7jkqqM",
         "output_index": 0,
-        "sequence_number": 4
-    });
-
-    let event = parse_server_event(&payload.to_string())
-        .expect("output text delta event should parse")
-        .expect("output text delta event should not be skipped");
-
-    assert!(matches!(event, ResponsesWebSocketEvent::Item(_)));
+        "sequence_number": 1
+    })
+    .to_string()
 }
 
+/// After streamed items the terminal event reaches the decoder as it
+/// arrived, and continues the chain.
 #[test]
-fn parse_reasoning_text_delta_event_is_item() {
-    let payload = json!({
-        "type": "response.reasoning_text.delta",
-        "item_id": "rs_1",
-        "output_index": 0,
-        "content_index": 0,
-        "sequence_number": 1,
-        "delta": "thinking",
-    });
-
-    let event = parse_server_event(&payload.to_string())
-        .expect("reasoning delta should parse")
-        .expect("reasoning delta should not be skipped");
-
-    assert!(matches!(event, ResponsesWebSocketEvent::Item(_)));
-    assert!(!event.is_terminal());
-}
-
-#[test]
-fn unknown_event_type_is_forwarded_raw() {
-    let payload = json!({
-        "type": "response.some_future_event",
-        "data": "hello"
-    });
-
-    let result = parse_server_event(&payload.to_string()).expect("unknown event should not error");
-    // Semantically skipped, but carried verbatim so the streaming surface
-    // can yield it on the `StreamEvent::Unknown` passthrough.
-    match result {
-        Some(ResponsesWebSocketEvent::Unknown(value)) => assert_eq!(value, payload.into()),
-        other => panic!("expected the raw Unknown passthrough event, got {other:?}"),
-    }
-}
-
-#[test]
-fn malformed_known_event_returns_error() {
-    let payload = json!({
-        "type": "response.completed"
-    });
-
-    let error =
-        parse_server_event(&payload.to_string()).expect_err("malformed known event should error");
-    assert!(
-        error.to_string().contains("StreamingCompletionChunk"),
-        "expected strict decode failure, got {error}"
+fn a_completed_event_after_streamed_items_is_the_last_frame() {
+    let mut chain = Chain::default();
+    assert!(matches!(chain.read(&text_delta_event()), Lifecycle::Frame));
+    assert!(matches!(
+        chain.read(&completed_event("resp_completed_1").to_string()),
+        Lifecycle::Last(None)
+    ));
+    assert_eq!(
+        chain.previous_response_id.as_deref(),
+        Some("resp_completed_1")
     );
+    assert!(!chain.streamed, "the next turn starts unstreamed");
+}
+
+/// A turn that streamed no item states its output only in the terminal
+/// body, which the decoder then reads whole.
+#[test]
+fn a_completed_event_after_no_items_is_lowered_to_its_body() {
+    let mut chain = Chain::default();
+    let created = json!({ "type": "response.created", "sequence_number": 0,
+        "response": completed_event("resp_1")["response"].clone() });
+    assert!(matches!(chain.read(&created.to_string()), Lifecycle::Frame));
+    let Lifecycle::Last(Some(lowered)) = chain.read(&completed_event("resp_1").to_string()) else {
+        panic!("a terminal after no items is lowered");
+    };
+    let lowered: Value = serde_json::from_str(&lowered).expect("the body is JSON");
+    assert_eq!(lowered["id"], "resp_1");
+    assert_eq!(lowered.get("type"), None);
+    assert_eq!(chain.previous_response_id.as_deref(), Some("resp_1"));
+}
+
+/// Content events, from live traffic, pass to the decoder untouched and do
+/// not touch the chain.
+#[test]
+fn content_events_are_frames_for_the_decoder() {
+    let mut chain = Chain {
+        previous_response_id: Some("resp_before".to_string()),
+        pending_done_response_id: None,
+        streamed: false,
+    };
+    for payload in [
+        json!({
+            "type": "response.output_item.added",
+            "item": {
+                "id": "msg_036471c3a72c147b0069ae7848d68881959773fd2d99e3d98a",
+                "type": "message",
+                "status": "in_progress",
+                "content": [],
+                "role": "assistant"
+            },
+            "output_index": 0,
+            "sequence_number": 2
+        }),
+        json!({
+            "type": "response.content_part.added",
+            "content_index": 0,
+            "item_id": "msg_036471c3a72c147b0069ae7848d68881959773fd2d99e3d98a",
+            "output_index": 0,
+            "part": { "type": "output_text", "annotations": [], "logprobs": [], "text": "" },
+            "sequence_number": 3
+        }),
+        json!({
+            "type": "response.output_text.delta",
+            "content_index": 0,
+            "delta": "Web",
+            "item_id": "msg_023af0f0a91bc2a90069ae788612e881958345bb156915ba29",
+            "logprobs": [],
+            "obfuscation": "2YYErYq7jkqqM",
+            "output_index": 0,
+            "sequence_number": 4
+        }),
+        json!({
+            "type": "response.reasoning_text.delta",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": "thinking",
+        }),
+        json!({ "type": "response.some_future_event", "data": "hello" }),
+    ] {
+        assert!(
+            matches!(chain.read(&payload.to_string()), Lifecycle::Frame),
+            "{payload}"
+        );
+    }
+    assert!(matches!(chain.read("not json"), Lifecycle::Frame));
+    assert_eq!(chain.previous_response_id.as_deref(), Some("resp_before"));
+}
+
+/// A terminal whose body is missing still ends the turn: the decoder then
+/// reports it as corrupt, and the connection stays in step.
+#[test]
+fn a_malformed_terminal_is_the_last_frame_and_ends_the_chain() {
+    let mut chain = Chain {
+        previous_response_id: Some("resp_before".to_string()),
+        pending_done_response_id: None,
+        streamed: false,
+    };
+    let payload = json!({ "type": "response.completed" }).to_string();
+    assert!(matches!(chain.read(&payload), Lifecycle::Last(None)));
+    assert_eq!(chain.previous_response_id, None);
+}
+
+#[test]
+fn a_failed_event_ends_the_turn_and_the_chain() {
+    let mut chain = Chain {
+        previous_response_id: Some("resp_before".to_string()),
+        pending_done_response_id: None,
+        streamed: false,
+    };
+    let payload = json!({
+        "type": "response.failed",
+        "response": serde_json::to_value(sample_response(ResponseStatus::Failed))
+            .expect("serializes"),
+    });
+    let Lifecycle::Fail(error) = chain.read(&payload.to_string()) else {
+        panic!("a failed event fails the turn");
+    };
+    assert!(error.to_string().contains("failed response"), "{error}");
+    assert_eq!(chain.previous_response_id, None);
+    assert_eq!(chain.pending_done_response_id.as_deref(), Some("resp_123"));
+}
+
+/// After streamed items, a `response.done` carrying the response ends the
+/// turn as `response.completed` would, so the items are not stated twice.
+#[test]
+fn a_done_event_after_streamed_items_ends_the_turn_as_completed() {
+    let mut chain = Chain::default();
+    assert!(matches!(chain.read(&text_delta_event()), Lifecycle::Frame));
+    let body =
+        serde_json::to_value(sample_response(ResponseStatus::Completed)).expect("serializes");
+    let payload = json!({ "type": "response.done", "response": body });
+    let Lifecycle::Last(Some(lowered)) = chain.read(&payload.to_string()) else {
+        panic!("a done event with a body is the last frame");
+    };
+    let lowered: Value = serde_json::from_str(&lowered).expect("the event is JSON");
+    assert_eq!(lowered["type"], "response.completed");
+    assert_eq!(lowered["response"]["id"], "resp_123");
+}
+
+/// A `response.done` carrying the response is lowered to it: the decoder's
+/// whole-body shape.
+#[test]
+fn a_done_event_with_a_body_is_lowered_to_the_body() {
+    let mut chain = Chain::default();
+    let body =
+        serde_json::to_value(sample_response(ResponseStatus::Completed)).expect("serializes");
+    let payload = json!({ "type": "response.done", "response": body });
+    let Lifecycle::Last(Some(lowered)) = chain.read(&payload.to_string()) else {
+        panic!("a done event with a body is the last frame, lowered");
+    };
+    let lowered: Value = serde_json::from_str(&lowered).expect("the body is JSON");
+    assert_eq!(lowered["id"], "resp_123");
+    assert_eq!(lowered.get("type"), None);
+    assert_eq!(chain.previous_response_id.as_deref(), Some("resp_123"));
 }
 
 #[test]
@@ -588,7 +657,7 @@ fn observed_model(
     let handshake = websocket_request(&wire).expect("handshake builds");
     let connection = Scripted(frames.into_iter().map(Frame::Text).collect(), false);
     let transport = ResponsesWebSocket::from_connection(Box::new(connection))
-        .scrubbing(&handshake)
+        .scrubbing(crate::observe::handshake_secrets(&handshake))
         .event_timeout(event_timeout);
     Model::new(ResponsesSocket::new(wire), transport)
 }

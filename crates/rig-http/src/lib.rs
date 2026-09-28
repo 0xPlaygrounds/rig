@@ -10,7 +10,7 @@
     )
 )]
 //! Rig's transport contracts. A transport implements
-//! [`HttpClientExt`](http_client::HttpClientExt) (and, for websocket sessions,
+//! [`HttpClientExt`](http_client::HttpClientExt) (and, for websockets,
 //! [`WebSocketClientExt`](ws_client::WebSocketClientExt)), and every Rig
 //! provider sends through it. This crate holds no transport of its own:
 //! `rig-reqwest` and `rig-tungstenite` are the bundled ones. `rig-core`

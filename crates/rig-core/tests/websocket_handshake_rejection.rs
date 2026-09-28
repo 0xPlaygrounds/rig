@@ -5,7 +5,7 @@
 //! `x-request-id`, and — on a `429` — the rate-limit headers a caller needs to
 //! back off. That information crosses two boundaries on its way out: the
 //! backend turns `tungstenite::Error::Http` into
-//! `http_client::Error::non_success_with_details`, and the provider session
+//! `http_client::Error::non_success_with_details`, and the provider's connect
 //! turns that into a `ProviderError` with its own request-id header read back
 //! off it.
 //!
@@ -55,8 +55,7 @@ async fn serve_one_rejection(
     format!("http://{address}/v1")
 }
 
-/// A session is not `Debug` (it owns a live connection), so unwrap the
-/// refusal by hand.
+/// Unwrap the refusal of a connect that should not have opened.
 fn expect_refusal<T>(
     result: Result<T, rig_core::error::ProviderError>,
     context: &str,
@@ -67,8 +66,8 @@ fn expect_refusal<T>(
     }
 }
 
-/// The websocket session is opened over a bound wire; its HTTP transport is
-/// never used, so any socket will do.
+/// The websocket model wraps this model's wire; its HTTP transport is never
+/// used.
 fn bound(base_url: &str) -> Model<Responses> {
     OpenAIConfig::new("sk-invalid-key")
         .with_base_url(base_url)

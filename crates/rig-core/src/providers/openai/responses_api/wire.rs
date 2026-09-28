@@ -257,7 +257,7 @@ impl Wire for Responses {
 
 /// Normalize a whole Responses body through the decoder and completion fold.
 /// Return serialization, decoder, or fold errors without performing I/O.
-#[cfg(any(test, feature = "websocket"))]
+#[cfg(test)]
 pub(crate) fn fold_body(
     provider: &str,
     response: super::CompletionResponse,

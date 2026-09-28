@@ -106,8 +106,7 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
                 .responses_websocket()
                 .connect()
                 .await
-                .err()
-                .expect("an invalid key must fail the upgrade");
+                .expect_err("an invalid key must fail the upgrade");
 
             let (status, names_the_cause, has_request_id) = observable(&error);
             assert_eq!(status, Some(401), "the rejection's status must survive");
@@ -148,8 +147,7 @@ async fn handshake_rejection_matches_the_http_twin() {
                 .responses_websocket()
                 .connect()
                 .await
-                .err()
-                .expect("an invalid key must fail the upgrade");
+                .expect_err("an invalid key must fail the upgrade");
 
             let http_error = model
                 .call(CompletionRequest::new("Never authenticated"))

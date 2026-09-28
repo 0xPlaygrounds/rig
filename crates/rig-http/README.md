@@ -7,7 +7,7 @@ provider sends through:
   `DynHttpClient` (an erased client with middleware), request framing,
   multipart forms and the transport error type;
 - `ws_client` (feature `websocket`): the websocket connection contract the
-  Responses WebSocket session is written against;
+  Responses WebSocket transport is written against;
 - `wasm_compat`: the `Send`/`Sync` bounds and boxed futures that relax on
   browser wasm.
 

@@ -102,13 +102,13 @@ test-utils = ["rig-http/test-utils"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 # The transport-agnostic websocket contract (`ws_client`) and the provider
-# websocket sessions written against it. Adds no dependency, but stays gated
+# websocket transports written against it. Adds no dependency, but stays gated
 # so the surface is opt-in, matching `audio`/`image`.
 websocket = ["rig-http/websocket"]
 # Provider clients default to the bundled reqwest transport: `OpenAI::from_env()`
 # and every other client constructor that names no transport.
 reqwest = ["dep:rig-reqwest"]
-# The bundled tungstenite websocket backend: a Responses WebSocket session
+# The bundled tungstenite websocket backend: a Responses WebSocket model
 # opened with `connect()` and no backend. Native-only.
 tungstenite = ["websocket", "dep:rig-tungstenite"]
 # TLS for the bundled transports. Enable exactly one; `rustls` is the default.

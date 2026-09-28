@@ -445,7 +445,7 @@ fn read<W: Wire>(
 
 /// A reply decoded from frames already in hand: its items, then its
 /// response or the error that ended it.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) struct Decoded<Op: Operation> {
     pub(crate) items: Vec<Result<crate::streaming::Item<Op::Event>, ProviderError>>,
     pub(crate) outcome: Result<Op::Response, ProviderError>,
@@ -454,7 +454,7 @@ pub(crate) struct Decoded<Op: Operation> {
 /// What the driver does with a classified frame: a known event is decoded,
 /// an unmodeled payload is warned about and delivered, and a corrupt frame
 /// is the error that ends the reply.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<crate::streaming::Item<E>, ProviderError> {
     match event {
         WireEvent::Known(event) => Ok(crate::streaming::Item::Event(event)),
@@ -467,7 +467,7 @@ pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<crate::streaming::Item<E>
 }
 
 /// Decode one frame already in hand into `reply`, as [`read`] does.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn step<'id, Op, F, D>(
     decoder: &mut D,
     reply: &'id Mutex<Shared<Op>>,
@@ -488,7 +488,7 @@ where
 
 /// Feed frames already in hand through `decoder` into `reply` as [`read`]
 /// does: the reply ends at the provider's end, or the decoder decides at EOF.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+#[cfg(any(test, feature = "test-utils"))]
 fn feed<'id, Op, F, D>(
     decoder: &mut D,
     reply: &'id Mutex<Shared<Op>>,
@@ -511,7 +511,7 @@ where
 
 /// Fold a fed reply: its items, then its response, or the error that ended
 /// it. `reply.raw` stands unless it is null, when the decoder's record does.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn settle<Op: Operation>(
     shared: Mutex<Shared<Op>>,
     fed: Result<(), ProviderError>,
@@ -553,10 +553,9 @@ pub(crate) fn settle<Op: Operation>(
 }
 
 /// Decode a reply whose frames are already in hand through `wire`'s
-/// decoder and `fold`, without a transport: what a caller that reads a
-/// provider's frames itself (a websocket session, a whole body) finishes a
-/// reply with.
-#[cfg(any(test, feature = "websocket"))]
+/// decoder and `fold`, without a transport: what a test holding a reply's
+/// frames finishes it with.
+#[cfg(test)]
 pub(crate) fn decode_frames<W: Wire>(
     wire: &W,
     fold: <W::Op as Operation>::Fold,
@@ -569,8 +568,8 @@ pub(crate) fn decode_frames<W: Wire>(
 }
 
 /// A whole reply body of an HTTP wire, decoded as its one frame: what a
-/// caller holding the body finishes a reply with.
-#[cfg(any(test, feature = "websocket"))]
+/// test holding the body finishes a reply with.
+#[cfg(test)]
 pub(crate) fn decode_body<W: Wire<Frame = crate::wire::WireFrame>>(
     wire: &W,
     fold: <W::Op as Operation>::Fold,

@@ -10,8 +10,6 @@ use rig_test_support::cassette_models::OpenAiModels;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
-
 use crate::reasoning::{self, ReasoningRoundtripAgent, WeatherTool};
 use crate::support::{
     Adder, BASIC_PREAMBLE, BASIC_PROMPT, EXTRACTOR_TEXT, IMAGE_FIXTURE_PATH, STREAMING_PREAMBLE,
@@ -421,40 +419,24 @@ async fn chat_completions_image_input_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn responses_websocket_smoke() -> anyhow::Result<()> {
+    use futures::StreamExt;
+    use rig::streaming::{Item, StreamEvent};
+
     let client = OpenAiModels::from_env().expect("config should build from env");
     let model = client.responses(openai::GPT_5_5);
-    let mut session = model.responses_websocket().connect().await?;
+    let socket = model.responses_websocket().connect().await?;
 
     let request = CompletionRequest::new("Explain one benefit of websocket mode in one sentence.");
-    session.send(request).await?;
-
+    let mut stream = socket.stream(request)?;
     let mut streamed_text = String::new();
-    loop {
-        match session.next_event().await? {
-            ResponsesWebSocketEvent::Item(item) => {
-                if let rig::providers::openai::responses_api::streaming::ItemChunkKind::OutputTextDelta(delta) =
-                    item.data
-                {
-                    streamed_text.push_str(&delta.delta);
-                }
-            }
-            ResponsesWebSocketEvent::Response(chunk) => {
-                if matches!(
-                    chunk.kind,
-                    rig::providers::openai::responses_api::streaming::ResponseChunkKind::ResponseCompleted
-                        | rig::providers::openai::responses_api::streaming::ResponseChunkKind::ResponseFailed
-                        | rig::providers::openai::responses_api::streaming::ResponseChunkKind::ResponseIncomplete
-                ) {
-                    break;
-                }
-            }
-            // Unknown frames are raw passthrough noise for this live assertion.
-            ResponsesWebSocketEvent::Done(_) | ResponsesWebSocketEvent::Unknown(_) => {}
-            ResponsesWebSocketEvent::Error(error) => return Err(anyhow::anyhow!(error.to_string())),
+    while let Some(item) = stream.next().await {
+        if let Item::Event(StreamEvent::Text { text, .. }) = item? {
+            streamed_text.push_str(&text);
         }
     }
+    stream.finish().await?;
 
     assert_nonempty_response(&streamed_text);
-    session.close().await?;
+    socket.transport.close().await?;
     Ok(())
 }

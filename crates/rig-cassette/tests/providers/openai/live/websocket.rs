@@ -1,10 +1,11 @@
 //! Migrated from `examples/openai_websocket_mode.rs`.
 
 use anyhow::Result;
+use futures::StreamExt;
+use rig::driver::Model;
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
-use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
+use rig::streaming::{Item, StreamEvent};
 use rig_test_support::cassette_models::OpenAiModels;
 
 use crate::support::assert_nonempty_response;
@@ -21,55 +22,45 @@ fn extract_text(choice: &[AssistantContent]) -> String {
         .join("")
 }
 
+/// Warm up, then send only the new input each turn: the chaining opt-in
+/// carries the conversation on the connection.
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
-async fn websocket_session_roundtrip() -> Result<()> {
+async fn websocket_chained_roundtrip() -> Result<()> {
     let client = OpenAiModels::from_env().expect("config should build from env");
     let model = client.responses(openai::GPT_4O_MINI);
-    let mut session = model.responses_websocket().connect().await?;
+    let socket = model.responses_websocket().chaining().connect().await?;
 
+    let warmup = Model::new(socket.wire.clone().warmup(), socket.transport.clone());
     let warmup_request =
         CompletionRequest::new("You will answer a follow-up question about websocket mode.")
             .preamble("Be precise and concise.");
-    let warmup_id = session.warmup(warmup_request).await?;
-    anyhow::ensure!(!warmup_id.is_empty(), "warmup should return a response id");
+    let warmed = warmup.call(warmup_request).await?;
+    anyhow::ensure!(
+        warmed
+            .response_id
+            .as_deref()
+            .is_some_and(|id| !id.is_empty()),
+        "warmup should return a response id"
+    );
 
     let request = CompletionRequest::new("Explain the benefit of websocket mode in one sentence.");
-    session.send(request).await?;
-
+    let mut stream = socket.stream(request)?;
     let mut streamed_text = String::new();
-    loop {
-        match session.next_event().await? {
-            ResponsesWebSocketEvent::Item(item) => {
-                if let ItemChunkKind::OutputTextDelta(delta) = item.data {
-                    streamed_text.push_str(&delta.delta);
-                }
-            }
-            ResponsesWebSocketEvent::Response(chunk) => {
-                if matches!(
-                    chunk.kind,
-                    ResponseChunkKind::ResponseCompleted
-                        | ResponseChunkKind::ResponseFailed
-                        | ResponseChunkKind::ResponseIncomplete
-                ) {
-                    break;
-                }
-            }
-            // Unknown frames are raw passthrough noise for this live assertion.
-            ResponsesWebSocketEvent::Done(_) | ResponsesWebSocketEvent::Unknown(_) => {}
-            ResponsesWebSocketEvent::Error(error) => {
-                return Err(anyhow::anyhow!(error.to_string()));
-            }
+    while let Some(item) = stream.next().await {
+        if let Item::Event(StreamEvent::Text { text, .. }) = item? {
+            streamed_text.push_str(&text);
         }
     }
+    stream.finish().await?;
     assert_nonempty_response(&streamed_text);
 
     let chained_request =
         CompletionRequest::new("Now restate that as three very short bullet points.");
-    let response = session.completion(chained_request).await?;
+    let response = socket.call(chained_request).await?;
     let text = extract_text(&response.choice);
     assert_nonempty_response(&text);
 
-    session.close().await?;
+    socket.transport.close().await?;
     Ok(())
 }

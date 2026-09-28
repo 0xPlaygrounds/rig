@@ -655,3 +655,31 @@ async fn warmup_sends_generate_false() {
     assert_eq!(response.response_id.as_deref(), Some("resp_warm"));
     assert_eq!(sent_json(&script, 0)["generate"], false);
 }
+
+/// A turn that states its tool call only in the terminal body (no item
+/// events) still delivers the call.
+#[tokio::test]
+async fn completed_turn_without_item_events_delivers_its_tool_call() {
+    let mut body = with_id("resp_1", ResponseStatus::Completed);
+    body.output = vec![
+        serde_json::from_value(serde_json::json!({
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_1",
+            "name": "add",
+            "arguments": "{\"x\":1,\"y\":2}",
+            "status": "completed"
+        }))
+        .expect("function call output"),
+    ];
+    let script = Script::turn([response_event("response.completed", body, 1)]);
+    let response = model(&script).call("hello").await.expect("completed");
+    assert!(
+        response
+            .choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::ToolCall(call) if call.function.name.as_str() == "add")),
+        "{:?}",
+        response.choice
+    );
+}
