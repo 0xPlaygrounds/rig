@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::completion::CompletionRequest;
-use rig::driver::Model;
 use rig::http_client::{self, NoBody, Request};
 use rig::message::AssistantContent;
 use rig::providers::openai;
@@ -64,9 +63,8 @@ async fn chained_turns_after_a_warmup() {
                 .await
                 .expect("connects");
 
-            let warmup = Model::new(socket.wire.clone().warmup(), socket.transport.clone());
-            let warmed = warmup
-                .call(unstored(
+            let warmed = socket
+                .warmup(unstored(
                     CompletionRequest::new(
                         "You will answer a follow-up question about websocket mode.",
                     )
@@ -74,13 +72,7 @@ async fn chained_turns_after_a_warmup() {
                 ))
                 .await
                 .expect("warmup");
-            assert!(
-                warmed
-                    .response_id
-                    .as_deref()
-                    .is_some_and(|id| !id.is_empty()),
-                "a warmup returns a response id"
-            );
+            assert!(!warmed.is_empty(), "a warmup returns a response id");
 
             let mut stream = socket
                 .stream(ask(
@@ -105,10 +97,7 @@ async fn chained_turns_after_a_warmup() {
                 .await
                 .expect("chained turn");
             assert_nonempty_response(&extract_text(&chained.choice));
-            assert_eq!(
-                socket.transport.last_response_id().await,
-                chained.response_id
-            );
+            assert_eq!(socket.transport.last_response_id(), chained.response_id);
             socket.transport.close().await.expect("close");
         },
     )
@@ -219,6 +208,10 @@ async fn dropped_and_queued_turns() {
                 "the turn after a dropped one answers its own prompt: {text}"
             );
 
+            // `join!` polls `apple` first, and the connection is free, so
+            // `apple` takes it and `banana` queues behind: the order the
+            // recording holds. The transport does not promise an order when
+            // turns race; this one does not race.
             let (one, two) = tokio::join!(
                 socket.call(ask("Reply with exactly the word: apple")),
                 socket.call(ask("Reply with exactly the word: banana")),

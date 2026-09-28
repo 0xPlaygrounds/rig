@@ -380,7 +380,7 @@ async fn nothing_is_chained_by_default() {
     model.call("first").await.expect("first");
     // The id is readable without chaining.
     assert_eq!(
-        model.transport.last_response_id().await.as_deref(),
+        model.transport.last_response_id().as_deref(),
         Some("resp_1")
     );
     model.call("second").await.expect("second");
@@ -422,7 +422,7 @@ async fn chaining_continues_the_last_response_and_late_done_is_ignored() {
     assert_eq!(raw_response(&second).id, "resp_2");
     assert_eq!(sent_json(&script, 1)["previous_response_id"], "resp_1");
     assert_eq!(
-        model.transport.last_response_id().await.as_deref(),
+        model.transport.last_response_id().as_deref(),
         Some("resp_2")
     );
 }
@@ -446,8 +446,8 @@ async fn clearing_the_chain_does_not_disable_the_late_done_filter() {
     ]);
     let model = chaining(&script);
     model.call("first").await.expect("first");
-    model.transport.clear_chain().await;
-    assert_eq!(model.transport.last_response_id().await, None);
+    model.transport.clear_chain();
+    assert_eq!(model.transport.last_response_id(), None);
     let second = model.call("second").await.expect("second");
     assert_eq!(raw_response(&second).id, "resp_2");
     assert!(sent_json(&script, 1).get("previous_response_id").is_none());
@@ -471,7 +471,7 @@ async fn failed_turn_resets_the_chain_and_its_late_done_is_ignored() {
     model.call("zeroth").await.expect("zeroth");
     let error = model.call("first").await.expect_err("failed");
     assert!(error.to_string().contains("failed response"), "{error}");
-    assert_eq!(model.transport.last_response_id().await, None);
+    assert_eq!(model.transport.last_response_id(), None);
     let second = model.call("second").await.expect("second");
     assert_eq!(raw_response(&second).id, "resp_2");
     assert_eq!(sent_json(&script, 1)["previous_response_id"], "resp_0");
@@ -732,4 +732,124 @@ async fn a_streamed_terminal_the_decoder_rejects_is_not_chained() {
         .expect_err("the decoder rejects the terminal");
     model.call("second").await.expect("second");
     assert!(sent_json(&script, 1).get("previous_response_id").is_none());
+}
+
+// Leftovers of an earlier response.
+
+/// An `error` mid-response fails the turn; whatever that response still
+/// sends is drained, not answered to the next turn.
+#[tokio::test]
+async fn an_error_mid_response_leaves_its_rest_out_of_the_next_turn() {
+    let script = Script::turns([
+        vec![
+            created("resp_1", 0),
+            error_event(),
+            text_delta("msg_1", "stale", 1),
+            completed("resp_1", 2),
+        ],
+        vec![
+            created("resp_2", 0),
+            text_delta("msg_2", "two", 1),
+            completed("resp_2", 2),
+        ],
+        vec![completed("resp_3", 0)],
+    ]);
+    let model = model(&script);
+    model.call("first").await.expect_err("the error");
+    let second = model.call("second").await.expect("second");
+    assert_eq!(raw_response(&second).id, "resp_2");
+    assert_eq!(texts(&second), ["two"]);
+    let third = model.call("third").await.expect("third");
+    assert_eq!(
+        raw_response(&third).id,
+        "resp_3",
+        "no turn falls one behind"
+    );
+}
+
+/// The same when the errored response ends with its own `response.failed`.
+#[tokio::test]
+async fn an_error_then_its_failed_response_leaves_the_next_turn_clean() {
+    let script = Script::turns([
+        vec![
+            created("resp_1", 0),
+            error_event(),
+            response_event(
+                "response.failed",
+                with_id("resp_1", ResponseStatus::Failed),
+                1,
+            ),
+        ],
+        vec![
+            created("resp_2", 0),
+            text_delta("msg_2", "two", 1),
+            completed("resp_2", 2),
+        ],
+    ]);
+    let model = model(&script);
+    model.call("first").await.expect_err("the error");
+    let second = model.call("second").await.expect("second");
+    assert_eq!(raw_response(&second).id, "resp_2");
+    assert_eq!(texts(&second), ["two"]);
+}
+
+/// A terminal event for another response, arriving after the turn named
+/// its own, does not end the turn on the wrong answer.
+#[tokio::test]
+async fn a_terminal_for_another_response_is_never_the_answer() {
+    let script = Script::turns([
+        vec![
+            created("resp_1", 0),
+            completed("resp_0", 1),
+            text_delta("msg_1", "one", 2),
+            completed("resp_1", 3),
+        ],
+        vec![completed("resp_2", 0)],
+    ]);
+    let model = model(&script);
+    let error = model.call("first").await.expect_err("out of step");
+    assert!(error.to_string().contains("another response"), "{error}");
+    let second = model.call("second").await.expect("second");
+    assert_eq!(raw_response(&second).id, "resp_2");
+}
+
+/// `warmup` sends `generate: false`, returns the response it prepared, and
+/// a chaining connection continues from it.
+#[tokio::test]
+async fn warmup_returns_the_prepared_response_and_chaining_continues_it() {
+    let script = Script::turns([
+        vec![completed("resp_warm", 1)],
+        vec![completed("resp_1", 1)],
+    ]);
+    let model = chaining(&script);
+    let id = model.warmup("prepare").await.expect("warmup");
+    assert_eq!(id, "resp_warm");
+    assert_eq!(sent_json(&script, 0)["generate"], false);
+    model.call("next").await.expect("next");
+    let next = sent_json(&script, 1);
+    assert_eq!(next["previous_response_id"], "resp_warm");
+    assert!(next.get("generate").is_none(), "{next}");
+}
+
+/// The chain's getters never wait for the turn holding the connection.
+#[tokio::test]
+async fn chain_getters_do_not_wait_behind_a_turn() {
+    let script = Script::turns([
+        vec![completed("resp_1", 1)],
+        vec![text_delta("msg_2", "two", 1), completed("resp_2", 2)],
+    ]);
+    let model = chaining(&script);
+    model.call("first").await.expect("first");
+    let mut held = model.stream("second").expect("stream opens");
+    held.next()
+        .await
+        .expect("an item")
+        .expect("the turn holds the connection");
+    assert_eq!(
+        model.transport.last_response_id().as_deref(),
+        Some("resp_1")
+    );
+    model.transport.clear_chain();
+    assert_eq!(model.transport.last_response_id(), None);
+    drop(held);
 }

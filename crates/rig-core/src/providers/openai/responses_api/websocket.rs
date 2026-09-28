@@ -207,17 +207,22 @@ const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 /// sent while another is in flight waits for it, in no guaranteed order, so
 /// a chaining caller awaits each turn before sending the next. A stream
 /// holds the connection until its turn ends; the task holding a half-read
-/// stream must not await another turn, [`Self::close`],
-/// [`Self::last_response_id`] or [`Self::clear_chain`] before it is read or
-/// dropped.
+/// stream must not await another turn or [`Self::close`] before it is read
+/// or dropped. [`Self::last_response_id`] and [`Self::clear_chain`] never
+/// wait.
 ///
 /// A turn whose stream was dropped before its end is read to its end, within
 /// the drain timeout, before the next turn is sent; past it the connection
-/// fails. A timeout, a transport failure or the peer closing also fails the
-/// connection, and later turns fail: there is no reconnect.
+/// fails. So is a turn that failed on an `error` after its response opened,
+/// or on an event for another response: if the provider sends nothing more
+/// for it, the drain times out and the connection fails. A timeout, a
+/// transport failure or the peer closing also fails the connection, and
+/// later turns fail: there is no reconnect.
 #[derive(Clone)]
 pub struct ResponsesWebSocket {
     session: Arc<futures::lock::Mutex<Session>>,
+    /// The chain's response, readable while a turn holds the connection.
+    previous: Previous,
     /// The credentials the handshake carried, scrubbed from observations.
     secrets: Arc<[String]>,
     event_timeout: Option<Duration>,
@@ -251,10 +256,12 @@ impl ResponsesWebSocket {
     /// never passed through rig, so observations cannot scrub them; the
     /// builder's `connect_with` does.
     pub fn from_connection(connection: BoxedWebSocketConnection) -> Self {
+        let chain = Chain::default();
         Self {
+            previous: chain.previous.clone(),
             session: Arc::new(futures::lock::Mutex::new(Session {
                 socket: connection,
-                chain: Chain::default(),
+                chain,
                 dirty: false,
                 closed: false,
                 failed: false,
@@ -300,14 +307,14 @@ impl ResponsesWebSocket {
 
     /// The response the last completed or incomplete turn produced, until
     /// a turn fails or [`Self::clear_chain`]. A turn whose stream was dropped
-    /// ends the chain when the next turn drains it.
-    pub async fn last_response_id(&self) -> Option<String> {
-        self.session.lock().await.chain.previous_response_id.clone()
+    /// ends the chain when the next turn drains it. Never waits for a turn.
+    pub fn last_response_id(&self) -> Option<String> {
+        self.previous.get()
     }
 
-    /// Start the next chained turn on a fresh chain.
-    pub async fn clear_chain(&self) {
-        self.session.lock().await.chain.previous_response_id = None;
+    /// Start the next chained turn on a fresh chain. Never waits for a turn.
+    pub fn clear_chain(&self) {
+        self.previous.set(None);
     }
 
     /// Close the connection with a close handshake, after the turn in
@@ -429,7 +436,7 @@ impl Session {
     }
 
     fn mark_failed(&mut self) {
-        self.chain = Chain::default();
+        self.chain.reset();
         self.dirty = false;
         self.failed = true;
     }
@@ -452,7 +459,7 @@ impl Session {
         }
         let chained = &mut payload.request.additional_parameters.previous_response_id;
         if chaining && chained.is_none() {
-            chained.clone_from(&self.chain.previous_response_id);
+            *chained = self.chain.previous.get();
         }
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -493,7 +500,7 @@ impl Session {
                 self.dirty = false;
                 // The caller never saw the dropped turn's response, so a
                 // chained turn must not continue it.
-                self.chain.previous_response_id = None;
+                self.chain.previous.set(None);
                 Ok(())
             }
             Ok(Err(error)) => Err(error),
@@ -588,10 +595,31 @@ enum Lifecycle {
 /// streamed any output item.
 #[derive(Debug, Default)]
 struct Chain {
-    previous_response_id: Option<String>,
+    previous: Previous,
     pending_done_response_id: Option<String>,
     current_response_id: Option<String>,
     streamed: bool,
+}
+
+/// The response a chained turn continues, shared by the connection and its
+/// handles: a plain lock, so reading it never waits for a turn.
+#[derive(Debug, Default, Clone)]
+struct Previous(Arc<std::sync::Mutex<Option<String>>>);
+
+impl Previous {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<String>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn get(&self) -> Option<String> {
+        self.lock().clone()
+    }
+
+    fn set(&self, id: Option<String>) {
+        *self.lock() = id;
+    }
 }
 
 /// The fields of a server event the connection reads: its type, and the
@@ -629,12 +657,26 @@ impl Chain {
             Lifecycle::Frame | Lifecycle::Skip => {}
             Lifecycle::Last(_) => self.end_turn(),
             Lifecycle::Fail(_) => {
-                self.previous_response_id = None;
+                self.previous.set(None);
                 self.end_turn();
             }
-            Lifecycle::Corrupt(_) => self.previous_response_id = None,
+            Lifecycle::Corrupt(_) => self.previous.set(None),
         }
         lifecycle
+    }
+
+    /// Forget everything but the shared handle: the connection failed.
+    fn reset(&mut self) {
+        self.previous.set(None);
+        self.pending_done_response_id = None;
+        self.end_turn();
+    }
+
+    /// Whether `probe` names a response other than the one this turn opened:
+    /// an earlier response's event, which this turn must not end on.
+    fn foreign(&self, probe: &Probe) -> bool {
+        let id = probe.response_id();
+        id.is_some() && self.current_response_id.is_some() && self.current_response_id != id
     }
 
     /// Forget what the turn in flight streamed and which response it is.
@@ -657,6 +699,11 @@ impl Chain {
                 }
                 Lifecycle::Frame
             }
+            "response.completed" | "response.incomplete" | "response.failed"
+                if self.foreign(&probe) =>
+            {
+                Lifecycle::Corrupt(foreign_terminal(&probe))
+            }
             "response.completed" | "response.incomplete" => {
                 self.pending_done_response_id = probe.response_id();
                 match probe.status() {
@@ -665,8 +712,8 @@ impl Chain {
                     Some("completed" | "incomplete") | None => {
                         match serde_json::from_str::<ResponseChunk>(text) {
                             Ok(ResponseChunk { response, .. }) => {
-                                self.previous_response_id =
-                                    Some(response.id.clone()).filter(|id| !id.is_empty());
+                                self.previous
+                                    .set(Some(response.id.clone()).filter(|id| !id.is_empty()));
                                 if self.streamed {
                                     return Lifecycle::Last(None);
                                 }
@@ -681,7 +728,7 @@ impl Chain {
                             // A terminal that does not decode reaches the
                             // decoder as it arrived, which reports it.
                             Err(_) => {
-                                self.previous_response_id = None;
+                                self.previous.set(None);
                                 Lifecycle::Last(None)
                             }
                         }
@@ -693,10 +740,20 @@ impl Chain {
                 self.pending_done_response_id = probe.response_id();
                 Lifecycle::Fail(terminal_failure(&probe))
             }
-            "error" => match serde_json::from_str::<ResponsesWebSocketErrorEvent>(text) {
-                Ok(error) => Lifecycle::Fail(provider_error_from_event(&error)),
-                Err(error) => Lifecycle::Fail(error.into()),
-            },
+            "error" => {
+                let error = match serde_json::from_str::<ResponsesWebSocketErrorEvent>(text) {
+                    Ok(error) => provider_error_from_event(&error),
+                    Err(error) => error.into(),
+                };
+                // An error after the turn's response opened may leave that
+                // response still sending: its rest is drained, not read as
+                // the next turn's.
+                if self.current_response_id.is_some() {
+                    Lifecycle::Corrupt(error)
+                } else {
+                    Lifecycle::Fail(error)
+                }
+            }
             "response.done" => {
                 let id = probe.response_id();
                 if id.is_some() && self.pending_done_response_id == id {
@@ -721,8 +778,8 @@ impl Chain {
                 // would; otherwise the decoder reads it whole.
                 match body.map(terminal_response_result) {
                     Some(Ok(response)) => {
-                        self.previous_response_id =
-                            Some(response.id.clone()).filter(|id| !id.is_empty());
+                        self.previous
+                            .set(Some(response.id.clone()).filter(|id| !id.is_empty()));
                         let lowered = if self.streamed {
                             let kind = match response.status {
                                 ResponseStatus::Incomplete => ResponseChunkKind::ResponseIncomplete,
@@ -769,6 +826,16 @@ fn transport_failed(slot: Option<&AdapterSlot>) {
     if let Some(slot) = slot {
         slot.error_boundary(AdapterErrorBoundary::Transport);
     }
+}
+
+/// The error a terminal event for another response than the turn's reports.
+fn foreign_terminal(probe: &Probe) -> ProviderError {
+    ProviderError::Provider(format!(
+        "OpenAI websocket turn read a {} for another response ({}); the \
+         connection is out of step with its turns",
+        probe.kind,
+        probe.response_id().unwrap_or_default()
+    ))
 }
 
 /// The error a failed, or unfinished, terminal response reports.
@@ -995,6 +1062,24 @@ fn websocket_provider_error(error: http_client::Error) -> ProviderError {
         crate::providers::internal::request_id_from_headers(headers, REQUEST_ID_HEADER)
     });
     ProviderError::from_transport_error(error).with_provider_request_id(provider_request_id)
+}
+
+impl Model<ResponsesSocket, ResponsesWebSocket> {
+    /// Prepare `request`'s state on the connection without generating
+    /// output, and return the id of the response it prepared. With
+    /// [`chaining`](ResponsesWebSocket::chaining) on, the next turn continues
+    /// it; otherwise pass the id as the next request's
+    /// `previous_response_id`. Returns the turn's error, or a response error
+    /// when the provider named no response.
+    pub async fn warmup(
+        &self,
+        request: impl Into<completion::CompletionRequest>,
+    ) -> Result<String, ProviderError> {
+        let warm = Model::new(self.wire.clone().warmup(), self.transport.clone());
+        warm.call(request).await?.response_id.ok_or_else(|| {
+            ProviderError::Response("the OpenAI websocket warmup named no response".to_string())
+        })
+    }
 }
 
 impl<T> Model<Responses, T> {

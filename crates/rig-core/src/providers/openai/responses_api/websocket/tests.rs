@@ -368,10 +368,7 @@ fn a_completed_event_after_streamed_items_is_the_last_frame() {
         chain.read(&completed_event("resp_completed_1").to_string()),
         Lifecycle::Last(None)
     ));
-    assert_eq!(
-        chain.previous_response_id.as_deref(),
-        Some("resp_completed_1")
-    );
+    assert_eq!(chain.previous.get().as_deref(), Some("resp_completed_1"));
     assert!(!chain.streamed, "the next turn starts unstreamed");
 }
 
@@ -389,17 +386,14 @@ fn a_completed_event_after_no_items_is_lowered_to_its_body() {
     let lowered: Value = serde_json::from_str(&lowered).expect("the body is JSON");
     assert_eq!(lowered["id"], "resp_1");
     assert_eq!(lowered.get("type"), None);
-    assert_eq!(chain.previous_response_id.as_deref(), Some("resp_1"));
+    assert_eq!(chain.previous.get().as_deref(), Some("resp_1"));
 }
 
 /// Content events, from live traffic, pass to the decoder untouched and do
 /// not touch the chain.
 #[test]
 fn content_events_are_frames_for_the_decoder() {
-    let mut chain = Chain {
-        previous_response_id: Some("resp_before".to_string()),
-        ..Chain::default()
-    };
+    let mut chain = chain_after("resp_before");
     for payload in [
         json!({
             "type": "response.output_item.added",
@@ -446,26 +440,23 @@ fn content_events_are_frames_for_the_decoder() {
             "{payload}"
         );
     }
-    assert_eq!(chain.previous_response_id.as_deref(), Some("resp_before"));
+    assert_eq!(chain.previous.get().as_deref(), Some("resp_before"));
 }
 
 /// A terminal whose body does not decode still ends the turn: the decoder
 /// then reports it, the connection stays in step, and nothing is chained.
 #[test]
 fn a_malformed_terminal_is_the_last_frame_and_ends_the_chain() {
-    let mut chain = Chain {
-        previous_response_id: Some("resp_before".to_string()),
-        ..Chain::default()
-    };
+    let mut chain = chain_after("resp_before");
     let payload = json!({ "type": "response.completed", "response": { "id": "resp_bad" } });
     assert!(matches!(
         chain.read(&payload.to_string()),
         Lifecycle::Last(None)
     ));
-    assert_eq!(chain.previous_response_id, None);
+    assert_eq!(chain.previous.get(), None);
     let bodiless = json!({ "type": "response.completed" }).to_string();
     assert!(matches!(chain.read(&bodiless), Lifecycle::Last(None)));
-    assert_eq!(chain.previous_response_id, None);
+    assert_eq!(chain.previous.get(), None);
 }
 
 /// Every websocket event names its type; a frame that does not is no part
@@ -473,10 +464,7 @@ fn a_malformed_terminal_is_the_last_frame_and_ends_the_chain() {
 /// the rest of the turn to be drained.
 #[test]
 fn a_frame_without_a_type_fails_the_turn_and_the_chain() {
-    let mut chain = Chain {
-        previous_response_id: Some("resp_before".to_string()),
-        ..Chain::default()
-    };
+    let mut chain = chain_after("resp_before");
     let body =
         serde_json::to_value(sample_response(ResponseStatus::Completed)).expect("serializes");
     assert!(matches!(
@@ -484,17 +472,14 @@ fn a_frame_without_a_type_fails_the_turn_and_the_chain() {
         Lifecycle::Corrupt(_)
     ));
     assert!(matches!(chain.read("not json"), Lifecycle::Corrupt(_)));
-    assert_eq!(chain.previous_response_id, None);
+    assert_eq!(chain.previous.get(), None);
 }
 
 /// A `response.completed` whose response failed fails the turn, and the
 /// failed response is never chained.
 #[test]
 fn a_completed_event_with_a_failed_response_ends_the_chain() {
-    let mut chain = Chain {
-        previous_response_id: Some("resp_before".to_string()),
-        ..Chain::default()
-    };
+    let mut chain = chain_after("resp_before");
     let payload = json!({
         "type": "response.completed",
         "response": serde_json::to_value(sample_response(ResponseStatus::Failed))
@@ -504,17 +489,80 @@ fn a_completed_event_with_a_failed_response_ends_the_chain() {
         chain.read(&payload.to_string()),
         Lifecycle::Fail(_)
     ));
-    assert_eq!(chain.previous_response_id, None);
+    assert_eq!(chain.previous.get(), None);
+}
+
+/// A chain whose last turn produced `previous`.
+fn chain_after(previous: &str) -> Chain {
+    let chain = Chain::default();
+    chain.previous.set(Some(previous.to_string()));
+    chain
+}
+
+fn created_event(id: &str) -> String {
+    json!({
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": { "id": id, "status": "in_progress" },
+    })
+    .to_string()
+}
+
+/// Once a turn has named its response, a terminal event for another one is
+/// not its end: the turn fails and the rest of it is drained.
+#[test]
+fn a_terminal_for_another_response_fails_the_turn_for_draining() {
+    for kind in [
+        "response.completed",
+        "response.incomplete",
+        "response.failed",
+    ] {
+        let mut chain = chain_after("resp_before");
+        assert!(matches!(
+            chain.read(&created_event("resp_2")),
+            Lifecycle::Frame
+        ));
+        let stale = json!({
+            "type": kind,
+            "sequence_number": 4,
+            "response": serde_json::to_value(sample_response(ResponseStatus::Completed))
+                .expect("serializes"),
+        });
+        assert!(
+            matches!(chain.read(&stale.to_string()), Lifecycle::Corrupt(_)),
+            "{kind}"
+        );
+        assert_eq!(chain.previous.get(), None, "{kind}");
+        // The turn's own response is still the one it waits for.
+        assert_eq!(chain.current_response_id.as_deref(), Some("resp_2"));
+    }
+}
+
+/// An `error` after the turn's response opened may leave that response
+/// sending: the turn fails and the rest of it is drained. Before it opened,
+/// the error is the turn's whole answer.
+#[test]
+fn an_error_after_the_response_opened_leaves_it_to_be_drained() {
+    let error = json!({ "type": "error", "error": { "code": "server_error", "message": "boom" } })
+        .to_string();
+    let mut chain = chain_after("resp_before");
+    assert!(matches!(
+        chain.read(&created_event("resp_1")),
+        Lifecycle::Frame
+    ));
+    assert!(matches!(chain.read(&error), Lifecycle::Corrupt(_)));
+    assert_eq!(chain.previous.get(), None);
+
+    let mut chain = chain_after("resp_before");
+    assert!(matches!(chain.read(&error), Lifecycle::Fail(_)));
+    assert_eq!(chain.previous.get(), None);
 }
 
 /// A `response.done` for a response still in progress ends the turn in
 /// failure, and ends the chain.
 #[test]
 fn a_done_event_still_in_progress_ends_the_chain() {
-    let mut chain = Chain {
-        previous_response_id: Some("resp_before".to_string()),
-        ..Chain::default()
-    };
+    let mut chain = chain_after("resp_before");
     let payload = json!({
         "type": "response.done",
         "response": serde_json::to_value(sample_response(ResponseStatus::InProgress))
@@ -524,7 +572,7 @@ fn a_done_event_still_in_progress_ends_the_chain() {
         chain.read(&payload.to_string()),
         Lifecycle::Fail(_)
     ));
-    assert_eq!(chain.previous_response_id, None);
+    assert_eq!(chain.previous.get(), None);
 }
 
 /// Once a turn has named its response, a `response.done` for another one
@@ -557,15 +605,12 @@ fn a_done_event_for_another_response_is_not_this_turns_end() {
         chain.read(&completed.to_string()),
         Lifecycle::Last(_)
     ));
-    assert_eq!(chain.previous_response_id.as_deref(), Some("resp_2"));
+    assert_eq!(chain.previous.get().as_deref(), Some("resp_2"));
 }
 
 #[test]
 fn a_failed_event_ends_the_turn_and_the_chain() {
-    let mut chain = Chain {
-        previous_response_id: Some("resp_before".to_string()),
-        ..Chain::default()
-    };
+    let mut chain = chain_after("resp_before");
     let payload = json!({
         "type": "response.failed",
         "response": serde_json::to_value(sample_response(ResponseStatus::Failed))
@@ -575,7 +620,7 @@ fn a_failed_event_ends_the_turn_and_the_chain() {
         panic!("a failed event fails the turn");
     };
     assert!(error.to_string().contains("failed response"), "{error}");
-    assert_eq!(chain.previous_response_id, None);
+    assert_eq!(chain.previous.get(), None);
     assert_eq!(chain.pending_done_response_id.as_deref(), Some("resp_123"));
 }
 
@@ -610,7 +655,7 @@ fn a_done_event_with_a_body_is_lowered_to_the_body() {
     let lowered: Value = serde_json::from_str(&lowered).expect("the body is JSON");
     assert_eq!(lowered["id"], "resp_123");
     assert_eq!(lowered.get("type"), None);
-    assert_eq!(chain.previous_response_id.as_deref(), Some("resp_123"));
+    assert_eq!(chain.previous.get().as_deref(), Some("resp_123"));
 }
 
 #[test]

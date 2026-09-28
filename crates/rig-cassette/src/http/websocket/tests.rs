@@ -328,3 +328,63 @@ async fn a_recording_that_stores_a_response_is_refused() {
     recording.finish().await;
     assert!(path.exists());
 }
+
+/// A live backend whose sends fail.
+#[derive(Clone)]
+struct Refusing;
+
+struct RefusingConnection;
+
+impl WebSocketClientExt for Refusing {
+    async fn connect(
+        &self,
+        _request: Request<NoBody>,
+        _options: ConnectOptions,
+    ) -> http_client::Result<BoxedWebSocketConnection> {
+        Ok(Box::new(RefusingConnection) as BoxedWebSocketConnection)
+    }
+}
+
+impl WebSocketConnection for RefusingConnection {
+    fn send(&mut self, _frame: Frame) -> WasmBoxedFuture<'_, http_client::Result<()>> {
+        Box::pin(std::future::ready(Err(http_client::Error::StreamEnded)))
+    }
+
+    fn recv(&mut self) -> WasmBoxedFuture<'_, http_client::Result<Option<Frame>>> {
+        Box::pin(std::future::ready(Ok(None)))
+    }
+
+    fn close(
+        &mut self,
+        _frame: Option<CloseFrame>,
+    ) -> WasmBoxedFuture<'_, http_client::Result<()>> {
+        Box::pin(std::future::ready(Ok(())))
+    }
+}
+
+/// A message the provider never accepted opens no turn: the recording
+/// holds nothing, so it is not written.
+#[tokio::test]
+async fn a_failed_send_records_no_turn() {
+    let root = assert_fs::TempDir::new().expect("temp dir");
+    let (recording, path) = session(CassetteMode::Record, root.path()).await;
+    let mut connection = recording
+        .backend(Refusing)
+        .connect(handshake(), ConnectOptions::new())
+        .await
+        .expect("connects");
+    connection
+        .send(Frame::Text(create("lost")))
+        .await
+        .expect_err("the send fails");
+    let failure = AssertUnwindSafe(recording.finish())
+        .catch_unwind()
+        .await
+        .expect_err("an empty recording is not written");
+    let message = failure
+        .downcast_ref::<String>()
+        .cloned()
+        .unwrap_or_default();
+    assert!(message.contains("at least one interaction"), "{message}");
+    assert!(!path.exists());
+}

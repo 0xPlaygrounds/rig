@@ -451,17 +451,26 @@ impl Recording {
 }
 
 impl WebSocketConnection for Recording {
+    /// A message opens a turn once the provider accepted it; a send that
+    /// failed leaves no turn in the fixture.
     fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, http_client::Result<()>> {
-        if let Frame::Text(text) = &frame {
-            let turn = RecordedTurn {
-                uri: self.uri.clone(),
-                headers: self.headers.clone(),
-                sent: text.clone(),
-                received: Vec::new(),
+        Box::pin(async move {
+            let sent = match &frame {
+                Frame::Text(text) => Some(text.clone()),
+                _ => None,
             };
-            self.turns().push(turn);
-        }
-        self.inner.send(frame)
+            self.inner.send(frame).await?;
+            if let Some(sent) = sent {
+                let turn = RecordedTurn {
+                    uri: self.uri.clone(),
+                    headers: self.headers.clone(),
+                    sent,
+                    received: Vec::new(),
+                };
+                self.turns().push(turn);
+            }
+            Ok(())
+        })
     }
 
     fn recv(&mut self) -> WasmBoxedFuture<'_, http_client::Result<Option<Frame>>> {

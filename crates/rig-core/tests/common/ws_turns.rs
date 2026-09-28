@@ -77,6 +77,24 @@ pub fn completed(id: &str, sequence: u64) -> String {
     )
 }
 
+/// The event that opens response `id`.
+pub fn created(id: &str, sequence: u64) -> String {
+    response_event(
+        "response.created",
+        with_id(id, ResponseStatus::InProgress),
+        sequence,
+    )
+}
+
+/// A mid-response `error` event.
+pub fn error_event() -> String {
+    json!({
+        "type": "error",
+        "error": { "code": "server_error", "message": "the model failed" },
+    })
+    .to_string()
+}
+
 pub fn text_delta(item_id: &str, delta: &str, sequence: u64) -> String {
     json!({
         "type": "response.output_text.delta",
