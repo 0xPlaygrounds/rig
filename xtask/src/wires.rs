@@ -13,11 +13,11 @@
 //! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `DynHttpClient` | the transport parameter returning |
 //! | no `Transport` impl | a provider owning how its payloads are sent |
 //!
-//! `openai/responses_api/websocket.rs` is exempt because it holds the websocket
-//! transport beside its wire: a connection spans many turns rather than a
-//! single exchange. The credential
-//! exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from the `async` rules
-//! only.
+//! `openai/responses_api/websocket.rs` holds the websocket transport beside its
+//! wire, because a connection spans many turns rather than a single exchange.
+//! It is exempt from every rule but the one on `impl Wire` blocks. The
+//! credential exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from the
+//! `async` rules only.
 //!
 //! Source is parsed with `syn`, so awaits in comments or strings cannot trip the
 //! check and an unparsable file is an error. Because `syn` does not descend into
@@ -120,7 +120,8 @@ struct Wires {
     /// Whether `async` and `.await` are allowed, as in a session or a
     /// credential exchange.
     conversation: bool,
-    /// Whether a transport parameter is allowed, which holds for sessions only.
+    /// Whether a transport parameter or a `Transport` impl is allowed, which
+    /// holds for sessions only.
     session: bool,
     offenders: Vec<String>,
 }
@@ -282,7 +283,7 @@ impl<'ast> Visit<'ast> for Wires {
             .map(|segment| segment.ident.to_string());
 
         if let Some(name) = &implemented {
-            if name == "Transport" {
+            if name == "Transport" && !self.session {
                 self.report(&format!(
                     "`impl Transport for {}` — providers are wires; the HTTP transport is \
                      `driver::http_transport`",
