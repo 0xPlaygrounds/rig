@@ -48,6 +48,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_transcription_cassette",
             "with_openai_audio_cassette",
             "with_openai_websocket_cassette",
+            "with_openai_websocket_turn_cassette",
         ],
     },
     ProviderCassetteSuite {

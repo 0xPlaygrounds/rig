@@ -58,6 +58,7 @@ use tokio::task::JoinHandle;
 mod account;
 pub mod ledger;
 mod relay;
+pub mod websocket;
 pub use account::{AccountFailure, account_failure, reply_account_failure};
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";

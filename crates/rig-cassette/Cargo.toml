@@ -43,6 +43,7 @@ default = []
 agent = ["dep:rig-agent"]
 ecs = ["dep:rig-ecs", "dep:bevy_app", "dep:bevy_ecs"]
 http = [
+    "rig-core/websocket",
     "dep:rig-reqwest",
     "dep:axum",
     "dep:base64",

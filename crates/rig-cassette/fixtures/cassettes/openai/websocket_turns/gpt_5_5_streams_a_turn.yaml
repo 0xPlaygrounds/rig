@@ -1,0 +1,72 @@
+when:
+  path: /v1/responses
+  method: GET
+  query_param: []
+  header: []
+  body: '{"input":[{"content":[{"text":"Explain one benefit of websocket mode in one sentence.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-5.5","type":"response.create"}'
+then:
+  status: 101
+  header: []
+  body: |+
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_04bf85dac06af421006abae58d5bec87d086233f54f4515918","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.5-2026-04-23","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    data: {"response":{"access_programs":null,"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_04bf85dac06af421006abae58d5bec87d086233f54f4515918","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.5-2026-04-23","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    data: {"item":{"content":[],"id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","phase":"final_answer","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    data: {"content_index":0,"item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    data: {"content_index":0,"delta":"Web","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"Ln6O7jwzI7OSg","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":"Socket","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"MuHxYxXPU4","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" mode","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"5lPpmOEr2b9","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" enables","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"QkQj2Sev","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" real","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"DjfH4W09hSz","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":"-time","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"H2HIn29B6HA","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":",","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"9A2qwpGvsF9SzF5","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" bid","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"ASRVztGyLD2B","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":"irectional","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"FUsZsx","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" communication","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"b1","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" between","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"XqUcXGuK","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" client","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"ZTbFjVJnN","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" and","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"7FbPKvb6UyUx","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" server","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"j2zPZQZpO","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":",","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"AroX3kIiYspulwj","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" reducing","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"zOJwYbi","output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" latency","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"iafK4o6o","output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" compared","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"FwPFIE9","output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" to","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"f56qn0rwpbCqm","output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" repeated","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"a62X3Nr","output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" HTTP","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"m4tQqSVTJRh","output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":" requests","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"5ccVMNl","output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"delta":".","item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"obfuscation":"rzhpkWvpKjdvsHB","output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
+
+    data: {"content_index":0,"item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","logprobs":[],"output_index":0,"sequence_number":27,"text":"WebSocket mode enables real-time, bidirectional communication between client and server, reducing latency compared to repeated HTTP requests.","type":"response.output_text.done"}
+
+    data: {"content_index":0,"item_id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"WebSocket mode enables real-time, bidirectional communication between client and server, reducing latency compared to repeated HTTP requests.","type":"output_text"},"sequence_number":28,"type":"response.content_part.done"}
+
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"WebSocket mode enables real-time, bidirectional communication between client and server, reducing latency compared to repeated HTTP requests.","type":"output_text"}],"id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","phase":"final_answer","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":29,"type":"response.output_item.done"}
+
+    data: {"response":{"access_programs":null,"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_04bf85dac06af421006abae58d5bec87d086233f54f4515918","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.5-2026-04-23","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"WebSocket mode enables real-time, bidirectional communication between client and server, reducing latency compared to repeated HTTP requests.","type":"output_text"}],"id":"msg_04bf85dac06af421006abae58e369c87d08de344b7c24c4990","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":27,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":43},"user":null},"sequence_number":30,"type":"response.completed"}
+

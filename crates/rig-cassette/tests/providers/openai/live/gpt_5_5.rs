@@ -18,7 +18,6 @@ use crate::support::{
     assert_contains_any_case_insensitive, assert_mentions_expected_number,
     assert_nonempty_response, assert_smoke_structured_output, collect_stream_final_response,
 };
-use rig::completion::CompletionRequest;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Gpt55Event {
@@ -414,30 +413,4 @@ async fn chat_completions_image_input_smoke() {
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["ant", "insect"]);
-}
-
-#[tokio::test]
-#[ignore = "requires OPENAI_API_KEY and --features websocket"]
-async fn responses_websocket_smoke() -> anyhow::Result<()> {
-    use futures::StreamExt;
-    use rig::streaming::{Item, StreamEvent};
-
-    super::websocket::install_tls_provider();
-    let client = OpenAiModels::from_env().expect("config should build from env");
-    let model = client.responses(openai::GPT_5_5);
-    let socket = model.responses_websocket().connect().await?;
-
-    let request = CompletionRequest::new("Explain one benefit of websocket mode in one sentence.");
-    let mut stream = socket.stream(request)?;
-    let mut streamed_text = String::new();
-    while let Some(item) = stream.next().await {
-        if let Item::Event(StreamEvent::Text { text, .. }) = item? {
-            streamed_text.push_str(&text);
-        }
-    }
-    stream.finish().await?;
-
-    assert_nonempty_response(&streamed_text);
-    socket.transport.close().await?;
-    Ok(())
 }
