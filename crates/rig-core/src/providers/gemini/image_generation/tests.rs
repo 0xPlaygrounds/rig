@@ -198,15 +198,14 @@ fn the_wire_decodes_a_recorded_image_reply() {
         GEMINI_2_5_FLASH_IMAGE,
     );
 
-    let mut driver = crate::driver::WireDriver::<ImageGeneration, _>::new(
-        wire.decoder(crate::wire::Mode::Unary),
-    );
-    driver.push(WireFrame::Text(RECORDED_IMAGE_REPLY.to_string()));
-    let decoded: Vec<_> = driver.drain().collect();
-
-    let [Ok(response)] = decoded.as_slice() else {
-        panic!("one whole reply decodes to one response, got {decoded:?}")
-    };
+    let response = crate::test_utils::decode_reply(
+        &wire,
+        &image_generation_request("a banana"),
+        crate::wire::Mode::Unary,
+        [WireFrame::Text(RECORDED_IMAGE_REPLY.to_string())],
+        serde_json::Value::Null,
+    )
+    .expect("one whole reply decodes to one response");
     // The base64 the cassette carries, decoded: `\x89PNG\r\n\x1a\n` then the
     // 13-byte-length `IHDR` chunk header.
     assert_eq!(

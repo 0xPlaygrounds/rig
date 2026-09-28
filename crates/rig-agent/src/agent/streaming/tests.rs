@@ -12,7 +12,7 @@ use crate::agent::run::{AgentRun, AgentRunStep};
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
 use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::run::transcript::tool_result_output;
-use crate::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
+use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
     MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, SessionId,
@@ -86,8 +86,10 @@ async fn text_only_stream_without_terminal_record_is_rejected_as_truncated() {
         match item {
             Err(error) => {
                 assert!(
-                    error.to_string().contains("terminal record"),
-                    "truncation should surface as a terminal-record error, got: {error}"
+                    error
+                        .to_string()
+                        .contains("the reply ended before the provider ended it"),
+                    "truncation should surface as a truncated reply, got: {error}"
                 );
                 saw_error = true;
                 break;
@@ -449,10 +451,11 @@ fn assistant_reasoning_precedes_text_and_tool_call(
             )
         });
 
+        // The parts keep the order they started in; both precede the call.
         matches!(
             (reasoning_index, text_index, tool_index),
             (Some(reasoning), Some(text), Some(tool))
-                if reasoning < text && text < tool
+                if reasoning < tool && text < tool
         )
     })
 }
@@ -461,8 +464,17 @@ fn assistant_reasoning_precedes_text_and_tool_call(
 struct PanicOnUnknownToolHook;
 
 impl AgentHook for PanicOnUnknownToolHook {
-    async fn on_tool_call_delta(&self, _: &HookContext, _: ToolCallDelta<'_>) -> ObservationAction {
-        panic!("unknown tool call delta should fail before delta hooks run")
+    /// A valid call's arguments stream once its end validates it; an
+    /// unknown call's never do.
+    async fn on_tool_call_delta(
+        &self,
+        _: &HookContext,
+        event: ToolCallDelta<'_>,
+    ) -> ObservationAction {
+        if !["add", "subtract"].contains(&event.tool_name) {
+            panic!("unknown tool call delta should fail before delta hooks run")
+        }
+        ObservationAction::continue_run()
     }
     async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
         if event.tool_name().is_some() {
@@ -1445,7 +1457,7 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
 }
 
 #[test]
-fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
+fn completion_calls_stream_item_serializes_to_the_expected_shape() {
     let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
         2,
         usage(3, 4),
@@ -1467,18 +1479,6 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
             "raw": {"id": "resp_2"}
         })
     );
-
-    let item: MultiTurnStreamItem =
-        serde_json::from_value(value).expect("deserialize completion call event");
-    match item {
-        MultiTurnStreamItem::CompletionCall(call_usage) => {
-            assert_eq!(
-                call_usage,
-                CompletionCall::new(2, usage(3, 4), serde_json::json!({"id": "resp_2"}))
-            );
-        }
-        other => panic!("expected completion call event, got {other:?}"),
-    }
 
     let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
         3,
@@ -1601,8 +1601,8 @@ impl AgentHook for TerminateOnCompletionOutcome {
     }
 }
 
-type RecordedToolCallDelta = (BlockId, Option<String>, String);
-type RecordedReasoningDelta = (BlockId, Option<String>, String, String);
+type RecordedToolCallDelta = (rig_core::message::CallId, String, String);
+type RecordedReasoningDelta = (usize, String, String);
 
 #[derive(Clone)]
 struct RepairDefaultApiHook;
@@ -1717,25 +1717,16 @@ impl AgentHook for RecordingToolCallDeltaHook {
         _ctx: &HookContext,
         event: ToolCallDelta<'_>,
     ) -> ObservationAction {
-        match event {
-            ToolCallDelta {
-                block_id,
-                tool_name,
-                delta,
-            } => {
-                let record = (
-                    block_id.clone(),
-                    tool_name.map(str::to_string),
-                    delta.to_string(),
-                );
-                self.deltas
-                    .lock()
-                    .expect("tool call delta hook records mutex was poisoned")
-                    .push(record);
-                ObservationAction::continue_run()
-            }
-            _ => ObservationAction::continue_run(),
-        }
+        let record = (
+            event.call_id.clone(),
+            event.tool_name.to_string(),
+            event.delta.to_string(),
+        );
+        self.deltas
+            .lock()
+            .expect("tool call delta hook records mutex was poisoned")
+            .push(record);
+        ObservationAction::continue_run()
     }
 }
 
@@ -1790,8 +1781,7 @@ impl AgentHook for RecordingReasoningDeltaHook {
         event: ReasoningDelta<'_>,
     ) -> ObservationAction {
         let record = (
-            event.id.clone(),
-            event.provider_id.map(str::to_string),
+            event.part.index(),
             event.delta.to_string(),
             event.aggregated.to_string(),
         );
@@ -1973,25 +1963,16 @@ impl AgentHook for TerminatingToolCallDeltaHook {
         _ctx: &HookContext,
         event: ToolCallDelta<'_>,
     ) -> ObservationAction {
-        match event {
-            ToolCallDelta {
-                block_id,
-                tool_name,
-                delta,
-            } => {
-                let record = (
-                    block_id.clone(),
-                    tool_name.map(str::to_string),
-                    delta.to_string(),
-                );
-                self.deltas
-                    .lock()
-                    .expect("tool call delta hook records mutex was poisoned")
-                    .push(record);
-                ObservationAction::stop("stop on tool call delta")
-            }
-            _ => ObservationAction::continue_run(),
-        }
+        let record = (
+            event.call_id.clone(),
+            event.tool_name.to_string(),
+            event.delta.to_string(),
+        );
+        self.deltas
+            .lock()
+            .expect("tool call delta hook records mutex was poisoned")
+            .push(record);
+        ObservationAction::stop("stop on tool call delta")
     }
 }
 
@@ -2029,10 +2010,7 @@ async fn stream_prompt_continues_after_tool_call_turn() {
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 saw_tool_result = true;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => {
                 final_text.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
@@ -2361,7 +2339,6 @@ async fn invalid_tool_call_context_uses_completed_streaming_tool_call_provider_i
             .and_then(|id| id.provider().map(|provider| provider.call_id.as_str())),
         Some("provider_call_1")
     );
-    assert!(context.block_id.is_some());
     assert!(context.is_streaming);
 }
 
@@ -2403,9 +2380,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
         match item {
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,
-                id: block_id,
             })) => {
-                let _ = block_id;
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -2787,52 +2762,6 @@ async fn invalid_completed_tool_call_skip_preserves_streaming_reasoning_history(
 }
 
 #[tokio::test]
-async fn invalid_name_delta_retry_leaves_out_reasoning_no_issuer_named() {
-    let model = MockCompletionModel::from_stream_turns([
-        vec![
-            MockStreamEvent::reasoning_delta_with_id("rs_1", "delta reason"),
-            MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
-            MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
-            MockStreamEvent::final_response_with_total_tokens(4),
-        ],
-        vec![
-            MockStreamEvent::text("retried"),
-            MockStreamEvent::final_response_with_total_tokens(6),
-        ],
-    ]);
-    let recorded = model.clone();
-    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
-
-    let mut stream = agent
-        .prompt("use the tool")
-        .add_hook(RetryDefaultApiHook)
-        .max_turns(3)
-        .history(Vec::<Message>::new())
-        .max_invalid_tool_call_retries(1)
-        .stream();
-
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-            Ok(_) => {}
-            Err(err) => panic!("unexpected streaming error: {err:?}"),
-        }
-    }
-
-    let requests = recorded.requests();
-    assert_eq!(requests.len(), 2);
-    let retry_history = requests[1].chat_history.clone();
-    // The reasoning was still open when the turn was abandoned, so nothing
-    // named its issuer: it opens for no provider and is left out.
-    assert!(history_contains_tool_call(&retry_history, "default_api"));
-    assert!(!assistant_reasoning_precedes_tool_call(
-        &retry_history,
-        "delta reason",
-        "default_api"
-    ));
-}
-
-#[tokio::test]
 async fn invalid_tool_call_hook_skip_resets_streaming_text_delta_state() {
     let text_hook = RecordingTextDeltaHook::default();
     let model = MockCompletionModel::from_stream_turns([
@@ -2923,10 +2852,12 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
             Ok(MultiTurnStreamItem::CompletionCall(completion_call)) => {
                 completion_call_events.push(completion_call);
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: rig_core::message::AssistantContent::ToolCall(call),
                 ..
-            })) => panic!("invalid tool-call delta should not be emitted"),
+            }))) if call.function.name == "default_api" => {
+                panic!("an invalid tool call should not be emitted")
+            }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 final_response_text = Some(response.output().to_string());
                 final_response_usage = response.usage();
@@ -2939,7 +2870,15 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
     }
 
     assert_eq!(final_response_text.as_deref(), Some("retried"));
-    assert!(delta_hook.observed().is_empty());
+    // Only the valid call's arguments stream; the invalid call's never do.
+    assert!(
+        delta_hook
+            .observed()
+            .iter()
+            .all(|(_, name, _)| name == "add"),
+        "{:?}",
+        delta_hook.observed()
+    );
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
     let first_usage = Usage {
         total_tokens: Some(4),
@@ -2975,13 +2914,9 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 ))
                 && content.iter().any(|item| matches!(
                 item,
-                // An invalid NAME DELTA never completed, so no provider
-                // id exists — the diagnostic call mints its correlation
-                // handle at the boundary (wire schemas require a
-                // non-empty tool_call_id; stream keys never surface).
+                // The invalid call keeps the id the provider named it.
                 AssistantContent::ToolCall(tool_call)
-                    if tool_call.id.is_local()
-                        && tool_call.id.provider().is_none()
+                    if tool_call.id == rig_core::message::CallId::from_wire("tool_call_1")
                         && tool_call.function.name == "default_api"
                         && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
             ))
@@ -3006,7 +2941,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if result.call.is_local()
+                    if result.call == rig_core::message::CallId::from_wire("tool_call_1")
                         && result.name == "default_api"
                         && result.content.iter().any(|content| matches!(
                             content,
@@ -3062,21 +2997,10 @@ async fn invalid_tool_call_delta_context_includes_same_turn_history_and_tool_cal
     assert_eq!(contexts.len(), 1);
     let context = &contexts[0];
     assert_eq!(context.tool_name, "default_api");
-    // The invalid name delta never completed, so no PROVIDER id exists —
-    // the durable id the context reports is rig's minted handle (always
-    // present and non-empty, never an empty sentinel), and correlation
-    // with stream events is by block_id.
-    assert!(
-        context
-            .tool_call_id
-            .as_ref()
-            .is_some_and(|id| id.is_local()),
-        "an unfinished call still carries a non-empty minted durable id, got {:?}",
-        context.tool_call_id
-    );
-    assert!(
-        context.block_id.is_some(),
-        "internal call id is minted by the shared accumulator"
+    // The id the context reports is the one the provider named the call.
+    assert_eq!(
+        context.tool_call_id,
+        Some(rig_core::message::CallId::from_wire("tool_call_1"))
     );
     assert!(context.is_streaming);
     assert!(history_contains_text(&context.chat_history, "checking "));
@@ -3174,15 +3098,15 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: rig_core::message::AssistantContent::ToolCall(call),
                 ..
-            })) => panic!("invalid tool-call delta should not be emitted"),
+            }))) if call.function.name == "default_api" => {
+                panic!("an invalid tool call should not be emitted")
+            }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,
-                id: block_id,
             })) => {
-                let _ = block_id;
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -3196,19 +3120,27 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
 
     let skipped_tool_result =
         skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
-    // The invalid name delta never completed, so no provider id exists:
-    // `provider` faithfully records that absence, while the diagnostic
-    // call mints rig's correlation handle at the boundary — the synthetic
-    // result carries that non-empty minted id, never an empty sentinel.
-    assert!(skipped_tool_result.call.is_local());
+    // The synthetic result answers the call under the id the provider
+    // named it.
+    assert_eq!(
+        skipped_tool_result.call,
+        rig_core::message::CallId::from_wire("tool_call_1")
+    );
     assert_eq!(skipped_tool_result.name, "default_api");
-    assert!(skipped_tool_result.call.provider().is_none());
     assert!(skipped_tool_result.content.iter().any(|content| matches!(
         content,
         ToolResultContent::Text(text) if text.text == "default_api was skipped"
     )));
     assert_eq!(final_response_text.as_deref(), Some("continued"));
-    assert!(delta_hook.observed().is_empty());
+    // Only the valid call's arguments stream; the invalid call's never do.
+    assert!(
+        delta_hook
+            .observed()
+            .iter()
+            .all(|(_, name, _)| name == "add"),
+        "{:?}",
+        delta_hook.observed()
+    );
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
 
     let requests = recorded.requests();
@@ -3229,13 +3161,9 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 ))
                 && content.iter().any(|item| matches!(
                 item,
-                // An invalid NAME DELTA never completed, so no provider
-                // id exists — the diagnostic call mints its correlation
-                // handle at the boundary (wire schemas require a
-                // non-empty tool_call_id; stream keys never surface).
+                // The invalid call keeps the id the provider named it.
                 AssistantContent::ToolCall(tool_call)
-                    if tool_call.id.is_local()
-                        && tool_call.id.provider().is_none()
+                    if tool_call.id == rig_core::message::CallId::from_wire("tool_call_1")
                         && tool_call.function.name == "default_api"
                         && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
             ))
@@ -3260,7 +3188,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if result.call.is_local()
+                    if result.call == rig_core::message::CallId::from_wire("tool_call_1")
                         && result.name == "default_api"
                         && result.content.iter().any(|content| matches!(
                             content,
@@ -3420,17 +3348,13 @@ async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_late
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { .. },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { .. }))) => {
                 saw_text = true;
             }
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {
                 saw_completion_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_)))
-            | Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+            Ok(MultiTurnStreamItem::FinalResponse(_)) => {
                 saw_final_response = true;
             }
             Ok(MultiTurnStreamItem::ToolCall { .. }) => {
@@ -3874,10 +3798,7 @@ async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -3936,10 +3857,7 @@ async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -3998,10 +3916,7 @@ async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -4035,78 +3950,65 @@ async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
 }
 
 #[tokio::test]
-async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order() {
-    let model = MockCompletionModel::from_stream_turns([[
-        MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":"),
-        MockStreamEvent::tool_call_name_delta("tool_1", "add"),
-        MockStreamEvent::tool_call_arguments_delta("tool_1", "1}"),
-        MockStreamEvent::final_response_with_total_tokens(3),
-    ]]);
+async fn tool_call_fragments_before_the_name_emit_one_call_when_it_closes() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1,"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "\"y\":2}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ],
+        vec![
+            MockStreamEvent::text("3"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+    ]);
     let hook = RecordingToolCallDeltaHook::default();
     let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
     let mut stream = agent
         .prompt("stream a tool call")
         .add_hook(hook.clone())
+        .max_turns(2)
         .stream();
-    let mut stream_deltas = Vec::new();
+    let mut arguments = Vec::new();
+    let mut ended = Vec::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                id: block_id,
-                delta: delta @ (Delta::ToolName { .. } | Delta::ToolArguments { .. }),
-            })) => {
-                stream_deltas.push((block_id, delta));
-            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                json,
+                ..
+            }))) => arguments.push(json),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: rig_core::message::AssistantContent::ToolCall(call),
+                ..
+            }))) => ended.push(call),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
             Err(err) => panic!("unexpected streaming error: {err:?}"),
         }
     }
 
-    // The internal call id is minted by the shared accumulator when the
-    // call opens; assert correlation (one stable id across every delta)
-    // rather than a scripted literal.
-    let internal = stream_deltas
-        .first()
-        .map(|delta| delta.0.clone())
-        .expect("at least one delta");
+    // The buffered fragments close as one call, visible once: its whole
+    // arguments, then its end.
+    let [call] = ended.as_slice() else {
+        panic!("one call: {ended:?}");
+    };
+    assert_eq!(call.function.name, "add");
+    assert_eq!(call.function.arguments, serde_json::json!({"x": 1, "y": 2}));
+    assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
     assert_eq!(
         hook.observed(),
-        vec![
-            (internal.clone(), Some("add".to_string()), String::new()),
-            (internal.clone(), None, "{\"x\":".to_string()),
-            (internal.clone(), None, "1}".to_string()),
-        ]
-    );
-    assert_eq!(
-        stream_deltas,
-        vec![
-            (
-                internal.clone(),
-                Delta::ToolName {
-                    name: "add".to_string()
-                }
-            ),
-            (
-                internal.clone(),
-                Delta::ToolArguments {
-                    arguments: "{\"x\":".to_string()
-                }
-            ),
-            (
-                internal.clone(),
-                Delta::ToolArguments {
-                    arguments: "1}".to_string()
-                }
-            ),
-        ]
+        vec![(call.id.clone(), "add".to_string(), "{\"x\":1,\"y\":2}".to_string())]
     );
 }
 
+/// A call whose fragments never named its tool never opens: a call needs
+/// its id and its name. The fragments do not become a call, nothing runs,
+/// and the reply ends with what it did carry.
 #[tokio::test]
-async fn tool_call_args_delta_without_name_errors_at_stream_end() {
+async fn tool_call_args_without_a_name_never_become_a_call() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
@@ -4122,52 +4024,23 @@ async fn tool_call_args_delta_without_name_errors_at_stream_end() {
 
     let mut stream = agent
         .prompt("stream an incomplete tool call")
-        .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
         .stream();
-    let mut saw_delta = false;
-    let mut saw_completion_call = false;
-    let mut saw_final_response = false;
-    let mut error = None;
-
+    let mut saw_call = false;
+    let mut output = None;
     while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            })) => {
-                saw_delta = true;
-            }
-            Ok(MultiTurnStreamItem::CompletionCall(_)) => {
-                saw_completion_call = true;
-            }
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => {
-                saw_final_response = true;
-            }
-            Ok(_) => {}
-            Err(err) => {
-                error = Some(err);
-                break;
-            }
+        match item.expect("stream item") {
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                StreamEvent::Start { .. } | StreamEvent::Arguments { .. },
+            ))
+            | MultiTurnStreamItem::ToolCall { .. } => saw_call = true,
+            MultiTurnStreamItem::FinalResponse(response) => output = Some(response.output),
+            _ => {}
         }
     }
 
-    assert!(!saw_delta);
-    assert!(!saw_completion_call);
-    assert!(!saw_final_response);
-    let error = error.expect("unterminated tool-call args delta should fail");
-    match error {
-        StreamingError::Completion(ProviderError::Response(message)) => {
-            assert!(
-                message.contains("streamed tool call arguments"),
-                "{message}"
-            );
-            // The diagnostic names the rig correlator (present and
-            // non-empty); no stream key or fabricated provider id.
-            assert!(message.contains("block"), "{message}");
-        }
-        other => panic!("expected completion response error, got {other:?}"),
-    }
+    assert!(!saw_call);
+    assert_eq!(output.as_deref(), Some(""));
     assert_eq!(recorded.request_count(), 1);
 }
 
@@ -4200,10 +4073,7 @@ async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -4253,77 +4123,48 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
         .add_hook(hook.clone())
         .stream();
     let mut stream_deltas = Vec::new();
-    let mut completed_reasoning = 0;
-    // The durable provider id travels on the block start; a delta carries
-    // only its block id.
-    let mut provider_ids: std::collections::HashMap<BlockId, Option<String>> =
-        std::collections::HashMap::new();
+    let mut completed = Vec::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockStart {
-                id,
-                kind: BlockKind::Reasoning { provider_id },
-            })) => {
-                provider_ids.insert(id, provider_id);
-            }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                id,
-                delta: Delta::Reasoning { text: reasoning },
-            })) => {
-                let provider_id = provider_ids.get(&id).cloned().flatten();
-                stream_deltas.push((id, provider_id, reasoning));
-            }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
-                end: BlockClose::Reasoning { .. },
-                block: Some(rig_core::message::AssistantContent::Reasoning(_)),
-                ..
-            })) => completed_reasoning += 1,
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
+                part,
+                text,
+            }))) => stream_deltas.push((part.index(), text)),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                part,
+                content: rig_core::message::AssistantContent::Reasoning(reasoning),
+            }))) => completed.push((part.index(), reasoning)),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
             Err(err) => panic!("unexpected streaming error: {err:?}"),
         }
     }
 
-    assert_eq!(stream_deltas.len(), 3);
-    let first_id = stream_deltas[0].0.clone();
-    let second_id = stream_deltas[1].0.clone();
-    assert_ne!(first_id, second_id);
-    assert_eq!(stream_deltas[2].0, first_id);
-    assert_eq!(stream_deltas[0].1, None);
-    assert_eq!(stream_deltas[1].1.as_deref(), Some("rs_b"));
-    assert_eq!(stream_deltas[2].1, None);
+    // Interleaved parts stay apart; each delta names its part.
     assert_eq!(
-        stream_deltas
-            .iter()
-            .map(|(_, _, delta)| delta.as_str())
-            .collect::<Vec<_>>(),
-        vec!["first ", "beta", "second"]
+        stream_deltas,
+        vec![
+            (0, "first ".to_string()),
+            (1, "beta".to_string()),
+            (0, "second".to_string()),
+        ]
     );
-    // `rs_b`, which the script never ends, is closed before the terminal
-    // and carries its block like the restated first part.
-    assert_eq!(completed_reasoning, 2);
+    // `rs_b`, which the script never ends, is closed at the provider's end
+    // like the restated first part, and carries its provider id.
+    assert_eq!(completed.len(), 2, "{completed:?}");
+    let rs_b = completed
+        .iter()
+        .find(|(part, _)| *part == 1)
+        .and_then(|(_, reasoning)| reasoning.open(reasoning.issuer()))
+        .expect("the second part ends");
+    assert_eq!(rs_b.id.as_deref(), Some("rs_b"));
     assert_eq!(
         hook.observed(),
         vec![
-            (
-                first_id.clone(),
-                None,
-                "first ".to_string(),
-                "first ".to_string(),
-            ),
-            (
-                second_id,
-                Some("rs_b".to_string()),
-                "beta".to_string(),
-                "beta".to_string(),
-            ),
-            (
-                first_id,
-                None,
-                "second".to_string(),
-                "first second".to_string(),
-            ),
+            (0, "first ".to_string(), "first ".to_string()),
+            (1, "beta".to_string(), "beta".to_string()),
+            (0, "second".to_string(), "first second".to_string()),
         ]
     );
 }
@@ -4350,10 +4191,7 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { .. },
-                ..
-            })) => saw_delta = true,
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { .. }))) => saw_delta = true,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
             Ok(_) => {}
             Err(err) => {
@@ -4364,10 +4202,7 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
     }
 
     let observed = stopping.observed();
-    assert_eq!(observed.len(), 1);
-    assert_eq!(observed[0].1.as_deref(), Some("rs_1"));
-    assert_eq!(observed[0].2, "blocked");
-    assert_eq!(observed[0].3, "blocked");
+    assert_eq!(observed, vec![(0, "blocked".to_string(), "blocked".to_string())]);
     assert!(later.observed().is_empty());
     assert!(!saw_delta);
     assert!(!saw_final_response);
@@ -4396,10 +4231,7 @@ async fn stream_prompt_skips_reasoning_delta_hook_without_observation_interest()
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text: reasoning },
-                ..
-            })) => emitted.push(reasoning),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { text: reasoning, .. }))) => emitted.push(reasoning),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
             Err(err) => panic!("unexpected streaming error: {err:?}"),
@@ -4434,10 +4266,7 @@ async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisiona
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text: reasoning },
-                ..
-            })) => order.push(reasoning),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { text: reasoning, .. }))) => order.push(reasoning),
             Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
                 order.push(format!("retry:{turn}"));
             }
@@ -4450,147 +4279,100 @@ async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisiona
     assert_eq!(order, vec!["rejected", "retry:1", "accepted"]);
     let observed = hook.recorder.observed();
     assert_eq!(observed.len(), 2);
+    assert_eq!(observed[0].1, "rejected");
     assert_eq!(observed[0].2, "rejected");
-    assert_eq!(observed[0].3, "rejected");
+    assert_eq!(observed[1].1, "accepted");
     assert_eq!(observed[1].2, "accepted");
-    assert_eq!(observed[1].3, "accepted");
 }
 
 #[tokio::test]
 async fn stream_prompt_emits_tool_call_deltas_without_hook() {
-    let model = MockCompletionModel::from_stream_turns([[
-        MockStreamEvent::tool_call_name_delta("tool_1", "add"),
-        MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":"),
-        MockStreamEvent::tool_call_arguments_delta("tool_1", "1}"),
-        MockStreamEvent::final_response_with_total_tokens(3),
-    ]]);
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1,"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "\"y\":2}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ],
+        vec![
+            MockStreamEvent::text("3"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+    ]);
     let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
-    let mut stream = agent.prompt("stream a tool call").stream();
-    let mut deltas = Vec::new();
+    let mut stream = agent.prompt("stream a tool call").max_turns(2).stream();
+    let mut arguments = Vec::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                id: block_id,
-                delta: delta @ (Delta::ToolName { .. } | Delta::ToolArguments { .. }),
-            })) => {
-                deltas.push((block_id, delta));
-            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                json,
+                ..
+            }))) => arguments.push(json),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
             Err(err) => panic!("unexpected streaming error: {err:?}"),
         }
     }
 
-    // The internal call id is minted by the shared accumulator when the
-    // call opens; assert correlation (one stable id across every delta)
-    // rather than a scripted literal.
-    let internal = deltas
-        .first()
-        .map(|delta| delta.0.clone())
-        .expect("at least one delta");
-    assert_eq!(
-        deltas,
-        vec![
-            (
-                internal.clone(),
-                Delta::ToolName {
-                    name: "add".to_string()
-                }
-            ),
-            (
-                internal.clone(),
-                Delta::ToolArguments {
-                    arguments: "{\"x\":".to_string()
-                }
-            ),
-            (
-                internal.clone(),
-                Delta::ToolArguments {
-                    arguments: "1}".to_string()
-                }
-            ),
-        ]
-    );
+    // The call's fragments are buffered; its arguments stream once, whole.
+    assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
 }
 
 #[tokio::test]
 async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
-    let model = MockCompletionModel::from_stream_turns([[
-        MockStreamEvent::tool_call_name_delta("tool_1", "add"),
-        MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":"),
-        MockStreamEvent::tool_call_arguments_delta("tool_1", "1}"),
-        MockStreamEvent::final_response_with_total_tokens(3),
-    ]]);
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1,"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "\"y\":2}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ],
+        vec![
+            MockStreamEvent::text("3"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+    ]);
     let hook = RecordingToolCallDeltaHook::default();
     let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
     let mut stream = agent
         .prompt("stream a tool call")
         .add_hook(hook.clone())
+        .max_turns(2)
         .stream();
-    let mut stream_deltas = Vec::new();
+    let mut arguments = Vec::new();
+    let mut call_ids = Vec::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                id: block_id,
-                delta: delta @ (Delta::ToolName { .. } | Delta::ToolArguments { .. }),
-            })) => {
-                stream_deltas.push((block_id, delta));
-            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                json,
+                ..
+            }))) => arguments.push(json),
+            Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => call_ids.push(tool_call.id),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
             Err(err) => panic!("unexpected streaming error: {err:?}"),
         }
     }
 
-    // The internal call id is minted by the shared accumulator when the
-    // call opens; assert correlation (one stable id across every delta)
-    // rather than a scripted literal.
-    let internal = stream_deltas
-        .first()
-        .map(|delta| delta.0.clone())
-        .expect("at least one delta");
+    let [call_id] = call_ids.as_slice() else {
+        panic!("one call: {call_ids:?}");
+    };
     assert_eq!(
         hook.observed(),
-        vec![
-            (internal.clone(), Some("add".to_string()), String::new()),
-            (internal.clone(), None, "{\"x\":".to_string()),
-            (internal.clone(), None, "1}".to_string()),
-        ]
+        vec![(call_id.clone(), "add".to_string(), "{\"x\":1,\"y\":2}".to_string())]
     );
-    assert_eq!(
-        stream_deltas,
-        vec![
-            (
-                internal.clone(),
-                Delta::ToolName {
-                    name: "add".to_string()
-                }
-            ),
-            (
-                internal.clone(),
-                Delta::ToolArguments {
-                    arguments: "{\"x\":".to_string()
-                }
-            ),
-            (
-                internal.clone(),
-                Delta::ToolArguments {
-                    arguments: "1}".to_string()
-                }
-            ),
-        ]
-    );
+    assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
 }
 
 #[tokio::test]
 async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::tool_call_name_delta("tool_1", "add"),
-        MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":"),
+        MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
         MockStreamEvent::final_response_with_total_tokens(3),
     ]]);
     let hook = TerminatingToolCallDeltaHook::default();
@@ -4606,10 +4388,7 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
                 saw_delta = true;
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
@@ -4623,14 +4402,12 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
         }
     }
 
-    // Internal ids are minted by the shared accumulator; assert presence,
-    // not a scripted literal.
     let observed = hook.observed();
     assert_eq!(observed.len(), 1);
     let first = observed.first().expect("one observed delta");
 
-    assert_eq!(first.1, Some("add".to_string()));
-    assert_eq!(first.2, String::new());
+    assert_eq!(first.1, "add");
+    assert_eq!(first.2, "{\"x\":1}");
     assert!(!saw_delta);
     assert!(!saw_final_response);
     assert!(
@@ -4844,10 +4621,7 @@ async fn final_response_matches_streamed_text_when_provider_final_is_textless() 
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            })) => streamed_text.push_str(&text),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => streamed_text.push_str(&text),
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 final_response_text = Some(res.output().to_owned());
                 break;
@@ -4979,10 +4753,7 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            })) => streamed_text.push_str(&text),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => streamed_text.push_str(&text),
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 final_response_text = Some(res.output().to_owned());
                 break;
@@ -5010,7 +4781,7 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
 #[tokio::test]
 async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
+        mock_final(Usage::default()).with_reason(FinishReason::Length),
     )]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5060,7 +4831,7 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::Text("a partial ans".to_string()),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
+            mock_final(Usage::default()).with_reason(FinishReason::Length),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5105,7 +4876,7 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
 #[tokio::test]
 async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        mock_final(Usage::default()).with_finish_reason(FinishReason::ContentFilter),
+        mock_final(Usage::default()).with_reason(FinishReason::ContentFilter),
     )]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5148,7 +4919,7 @@ async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
 async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
         mock_final(Usage::default())
-            .with_finish_reason(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
+            .with_reason(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
     )]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5188,7 +4959,7 @@ async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("thinking hard and never reaching an answer"),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
+            mock_final(Usage::default()).with_reason(FinishReason::Length),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5227,7 +4998,7 @@ async fn reasoning_only_turn_content_filtered_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("considering something the filter rejects"),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::ContentFilter),
+            mock_final(Usage::default()).with_reason(FinishReason::ContentFilter),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5272,7 +5043,7 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
         MockStreamEvent::reasoning("weighing the options"),
         MockStreamEvent::Text("the answer so f".to_string()),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
+            mock_final(Usage::default()).with_reason(FinishReason::Length),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5312,7 +5083,7 @@ async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("thought about it, nothing to add"),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Stop),
+            mock_final(Usage::default()).with_reason(FinishReason::Stop),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5338,7 +5109,7 @@ async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
 ///
 /// A caller debugging a truncated thinking turn wants to see how far the
 /// model got. The reasoning reaches them because it was *streamed*: every
-/// block end is delivered before the run reads the finish reason. History
+/// part's end is delivered before the run reads the finish reason. History
 /// keeps nothing — the truncation guard runs before the push, so a
 /// reasoning-only turn nobody can answer around is not committed on either
 /// runtime (CONTRACT §4; `run::tests::a_truncated_reasoning_only_turn_commits_nothing`).
@@ -5349,7 +5120,7 @@ async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors()
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("partial thinking worth keeping"),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
+            mock_final(Usage::default()).with_reason(FinishReason::Length),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5359,11 +5130,10 @@ async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors()
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
-                end: BlockClose::Reasoning { .. },
-                block: Some(rig_core::message::AssistantContent::Reasoning(reasoning)),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: rig_core::message::AssistantContent::Reasoning(reasoning),
                 ..
-            })) => {
+            }))) => {
                 streamed_reasoning.push_str(
                     &reasoning
                         .open(reasoning.issuer())
@@ -5453,10 +5223,7 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
     let mut full_content = String::new();
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => {
                 full_content.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
@@ -5519,10 +5286,7 @@ async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     let mut final_history = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => {
                 response_text.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
@@ -5727,8 +5491,8 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
         .position(|item| matches!(item, AssistantContent::Text(_)))
         .expect("assistant history should contain text");
     assert!(
-        reasoning_index < text_index,
-        "assistant reasoning must be stored before assistant text: {assistant_content:?}"
+        text_index < reasoning_index,
+        "history keeps the parts in the order they started: {assistant_content:?}"
     );
 }
 

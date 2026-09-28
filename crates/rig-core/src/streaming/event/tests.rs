@@ -1,96 +1,96 @@
 use super::*;
-use crate::{completion::Usage, message::ReasoningContent, streaming::MintKind};
+use serde_json::json;
 
-#[test]
-fn every_event_round_trips_through_serde() {
-    let events = vec![
-        StreamEvent::BlockStart {
-            id: BlockId::wire("msg_1"),
-            kind: BlockKind::Message,
-        },
-        StreamEvent::BlockStart {
-            id: BlockId::minted(MintKind::Text, 0),
-            kind: BlockKind::Text {
-                additional_params: AdditionalParams::from_entries([("k", serde_json::json!(1))]),
-            },
-        },
-        StreamEvent::text(BlockId::minted(MintKind::Text, 0), "hi"),
-        StreamEvent::BlockDelta {
-            id: BlockId::wire("rs_1"),
-            delta: Delta::Reasoning {
-                text: "think".into(),
-            },
-        },
-        StreamEvent::BlockStart {
-            id: BlockId::wire("call_1"),
-            kind: BlockKind::ToolCall,
-        },
-        StreamEvent::BlockDelta {
-            id: BlockId::wire("call_1"),
-            delta: Delta::ToolName { name: "add".into() },
-        },
-        StreamEvent::BlockDelta {
-            id: BlockId::wire("call_1"),
-            delta: Delta::ToolArguments {
-                arguments: "{\"x\":1}".into(),
-            },
-        },
-        StreamEvent::BlockEnd {
-            id: BlockId::wire("call_1"),
-            end: BlockClose::ToolCall(
-                ToolCallEnd::new(UnparseableToolInput::Drop).with_call_id("c1"),
-            ),
-            block: None,
-        },
-        StreamEvent::BlockEnd {
-            id: BlockId::wire("rs_1"),
-            end: BlockClose::Reasoning {
-                reasoning: Some(Reasoning {
-                    id: Some("rs_1".into()),
-                    content: vec![ReasoningContent::Text {
-                        text: "think".into(),
-                        signature: Some("sig".into()),
-                    }],
-                }),
-                signature: None,
-                wire_sent: true,
-            },
-            block: None,
-        },
-        StreamEvent::BlockEnd {
-            id: BlockId::minted(MintKind::Text, 0),
-            end: BlockClose::Text,
-            block: None,
-        },
-        StreamEvent::Final(StreamFinal::new(
-            "mock",
-            Usage::default(),
-            serde_json::json!({}),
-        )),
-        StreamEvent::Unknown(UnknownPayload::new(
-            serde_json::json!({"type": "web_search_call"}),
-        )),
-    ];
-    for event in events {
-        let json = serde_json::to_string(&event).expect("serialize");
-        let back: StreamEvent = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, event, "{json}");
-    }
+fn text_end(part: u32, text: &str) -> serde_json::Value {
+    json!({"item": "event", "value": {"event": "end", "part": part, "content": {"type": "text", "text": text}}})
 }
 
 #[test]
-fn empty_additional_params_are_a_decode_error() {
-    let json =
-        r#"{"event":"block_start","id":"wire:t","kind":{"kind":"text","additional_params":{}}}"#;
-    assert!(serde_json::from_str::<StreamEvent>(json).is_err());
-    let json = r#"{"event":"block_start","id":"wire:t","kind":{"kind":"text"}}"#;
-    assert!(matches!(
-        serde_json::from_str::<StreamEvent>(json).unwrap(),
-        StreamEvent::BlockStart {
-            kind: BlockKind::Text {
-                additional_params: None
-            },
-            ..
-        }
-    ));
+fn a_writer_sequence_round_trips_through_serde() {
+    let value = json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 0, "text": "hi"}},
+        {"item": "unknown", "value": {"type": "web_search_call"}},
+        text_end(0, "hi"),
+    ]);
+    let transcript = Transcript::parse(value.clone()).expect("a writer sequence");
+    assert_eq!(transcript.len(), 4);
+    assert_eq!(serde_json::to_value(&transcript).expect("serializes"), value);
+    let back: Transcript = serde_json::from_value(value).expect("deserializes");
+    assert_eq!(back, transcript);
+}
+
+#[test]
+fn an_event_for_a_part_that_never_started_is_refused() {
+    let value = json!([{"item": "event", "value": {"event": "text", "part": 0, "text": "hi"}}]);
+    assert_eq!(
+        Transcript::parse(value),
+        Err(SequenceError::UnknownPart(0))
+    );
+}
+
+#[test]
+fn a_start_that_skips_a_position_is_refused() {
+    let value = json!([{"item": "event", "value": {"event": "start", "part": 1, "kind": "text"}}]);
+    assert_eq!(
+        Transcript::parse(value),
+        Err(SequenceError::UnknownPart(0))
+    );
+}
+
+#[test]
+fn a_part_that_grows_after_its_end_is_refused() {
+    let value = json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        text_end(0, ""),
+        {"item": "event", "value": {"event": "text", "part": 0, "text": "late"}},
+    ]);
+    assert_eq!(
+        Transcript::parse(value),
+        Err(SequenceError::EndedTwice(2))
+    );
+}
+
+#[test]
+fn a_fragment_of_another_kind_is_refused() {
+    let value = json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        {"item": "event", "value": {"event": "reasoning", "part": 0, "text": "no"}},
+    ]);
+    assert_eq!(
+        Transcript::parse(value),
+        Err(SequenceError::WrongKind(1))
+    );
+}
+
+#[test]
+fn an_open_part_is_a_prefix_but_not_a_transcript() {
+    let value = json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 0, "text": "cut"}},
+    ]);
+    assert_eq!(
+        Transcript::parse(value.clone()),
+        Err(SequenceError::Unclosed(0))
+    );
+    let prefix = Transcript::parse_prefix(value).expect("a stream cut short");
+    assert_eq!(prefix.events().count(), 2);
+}
+
+#[test]
+fn push_checks_each_item_against_the_items_before_it() {
+    let mut transcript = Transcript::parse_prefix(json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+    ]))
+    .expect("a prefix");
+    let end = Transcript::parse_prefix(json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        text_end(0, "hi"),
+    ]))
+    .expect("a prefix")
+    .into_items()
+    .pop()
+    .expect("the end");
+    transcript.push(end.clone()).expect("the part ends once");
+    assert_eq!(transcript.push(end), Err(SequenceError::EndedTwice(2)));
 }

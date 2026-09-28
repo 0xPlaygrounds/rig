@@ -3,7 +3,7 @@
 //! neither is copied from the other or from an effect replay.
 
 use bevy_ecs::prelude::*;
-use rig::{effect::Outcome, providers::anthropic, streaming::StreamEvent};
+use rig::{effect::Outcome, providers::anthropic};
 use rig_ecs::{
     agent::{MaxTokens, MaxTurns, Outputs, Preamble, Retry, Turn},
     bus::{BusSet, EffectOutcome, RigSchedule, Seq, Streamed},
@@ -167,11 +167,10 @@ async fn hooks_observe_raw_streamed() {
                     let mut query = ecs.app.world_mut().query::<&Streamed>();
                     let finals: Vec<_> = query
                         .iter(ecs.app.world())
-                        .flat_map(|s| s.events.iter())
-                        .filter_map(|e| match e {
-                            StreamEvent::Final(final_) => Some(final_),
-                            _ => None,
-                        })
+                        .filter_map(|s| match &s.outcome {
+                Some(Ok(rig::effect::Outcome::Completion(final_))) => Some(final_),
+                _ => None,
+            })
                         .collect();
                     assert_eq!(finals.len(), 1);
                     assert!(!finals[0].raw.is_null());
@@ -249,9 +248,8 @@ async fn run_two_attempts(client: AnthropicModels, streamed: bool, retry: bool) 
         streams.sort_by_key(|(seq, _)| **seq);
         terminals = streams
             .into_iter()
-            .flat_map(|(_, stream)| stream.events.iter())
-            .filter_map(|event| match event {
-                StreamEvent::Final(final_) => Some(final_.raw.clone()),
+            .filter_map(|(_, stream)| match &stream.outcome {
+                Some(Ok(rig::effect::Outcome::Completion(response))) => Some(response.raw.clone()),
                 _ => None,
             })
             .collect();

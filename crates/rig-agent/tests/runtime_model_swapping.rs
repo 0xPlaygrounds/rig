@@ -24,20 +24,17 @@ use rig_agent::{
         CompletionRequest, CompletionResponse, Message, PromptError, ProviderCapabilities, Usage,
     },
     extractor::{Extractor, ExtractorBuilder},
-    streaming::{
-        BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal, ToolCallEnd,
-        UnparseableToolInput,
-    },
+    streaming::{Item, StreamEvent},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
-use rig_core::operation::AdapterOutput;
-use rig_core::operation::Completion;
+use rig_core::operation::Finish;
+use rig_core::test_utils::{MockFrame, MockScript, MockStreamEvent};
 use rig_core::wire::{Capabilities, Mode};
 use rig_core::{
     error::ErrorKind,
-    message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction, UserContent},
+    message::{AssistantContent, ReasoningContent, ToolCall, ToolFunction, UserContent},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -273,20 +270,16 @@ fn completion_from_script(
 fn stream_from_script(
     script: &Script,
     request: CompletionRequest,
-) -> Result<Vec<StreamEvent>, ProviderError> {
+) -> Result<Vec<MockStreamEvent>, ProviderError> {
     script.record(request);
     let turn = script.next_turn();
     if let Turn::Error(message) = &turn {
         return Err(ProviderError::Provider(message.clone()));
     }
-    let mut events = vec![StreamEvent::BlockStart {
-        id: BlockId::wire(turn.message_id()),
-        kind: BlockKind::Message,
-    }];
-    let text_block = MintKind::Text.for_wire_index(0);
+    let mut events = vec![MockStreamEvent::MessageId(turn.message_id())];
     match &turn {
         Turn::Text { text, .. } => {
-            events.push(StreamEvent::text(text_block, text.clone()));
+            events.push(MockStreamEvent::text(text.clone()));
         }
         Turn::Tool {
             id,
@@ -294,87 +287,47 @@ fn stream_from_script(
             arguments,
             ..
         } => {
-            // Canonical fragmenting-wire shape: name/args fragments closed by
-            // a tool-call end; the shared accumulator assembles the call and
-            // opens the block at the first fragment.
-            events.push(StreamEvent::BlockDelta {
-                id: BlockId::wire(id.clone()),
-                delta: Delta::ToolName { name: name.clone() },
-            });
-            events.push(StreamEvent::BlockDelta {
-                id: BlockId::wire(id.clone()),
-                delta: Delta::ToolArguments {
-                    arguments: arguments.to_string(),
-                },
-            });
-            events.push(StreamEvent::BlockEnd {
-                id: BlockId::wire(id.clone()),
-                end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Drop)),
-                block: None,
-            });
+            // A fragmenting wire's shape: the name and the arguments as
+            // fragments, closed by the call's end.
+            events.push(MockStreamEvent::tool_call_name_delta(id.clone(), name.clone()));
+            events.push(MockStreamEvent::tool_call_arguments_delta(
+                id.clone(),
+                arguments.to_string(),
+            ));
+            events.push(MockStreamEvent::tool_call_end(id.clone()));
         }
         Turn::Rich { text, .. } => {
-            // A whole reasoning block restated at its (wire-sent) end.
-            let whole = MintKind::Reasoning.for_wire_index(1);
-            events.push(StreamEvent::BlockStart {
-                id: whole.clone(),
-                kind: BlockKind::Reasoning { provider_id: None },
+            // A whole reasoning part, then a streamed one, then an
+            // unmodeled provider event, then the answer.
+            events.push(MockStreamEvent::Reasoning {
+                id: "reasoning-1".to_owned(),
+                content: ReasoningContent::Summary("summary".to_owned()),
             });
-            events.push(StreamEvent::BlockEnd {
-                id: whole,
-                end: BlockClose::Reasoning {
-                    reasoning: Some(Reasoning {
-                        id: None,
-                        content: vec![ReasoningContent::Summary("summary".to_owned())],
-                    }),
-                    signature: None,
-                    wire_sent: true,
-                },
-                block: None,
-            });
-            events.push(StreamEvent::BlockDelta {
-                id: MintKind::Reasoning.for_wire_index(2),
-                delta: Delta::Reasoning {
-                    text: "reasoning delta".to_owned(),
-                },
-            });
-            // A boundary-less wire's decoder closes the minted part before
-            // other content, as the driver's sequence laws require.
-            events.push(StreamEvent::BlockEnd {
-                id: MintKind::Reasoning.for_wire_index(2),
-                end: BlockClose::Reasoning {
-                    reasoning: None,
-                    signature: None,
-                    wire_sent: false,
-                },
-                block: None,
-            });
-            events.push(StreamEvent::Unknown(
-                serde_json::json!({
-                    "type": "provider_native_event",
-                    "provider": script.provider,
-                })
-                .into(),
+            events.push(MockStreamEvent::reasoning_delta_with_id(
+                "reasoning-2",
+                "reasoning delta",
             ));
-            events.push(StreamEvent::text(text_block, text.clone()));
+            events.push(MockStreamEvent::unknown(serde_json::json!({
+                "type": "provider_native_event",
+                "provider": script.provider,
+            })));
+            events.push(MockStreamEvent::text(text.clone()));
         }
         // Handled by the early return above.
         Turn::Error(_) => return Err(ProviderError::Provider("unreachable".to_owned())),
     }
-    events.push(StreamEvent::Final(
-        StreamFinal::new(script.provider, turn.usage(), serde_json::json!({}))
-            .with_message_id(turn.message_id()),
+    events.push(MockStreamEvent::FinalResponse(
+        Finish::new(turn.usage()).with_message_id(turn.message_id()),
     ));
 
     Ok(events)
 }
 
-type FakeFrame = Result<StreamEvent, ProviderError>;
-type FakeReply = Pin<Box<dyn Future<Output = Opened<FakeFrame>> + Send>>;
+type FakeReply = Pin<Box<dyn Future<Output = Opened<MockFrame>> + Send>>;
 type FakeSend = dyn Fn(CompletionRequest, Mode) -> Result<FakeReply, ProviderError> + Send + Sync;
 
 /// A test completion runtime: `send` answers each attempt. It is the
-/// transport of a local completion wire.
+/// transport of a scripted completion wire.
 #[derive(Clone)]
 struct Fake {
     send: Arc<FakeSend>,
@@ -400,39 +353,35 @@ impl Fake {
     }
 }
 
-type FakeModel = Model<Local<Completion>, Fake>;
+type FakeModel = Model<MockScript, Fake>;
 
-/// The local completion wire of `provider`.
-fn wire(provider: &'static str, composes_native_output_with_tools: bool) -> Local<Completion> {
-    Local::new(provider).with_capabilities(Capabilities::completion(
+/// The scripted completion wire of `provider`.
+fn wire(provider: &'static str, composes_native_output_with_tools: bool) -> MockScript {
+    MockScript::new(provider).with_capabilities(Capabilities::completion(
         ProviderCapabilities::new()
             .with_native_output_tool_composition(composes_native_output_with_tools),
     ))
 }
 
 /// A reply of `events`, ready at once.
-fn replied(events: Vec<StreamEvent>) -> FakeReply {
+fn replied(events: Vec<MockStreamEvent>) -> FakeReply {
     Box::pin(std::future::ready(Opened::new(stream::iter(
-        events.into_iter().map(|event| Ok(Ok(event))),
+        events.into_iter().map(|event| Ok(MockFrame::Event(event))),
     ))))
 }
 
-/// A whole `response`: its events as an adapter emits them, its `raw` the
-/// reply's document.
-fn answered(response: CompletionResponse) -> Opened<FakeFrame> {
-    let mut out = AdapterOutput::new();
-    out.response(&response, rig_core::operation::ImagePart::Block);
-    Opened::new(stream::iter(out.into_items().into_iter().map(Ok)))
-        .with_document(response.raw.clone())
+/// A whole `response`, its `raw` the reply's document.
+fn answered(response: CompletionResponse) -> Opened<MockFrame> {
+    let document = response.raw.clone();
+    Opened::new(stream::iter([Ok(MockFrame::Response(Box::new(response)))])).with_document(document)
 }
 
-impl Transport<Local<Completion>> for Fake {
-    fn send(
-        &self,
-        request: CompletionRequest,
-        exchange: Exchange,
-    ) -> Result<Sending<FakeFrame>, ProviderError> {
-        (self.send)(request, exchange.mode).map(Sending::later)
+impl Transport<MockScript> for Fake {
+    fn send(&self, request: CompletionRequest, exchange: Exchange) -> Opening<MockFrame> {
+        match (self.send)(request, exchange.mode) {
+            Ok(reply) => Opening::new(async move { Ok(reply.await) }),
+            Err(error) => Opening::failed(error),
+        }
     }
 }
 
@@ -518,16 +467,17 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     let mut low_level_stream = beta
         .stream(request("low-level stream"))
         .expect("direct provider stream");
-    let mut stream_final: Option<StreamFinal> = None;
     while let Some(item) = low_level_stream.next().await {
-        if let StreamEvent::Final(final_) = item.expect("stream item") {
-            stream_final = Some(final_);
-        }
+        item.expect("stream item");
     }
     assert_eq!(
-        stream_final.expect("stream final").provider,
+        low_level_stream
+            .finish()
+            .await
+            .expect("the stream ends")
+            .provider,
         "beta",
-        "direct model streams report their provider on the terminal record"
+        "direct model streams report their provider on the response"
     );
 
     let extraction_turn = Turn::Tool {
@@ -1062,7 +1012,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         Vec<CompletionRequest>,
         Vec<usize>,
         Vec<&'static str>,
-        Vec<rig_core::streaming::BlockId>,
+        Vec<rig_core::message::CallId>,
     ) {
         let (alpha, beta) = routing_models();
         let beta_script = script_of(&beta);
@@ -1092,33 +1042,33 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
             .stream();
         let mut final_response = None;
         let mut events = Vec::new();
-        let mut block_ids = Vec::new();
+        let mut call_ids = Vec::new();
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
-                rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamEvent::BlockDelta {
-                        id: block_id,
-                        delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                    StreamEvent::End {
+                        content: AssistantContent::ToolCall(call),
+                        ..
                     },
-                ) => {
-                    events.push("tool-delta");
-                    block_ids.push(block_id);
+                )) => {
+                    events.push("tool-end");
+                    call_ids.push(call.id);
                 }
-                rig_agent::agent::MultiTurnStreamItem::ToolCall { block_id, .. } => {
+                rig_agent::agent::MultiTurnStreamItem::ToolCall { tool_call, .. } => {
                     events.push("tool-call");
-                    block_ids.push(block_id);
+                    call_ids.push(tool_call.id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::ToolExecutionCommitted {
-                    block_id, ..
+                    tool_call, ..
                 } => {
                     events.push("tool-commit");
-                    block_ids.push(block_id);
+                    call_ids.push(tool_call.id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::StreamUserItem(
-                    rig_agent::streaming::StreamedUserContent::ToolResult { id: block_id, .. },
+                    rig_agent::streaming::StreamedUserContent::ToolResult { tool_result },
                 ) => {
                     events.push("tool-result");
-                    block_ids.push(block_id);
+                    call_ids.push(tool_result.call);
                 }
                 rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
                     final_response = Some(response);
@@ -1133,7 +1083,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
             beta_script.requests(),
             selected.lock().expect("selection lock").clone(),
             events,
-            block_ids,
+            call_ids,
         )
     }
 
@@ -1146,7 +1096,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         streaming_beta,
         streaming_selected,
         stream_events,
-        stream_block_ids,
+        stream_call_ids,
     ) = run_streaming().await;
 
     assert_eq!(blocking.output, "synthesized answer");
@@ -1163,24 +1113,18 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
     assert!(streaming_beta.first().is_some_and(history_has_tool_result));
     assert_eq!(
         stream_events,
-        vec![
-            "tool-delta",
-            "tool-delta",
-            "tool-call",
-            "tool-commit",
-            "tool-result"
-        ]
+        vec!["tool-end", "tool-call", "tool-commit", "tool-result"]
     );
-    // The correlation id is minted by the shared accumulator when the call's
-    // first fragment arrives; every downstream stage must carry that one id.
-    let correlation = stream_block_ids
+    // The call's id is fixed when the call opens; every downstream stage
+    // carries that one id.
+    let correlation = stream_call_ids
         .first()
         .expect("at least one correlated event")
         .clone();
     assert_eq!(
-        stream_block_ids,
-        vec![correlation; 5],
-        "deltas, the completed call, execution, and result retain one correlation id"
+        stream_call_ids,
+        vec![correlation; 4],
+        "the call's end, the committed call, execution, and result carry one call id"
     );
 }
 
@@ -1313,29 +1257,26 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     let mut saw_reasoning = false;
     let mut saw_reasoning_delta = false;
     let mut saw_unknown = false;
-    let mut provider_final: Option<StreamFinal> = None;
+    let mut completion_call = None;
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
         match item.expect("normalized stream item") {
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(_)),
-                ..
-            }) => saw_reasoning = true,
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamEvent::BlockDelta {
-                    delta: Delta::Reasoning { .. },
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                StreamEvent::End {
+                    content: AssistantContent::Reasoning(_),
                     ..
                 },
-            ) => saw_reasoning_delta = true,
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Unknown(
-                value,
-            )) => {
+            )) => saw_reasoning = true,
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                StreamEvent::Reasoning { .. },
+            )) => saw_reasoning_delta = true,
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Unknown(value)) => {
                 saw_unknown = value.value()["type"] == "provider_native_event";
             }
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(
-                final_,
-            )) => provider_final = Some(final_),
+            rig_agent::agent::MultiTurnStreamItem::CompletionCall(call) => {
+                completion_call = Some(call);
+            }
             rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
                 final_response = Some(response);
             }
@@ -1346,9 +1287,12 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     assert!(saw_reasoning);
     assert!(saw_reasoning_delta);
     assert!(saw_unknown);
-    let provider_final = provider_final.expect("normalized provider final");
-    assert_eq!(provider_final.usage, usage(13));
-    assert_eq!(provider_final.provider, "alpha");
+    let completion_call = completion_call.expect("the model call is recorded");
+    assert_eq!(completion_call.usage, usage(13));
+    assert_eq!(
+        completion_call.message_id.as_deref(),
+        Some("rich-message-id")
+    );
     let final_response = final_response.expect("agent final response");
     assert_eq!(final_response.output, "final text");
     assert_eq!(final_response.usage, usage(13));
@@ -1447,8 +1391,8 @@ fn gated_tool_model(started: Arc<Notify>, release: Arc<Notify>) -> FakeModel {
                 }) as FakeReply
             }
             Mode::Streaming => replied(vec![
-                StreamEvent::text(MintKind::Text.for_wire_index(0), "unused"),
-                StreamEvent::Final(StreamFinal::new("gated", usage(1), serde_json::json!({}))),
+                MockStreamEvent::text("unused"),
+                MockStreamEvent::FinalResponse(Finish::new(usage(1))),
             ]),
         })
     })
@@ -1516,7 +1460,7 @@ fn pending_unary_model(started: Arc<Notify>, dropped: Arc<AtomicUsize>) -> FakeM
                 Box::pin(async move {
                     let _guard = DropGuard(dropped);
                     started.notify_one();
-                    std::future::pending::<Opened<FakeFrame>>().await
+                    std::future::pending::<Opened<MockFrame>>().await
                 }) as FakeReply
             }
             Mode::Streaming => replied(Vec::new()),
@@ -1531,7 +1475,7 @@ struct PendingRawStream {
 }
 
 impl Stream for PendingRawStream {
-    type Item = Result<FakeFrame, ProviderError>;
+    type Item = Result<MockFrame, ProviderError>;
 
     fn poll_next(mut self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if !self.notified {

@@ -9,7 +9,7 @@
 //! assert!(matches!(event, WireEvent::Known(_)));
 //! ```
 
-use crate::wire::{TypedEvent, WireEvent};
+use crate::wire::WireEvent;
 
 /// Classify JSON by its top-level `tag` string.
 /// Unknown strings and non-object JSON produce `Unknown`. Known, missing, or
@@ -135,21 +135,6 @@ where
     match serde_json::from_slice::<T>(line) {
         Ok(event) => WireEvent::Known(event),
         Err(error) => WireEvent::Corrupt(error),
-    }
-}
-
-/// Map modeled SDK events to `Known`, unrecognized events to `Unknown`, and
-/// malformed events to `Corrupt`. Unknown detail is retained for raw passthrough.
-pub fn classify_typed_event<T>(event: TypedEvent<T>) -> WireEvent<T> {
-    match event {
-        TypedEvent::Modeled(event) => WireEvent::Known(event),
-        TypedEvent::Unrecognized { event_type, detail } => WireEvent::Unknown {
-            event_type,
-            value: serde_json::Value::String(detail).into(),
-        },
-        TypedEvent::Malformed(message) => {
-            WireEvent::Corrupt(<serde_json::Error as serde::de::Error>::custom(message))
-        }
     }
 }
 

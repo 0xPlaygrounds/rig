@@ -1,7 +1,7 @@
 //! Raw provider response capture on Groq's streaming chat-completions path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the provider-native terminal
+//! [`rig::completion::CompletionResponse::raw`] carries the provider-native terminal
 //! record the decoder assembled behind the stream's `StreamEvent::Final` —
 //! for Groq the shared chat-completions terminal
 //! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
@@ -138,6 +138,6 @@ async fn stream_raw_exposes_terminal_queue_time() {
         normalized_usage.get("queue_time").is_none(),
         "the normalized usage has no timing slot: {normalized_usage}"
     );
-    let normalized = crate::raw_capture::stream_normalized_without_raw(&terminal);
+    let normalized = crate::support::normalized_without_raw(terminal.clone());
     crate::raw_capture::assert_normalized_lacks(&normalized, &["x_groq", "additional_params"]);
 }

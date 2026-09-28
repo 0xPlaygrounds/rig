@@ -54,7 +54,7 @@ impl crate::wire::Wire for Interactions {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = streaming::InteractionsDecoder;
+    type Decoder<'id> = streaming::InteractionsDecoder<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -106,7 +106,7 @@ impl crate::wire::Wire for Interactions {
         Ok(crate::wire::Encoded::new(request, framing))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         streaming::InteractionsDecoder::default()
     }
 }
@@ -149,7 +149,7 @@ impl crate::wire::Wire for InteractionResume {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = streaming::InteractionsDecoder;
+    type Decoder<'id> = streaming::InteractionsDecoder<'id>;
 
     /// The interaction names its own model; this wire addresses no model id.
     fn describe(&self) -> Descriptor<'_> {
@@ -192,7 +192,7 @@ impl crate::wire::Wire for InteractionResume {
         Ok(crate::wire::Encoded::new(request, framing))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         streaming::InteractionsDecoder::default()
     }
 }
@@ -208,8 +208,7 @@ pub(crate) fn create_request_body(
     history.extend(chat_history);
     let (history_system, history) = split_system_messages_from_history(history);
 
-    let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::new(&history)
-        .map_err(EncodeError::request)?;
+    let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&history);
     let mut steps = Vec::new();
     for (position, message) in history.into_iter().enumerate() {
         let mut converted = Step::from_message(message).map_err(EncodeError::request)?;

@@ -222,7 +222,7 @@ impl AgentHook for EventTap {
         self.call_ids
             .lock()
             .expect("call_ids")
-            .push(event.block_id.map(ToString::to_string).unwrap_or_default());
+            .push(event.call_id.map(ToString::to_string).unwrap_or_default());
         ctx.scratchpad()
             .update(|tally: &mut ToolCallTally| tally.0 += 1);
         DispatchAction::proceed()
@@ -239,7 +239,7 @@ impl AgentHook for EventTap {
         self.result_ids
             .lock()
             .expect("result_ids")
-            .push(event.block_id.map(ToString::to_string).unwrap_or_default());
+            .push(event.call_id.map(ToString::to_string).unwrap_or_default());
         OutcomeAction::proceed()
     }
     async fn on_text_delta(&self, ctx: &HookContext, _event: TextDelta<'_>) -> ObservationAction {

@@ -87,7 +87,7 @@ mod slow_stream {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
                 let _ = out
-                    .finish(rig_core::test_utils::mock_final(
+                    .finish("mock", rig_core::test_utils::mock_final(
                         rig_core::completion::Usage::default(),
                     ))
                     .await;
@@ -226,7 +226,7 @@ async fn capped_reasoning_settlement_exposes_only_the_committed_prompt() {
             MockCompletionModel::from_stream_turns([[
                 MockStreamEvent::reasoning("unfinished reasoning"),
                 MockStreamEvent::FinalResponse(
-                    mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
+                    mock_final(Usage::default()).with_reason(FinishReason::Length),
                 ),
             ]])
         } else {

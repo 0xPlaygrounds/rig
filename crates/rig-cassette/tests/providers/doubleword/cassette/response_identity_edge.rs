@@ -48,7 +48,7 @@ async fn blocking_identity_contract_vs_reality() {
 #[tokio::test]
 async fn streaming_identity_contract_vs_reality() {
     use futures::StreamExt;
-    use rig::streaming::StreamEvent;
+    
 
     with_doubleword_cassette(
         "response_identity_edge/streaming_identity_contract_vs_reality",
@@ -60,13 +60,10 @@ async fn streaming_identity_contract_vs_reality() {
                         .max_tokens(128),
                 )
                 .expect("stream should open");
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.expect("terminal record");
             // Derived from the recording, matching the blocking surface.
             assert_eq!(terminal.provider_request_id, None);

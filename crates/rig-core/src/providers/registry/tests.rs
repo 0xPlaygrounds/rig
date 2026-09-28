@@ -521,10 +521,10 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
             panic!("an OpenAI configuration");
         };
         let wire = provider.responses("gpt-4.1-mini");
-        let mut encoded = wire
+        let encoded = wire
             .encode(request(), Mode::Unary)
             .expect("the request encodes");
-        let request = encoded.requests.pop().expect("one request");
+        let request = encoded.request;
         let crate::wire::Body::Bytes(bytes) = request.into_body() else {
             panic!("the Responses endpoint sends a serialized body");
         };
@@ -582,11 +582,11 @@ fn the_configured_version_and_betas_reach_the_request_headers() {
     let ProviderConfig::Anthropic(config) = reference.config("sk-test") else {
         panic!("a Messages configuration");
     };
-    let mut encoded = config
+    let encoded = config
         .completion(reference.model())
         .encode(CompletionRequest::new("hello"), Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.pop().expect("one request");
+    let request = encoded.request;
     let header = |name: &str| {
         request
             .headers()

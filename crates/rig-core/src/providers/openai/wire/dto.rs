@@ -4,9 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::json_utils;
-use crate::providers::internal::tool_call_bridge::ToolCallSlot;
 use crate::providers::openai::completion::{Message, Usage, joined_text_parts};
-use crate::streaming::StreamFinal;
 
 /// A streamed tool-call fragment's function half.
 #[derive(Default, Deserialize, Debug, Clone)]
@@ -64,16 +62,16 @@ impl StreamingToolCall {
     /// `index`: a new id plus either a different name or an argument-less
     /// opening fragment is a second call; anything else continues the call
     /// already open.
-    pub(crate) fn evicts(&self, existing: &ToolCallSlot) -> bool {
+    pub(crate) fn evicts(&self, existing_id: &str, existing_name: &str) -> bool {
         if let Some(new_id) = &self.id
             && !new_id.is_empty()
             && let Some(new_name) = &self.function.name
             && self.has_nonempty_name()
-            && !existing.id.is_empty()
-            && existing.id != *new_id
-            && !existing.name.is_empty()
+            && !existing_id.is_empty()
+            && existing_id != *new_id
+            && !existing_name.is_empty()
         {
-            return existing.name != *new_name || self.starts_new_tool_call();
+            return existing_name != *new_name || self.starts_new_tool_call();
         }
 
         false
@@ -164,7 +162,7 @@ pub(crate) fn delta_text(delta: &StreamingDelta) -> Option<String> {
 }
 
 /// Chat Completions accounting with dialect-specific fields preserved for
-/// [`StreamFinal::raw`].
+/// the response's `raw`.
 // Serde derives a U: Default bound for StreamingCompletionResponse<U>.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ChatUsage {
@@ -301,7 +299,7 @@ impl ChatFrame {
 /// The provider's own terminal record for one chat-completions reply.
 ///
 /// `U` is the accounting: [`ChatUsage`] on the wire path. This is what the
-/// decoder serializes onto [`StreamFinal::raw`], so a caller reaches every
+/// decoder serializes onto the response's `raw`, so a caller reaches every
 /// provider field rig does not normalize.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
@@ -366,17 +364,14 @@ impl<U> StreamingCompletionResponse<U>
 where
     U: Into<crate::completion::Usage>,
 {
-    /// Normalize usage and terminal metadata under `provider`, retaining `raw`.
-    pub fn into_stream_final(self, provider: &str, raw: serde_json::Value) -> StreamFinal {
-        StreamFinal::new(
-            provider,
-            self.usage.map(Into::into).unwrap_or_default(),
-            raw,
-        )
-        .with_optional_finish_reason(self.finish_reason)
-        .with_optional_response_id(self.response_id)
-        .with_optional_provider_request_id(self.provider_request_id)
-        .with_optional_model(self.model)
+    /// The provider's end of the reply: normalized usage and terminal
+    /// metadata.
+    pub fn into_finish(self) -> crate::operation::Finish {
+        crate::operation::Finish::new(self.usage.map(Into::into).unwrap_or_default())
+            .with_optional_reason(self.finish_reason)
+            .with_optional_response_id(self.response_id)
+            .with_optional_provider_request_id(self.provider_request_id)
+            .with_optional_model(self.model)
     }
 }
 

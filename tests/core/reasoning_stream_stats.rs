@@ -2,13 +2,24 @@ use futures::stream;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
-use rig::streaming::{BlockId, StreamEvent, StreamedUserContent};
+use rig::streaming::{Item, StreamedUserContent, Transcript};
 
 use crate::reasoning::collect_stream_stats;
 
+/// A text fragment, cut from a stream that opened its part.
+fn text(text: &str) -> Item<rig::streaming::StreamEvent> {
+    Transcript::parse_prefix(serde_json::json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 0, "text": text}},
+    ]))
+    .expect("a stream in order")
+    .into_items()
+    .pop()
+    .expect("the fragment")
+}
+
 #[tokio::test]
 async fn collect_stream_stats_tracks_only_final_turn_text() {
-    let block_id = rig::streaming::BlockId::wire("tool_1");
     let tool_call = ToolCall::from_wire(
         "tool_1",
         ToolFunction::new(
@@ -23,19 +34,14 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
     };
 
     let items = vec![
-        Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::text(
-            BlockId::wire("t1"),
+        Ok(MultiTurnStreamItem::StreamAssistantItem(text(
             "Sure! Let me check the weather right away!",
         ))),
-        Ok(MultiTurnStreamItem::ToolCall {
-            tool_call,
-            block_id: block_id.clone(),
-        }),
+        Ok(MultiTurnStreamItem::ToolCall { tool_call }),
         Ok(MultiTurnStreamItem::StreamUserItem(
-            StreamedUserContent::tool_result(tool_result, block_id),
+            StreamedUserContent::tool_result(tool_result),
         )),
-        Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::text(
-            BlockId::wire("t2"),
+        Ok(MultiTurnStreamItem::StreamAssistantItem(text(
             "It's 72F and sunny in Tokyo.",
         ))),
         Ok(MultiTurnStreamItem::final_response(

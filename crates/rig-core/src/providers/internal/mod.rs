@@ -1,6 +1,6 @@
-//! Shared frame classification, tool-call identity, and reasoning lifecycle helpers.
-//! Companion providers use these helpers from [`Decoder`](crate::wire::Decoder)
-//! implementations that emit into [`AdapterOutput`](crate::operation::AdapterOutput).
+//! Shared frame classification and tool-call id spelling. Companion providers
+//! use these helpers from their [`Decoder`](crate::wire::Decoder)s and
+//! encoders.
 //!
 //! ```
 //! use rig_core::providers::internal::wire::classify_untyped_line;
@@ -11,17 +11,15 @@
 //! ```
 
 pub(crate) mod auth;
-pub mod chunk_lifecycle;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod device_auth;
 pub(crate) mod openai_chat_completions_compatible;
 pub(crate) mod schema;
+pub mod thoughts;
 /// The debug-mode sequence-law validator the completion fold checks a
 /// decoder's output against; its checks run under `debug_assertions`.
-pub(crate) mod sequence_law;
-pub mod tool_call_bridge;
-pub mod tool_call_ids;
 pub mod wire;
+pub mod wire_ids;
 
 /// A rig logging target for [`trace_json`]. An enum (not a `&str`) because
 /// `tracing` targets must be literals, so the dispatch is total by
@@ -91,9 +89,6 @@ pub(crate) mod named_dialect {
         })
     }
 }
-
-#[cfg(test)]
-mod tool_call_id_tests;
 
 /// Reads the provider's transport request id off a response's headers, when
 /// the provider names such a header and the response carries a non-empty

@@ -165,7 +165,7 @@ fn populated() -> bevy_app::App {
             rig_ecs::agent::Role::User,
             Streamed {
                 errors: vec![(0, ErrorReport::new(ErrorKind::Cancelled, "stopped"))],
-                events: Vec::new(),
+                events: Default::default(),
                 text: "so far".to_owned(),
                 outcome: Some(Err(ErrorReport::new(ErrorKind::Cancelled, "stopped"))),
             },

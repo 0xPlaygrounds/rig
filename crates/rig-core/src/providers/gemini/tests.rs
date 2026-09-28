@@ -47,10 +47,7 @@ fn a_serialized_config_carries_no_key_material() {
     let encoded = wire
         .encode(request, crate::wire::Mode::Unary)
         .expect("the request encodes");
-    let uri = match encoded.requests.as_slice() {
-        [request] => request.uri().clone(),
-        requests => panic!("expected one request, got {}", requests.len()),
-    };
+    let uri = encoded.request.uri().clone();
     assert!(
         uri.query()
             .is_some_and(|query| query.contains("key=AIzaSyNOTAREALKEY-0123456789")),

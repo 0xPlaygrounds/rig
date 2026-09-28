@@ -33,16 +33,11 @@ fn encoded_body(message: Message) -> Result<Value, ProviderError> {
 }
 
 /// The one serialized chat body `encoded` carries, as JSON. Separate from
-/// [`encoded_body`] because these are test invariants rather than encode
-/// failures: a second request or a multipart body is a bug in the wire, not an
-/// error the refusal cells may accept as their expected `Err`.
+/// [`encoded_body`] because this is a test invariant rather than an encode
+/// failure: a multipart body is a bug in the wire, not an error the refusal
+/// cells may accept as their expected `Err`.
 fn sole_body(encoded: Encoded) -> Value {
-    assert_eq!(
-        encoded.requests.len(),
-        1,
-        "the chat wire sends exactly one request"
-    );
-    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+    let Body::Bytes(bytes) = encoded.request.body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")
     };
     serde_json::from_slice(bytes).expect("the chat body is JSON")

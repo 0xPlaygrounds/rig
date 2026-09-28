@@ -208,16 +208,13 @@ fn streaming_terminal_record_is_normalized() {
         eval_duration: None,
     };
 
-    let raw = serde_json::to_value(&terminal).expect("serialize terminal");
-    let final_record = stream_final(terminal, raw.clone());
-    assert_eq!(final_record.raw, raw);
-    assert_eq!(final_record.provider, PROVIDER_NAME);
-    assert_eq!(final_record.model.as_deref(), Some("llama3.2"));
+    let finish = finish_of(terminal);
+    assert_eq!(finish.model.as_deref(), Some("llama3.2"));
     assert_eq!(
-        final_record.finish_reason,
+        finish.reason,
         Some(completion::FinishReason::Other("dragons".to_owned()))
     );
-    assert_eq!(final_record.usage.total_tokens, Some(12));
+    assert_eq!(finish.usage.total_tokens, Some(12));
 }
 
 #[test]
@@ -1140,14 +1137,35 @@ fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Model<Chat, H> {
     crate::driver::Model::new(OllamaConfig::new().completion(LLAMA3_2), http_client)
 }
 
-// Proves a truncated NDJSON stream — content chunks then EOF without a
-// `done: true` record — delivers its content but never a synthesized
-// terminal record.
-#[tokio::test]
-async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::streaming::{Delta, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
+/// Every text fragment of `stream`, the first error, and what it finished
+/// with.
+async fn drained(
+    mut stream: crate::streaming::CompletionStream,
+) -> (
+    Vec<String>,
+    Option<crate::error::ProviderError>,
+    Result<completion::CompletionResponse, crate::error::ProviderError>,
+) {
+    use crate::streaming::{Item, StreamEvent};
     use futures::StreamExt;
+
+    let mut texts = Vec::new();
+    let mut error = None;
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => texts.push(text),
+            Ok(_) => {}
+            Err(failure) => error = Some(failure),
+        }
+    }
+    (texts, error, stream.finish().await)
+}
+
+// Proves a truncated NDJSON stream — content chunks then EOF without a
+// `done: true` record — delivers its content, then is truncated.
+#[tokio::test]
+async fn truncated_stream_does_not_synthesize_an_end() {
+    use crate::test_utils::MockStreamingClient;
 
     let ndjson = concat!(
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
@@ -1156,39 +1174,21 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut saw_terminal = false;
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => texts.push(text),
-            StreamEvent::Final(_) => saw_terminal = true,
-            _ => {}
-        }
-    }
-
+    let stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
+    let (texts, _, finished) = drained(stream).await;
     assert_eq!(texts, ["hi"]);
     assert!(
-        !saw_terminal,
-        "EOF without a done record must not synthesize a terminal record"
+        matches!(finished, Err(crate::error::ProviderError::Truncated)),
+        "EOF without a done record is truncation: {finished:?}"
     );
-    assert!(stream.folded().terminal().is_none());
 }
 
-// Proves a malformed NDJSON line between valid lines surfaces as an
-// `Err` item while the stream keeps consuming: the following content and
-// the `done: true` record still arrive.
+// Proves a malformed NDJSON line ends the reply with its error.
 #[tokio::test]
-async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
-    use crate::streaming::{Delta, StreamEvent};
+async fn a_malformed_line_ends_the_reply() {
     use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
 
     let ndjson = concat!(
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
@@ -1196,48 +1196,24 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
         "{not json\n",
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:46.499127Z","message":{"role":"assistant","content":" there"},"done":false}"#,
         "\n",
-        r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}"#,
-        "\n",
     );
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut saw_error = false;
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => texts.push(text),
-            Ok(StreamEvent::Final(final_response)) => {
-                terminal = Some(final_response);
-            }
-            Ok(_) => {}
-            Err(_) => saw_error = true,
-        }
-    }
-
-    assert_eq!(texts, ["hi", " there"]);
-    assert!(saw_error, "the malformed line must reach the consumer");
-    let terminal = terminal.expect("the genuine done record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    let stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
+    let (texts, error, finished) = drained(stream).await;
+    assert_eq!(texts, ["hi"]);
+    assert!(error.is_some(), "the malformed line must reach the consumer");
+    assert!(finished.is_err(), "the reply ended with the error");
 }
 
 // Proves the `done: true` record ends the stream: a content line that
-// arrives after it is never yielded — only the pre-done content and the
-// terminal record reach the consumer.
+// arrives after it is never yielded.
 #[tokio::test]
 async fn content_after_the_done_record_is_not_yielded() {
-    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
 
     let ndjson = concat!(
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
@@ -1250,39 +1226,19 @@ async fn content_after_the_done_record_is_not_yielded() {
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => texts.push(text),
-            StreamEvent::Final(final_response) => {
-                assert!(
-                    terminal.is_none(),
-                    "the terminal record must be yielded exactly once"
-                );
-                terminal = Some(final_response);
-            }
-            // The text block's minted start/end bracket the deltas.
-            StreamEvent::BlockStart { .. } | StreamEvent::BlockEnd { .. } => {}
-            other => panic!("unexpected stream item: {other:?}"),
-        }
-    }
-
+    let stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
+    let (texts, error, finished) = drained(stream).await;
     assert_eq!(
         texts,
         ["hi"],
         "content after the done record must not be yielded"
     );
-    let terminal = terminal.expect("the done record must yield the terminal record");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    assert!(error.is_none(), "{error:?}");
+    let response = finished.expect("the done record ends the reply");
+    assert_eq!(response.usage.input_tokens, Some(10));
+    assert_eq!(response.usage.output_tokens, Some(4));
 }
 
 // Proves a non-success HTTP response from `/api/chat` preserves the

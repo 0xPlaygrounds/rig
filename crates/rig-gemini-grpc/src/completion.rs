@@ -21,17 +21,15 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use base64::Engine as _;
 use futures::StreamExt;
 use rig_core::completion::{self, CompletionRequest};
-use rig_core::driver::{Exchange, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
-use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::message::{self, MimeType};
 use rig_core::operation::Completion;
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
 };
-use rig_core::providers::gemini::{
-    GEMINI_TEXT_EXTRAS_KEY, text_signature_extras, text_thought_signature,
-};
+use rig_core::providers::gemini::text_thought_signature;
 use rig_core::wire::{Descriptor, Mode, Wire};
 use std::convert::TryFrom;
 
@@ -54,19 +52,11 @@ impl GenerateContent {
     }
 }
 
-/// One unit of a `GenerateContent` reply.
-pub enum GrpcFrame {
-    /// The whole unary reply.
-    Whole(Box<GenerateContentResponse>),
-    /// One streamed chunk.
-    Chunk(GenerateContentResponse),
-}
-
 impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = GenerateContentRequest;
-    type Frame = GrpcFrame;
-    type Decoder = GrpcAdapter;
+    type Frame = GenerateContentResponse;
+    type Decoder<'id> = GrpcAdapter<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
@@ -82,7 +72,7 @@ impl Wire for GenerateContent {
         create_grpc_request(&self.model, request.replayable_to(&[ISSUER])?)
     }
 
-    fn decoder(&self, _mode: Mode) -> GrpcAdapter {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         GrpcAdapter::default()
     }
 }
@@ -92,17 +82,18 @@ impl Transport<GenerateContent> for GeminiGrpc {
         &self,
         request: GenerateContentRequest,
         exchange: Exchange,
-    ) -> Result<Sending<GrpcFrame>, ProviderError> {
+    ) -> Opening<GenerateContentResponse> {
         let mode = exchange.mode;
-        let mut client = self
-            .grpc_client()
-            .map_err(|error| ProviderError::Provider(error.to_string()))?;
-        Ok(Sending::later(async move {
-            match mode {
+        let mut client = match self.grpc_client() {
+            Ok(client) => client,
+            Err(error) => return Opening::failed(ProviderError::Provider(error.to_string())),
+        };
+        Opening::new(async move {
+            Ok(match mode {
                 Mode::Unary => match client.generate_content(request).await {
-                    Ok(response) => Opened::new(futures::stream::iter([Ok(GrpcFrame::Whole(
-                        Box::new(response.into_inner()),
-                    ))])),
+                    Ok(response) => {
+                        Opened::new(futures::stream::iter([Ok(response.into_inner())]))
+                    }
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
                 Mode::Streaming => match client.stream_generate_content(request).await {
@@ -112,7 +103,7 @@ impl Transport<GenerateContent> for GeminiGrpc {
                         Opened::new(async_stream::stream! {
                             while let Some(item) = chunks.next().await {
                                 match item {
-                                    Ok(chunk) => yield Ok(GrpcFrame::Chunk(chunk)),
+                                    Ok(chunk) => yield Ok(chunk),
                                     Err(status) => {
                                         yield Err(rpc_error(&status));
                                         break;
@@ -123,8 +114,8 @@ impl Transport<GenerateContent> for GeminiGrpc {
                     }
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
-            }
-        }))
+            })
+        })
     }
 }
 
@@ -484,106 +475,6 @@ fn rig_assistant_content_to_grpc_part(
         }
         _ => Err(EncodeError::request("Unsupported assistant content type")),
     }
-}
-
-/// The assistant content of a whole `GenerateContent` reply. A
-/// tool-protocol abort fails it with the same error the stream reports.
-pub(crate) fn assistant_content(
-    response: &GenerateContentResponse,
-) -> Result<Vec<completion::AssistantContent>, ProviderError> {
-    let candidate = response
-        .candidates
-        .first()
-        .ok_or_else(|| ProviderError::Response("No response candidates in response".into()))?;
-
-    // Same helper (and therefore the same message) as the streaming path,
-    // so a tool-protocol abort reads identically on both surfaces.
-    if let Some(err) = tool_protocol_finish_reason_error(
-        candidate.finish_reason,
-        candidate.finish_message.as_deref(),
-    ) {
-        return Err(err);
-    }
-
-    let content_ref = candidate.content.as_ref().ok_or_else(|| {
-        ProviderError::Response(format!(
-            "Gemini candidate missing content (finish_reason={})",
-            candidate.finish_reason
-        ))
-    })?;
-
-    let mut assistant_contents = Vec::new();
-
-    for part in &content_ref.parts {
-        let assistant_content = match &part.data {
-            Some(proto::part::Data::Text(text)) => {
-                if part.thought {
-                    completion::AssistantContent::Reasoning(
-                        Reasoning::new_with_signature(
-                            text,
-                            encode_optional_base64(&part.thought_signature),
-                        )
-                        .sealed(REASONING_ISSUER),
-                    )
-                } else {
-                    // A signature on answer text returns on that text part.
-                    completion::AssistantContent::Text(message::Text {
-                        text: text.clone(),
-                        additional_params: encode_optional_base64(&part.thought_signature)
-                            .and_then(|signature| {
-                                text_signature_extras(GEMINI_TEXT_EXTRAS_KEY, signature)
-                            }),
-                    })
-                }
-            }
-            Some(proto::part::Data::InlineData(inline_data)) => {
-                let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
-                match mime_type {
-                    Some(message::MediaType::Image(media_type)) => {
-                        let b64 =
-                            base64::engine::general_purpose::STANDARD.encode(&inline_data.data);
-                        completion::AssistantContent::image_base64(
-                            b64,
-                            Some(media_type),
-                            Some(message::ImageDetail::default()),
-                        )
-                    }
-                    _ => {
-                        return Err(ProviderError::Response(format!(
-                            "Unsupported media type {mime_type:?}"
-                        )));
-                    }
-                }
-            }
-            Some(proto::part::Data::FunctionCall(function_call)) => {
-                let args = function_call.args.as_ref().map_or(
-                    serde_json::Value::Object(serde_json::Map::new()),
-                    prost_struct_to_json,
-                );
-
-                let name = message::ToolName::new(function_call.name.clone()).map_err(|error| {
-                    ProviderError::Response(format!("Gemini returned a function call: {error}"))
-                })?;
-                // Rig issues an id for a call the provider sent without one.
-                let tool_call = message::ToolCall::from_wire(
-                    function_call.id.clone(),
-                    message::ToolFunction::new(name, args),
-                )
-                .with_signature(encode_optional_base64(&part.thought_signature));
-
-                completion::AssistantContent::ToolCall(tool_call)
-            }
-            _ => {
-                return Err(ProviderError::Response(
-                    "Response did not contain a message or tool call".into(),
-                ));
-            }
-        };
-
-        assistant_contents.push(assistant_content);
-    }
-
-    rig_core::message::require_non_empty_response(assistant_contents)
 }
 
 fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, EncodeError> {

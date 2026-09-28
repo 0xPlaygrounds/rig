@@ -9,40 +9,44 @@
 
 use rig_core::completion::{CompletionResponse, FinishReason, Usage};
 use rig_core::providers::openai::responses_api;
-use rig_core::streaming::StreamFinal;
 use serde::Deserialize as _;
 use serde_json::Value;
 
 use crate::support::{assert_matches_recorded_token, assistant_text};
 
-/// The provider-native terminal record a Responses stream's
-/// [`StreamFinal::raw`] holds.
-pub type Terminal = responses_api::streaming::StreamingCompletionResponse;
+/// The provider-native document a Responses stream's `raw` holds: the
+/// response object its terminal event carried, the type a blocking reply's
+/// `raw` also is.
+pub type Terminal = responses_api::CompletionResponse;
 
-/// The terminal record `raw` holds, read back and required to be exactly the
-/// decoder's record serialized.
+/// The response object `raw` holds, read back as the Responses type, with
+/// the normalized fields the decoder mapped from it.
 ///
-/// A streamed reply is many events and no single one of them is the answer,
-/// so what rides along is the record the decoder assembled from the
-/// `response.completed` event — which makes an exact typed round trip the
-/// right claim here, unlike the blocking path where `raw` is the reply
-/// document. The returned typed record is the cell's handle on whatever its
-/// dialect keeps beside the shared fields.
-pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
-    let raw = &terminal.raw;
-    let typed =
-        Terminal::deserialize(raw).expect("raw is the Responses terminal record, serialized");
+/// A streamed reply is many events; the terminal `response.completed` event
+/// carries the whole response object, so `raw` is the same document a
+/// blocking reply keeps. The returned typed document is the cell's handle on
+/// whatever its dialect keeps beside the shared fields.
+pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
+    let typed = Terminal::deserialize(&terminal.raw)
+        .expect("raw is the Responses response object");
     assert_eq!(
-        serde_json::to_value(&typed).expect("typed serializes"),
-        *raw,
-        "the captured value is the typed terminal serialized, nothing more"
+        terminal.response_id.as_deref(),
+        Some(typed.id.as_str()),
+        "response id"
     );
-    assert_eq!(typed.response_id, terminal.response_id, "response id");
-    assert_eq!(typed.message_id, terminal.message_id, "message id");
-    assert_eq!(typed.model, terminal.model, "model");
+    assert_eq!(terminal.model.as_deref(), Some(typed.model.as_str()), "model");
+    let usage = typed.usage.as_ref().expect("the terminal reports usage");
     assert_eq!(
-        Usage::from(&typed),
-        terminal.usage,
+        (
+            terminal.usage.input_tokens,
+            terminal.usage.output_tokens,
+            terminal.usage.total_tokens
+        ),
+        (
+            Some(usage.input_tokens),
+            Some(usage.output_tokens),
+            Some(usage.total_tokens),
+        ),
         "the normalized usage is the terminal event's accounting, normalized"
     );
     typed

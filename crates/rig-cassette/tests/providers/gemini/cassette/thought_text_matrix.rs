@@ -98,11 +98,13 @@
 //! never filtered on it either. Nothing replaces the cell because nothing
 //! replaces the filter.
 
+use rig::streaming::PartKind;
+use rig::streaming::Item;
 use futures::StreamExt;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig::transcription::TranscriptionRequestBuilder;
 use rig_test_support::cassette_models::GeminiModels;
 use serde::Deserialize;
@@ -982,14 +984,8 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
             let mut reasoning = String::new();
             while let Some(item) = stream.next().await {
                 match item.expect("no stream item should be an error") {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text: chunk },
-                        ..
-                    } => text.push_str(&chunk),
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Reasoning { text: r },
-                        ..
-                    } => {
+                    Item::Event(StreamEvent::Text { text: chunk, .. }) => text.push_str(&chunk),
+                    Item::Event(StreamEvent::Reasoning { text: r, .. }) => {
                         reasoning.push_str(&r);
                     }
                     _ => {}
@@ -1005,11 +1001,11 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
                 "streamed text must not contain the reasoning"
             );
             assert!(
-                has_reasoning(&stream.folded().snapshot()),
+                has_reasoning(&stream.partial().choice),
                 "the aggregated choice should keep reasoning as reasoning"
             );
             assert_eq!(
-                choice_text(&stream.folded().snapshot()),
+                choice_text(&stream.partial().choice),
                 text,
                 "the aggregated text must be exactly the streamed text deltas"
             );
@@ -1102,13 +1098,13 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 
             // The stream sends the answer, then an empty part carrying the
             // signature: that empty part keeps it, on its own text.
-            let snapshot = stream.folded().snapshot();
+            let snapshot = stream.partial().choice;
             assert_eq!(text_signatures(&snapshot).len(), 1, "{snapshot:?}");
             assert!(!has_reasoning(&snapshot));
             assert!(
-                choice_text(&stream.folded().snapshot()).contains("289"),
+                choice_text(&stream.partial().choice).contains("289"),
                 "the streamed answer must be there, got {:?}",
-                choice_text(&stream.folded().snapshot())
+                choice_text(&stream.partial().choice)
             );
         },
     )

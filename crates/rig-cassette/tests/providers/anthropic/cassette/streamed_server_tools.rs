@@ -15,11 +15,12 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::streaming::Item;
 use futures::StreamExt;
 use rig::completion::ProviderToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
-use rig::streaming::{BlockKind, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -81,18 +82,26 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
             let mut terminal_seen = false;
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should not error") {
-                    StreamEvent::BlockStart { kind: BlockKind::Text { additional_params: Some(params) }, .. } => {
-                        if let Some(raw) = params
-                            .get("anthropic_content")
+                    Item::Event(StreamEvent::End {
+                        content: rig::message::AssistantContent::Text(text),
+                        ..
+                    }) => {
+                        if let Some(raw) = text
+                            .additional_params
+                            .as_ref()
+                            .and_then(|params| params.get("anthropic_content"))
                             .and_then(|raw| raw.get("type"))
                             .and_then(|value| value.as_str())
                         {
                             raw_types.push(raw.to_string());
                         }
                     }
-                    StreamEvent::Final(_) => terminal_seen = true,
                     _ => {}
                 }
+            }
+            {
+                let _final = stream.finish().await.expect("the stream ends");
+                terminal_seen = true;
             }
 
             assert!(terminal_seen, "the stream must produce a terminal record");

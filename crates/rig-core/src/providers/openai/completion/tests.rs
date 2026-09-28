@@ -1831,6 +1831,11 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
     };
     let hint = generated.id.wire().into_owned();
     let real = message::ToolCall::from_wire(&hint, generated.function.clone());
+    // A later turn's call rig issued its own id for.
+    let later_call = message::ToolCall {
+        id: crate::message::CallId::from_wire(""),
+        ..generated.clone()
+    };
     let history = vec![
         message::Message::Assistant {
             id: None,
@@ -1858,11 +1863,11 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
         },
         message::Message::Assistant {
             id: None,
-            content: crate::NonEmpty::new(AssistantContent::ToolCall(generated.clone())),
+            content: crate::NonEmpty::new(AssistantContent::ToolCall(later_call.clone())),
         },
         message::Message::User {
             content: crate::NonEmpty::new(UserContent::tool_result(
-                generated.id.clone(),
+                later_call.id.clone(),
                 crate::message::ToolName::new("test").expect("tool name"),
                 crate::message::ToolResultContent::text(""),
             )),

@@ -465,9 +465,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
 
         let mut full_history: Vec<Message> = Vec::new();
 
-        let tool_ids =
-            crate::providers::internal::tool_call_ids::ToolCallIds::new(&partial_history)
-                .map_err(EncodeError::request)?;
+        let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&partial_history);
         for (position, message) in partial_history.into_iter().enumerate() {
             let mut messages = Vec::<Message>::try_from(message)?;
             let slots: Vec<&mut String> = messages

@@ -1,12 +1,12 @@
 //! Matrix for raw terminal-record capture on ChatGPT's streaming `/responses`
-//! path ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! path ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
 //! Capture is always on. The terminal record of every stream the seam yields
 //! carries `raw`: the value
 //! the Responses API stream adapter produces as its native terminal — the Responses API's
-//! [`StreamingCompletionResponse`](rig::providers::openai::responses_api::streaming::StreamingCompletionResponse):
+//! [`CompletionResponse`](rig::providers::openai::responses_api::CompletionResponse):
 //! the terminal `response.completed` event's usage, status, ids and model —
 //! serialized with `serde_json::to_value`. It is the terminal record only, and
 //! nothing about it is sent to ChatGPT. `raw == Value::Null` means only that a
@@ -14,14 +14,14 @@
 //! which no cell here can produce.
 //!
 //! The terminal record spells the provider's `status` (`completed`), which
-//! the normalized [`StreamFinal`](rig::streaming::StreamFinal) folds into a
+//! the normalized [`StreamFinal`](rig::completion::CompletionResponse) folds into a
 //! finish reason and does not carry; cell 2 reads it back through `raw`.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `responses_api::streaming::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no CHATGPT credentials in this environment) |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `responses_api::CompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no CHATGPT credentials in this environment) |
 //! | 2 | `stream_raw_exposes_terminal_status` | terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says; usage equals the frame's | unrecorded (no CHATGPT credentials in this environment) |
 //!
 //! Every cell is unrecorded: neither `CHATGPT_ACCESS_TOKEN`/`CHATGPT_ACCOUNT_ID`
@@ -37,9 +37,8 @@ use serde_json::Value;
 
 use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::{recorded_interaction_bodies, recorded_sse_json_frames};
-use crate::raw_capture::{
-    assert_normalized_lacks, capture_sole_terminal, responses, stream_normalized_without_raw,
-};
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, responses};
+use crate::support::normalized_without_raw;
 use crate::support::Observed;
 use rig::completion::CompletionRequest;
 
@@ -96,7 +95,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -137,7 +136,7 @@ async fn stream_raw_exposes_terminal_status() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -145,7 +144,7 @@ async fn stream_raw_exposes_terminal_status() {
     .await;
 
     let terminal = captured.take();
-    assert_normalized_lacks(&stream_normalized_without_raw(&terminal), &["status"]);
+    assert_normalized_lacks(&normalized_without_raw(terminal.clone()), &["status"]);
 
     let raw = &terminal.raw;
     let recorded = recorded_terminal_response(scenario);
@@ -157,5 +156,5 @@ async fn stream_raw_exposes_terminal_status() {
     assert_eq!(raw["status"], recorded["status"]);
     assert_eq!(raw["usage"], recorded["usage"]);
     let typed = responses::assert_terminal_round_trips(&terminal);
-    assert_eq!(typed.status, Some(responses_api::ResponseStatus::Completed));
+    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
 }

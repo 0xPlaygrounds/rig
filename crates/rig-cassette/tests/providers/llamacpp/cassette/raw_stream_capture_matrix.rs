@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on llama.cpp's streaming path
-//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -16,7 +16,7 @@
 //! without a provider terminal behind it, which no cell here can produce.
 //!
 //! The envelope fields are exactly what the normalized
-//! [`StreamFinal`](rig::streaming::StreamFinal) has no home for, so cell 2
+//! [`StreamFinal`](rig::completion::CompletionResponse) has no home for, so cell 2
 //! reads them back through `raw` and checks them against the recorded frames.
 //!
 //! # Matrix
@@ -26,7 +26,7 @@
 //! carrying `usage`, or the cell fails loudly.
 //!
 //! Every cell streams its one turn through
-//! [`capture_sole_terminal`](crate::raw_capture::capture_sole_terminal) — the
+//! [`capture_terminal`](crate::raw_capture::capture_terminal) — the
 //! stream must yield exactly one terminal record — and keeps its cassette
 //! wrapper call, scenario literal included, at the test site, which is where
 //! `cassette_safety` reads a scenario from. The fixture premises stay local:
@@ -61,9 +61,8 @@ use serde_json::Value;
 
 use super::super::cassette_support::*;
 use crate::cassettes::CassetteMode;
-use crate::raw_capture::{
-    assert_normalized_lacks, capture_sole_terminal, chat, stream_normalized_without_raw,
-};
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat};
+use crate::support::normalized_without_raw;
 use crate::support::Observed;
 use rig::completion::CompletionRequest;
 
@@ -84,7 +83,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     let sink = Observed::default();
     with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
-        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request(), sink.clone()),
+        |client| capture_terminal(client.completion(CASSETTE_MODEL), request(), sink.clone()),
     )
     .await
     .expect("stream_raw_terminal_round_trips_provider_type should replay from its cassette");
@@ -118,14 +117,14 @@ async fn stream_raw_exposes_envelope_fields() {
     let sink = Observed::default();
     with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
-        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request(), sink.clone()),
+        |client| capture_terminal(client.completion(CASSETTE_MODEL), request(), sink.clone()),
     )
     .await
     .expect("stream_raw_exposes_envelope_fields should replay from its cassette");
     let terminal = sink.take();
 
     // The normalized terminal record provably lacks the envelope.
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert_normalized_lacks(
         &normalized,
         &[
@@ -194,7 +193,7 @@ async fn stream_raw_preserves_llamacpp_timings() {
 
     with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings",
-        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request(), sink.clone()),
+        |client| capture_terminal(client.completion(CASSETTE_MODEL), request(), sink.clone()),
     )
     .await
     .expect("stream_raw_preserves_llamacpp_timings should replay from its cassette");

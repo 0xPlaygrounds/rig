@@ -2,8 +2,7 @@ use super::*;
 use rig_core::Model;
 use rig_core::streaming::CompletionStream;
 
-/// Answers every request with scripted protobuf replies: the first for a
-/// unary call, all of them as chunks for a streamed one.
+/// Answers every request with scripted protobuf replies, one per frame.
 #[derive(Clone)]
 pub(crate) struct Scripted(
     std::sync::Arc<std::sync::Mutex<Vec<Result<GenerateContentResponse, ProviderError>>>>,
@@ -13,20 +12,10 @@ impl Transport<GenerateContent> for Scripted {
     fn send(
         &self,
         _request: GenerateContentRequest,
-        exchange: Exchange,
-    ) -> Result<Sending<GrpcFrame>, ProviderError> {
-        let mode = exchange.mode;
+        _exchange: Exchange,
+    ) -> Opening<GenerateContentResponse> {
         let replies = std::mem::take(&mut *self.0.lock().expect("script lock"));
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter(replies.into_iter().map(
-                move |reply| {
-                    reply.map(|reply| match mode {
-                        Mode::Unary => GrpcFrame::Whole(Box::new(reply)),
-                        Mode::Streaming => GrpcFrame::Chunk(reply),
-                    })
-                },
-            )))
-        }))
+        Opening::ready(Opened::new(futures::stream::iter(replies)))
     }
 }
 
@@ -432,6 +421,7 @@ fn a_signature_on_answer_text_stays_on_that_text() {
                 ],
                 ..Default::default()
             }),
+            finish_reason: proto::candidate::FinishReason::Stop as i32,
             ..Default::default()
         }],
         ..Default::default()
@@ -594,6 +584,7 @@ fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
                     .collect(),
                 ..Default::default()
             }),
+            finish_reason: proto::candidate::FinishReason::Stop as i32,
             ..Default::default()
         }],
         ..Default::default()
@@ -743,7 +734,7 @@ impl Transport<GenerateContent> for Recording {
         &self,
         request: GenerateContentRequest,
         _exchange: Exchange,
-    ) -> Result<Sending<GrpcFrame>, ProviderError> {
+    ) -> Opening<GenerateContentResponse> {
         self.0.lock().expect("recording lock").push(request);
         let reply = GenerateContentResponse {
             candidates: vec![crate::proto::Candidate {
@@ -756,11 +747,7 @@ impl Transport<GenerateContent> for Recording {
             }],
             ..Default::default()
         };
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter([Ok(GrpcFrame::Whole(Box::new(
-                reply,
-            )))]))
-        }))
+        Opening::ready(Opened::new(futures::stream::iter([Ok(reply)])))
     }
 }
 

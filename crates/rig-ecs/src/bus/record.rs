@@ -16,7 +16,7 @@ use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
     serve::{Origin, Recorder, cancelled},
-    streaming::StreamEvent,
+    streaming::{Item, Relayed, StreamEvent},
 };
 
 use super::{
@@ -69,9 +69,9 @@ impl Recording {
         self.0.keep_events()
     }
 
-    /// One streamed event of `id`.
-    pub fn event(&self, id: EffectId, event: &StreamEvent) {
-        self.0.event(id, event);
+    /// One streamed item of `id`.
+    pub fn event(&self, id: EffectId, item: &Item<StreamEvent>) {
+        self.0.event(id, item);
     }
 
     /// An error item at its original position in a kept stream.
@@ -225,12 +225,13 @@ impl WorldObserver {
         state.outcome = Some(outcome.clone());
     }
 
-    fn record_item(&self, item: &Result<StreamEvent, ErrorReport>) {
+    fn record_item(&self, item: &Result<Relayed, ErrorReport>) {
         if let Some(recording) = &self.recording
             && recording.keep_events()
         {
             match item {
-                Ok(event) => recording.event(self.id, event),
+                Ok(Relayed::Item(item)) => recording.event(self.id, item),
+                Ok(Relayed::Done(_)) => {}
                 Err(error) => recording.stream_error(self.id, error),
             }
         }
@@ -265,7 +266,7 @@ impl rig_core::serve::Observe for WorldObserver {
 
     fn stream_item(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
+        item: &Result<Relayed, ErrorReport>,
         outcome: Option<&Result<Outcome, ErrorReport>>,
     ) {
         // Source polling and folding happen before this lock. Only observation
@@ -280,12 +281,12 @@ impl rig_core::serve::Observe for WorldObserver {
         }
     }
 
-    fn event(&mut self, event: &StreamEvent) {
+    fn event(&mut self, item: &Item<StreamEvent>) {
         let state = self.observed.lock();
         if !state.closed
             && let Some(recording) = &self.recording
         {
-            recording.event(self.id, event);
+            recording.event(self.id, item);
         }
     }
 

@@ -1007,8 +1007,6 @@ async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
             .and_then(|id| id.provider().map(|provider| provider.call_id.as_str())),
         Some("provider_call_1")
     );
-    // No stream block was observed for this buffered model response.
-    assert_eq!(context.block_id, None);
     assert!(!context.is_streaming);
 }
 

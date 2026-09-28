@@ -13,14 +13,13 @@ use futures::stream;
 use rig_agent::{
     AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
-    completion::{CompletionRequest, Usage},
-    streaming::{StreamEvent, StreamFinal},
+    completion::{CompletionRequest, CompletionResponse, Usage},
     tool::{Tool, ToolContext},
 };
-use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
-use rig_core::operation::{AdapterOutput, Completion, ImagePart};
+use rig_core::test_utils::{MockFrame, MockScript};
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
@@ -31,8 +30,8 @@ fn usage(total_tokens: u64) -> Usage {
 }
 
 /// A local model: `answer` decides its reply from the request. It is the
-/// runtime behind a [`Local`] completion wire, answering with stream events,
-/// so the blocking and streaming surfaces reply alike.
+/// runtime behind a scripted completion wire, answering with one whole
+/// response, so the blocking and streaming surfaces reply alike.
 #[derive(Clone)]
 struct Scripted {
     provider: &'static str,
@@ -40,23 +39,22 @@ struct Scripted {
     answer: fn(&CompletionRequest) -> Result<AssistantContent, ProviderError>,
 }
 
-impl Transport<Local<Completion>> for Scripted {
-    fn send(
-        &self,
-        request: CompletionRequest,
-        _exchange: Exchange,
-    ) -> Result<Sending<Result<StreamEvent, ProviderError>>, ProviderError> {
-        let mut out = AdapterOutput::new();
-        out.message_id(format!("{}-message", self.provider));
-        out.content(&[(self.answer)(&request)?], ImagePart::Block);
-        out.final_record(StreamFinal::new(
-            self.provider,
+impl Transport<MockScript> for Scripted {
+    fn send(&self, request: CompletionRequest, _exchange: Exchange) -> Opening<MockFrame> {
+        let answer = match (self.answer)(&request) {
+            Ok(answer) => answer,
+            Err(error) => return Opening::failed(error),
+        };
+        let response = CompletionResponse::new(
+            vec![answer],
             usage(self.total_tokens),
+            self.provider,
             serde_json::Value::Null,
-        ));
-        Ok(Sending::opened(Opened::new(stream::iter(
-            out.into_items().into_iter().map(Ok),
-        ))))
+        )
+        .with_message_id(format!("{}-message", self.provider));
+        Opening::ready(Opened::new(stream::iter([Ok(MockFrame::Response(
+            Box::new(response),
+        ))])))
     }
 }
 
@@ -64,9 +62,9 @@ fn local(
     provider: &'static str,
     total_tokens: u64,
     answer: fn(&CompletionRequest) -> Result<AssistantContent, ProviderError>,
-) -> Model<Local<Completion>, Scripted> {
+) -> Model<MockScript, Scripted> {
     Model::new(
-        Local::new(provider),
+        MockScript::new(provider),
         Scripted {
             provider,
             total_tokens,

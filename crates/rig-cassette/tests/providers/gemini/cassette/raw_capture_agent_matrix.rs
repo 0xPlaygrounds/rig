@@ -157,7 +157,6 @@ impl AgentHook for RawProbe {
 #[derive(Default)]
 struct StreamedRun {
     completion_calls: Vec<rig::agent::CompletionCall>,
-    finals: Vec<rig::streaming::StreamFinal>,
     output: Option<String>,
 }
 
@@ -166,9 +165,6 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
             MultiTurnStreamItem::CompletionCall(call) => run.completion_calls.push(call),
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_)) => {
-                run.finals.push(final_);
-            }
             MultiTurnStreamItem::FinalResponse(response) => {
                 run.output = Some(response.output().to_owned());
             }
@@ -395,11 +391,6 @@ async fn hooks_observe_raw_streamed() {
                 .build();
             let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
             assert!(run.output.is_some(), "the run finished");
-            assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
-            assert!(
-                !run.finals[0].raw.is_null(),
-                "the streamed terminal carries raw"
-            );
         },
     )
     .await;
@@ -543,12 +534,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
                 2,
                 "a tool turn then a text turn"
             );
-            assert!(!run.finals.is_empty(), "the stream yields terminal records");
-            // The last forwarded terminal record is the final turn's, and its
-            // payload is the one the final call recorded.
-            let last = run.finals.last().expect("terminal");
-            assert_eq!(last.raw, run.completion_calls[1].raw);
-            *final_sink.lock().expect("sink") = Some(last.raw.clone());
+            *final_sink.lock().expect("sink") = Some(run.completion_calls[1].raw.clone());
             *sink.lock().expect("sink") = run
                 .completion_calls
                 .iter()

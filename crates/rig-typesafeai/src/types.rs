@@ -69,4 +69,7 @@ pub struct Response {
     #[serde(skip)]
     /// Transport request identifier for diagnostics.
     pub provider_request_id: Option<String>,
+    #[serde(skip)]
+    /// The whole reply document, including fields this type does not model.
+    pub raw: Value,
 }

@@ -210,7 +210,7 @@ struct CompletedTurn {
     request: rig::completion::CompletionRequest,
     usage: rig::completion::Usage,
     text: String,
-    events: Vec<rig::streaming::StreamEvent>,
+    events: rig::streaming::Transcript,
 }
 
 fn completed_turns(ecs: &mut EcsAgent, run: Entity) -> Vec<CompletedTurn> {
@@ -357,7 +357,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
     use crate::support::assert_mentions_expected_number;
     use rig::{
         message::AssistantContent,
-        streaming::{BlockId, StreamEvent},
+        streaming::StreamEvent,
     };
     with_gemini_cassette("agent_run_streamed/streamed_hand_driven_multi_turn_run_completes", |client| async move {
         let mut ecs = setup(&client);
@@ -379,11 +379,6 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         let total = turns.iter().fold(rig::completion::Usage::default(), |total, turn| total + turn.usage);
         assert_eq!(ecs.app.world().get::<rig_ecs::agent::Usage>(run).expect("usage").0, total);
         assert!(total.total_tokens.is_some_and(|n| n > 0));
-        for event in turns.iter().flat_map(|turn| &turn.events) {
-            if let StreamEvent::BlockEnd { id: BlockId::Wire(id), block: Some(AssistantContent::ToolCall(call)), .. } = event {
-                assert_eq!(call.id.provider().as_ref().map(|provider| provider.call_id.as_str()), Some(id.as_str()), "{call:?}");
-            }
-        }
         let messages = history(&mut ecs, run);
         assert!(history_has_assistant_tool_call(&messages, "add"));
         assert!(history_has_assistant_tool_call(&messages, "subtract"));

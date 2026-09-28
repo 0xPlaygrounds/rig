@@ -251,7 +251,7 @@ async fn complete(
             return Err(rig_core::error::ProviderError::Response(error.to_string()));
         }
     }
-    stream.finish()
+    stream.finish().await
 }
 
 /// A reasoning turn with a tool call, streamed or not, answered and

@@ -1,11 +1,12 @@
 //! Migrated from `examples/gemini_interactions_api.rs`.
 
+use rig::streaming::Item;
 use futures::StreamExt;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
 use rig::providers::gemini::interactions_api::{AdditionalParameters, Interaction, Tool};
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde::Deserialize;
 
 use crate::support::assert_nonempty_response;
@@ -237,15 +238,13 @@ async fn streaming_interaction() {
             let mut saw_usage = false;
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream chunk should succeed") {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text: delta },
-                        ..
-                    } => text.push_str(&delta),
-                    StreamEvent::Final(response) => {
-                        saw_usage = response.usage.is_reported();
-                    }
+                    Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
                     _ => {}
                 }
+            }
+            {
+                let response = stream.finish().await.expect("the stream ends");
+                saw_usage = response.usage.is_reported();
             }
 
             assert_nonempty_response(&text);
@@ -274,17 +273,15 @@ async fn streaming_final_metadata_exposes_model_version() {
             let mut saw_usage = false;
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream chunk should succeed") {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text: delta },
-                        ..
-                    } => text.push_str(&delta),
-                    StreamEvent::Final(response) => {
-                        final_response_count += 1;
-                        saw_usage = response.usage.is_reported();
-                        final_model_version = response.model.clone();
-                    }
+                    Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
                     _ => {}
                 }
+            }
+            {
+                let response = stream.finish().await.expect("the stream ends");
+                final_response_count += 1;
+                        saw_usage = response.usage.is_reported();
+                        final_model_version = response.model.clone();
             }
 
             assert_nonempty_response(&text);

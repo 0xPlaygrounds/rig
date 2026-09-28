@@ -998,10 +998,11 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     .expect("streamed cached-content request should start");
                 let mut usage = None;
                 while let Some(item) = stream.next().await {
-                    if let StreamEvent::Final(response) = item.expect("stream item should succeed")
-                    {
-                        usage = Some(response.usage);
-                    }
+                    item.expect("stream item should succeed");
+                }
+                {
+                    let response = stream.finish().await.expect("the stream ends");
+                    usage = Some(response.usage);
                 }
 
                 let usage = usage.expect(

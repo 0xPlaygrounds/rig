@@ -6,7 +6,7 @@
 //! Raw capture is always on: the terminal record's `raw` carries Cohere's own
 //! serialized terminal — Cohere's own
 //! [`StreamingCompletionResponse`] terminal record, built from the
-//! `message-end` event — onto the terminal [`rig::streaming::StreamFinal::raw`].
+//! `message-end` event — onto the terminal [`rig::completion::CompletionResponse::raw`].
 //! There is no opt-in and nothing about it reaches the wire; `raw` is
 //! `Value::Null` only on a terminal constructed without a provider stream
 //! behind it, never because capture "was not requested".
@@ -33,12 +33,12 @@
 
 use rig::completion::FinishReason;
 use rig::providers::cohere::streaming::StreamingCompletionResponse;
-use rig::streaming::StreamFinal;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
-use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
+use crate::raw_capture::capture_text_and_terminal;
+use crate::support::normalized_without_raw;
 use crate::support::{Observed, json_contains_key};
 use rig::completion::CompletionRequest;
 
@@ -97,12 +97,12 @@ fn number_at(value: &Value, pointer: &str) -> Option<f64> {
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Observed<(String, StreamFinal)> = Observed::default();
+    let observed: Observed<(String, rig::completion::CompletionResponse)> = Observed::default();
     let sink = observed.clone();
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(CASSETTE_MODEL), request(), sink)
+            capture_text_and_terminal(client.completion(CASSETTE_MODEL), request(), sink)
                 .await
                 .expect("stream should open");
         },
@@ -149,12 +149,12 @@ async fn raw_roundtrips_streaming_completion_response() {
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Observed<(String, StreamFinal)> = Observed::default();
+    let observed: Observed<(String, rig::completion::CompletionResponse)> = Observed::default();
     let sink = observed.clone();
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(CASSETTE_MODEL), request(), sink)
+            capture_text_and_terminal(client.completion(CASSETTE_MODEL), request(), sink)
                 .await
                 .expect("stream should open");
         },
@@ -167,14 +167,14 @@ async fn raw_exposes_terminal_only_fields() {
     // The normalized terminal provably lacks these: billed units have no
     // normalized home, and the finish reason reaches it only as rig's
     // vocabulary.
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert!(!json_contains_key(&normalized, "billed_units"));
     assert_ne!(
         normalized.get("finish_reason"),
         Some(&Value::String("COMPLETE".to_string())),
         "the normalized finish reason is rig's spelling, not Cohere's"
     );
-    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
 
     let raw = &terminal.raw;
     let delta = recorded_message_end_delta(SCENARIO);

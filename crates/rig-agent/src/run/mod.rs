@@ -29,7 +29,6 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
-use rig_core::streaming::BlockId;
 
 use rig_core::NonEmpty;
 use rig_core::message::{
@@ -160,10 +159,6 @@ pub struct PendingToolCall {
     /// recovery. When set, the driver must return this content as the tool
     /// result without executing the tool or invoking tool hooks.
     pub preresolved_result: Option<UserContent>,
-    /// Block ID shared by deltas, execution commit, and result. Buffered turns
-    /// mint completion-local keys independently of durable `tool_call.id`.
-    /// Persist this ID unchanged across resume.
-    pub block_id: BlockId,
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -337,9 +332,6 @@ struct TurnState {
     has_tool_calls: bool,
     /// Keyed by position in `items` (see `ResolvingState::skipped`).
     skipped: BTreeMap<usize, UserContent>,
-    /// `(tool_call_id, block_id)` pairs for streamed turns, in
-    /// emission order; empty for non-streamed turns.
-    block_ids: Vec<(rig_core::message::CallId, BlockId)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -867,9 +859,6 @@ impl AgentRun {
         Some(InvalidToolCallContext {
             tool_name: tool_call.function.name.to_string(),
             tool_call_id: Some(tool_call.id.clone()),
-            // A buffered/unary diagnostic has no live stream block.
-            // Correlation uses the typed call ID, including after resume.
-            block_id: None,
             args: Some(json_utils::serialize_json_value(
                 &tool_call.function.arguments,
             )),
@@ -926,7 +915,6 @@ impl AgentRun {
                     items,
                     has_tool_calls,
                     skipped,
-                    mut block_ids,
                 } = turn_state;
                 // The first output-tool call is the answer, not executable work;
                 // sibling calls must not run after finalization.
@@ -999,34 +987,15 @@ impl AgentRun {
                 if has_tool_calls {
                     // Output retries are budgeted per finalization attempt, not per run.
                     self.output_retries = 0;
-                    // Allocate assembly keys independently of durable tool identities.
-                    // Advance for every content position, matching buffered re-emission.
-                    let mut synthetic_blocks = rig_core::streaming::SyntheticIds::tool();
                     let calls: Vec<PendingToolCall> = items
                         .iter()
                         .enumerate()
-                        .filter_map(|(index, item)| {
-                            let synthetic_block = synthetic_blocks.mint();
-                            match item {
-                                AssistantContent::ToolCall(tool_call) => {
-                                    // Consume pairs positionally so duplicate
-                                    // provider IDs within one turn stay
-                                    // distinguishable.
-                                    let block_id = block_ids
-                                        .iter()
-                                        .position(|(id, _)| tool_call.id == *id)
-                                        .map_or_else(
-                                            || synthetic_block,
-                                            |pair| block_ids.remove(pair).1,
-                                        );
-                                    Some(PendingToolCall {
-                                        tool_call: tool_call.clone(),
-                                        preresolved_result: skipped.get(&index).cloned(),
-                                        block_id,
-                                    })
-                                }
-                                _ => None,
-                            }
+                        .filter_map(|(index, item)| match item {
+                            AssistantContent::ToolCall(tool_call) => Some(PendingToolCall {
+                                tool_call: tool_call.clone(),
+                                preresolved_result: skipped.get(&index).cloned(),
+                            }),
+                            _ => None,
                         })
                         .collect();
                     self.state = RunState::ExecutingTools(calls.clone());
@@ -1176,22 +1145,19 @@ impl AgentRun {
 
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
-    /// ingestion paths converge here, differing only in the `skipped` map and
-    /// the streamed `block_ids`.
+    /// ingestion paths converge here, differing only in the `skipped` map.
     fn finalize_turn(
         &mut self,
         message_id: Option<String>,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
-        block_ids: Vec<(rig_core::message::CallId, BlockId)>,
     ) {
         self.state = RunState::AwaitingAdvance(TurnState {
             message_id,
             items,
             has_tool_calls,
             skipped,
-            block_ids,
         });
     }
 
@@ -1488,7 +1454,7 @@ impl AgentRun {
             }
         }
 
-        self.finalize_turn(message_id, items, has_tool_calls, skipped, Vec::new());
+        self.finalize_turn(message_id, items, has_tool_calls, skipped);
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1535,7 +1501,6 @@ impl AgentRun {
         InvalidToolCallContext {
             tool_name: invalid.tool_call.function.name.to_string(),
             tool_call_id: Some(invalid.tool_call.id.clone()),
-            block_id: Some(invalid.block_id.clone()),
             args: invalid.args.clone(),
             available_tools: invalid.executable_tool_names.iter().cloned().collect(),
             allowed_tools: invalid.allowed_tool_names.iter().cloned().collect(),
@@ -1699,7 +1664,6 @@ impl AgentRun {
             turn.choice,
             has_tool_calls,
             BTreeMap::new(),
-            turn.block_ids,
         );
         Ok(())
     }

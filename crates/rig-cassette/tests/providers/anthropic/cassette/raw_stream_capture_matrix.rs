@@ -46,6 +46,7 @@
 //! what the terminal *does* carry: the usage bucket and the verbatim
 //! `stop_reason`.
 
+use rig::completion::CompletionResponse;
 use rig::message::AssistantContent;
 use rig_test_support::cassette_models::AnthropicModels;
 
@@ -54,7 +55,7 @@ use rig::completion::{FinishReason, ToolDefinition};
 use rig::message::{ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamEvent, StreamFinal};
+use rig::streaming::StreamEvent;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -62,7 +63,8 @@ use super::super::support::{
     assert_ids_match_recording, recorded_request_id_headers, with_anthropic_cassette,
 };
 
-use crate::raw_capture::{capture_terminal, stream_normalized_without_raw};
+use crate::raw_capture::capture_terminal;
+use crate::support::normalized_without_raw;
 use crate::support::Observed;
 use rig::completion::CompletionRequest;
 
@@ -125,22 +127,18 @@ fn tool_request() -> rig::completion::CompletionRequest {
 /// What a cell observed on the stream: every non-terminal item, and the
 /// terminal record.
 struct Streamed {
-    items: Vec<StreamEvent>,
-    terminal: StreamFinal,
+    items: Vec<rig::streaming::Item<StreamEvent>>,
+    terminal: CompletionResponse,
 }
 
 async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> Streamed {
     let mut items = Vec::new();
-    let mut terminal = None;
     while let Some(item) = stream.next().await {
-        match item.expect("stream item should succeed") {
-            StreamEvent::Final(final_record) => terminal = Some(final_record),
-            item => items.push(item),
-        }
+        items.push(item.expect("stream item should succeed"));
     }
     Streamed {
         items,
-        terminal: terminal.expect("the stream should yield a terminal record"),
+        terminal: stream.finish().await.expect("the stream ends"),
     }
 }
 
@@ -254,7 +252,7 @@ fn recorded_stream(scenario: &str) -> RecordedStream {
 /// The normalized terminal reports what its own recording says.
 fn assert_terminal_matches_fixture(
     scenario: &str,
-    terminal: &StreamFinal,
+    terminal: &CompletionResponse,
     recorded: &RecordedStream,
 ) {
     assert!(
@@ -385,7 +383,7 @@ async fn terminal_raw_round_trips_into_provider_type() {
     assert_eq!(typed.usage.output_tokens as u64, recorded.output_tokens);
 
     // The normalized view beside it reports what the fixture recorded.
-    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
     assert_terminal_matches_fixture(ROUND_TRIP_SCENARIO, &terminal, &recorded);
 }
 
@@ -434,8 +432,8 @@ async fn raw_exposes_stop_sequence() {
 
     // Normalized: folded into `Stop`; the provider's spelling and the
     // sequence itself are only on `raw`.
-    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
-    let normalized = stream_normalized_without_raw(&terminal);
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
+    let normalized = normalized_without_raw(terminal.clone());
     let normalized_keys: Vec<&str> = normalized
         .as_object()
         .expect("object")
@@ -509,7 +507,7 @@ async fn normalized_terminal_matches_raw_renormalized() {
     // …and none of that is vacuous: the normalized terminal is the fixture's.
     let recorded = recorded_stream(RENORMALIZED_SCENARIO);
     assert_eq!(recorded.stop_reason.as_deref(), Some("end_turn"));
-    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
     assert_terminal_matches_fixture(RENORMALIZED_SCENARIO, &terminal, &recorded);
 }
 
@@ -610,12 +608,12 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
 
     // The normalized terminal folds it into `reasoning_tokens` and never
     // spells `thinking` — only `raw` does.
-    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
     assert_eq!(
         terminal.usage.reasoning_tokens,
         Some(recorded_thinking_tokens)
     );
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert!(
         !contains_string(&normalized, "thinking")
             && !contains_string(&normalized, "thinking_tokens")
@@ -629,10 +627,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
     let streamed_reasoning = items
         .iter()
         .filter_map(|item| match item {
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            } => Some(reasoning),
+            rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => Some(reasoning),
             _ => None,
         })
         .flat_map(|reasoning| {
@@ -728,8 +723,8 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     // terminal maps it onto `ToolCalls` and never spells `tool_use`.
     assert_eq!(raw["stop_reason"], "tool_use");
     assert_eq!(typed.stop_reason.as_deref(), Some("tool_use"));
-    assert_eq!(terminal.finish_reason, Some(FinishReason::ToolCalls));
-    let normalized = stream_normalized_without_raw(&terminal);
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::ToolCalls));
+    let normalized = normalized_without_raw(terminal.clone());
     assert!(
         !contains_string(&normalized, "tool_use") && !contains_string(&normalized, "stop_reason"),
         "the normalized terminal has neither the spelling `tool_use` nor a verbatim \
@@ -743,10 +738,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     let streamed_calls = items
         .iter()
         .filter_map(|item| match item {
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
-                ..
-            } => Some(tool_call),
+            rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => Some(tool_call),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -782,10 +774,10 @@ async fn updates_carry_reasoning_then_text_for_a_thinking_stream() {
             let sink = sink.clone();
             move |client: AnthropicModels| async move {
                 let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-                let mut stream = model
+                let stream = model
                     .stream(thinking_request())
                     .expect("stream should open");
-                sink.put(rig_test_support::updates::collect_updates(&mut stream).await);
+                sink.put(rig_test_support::updates::collect_updates(stream).await);
             }
         },
     )

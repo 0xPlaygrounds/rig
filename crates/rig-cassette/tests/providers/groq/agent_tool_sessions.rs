@@ -5,6 +5,7 @@
 //! owned history, JSON response formats, explicit tool choice, usage accounting,
 //! and provider metadata preservation.
 
+use rig::streaming::Item;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -12,7 +13,7 @@ use futures::StreamExt;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -779,17 +780,15 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
             let mut final_usage = None;
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } if !text.is_empty() => {
+                    Item::Event(StreamEvent::Text { text, .. }) if !text.is_empty() => {
                         text_chunks += 1;
-                    }
-                    StreamEvent::Final(response) => {
-                        final_usage = Some(response.usage);
                     }
                     _ => {}
                 }
+            }
+            {
+                let response = stream.finish().await.expect("the stream ends");
+                final_usage = Some(response.usage);
             }
 
             anyhow::ensure!(text_chunks > 0, "stream should emit text deltas");

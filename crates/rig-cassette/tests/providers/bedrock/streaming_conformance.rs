@@ -10,7 +10,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig_core::completion::{CompletionRequest, FinishReason};
-use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, WireInput, event_frame, fixtures::drain,
@@ -27,26 +27,24 @@ impl Transport<Converse> for Scripted {
         &self,
         payload: ConverseRequest,
         _exchange: Exchange,
-    ) -> Result<Sending<ConverseFrame>, ProviderError> {
-        let events = std::mem::take(
-            &mut *self
-                .0
-                .lock()
-                .map_err(|_| ProviderError::Provider("script lock poisoned".to_owned()))?,
-        );
+    ) -> Opening<ConverseFrame> {
+        let events = match self.0.lock() {
+            Ok(mut events) => std::mem::take(&mut *events),
+            Err(_) => {
+                return Opening::failed(ProviderError::Provider("script lock poisoned".to_owned()));
+            }
+        };
         let opened = ConverseFrame::Opened {
             model: payload.model,
             request_id: None,
         };
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter(
-                std::iter::once(Ok(opened)).chain(
-                    events
-                        .into_iter()
-                        .map(|event| event.map(ConverseFrame::Event)),
-                ),
-            ))
-        }))
+        Opening::ready(Opened::new(futures::stream::iter(
+            std::iter::once(Ok(opened)).chain(
+                events
+                    .into_iter()
+                    .map(|event| event.map(ConverseFrame::Event)),
+            ),
+        )))
     }
 }
 

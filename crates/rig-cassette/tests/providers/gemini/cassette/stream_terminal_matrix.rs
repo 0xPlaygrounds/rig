@@ -77,11 +77,12 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini stream_terminal_matrix -- --test-threads=1`
 
+use rig::streaming::Item;
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -159,33 +160,26 @@ pub(super) fn states(text: &str, value: &str) -> bool {
 struct Drained {
     text: String,
     choice: Vec<AssistantContent>,
-    terminals: usize,
-    terminal: Option<rig::streaming::StreamFinal>,
-    last_item_was_terminal: bool,
+    terminal: Option<rig::completion::CompletionResponse>,
 }
 
 async fn drain(mut stream: rig::streaming::CompletionStream) -> Drained {
     let mut text = String::new();
-    let mut terminals = 0;
-    let mut last_item_was_terminal = false;
     while let Some(item) = stream.next().await {
-        let item = item.expect("no stream item should be an error");
-        last_item_was_terminal = matches!(item, StreamEvent::Final(_));
-        match item {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: chunk },
-                ..
-            } => text.push_str(&chunk),
-            StreamEvent::Final(_) => terminals += 1,
-            _ => {}
+        if let Item::Event(StreamEvent::Text { text: chunk, .. }) =
+            item.expect("no stream item should be an error")
+        {
+            text.push_str(&chunk);
         }
     }
+    let terminal = stream.finish().await.ok();
     Drained {
         text,
-        choice: stream.folded().snapshot(),
-        terminals,
-        terminal: stream.folded().terminal().cloned(),
-        last_item_was_terminal,
+        choice: terminal
+            .as_ref()
+            .map(|response| response.choice.clone())
+            .unwrap_or_default(),
+        terminal,
     }
 }
 
@@ -213,13 +207,9 @@ async fn two_terminal_stream_keeps_the_text_after_the_first_finish() {
              there dropped it entirely. got {:?}",
                 drained.text
             );
-            assert_eq!(
-                drained.terminals, 1,
-                "exactly one terminal record, however many finishReason chunks the wire sent"
-            );
             assert!(
-                drained.last_item_was_terminal,
-                "the terminal record must still be the last item yielded"
+                drained.terminal.is_some(),
+                "one response, however many finishReason chunks the wire sent"
             );
             assert_eq!(
                 text_of(&drained.choice),
@@ -280,11 +270,7 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
             let mut stream = agent.prompt(TWO_ROUND_PROMPT).stream();
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
-                if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    },
+                if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }),
                 ) = item.expect("no stream item should be an error")
                 {
                     answer.push_str(&text);
@@ -336,7 +322,7 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
                  intermediate finish's"
             );
             assert_eq!(
-                terminal.finish_reason,
+                terminal.finish_reason(),
                 Some(FinishReason::Stop),
                 "the reason the turn actually ended on"
             );
@@ -418,7 +404,7 @@ async fn gemini_3_flash_does_not_emit_the_intermediate_finish() {
                 "the answer must survive on this model family too, got {:?}",
                 drained.text
             );
-            assert_eq!(drained.terminals, 1, "exactly one terminal record");
+            assert!(drained.terminal.is_some(), "exactly one terminal record");
         },
     )
     .await;
@@ -452,12 +438,13 @@ async fn two_terminal_stream_through_raw_stream() {
             let mut natives = 0;
             while let Some(item) = stream.next().await {
                 match item.expect("no stream item should be an error") {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text: chunk },
-                        ..
-                    } => text.push_str(&chunk),
-                    StreamEvent::Final(record) => {
-                        let native: gemini::streaming::StreamingCompletionResponse =
+                    Item::Event(StreamEvent::Text { text: chunk, .. }) => text.push_str(&chunk),
+                    _ => {}
+                }
+            }
+            {
+                let record = stream.finish().await.expect("the stream ends");
+                let native: gemini::streaming::StreamingCompletionResponse =
                             serde_json::from_value(record.raw.clone())
                                 .expect("Final.raw should decode as Gemini's native terminal");
                         assert_eq!(
@@ -468,11 +455,8 @@ async fn two_terminal_stream_through_raw_stream() {
                             Some("STOP"),
                             "the native terminal reports the reason the turn actually ended on"
                         );
-                        assert_eq!(record.finish_reason, Some(FinishReason::Stop));
+                        assert_eq!(record.finish_reason(), Some(FinishReason::Stop));
                         natives += 1;
-                    }
-                    _ => {}
-                }
             }
 
             assert!(
@@ -543,13 +527,12 @@ async fn single_terminal_text_stream_is_unchanged() {
             let drained = drain(model.stream(request).expect("stream should open")).await;
 
             assert!(drained.text.contains("PONG"), "got {:?}", drained.text);
-            assert_eq!(drained.terminals, 1);
-            assert!(drained.last_item_was_terminal);
+            assert!(drained.terminal.is_some());
             assert_eq!(
                 drained
                     .terminal
                     .as_ref()
-                    .and_then(|terminal| terminal.finish_reason.clone()),
+                    .and_then(|terminal| terminal.finish_reason().clone()),
                 Some(FinishReason::Stop)
             );
         },
@@ -588,8 +571,7 @@ async fn single_terminal_tool_call_stream_is_unchanged() {
                     .any(|content| matches!(content, AssistantContent::ToolCall(_))),
                 "the tool call must still aggregate"
             );
-            assert_eq!(drained.terminals, 1);
-            assert!(drained.last_item_was_terminal);
+            assert!(drained.terminal.is_some());
         },
     )
     .await;
@@ -614,11 +596,11 @@ async fn max_tokens_truncated_stream_still_reports_length() {
                 drained
                     .terminal
                     .as_ref()
-                    .and_then(|terminal| terminal.finish_reason.clone()),
+                    .and_then(|terminal| terminal.finish_reason().clone()),
                 Some(FinishReason::Length),
                 "a non-STOP terminal reason must survive the deferral"
             );
-            assert_eq!(drained.terminals, 1);
+            assert!(drained.terminal.is_some());
         },
     )
     .await;
@@ -654,8 +636,7 @@ async fn thinking_stream_terminal_is_unchanged() {
                     .any(|content| matches!(content, AssistantContent::Reasoning(_))),
                 "reasoning must still aggregate"
             );
-            assert_eq!(drained.terminals, 1);
-            assert!(drained.last_item_was_terminal);
+            assert!(drained.terminal.is_some());
         },
     )
     .await;
@@ -669,7 +650,7 @@ mod unit {
     use rig::message::AssistantContent;
 
     use rig::providers::gemini::{self, GeminiConfig};
-    use rig::streaming::{Delta, StreamEvent};
+    use rig::streaming::StreamEvent;
     use rig_core::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
 
     /// Frames written from the bytes recorded by cells 1–12.
@@ -695,12 +676,10 @@ mod unit {
         reasoning: usize,
         tool_calls: usize,
         unknowns: usize,
-        terminals: Vec<rig::streaming::StreamFinal>,
         errors: usize,
         /// The error items' messages, in order.
         error_messages: Vec<String>,
-        last_was_terminal: bool,
-        response: Option<rig::streaming::StreamFinal>,
+        response: Option<rig::completion::CompletionResponse>,
     }
 
     async fn run(frames: &[&str]) -> Run {
@@ -725,44 +704,28 @@ mod unit {
             reasoning: 0,
             tool_calls: 0,
             unknowns: 0,
-            terminals: Vec::new(),
             errors: 0,
             error_messages: Vec::new(),
-            last_was_terminal: false,
             response: None,
         };
         while let Some(item) = stream.next().await {
             match item {
                 Ok(item) => {
-                    run.last_was_terminal = matches!(item, StreamEvent::Final(_));
                     match item {
-                        StreamEvent::BlockDelta {
-                            delta: Delta::Text { text },
-                            ..
-                        } => run.text.push_str(&text),
-                        StreamEvent::BlockEnd {
-                            block: Some(AssistantContent::Reasoning(_)),
-                            ..
-                        } => run.reasoning += 1,
-                        StreamEvent::BlockEnd {
-                            block: Some(AssistantContent::ToolCall(_)),
-                            ..
-                        } => run.tool_calls += 1,
-                        StreamEvent::Unknown(_) => run.unknowns += 1,
-                        StreamEvent::Final(final_record) => {
-                            run.terminals.push(final_record);
-                        }
+                        rig::streaming::Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
+                        rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(_), .. }) => run.reasoning += 1,
+                        rig::streaming::Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(_), .. }) => run.tool_calls += 1,
+                        rig::streaming::Item::Unknown(_) => run.unknowns += 1,
                         _ => {}
                     }
                 }
                 Err(error) => {
-                    run.last_was_terminal = false;
                     run.errors += 1;
                     run.error_messages.push(error.to_string());
                 }
             }
         }
-        run.response = stream.folded().terminal().cloned();
+        run.response = stream.finish().await.ok();
         run
     }
 
@@ -770,7 +733,7 @@ mod unit {
     async fn an_intermediate_finish_reason_does_not_end_the_stream() {
         let run = run(&[CODE_ROUND, INTERMEDIATE_TERMINAL, ANSWER, REAL_TERMINAL]).await;
         assert_eq!(run.text, "The answer is 42. Done.");
-        assert_eq!(run.terminals.len(), 1);
+        assert!(run.response.is_some());
     }
 
     #[tokio::test]
@@ -780,9 +743,9 @@ mod unit {
         const TRUNCATED: &str = r#"{"candidates":[{"content":{"parts":[{"text":" more"}],"role":"model"},"finishReason":"MAX_TOKENS","index":0}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2,"totalTokenCount":3}}"#;
         let run = run(&[INTERMEDIATE_TERMINAL, ANSWER, TRUNCATED]).await;
         assert_eq!(
-            run.terminals
-                .first()
-                .and_then(|terminal| terminal.finish_reason.clone()),
+            run.response
+                .as_ref()
+                .and_then(|terminal| terminal.finish_reason()),
             Some(FinishReason::Length)
         );
     }
@@ -791,7 +754,7 @@ mod unit {
     async fn a_usage_only_trailer_after_the_finish_reason_reaches_the_terminal() {
         const TRAILER: &str = r#"{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":99,"totalTokenCount":109}}"#;
         let run = run(&[ANSWER, REAL_TERMINAL, TRAILER]).await;
-        let terminal = run.terminals.first().expect("one terminal");
+        let terminal = run.response.as_ref().expect("one terminal");
         assert_eq!(
             terminal.usage.total_tokens,
             Some(109),
@@ -802,7 +765,7 @@ mod unit {
     #[tokio::test]
     async fn later_metadata_wins_on_the_terminal_record() {
         let run = run(&[CODE_ROUND, INTERMEDIATE_TERMINAL, ANSWER, REAL_TERMINAL]).await;
-        let terminal = run.terminals.first().expect("one terminal");
+        let terminal = run.response.as_ref().expect("one terminal");
         assert_eq!(terminal.response_id.as_deref(), Some("resp-last"));
         assert_eq!(terminal.model.as_deref(), Some("gemini-2.5-flash-002"));
         assert_eq!(terminal.usage.total_tokens, Some(50));
@@ -818,13 +781,13 @@ mod unit {
             REAL_TERMINAL,
         ])
         .await;
-        assert_eq!(run.terminals.len(), 1, "exactly one terminal record");
+        assert!(run.response.is_some(), "exactly one terminal record");
     }
 
     #[tokio::test]
     async fn eof_without_any_finish_reason_yields_no_terminal_record() {
         let run = run(&[CODE_ROUND, ANSWER]).await;
-        assert!(run.terminals.is_empty(), "truncation is still truncation");
+        assert!(run.response.is_none(), "truncation is still truncation");
         assert!(run.response.is_none());
         assert_eq!(run.text, "The answer is 42.");
     }
@@ -843,7 +806,7 @@ mod unit {
         );
         assert_eq!(run.errors, 1, "one error item: the provider's");
         assert!(
-            run.terminals.is_empty(),
+            run.response.is_none(),
             "no terminal record after an abort"
         );
         let message = &run.error_messages[0];
@@ -856,7 +819,7 @@ mod unit {
             "the envelope's message survives: {message}"
         );
         assert!(
-            !message.contains("terminal record"),
+            !message.contains("ended before the provider ended it"),
             "not reported as a cut stream: {message}"
         );
     }
@@ -866,7 +829,7 @@ mod unit {
         let run = run(&[ERROR_FRAME]).await;
         assert!(run.text.is_empty());
         assert_eq!(run.errors, 1);
-        assert!(run.terminals.is_empty());
+        assert!(run.response.is_none());
         assert!(run.error_messages[0].contains("INTERNAL"));
     }
 
@@ -902,7 +865,7 @@ mod unit {
         // report a successful completion for a turn that may have been cut in
         // half.
         assert!(
-            run.terminals.is_empty(),
+            run.response.is_none(),
             "a failed stream must not be dressed up as a completed turn by the deferred terminal"
         );
         assert!(run.response.is_none());
@@ -930,7 +893,7 @@ mod unit {
         assert_eq!(run.errors, 1, "the transport failure reaches the consumer");
         assert_eq!(run.text, "The answer is 42. Done.", "content still arrives");
         assert!(
-            run.terminals.is_empty(),
+            run.response.is_none(),
             "no terminal record: the stream never reached EOF"
         );
         assert!(run.response.is_none());
@@ -947,7 +910,7 @@ mod unit {
             "nothing after the in-band failure is interpreted"
         );
         assert!(
-            run.terminals.is_empty(),
+            run.response.is_none(),
             "an in-band failure must not acquire a terminal record from the EOF deferral"
         );
         assert!(run.response.is_none());
@@ -982,14 +945,5 @@ mod unit {
             "the raw passthrough channel must still see frames past the boundary"
         );
         assert_eq!(run.text, "The answer is 42. Done.");
-    }
-
-    #[tokio::test]
-    async fn the_terminal_record_is_the_last_item_yielded() {
-        let run = run(&[CODE_ROUND, INTERMEDIATE_TERMINAL, ANSWER, REAL_TERMINAL]).await;
-        assert!(
-            run.last_was_terminal,
-            "the deferred terminal must still close the stream"
-        );
     }
 }

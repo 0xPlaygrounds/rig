@@ -73,11 +73,9 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<String> {
 fn encoded(
     wire: &impl Wire<Op = Completion, Payload = crate::wire::Encoded>,
 ) -> http::Request<Body> {
-    let mut encoded = wire
-        .encode(prompt(), Mode::Unary)
-        .expect("the request encodes");
-    assert_eq!(encoded.requests.len(), 1, "one route, one request");
-    encoded.requests.remove(0)
+    wire.encode(prompt(), Mode::Unary)
+        .expect("the request encodes")
+        .request
 }
 
 #[test]
@@ -521,10 +519,10 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
 #[test]
 fn the_embeddings_request_sends_the_resolved_width() {
     let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
-    let mut encoded = wire
+    let encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
-    let Body::Bytes(bytes) = encoded.requests.remove(0).into_body() else {
+    let Body::Bytes(bytes) = encoded.request.into_body() else {
         panic!("the embeddings body is bytes");
     };
     let body: serde_json::Value = serde_json::from_slice(&bytes).expect("the body is JSON");
@@ -533,10 +531,10 @@ fn the_embeddings_request_sends_the_resolved_width() {
 
     // The legacy Ada model accepts no width at all.
     let ada = copilot().embedding(super::super::TEXT_EMBEDDING_ADA_002, None);
-    let mut encoded = ada
+    let encoded = ada
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
-    let Body::Bytes(bytes) = encoded.requests.remove(0).into_body() else {
+    let Body::Bytes(bytes) = encoded.request.into_body() else {
         panic!("the embeddings body is bytes");
     };
     let body: serde_json::Value = serde_json::from_slice(&bytes).expect("the body is JSON");
@@ -550,10 +548,10 @@ fn the_embeddings_request_sends_the_resolved_width() {
 #[test]
 fn the_embeddings_route_carries_copilots_editor_envelope() {
     let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
-    let mut encoded = wire
+    let encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.remove(0);
+    let request = encoded.request;
     assert_eq!(request.uri().path(), "/embeddings");
     let headers = request.headers();
     assert_eq!(
@@ -682,9 +680,7 @@ fn wrapper_owns_the_envelope_even_when_the_shared_dialect_has_a_hook() {
         };
         for mode in [Mode::Unary, Mode::Streaming] {
             let encoded = wire.encode(prompt(), mode).unwrap();
-            let [request] = encoded.requests.as_slice() else {
-                panic!("one request")
-            };
+            let request = &encoded.request;
             assert_eq!(request.uri().host(), Some("explicit.invalid"));
             assert_eq!(request.headers()["openai-intent"], "conversation-edits");
             assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
@@ -819,9 +815,7 @@ fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
                 (direct, "conversation-edits"),
                 (generic, "conversation-panel"),
             ] {
-                let [request] = encoded.requests.as_slice() else {
-                    panic!("one request")
-                };
+                let request = &encoded.request;
                 assert_eq!(request.headers()["x-initiator"], "agent");
                 assert_eq!(request.headers()["copilot-vision-request"], "true");
                 assert_eq!(request.headers()["openai-intent"], intent);

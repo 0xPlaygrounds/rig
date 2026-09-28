@@ -30,6 +30,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{plain,json}_{auto,any,none}.yaml` |
 
+use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
 
@@ -37,7 +38,7 @@ use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::support::with_mistral_request_shape_cassette_result;
@@ -172,21 +173,16 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::ToolCall(tool_call)),
-                        ..
-                    } => observation
+                    Item::Event(StreamEvent::Text { text, .. }) => observation.text.push_str(&text),
+                    Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => observation
                         .calls
                         .push((tool_call.function.name.into(), tool_call.function.arguments)),
-                    StreamEvent::Final(final_record) => {
-                        observation.finish_reason = final_record.finish_reason;
-                    }
                     _ => {}
                 }
+            }
+            {
+                let final_record = stream.finish().await.expect("the stream ends");
+                observation.finish_reason = final_record.finish_reason();
             }
             observation
         }

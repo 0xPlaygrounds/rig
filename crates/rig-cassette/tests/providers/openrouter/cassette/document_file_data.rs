@@ -73,7 +73,7 @@ fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
     let encoded = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), DOCUMENT_MODEL)
         .encode(CompletionRequest::new(message), Mode::Unary)
         .expect("a history message should encode");
-    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+    let Body::Bytes(bytes) = encoded.request.body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")
     };
     let body: Value = serde_json::from_slice(bytes).expect("the chat body is JSON");

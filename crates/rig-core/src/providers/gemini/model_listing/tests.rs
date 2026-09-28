@@ -1,5 +1,4 @@
 use super::*;
-use crate::driver::WireDriver;
 use crate::providers::gemini::GeminiConfig;
 
 #[test]
@@ -160,7 +159,7 @@ fn models_sends_the_credential_as_the_last_query_pair() {
     let encoded = Models::new(GeminiConfig::new("test-key"))
         .encode(None, Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.first().expect("one request");
+    let request = &encoded.request;
 
     assert_eq!(encoded.framing, Framing::Whole);
     assert_eq!(encoded.request_id_header, None);
@@ -177,7 +176,7 @@ fn interactions_models_sends_the_credential_as_a_header_only() {
     let encoded = InteractionsModels::new(GeminiConfig::new("test-key"))
         .encode(None, Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.first().expect("one request");
+    let request = &encoded.request;
 
     assert_eq!(encoded.framing, Framing::Whole);
     assert_eq!(request.uri().path(), "/v1beta/models");
@@ -202,13 +201,14 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
 
     let wire = Models::new(GeminiConfig::new("test-key"));
     let page = |page: &str| {
-        let mut driver = WireDriver::<ModelListing, _>::new(wire.decoder(crate::wire::Mode::Unary));
-        driver.push(WireFrame::Text(page.to_owned()));
-        let mut pages: Vec<_> = driver
-            .drain()
-            .map(|item| item.expect("the recorded page decodes"))
-            .collect();
-        let page = pages.pop().expect("one page");
+        let page = crate::test_utils::decode_reply(
+            &wire,
+            &None,
+            crate::wire::Mode::Unary,
+            [WireFrame::Text(page.to_owned())],
+            serde_json::Value::Null,
+        )
+        .expect("the recorded page decodes");
         let ids: Vec<_> = page.models.iter().map(|model| model.id.clone()).collect();
         (ids, page.next)
     };
@@ -218,7 +218,7 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
     let continuation = wire
         .encode(Some(cursor), crate::wire::Mode::Unary)
         .expect("the next page encodes");
-    let continuation = &continuation.requests[0];
+    let continuation = &continuation.request;
     assert_eq!(continuation.uri().path(), "/v1beta/models");
     assert_eq!(
         continuation.uri().query(),

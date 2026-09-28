@@ -1,6 +1,6 @@
 //! Embedding helpers for deterministic tests.
 
-use crate::driver::{Exchange, Local, Model, Opened, Sending, Transport};
+use crate::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
 use crate::error::ProviderError;
 use crate::wire::Capabilities;
 use crate::{
@@ -35,11 +35,11 @@ impl Transport<Local<crate::operation::Embedding>> for MockEmbeddings {
         &self,
         texts: Vec<String>,
         _exchange: Exchange,
-    ) -> Result<Sending<Result<EmbeddingResponse, ProviderError>>, ProviderError> {
+    ) -> Opening<Step<crate::operation::Embedding>> {
         let response = Self::embed(texts);
-        Ok(Sending::opened(Opened::new(futures::stream::iter([Ok(
-            Ok(response),
-        )]))))
+        Opening::ready(Opened::new(futures::stream::iter([
+            Ok::<_, ProviderError>(Step::End(response)),
+        ])))
     }
 }
 

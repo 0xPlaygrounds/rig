@@ -57,13 +57,10 @@ async fn responses_streaming_carries_identity() {
                 ))
                 .expect("stream should open");
 
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_request_id(
                 terminal.provider_request_id.as_deref(),
@@ -113,11 +110,9 @@ async fn chat_completions_streaming_carries_identity() {
 
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
+            terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_request_id(
                 terminal.provider_request_id.as_deref(),

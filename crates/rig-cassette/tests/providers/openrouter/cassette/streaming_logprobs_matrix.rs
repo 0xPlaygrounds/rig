@@ -151,12 +151,10 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
         }
         Transport::Streaming => {
             let mut stream = model.stream(request)?;
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(response) = item? {
-                    terminal = Some(response);
-                }
+                item?;
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.context("raw stream should carry a terminal response")?;
             let serialized = terminal.raw;
             Observation {

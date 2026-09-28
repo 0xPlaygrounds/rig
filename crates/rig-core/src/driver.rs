@@ -1,8 +1,9 @@
 //! Calls a model. A [`Model`] pairs a [`Wire`] (what to send and how to read
 //! the reply) with a [`Transport`] (how the payload travels). Its `stream`
 //! yields any operation's events as a [`Streamed`], and its `call` is that
-//! stream in unary mode, drained; both run the one private driver. The
-//! `_observed` twins take the observation context a bus records under.
+//! stream, finished: one decoder, one fold and one response constructor for
+//! both. The `_observed` twins take the observation context a bus records
+//! under.
 //!
 //! ```no_run
 //! use rig_core::completion::CompletionRequest;
@@ -18,17 +19,20 @@
 //! ```
 
 use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use futures::StreamExt;
+use tracing::Instrument;
 
 use crate::error::ProviderError;
 use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
 use crate::streaming::Streamed;
-use crate::wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::{
-    Call, Capabilities, Decoder, End, Fold, Mode, Operation, Out, Ready, Reply, Request, Response,
-    Wire, WireEvent, WireFrame,
+    Call, Capabilities, Decoder, Flow, Mode, Operation, Out, Request, Response, Shared, Wire,
+    WireEvent,
 };
 
 mod dyn_model;
@@ -36,7 +40,7 @@ mod http_transport;
 mod local;
 
 pub use dyn_model::DynModel;
-pub use local::{Local, Passthrough};
+pub use local::{Local, Step};
 
 /// An endpoint of one provider: a wire bound to a transport.
 ///
@@ -63,18 +67,14 @@ impl<W, T> Model<W, T> {
 ///
 /// HTTP clients ([`HttpClientExt`](crate::http_client::HttpClientExt)) are
 /// transports for every wire that encodes [`Encoded`](crate::wire::Encoded)
-/// requests and reads [`WireFrame`]s. A local runtime, a proxy or a mock
-/// is a transport for the wires it serves.
+/// requests and reads [`WireFrame`](crate::wire::WireFrame)s. A local
+/// runtime, a proxy or a mock is a transport for the wires it serves.
 pub trait Transport<W: Wire>: Clone + WasmCompatSend + WasmCompatSync + 'static {
-    /// Prepare one payload. A payload the transport cannot send in the
-    /// exchange's mode is refused here, before anything is sent. Every
-    /// failure after that, including one to open a reply, is the last frame
-    /// of that reply. Nothing is sent until the result is first polled.
-    fn send(
-        &self,
-        payload: W::Payload,
-        exchange: Exchange,
-    ) -> Result<Sending<W::Frame>, ProviderError>;
+    /// Open the reply to one payload. Nothing is sent until the opening is
+    /// first polled. A payload the transport cannot send in the exchange's
+    /// mode fails the opening; a failure after the reply opened is its last
+    /// frame.
+    fn send(&self, payload: W::Payload, exchange: Exchange) -> Opening<W::Frame>;
 }
 
 /// What the driver tells a transport about one send.
@@ -85,39 +85,33 @@ pub struct Exchange {
     pub(crate) observation: Option<AdapterContext>,
 }
 
-/// The replies one payload opens, in order: one for most payloads, several
-/// for a payload that carries a batch of requests. A transport that wraps
-/// another composes it as the stream it is.
-pub struct Sending<F>(WasmBoxedStream<'static, Opened<F>>);
+/// One reply, opened when first polled.
+pub struct Opening<F>(WasmBoxedFuture<'static, Result<Opened<F>, ProviderError>>);
 
-impl<F> futures::Stream for Sending<F> {
-    type Item = Opened<F>;
+impl<F: WasmCompatSend + 'static> Opening<F> {
+    /// The reply `open` opens.
+    pub fn new(
+        open: impl Future<Output = Result<Opened<F>, ProviderError>> + WasmCompatSend + 'static,
+    ) -> Self {
+        Self(Box::pin(open))
+    }
 
-    fn poll_next(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Opened<F>>> {
-        self.0.as_mut().poll_next(cx)
+    /// A reply that is already open.
+    pub fn ready(opened: Opened<F>) -> Self {
+        Self::new(std::future::ready(Ok(opened)))
+    }
+
+    /// A reply that failed to open with `error`.
+    pub fn failed(error: ProviderError) -> Self {
+        Self::new(std::future::ready(Err(error)))
     }
 }
 
-impl<F: WasmCompatSend + 'static> Sending<F> {
-    /// A reply that is already open.
-    pub fn opened(opened: Opened<F>) -> Self {
-        Self::later(std::future::ready(opened))
-    }
+impl<F> Future for Opening<F> {
+    type Output = Result<Opened<F>, ProviderError>;
 
-    /// The reply `opening` opens when first polled.
-    pub fn later(opening: impl Future<Output = Opened<F>> + WasmCompatSend + 'static) -> Self {
-        Self(Box::pin(futures::stream::once(opening)))
-    }
-
-    /// Replies opened one after another, each once the one before it was
-    /// read.
-    pub fn each(
-        replies: impl futures::Stream<Item = Opened<F>> + WasmCompatSend + 'static,
-    ) -> Self {
-        Self(Box::pin(replies))
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.0.as_mut().poll(cx)
     }
 }
 
@@ -175,7 +169,8 @@ impl<F: WasmCompatSend + 'static> Opened<F> {
         self
     }
 
-    /// The whole reply as one document: a response's `raw`.
+    /// The whole reply as one document: a response's `raw` when the decoder
+    /// records none.
     pub fn with_document(mut self, document: serde_json::Value) -> Self {
         self.document = Some(document);
         self
@@ -217,14 +212,14 @@ where
     }
 
     /// Send `request` and fold the whole reply into the operation's
-    /// response: [`Self::stream`] in unary mode, drained. A completion takes
-    /// a prompt, a conversation or a
+    /// response: [`Self::stream`] of a unary reply, finished. A completion
+    /// takes a prompt, a conversation or a
     /// [`CompletionRequest`](crate::completion::CompletionRequest).
     pub fn call(
         &self,
         request: impl Into<Request<W>>,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
-        self.drained(request.into(), None)
+        self.finished(request.into(), None)
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
@@ -233,23 +228,28 @@ where
         request: impl Into<Request<W>>,
         observation: AdapterContext,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
-        self.drained(request.into(), Some(observation))
+        self.finished(request.into(), Some(observation))
     }
 
     /// The call opens when first polled, so its span is created under the
     /// caller's instrumented context.
-    fn drained(
+    fn finished(
         &self,
         request: Request<W>,
         observation: Option<AdapterContext>,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
         let model = self.clone();
-        async move { model.open(request, Mode::Unary, observation)?.drain().await }
+        async move {
+            model
+                .open(request, Mode::Unary, observation)?
+                .finish()
+                .await
+        }
     }
 
-    /// Open a streamed reply. Encoding errors, and requests the transport
-    /// cannot stream, return here; every later failure arrives in-band.
-    /// Nothing is sent until the stream is first polled.
+    /// Open a streamed reply. Encoding errors return here; every later
+    /// failure arrives in-band, as the stream's last item. Nothing is sent
+    /// until the stream is first polled.
     pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, ProviderError> {
         self.open(request.into(), Mode::Streaming, None)
     }
@@ -269,20 +269,14 @@ where
         &self,
         request: Request<W>,
     ) -> Result<Response<W>, (ProviderError, String)> {
-        let mut stream = self
-            .open(request, Mode::Unary, None)
-            .map_err(|error| (error, String::new()))?;
-        while let Some(item) = futures::future::poll_fn(|cx| stream.poll_step(cx)).await {
-            if let Err(error) = item {
-                return Err((error, stream.route().to_owned()));
-            }
-        }
-        let route = stream.route().to_owned();
-        stream.finish().map_err(|error| (error, route))
+        self.open(request, Mode::Unary, None)
+            .map_err(|error| (error, String::new()))?
+            .finish_routed()
+            .await
     }
 
     /// The one entry to the driver: the operation's fold for the reply,
-    /// the encoded payload, and the transport's replies, in `mode`.
+    /// the encoded payload, and the transport's reply, in `mode`.
     pub(crate) fn open(
         &self,
         request: Request<W>,
@@ -295,501 +289,476 @@ where
         let fold = <W::Op as Operation>::fold(&request, &mut call);
         let span = call.span;
         let payload = self.wire.encode(request, mode)?;
-        let sending = self
-            .transport
-            .send(payload, Exchange { mode, observation })?;
-        let source = Driven::<W> {
-            wire: self.wire.clone(),
+        let opening = self.transport.send(payload, Exchange { mode, observation });
+        let shared = Arc::new(Mutex::new(Shared::new(fold)));
+        let reading = read(
+            self.wire.clone(),
+            opening,
+            Arc::clone(&shared),
+            span.clone(),
             mode,
-            replies: Some(sending.0),
-            reading: None,
-            documents: Vec::new(),
-            route: String::new(),
-            span: span.clone(),
-            provider: provider.clone(),
-        };
-        Ok(Streamed::new(Box::new(source), fold, span, provider))
-    }
-}
-
-/// What a reply's source did on one poll.
-pub(crate) enum Progress {
-    /// Items may be waiting in the ready queue.
-    Pushed,
-    /// The reply is complete: what the driver learned about it.
-    Closed(Reply),
-}
-
-/// Where one reply's items come from: the driver over a transport, or a
-/// relayed stream. It pushes items through the fold into the ready queue.
-pub(crate) trait Source<Op: Operation>: WasmCompatSend {
-    fn poll_into(
-        &mut self,
-        cx: &mut Context<'_>,
-        fold: &mut Op::Fold,
-        ready: &mut Ready<Op>,
-    ) -> Poll<Progress>;
-
-    /// The request path of the reply being read, when the transport named
-    /// one.
-    fn route(&self) -> &str {
-        ""
-    }
-}
-
-/// The driver: send the payload, decode each reply's frames through the
-/// operation's fold, and close with what the transport reported.
-struct Driven<W: Wire> {
-    wire: W,
-    mode: Mode,
-    /// The transport's replies; `None` once the call ended early.
-    replies: Option<WasmBoxedStream<'static, Opened<W::Frame>>>,
-    reading: Option<Reading<W>>,
-    /// Every reply's document, so a batch keeps the earlier ones.
-    documents: Vec<serde_json::Value>,
-    /// The request path of the latest reply.
-    route: String,
-    span: tracing::Span,
-    provider: String,
-}
-
-/// One opened reply being decoded.
-struct Reading<W: Wire> {
-    frames: WasmBoxedStream<'static, Result<W::Frame, ProviderError>>,
-    driver: FrameDriver<W::Decoder, W::Frame>,
-    /// Items staged until they may leave: after each frame for a stream,
-    /// at the end of the reply for a unary call.
-    staged: Ready<W::Op>,
-    status: Option<http::StatusCode>,
-    headers: Option<http::HeaderMap>,
-    document: Option<serde_json::Value>,
-    /// Whether an error left this reply.
-    failed: bool,
-}
-
-impl<W: Wire> Source<W::Op> for Driven<W> {
-    fn poll_into(
-        &mut self,
-        cx: &mut Context<'_>,
-        fold: &mut <W::Op as Operation>::Fold,
-        ready: &mut Ready<W::Op>,
-    ) -> Poll<Progress> {
-        // A stream decodes under the call's span; a unary call sends under
-        // it.
-        let span = self.span.clone();
-        let _decoding = (self.mode == Mode::Streaming).then(|| span.enter());
-        loop {
-            let Some(reading) = &mut self.reading else {
-                let Some(replies) = &mut self.replies else {
-                    return Poll::Ready(Progress::Closed(self.close(ready)));
-                };
-                let opened = match self.mode {
-                    Mode::Unary => span.in_scope(|| replies.poll_next_unpin(cx)),
-                    Mode::Streaming => replies.poll_next_unpin(cx),
-                };
-                match opened {
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(None) => {
-                        self.replies = None;
-                        return Poll::Ready(Progress::Closed(self.close(ready)));
-                    }
-                    Poll::Ready(Some(opened)) => {
-                        record_request_id(&self.span, opened.request_id.as_deref());
-                        ready.set_request_id(opened.request_id.clone());
-                        let mut staged = Ready::default();
-                        staged.set_request_id(opened.request_id.clone());
-                        self.route = opened.route.unwrap_or_default();
-                        self.reading = Some(Reading {
-                            frames: opened.frames,
-                            driver: FrameDriver::new(
-                                self.wire.decoder(self.mode),
-                                opened.slot,
-                                opened.analysis_only,
-                            ),
-                            staged,
-                            status: opened.status,
-                            headers: opened.headers,
-                            document: opened.document,
-                            failed: false,
-                        });
-                        continue;
-                    }
-                }
-            };
-            // A unary reply is read to its end even past the terminal, so
-            // every payload is observed.
-            let frame = if reading.driver.done && self.mode == Mode::Streaming {
-                None
-            } else {
-                match reading.frames.poll_next_unpin(cx) {
-                    Poll::Pending => return Poll::Pending,
-                    Poll::Ready(frame) => frame,
-                }
-            };
-            // Whether the call failed with this reply; otherwise the reply
-            // ended and a batch's next reply may follow.
-            let failed_call = match (self.mode, frame) {
-                // Each frame's items leave as it decodes; a failure is
-                // in-band, and the reply ends at its terminal.
-                (Mode::Streaming, Some(Ok(frame))) => {
-                    reading.driver.push(frame, fold, &mut reading.staged);
-                    reading.release(ready);
-                    return Poll::Ready(Progress::Pushed);
-                }
-                (Mode::Streaming, Some(Err(error))) => {
-                    reading.driver.fail(error, fold, &mut reading.staged);
-                    reading.release(ready);
-                    false
-                }
-                (Mode::Streaming, None) => {
-                    reading.driver.eof(fold, &mut reading.staged);
-                    reading.release(ready);
-                    false
-                }
-                // A unary reply is read whole: EOF is a complete answer,
-                // every frame is read even after the terminal, and the
-                // first failure, enriched with what the transport reported,
-                // fails the call.
-                (Mode::Unary, Some(Ok(frame))) => {
-                    reading.driver.push(frame, fold, &mut reading.staged);
-                    continue;
-                }
-                (Mode::Unary, Some(Err(error))) => {
-                    if let Some(slot) = &reading.driver.slot {
-                        slot.fail(&error);
-                    }
-                    ready.push(Err(error));
-                    true
-                }
-                (Mode::Unary, None) => {
-                    reading.driver.eof(fold, &mut reading.staged);
-                    let failed = reading.fail_first(ready);
-                    if !failed {
-                        reading.release(ready);
-                    }
-                    failed
-                }
-            };
-            if failed_call {
-                self.replies = None;
-                self.reading = None;
-            } else {
-                self.end_reply();
-            }
-            return Poll::Ready(Progress::Pushed);
-        }
-    }
-
-    fn route(&self) -> &str {
-        &self.route
-    }
-}
-
-impl<W: Wire> Driven<W> {
-    /// The reply being read ended: keep its document, and stop after a
-    /// streamed reply that failed.
-    fn end_reply(&mut self) {
-        let Some(mut reading) = self.reading.take() else {
-            return;
-        };
-        if !reading.failed
-            && let Some(slot) = &reading.driver.slot
-        {
-            slot.finish(AdapterEnding::Decoded);
-        }
-        // The reply's own bytes when they are one document; otherwise the
-        // envelope the decoder reassembled from its frames.
-        let document = reading
-            .document
-            .take()
-            .or_else(|| reading.driver.decoded.take())
-            .unwrap_or(serde_json::Value::Null);
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            &format!("{} reply", self.provider),
-            &document,
         );
-        self.documents.push(document);
-        if reading.failed {
-            self.replies = None;
-        }
+        Ok(Streamed::new(reading, shared, span, provider))
     }
+}
 
-    fn close(&mut self, ready: &Ready<W::Op>) -> Reply {
-        // One reply answered with one document; several answered with the
-        // sequence.
-        let raw = if self.documents.len() > 1 {
-            serde_json::Value::Array(std::mem::take(&mut self.documents))
-        } else {
-            self.documents.pop().unwrap_or(serde_json::Value::Null)
+/// Read one reply: open it, classify each frame, decode it into the reply's
+/// writer, and stop at the provider's end. The stream yields once per frame
+/// read, so its items reach the consumer frame by frame.
+///
+/// The reply's `'id` brand is the borrow of its shared state inside this
+/// stream: the decoder and every part handle it holds are tied to it, and
+/// none can leave.
+fn read<W: Wire>(
+    wire: W,
+    opening: Opening<W::Frame>,
+    shared: Arc<Mutex<Shared<W::Op>>>,
+    span: tracing::Span,
+    mode: Mode,
+) -> WasmBoxedStream<'static, ()> {
+    let decoding = span.clone();
+    let reading = async_stream::stream! {
+        let reply: &Mutex<Shared<W::Op>> = &shared;
+        // A unary call sends under the call's span; a stream reads under it.
+        let opened = match mode {
+            Mode::Unary => opening.instrument(span.clone()).await,
+            Mode::Streaming => opening.await,
         };
-        Reply {
-            provider: self.provider.clone(),
-            raw,
-            provider_request_id: ready.request_id().map(str::to_owned),
-        }
-    }
-}
-
-impl<W: Wire> Reading<W> {
-    /// Hand the staged items over to the consumer.
-    fn release(&mut self, ready: &mut Ready<W::Op>) {
-        while let Some(item) = self.staged.pop() {
-            self.failed |= item.is_err();
-            ready.push(item);
-        }
-    }
-
-    /// A unary reply's first failure fails the call, enriched with what the
-    /// transport reported. Returns whether one did.
-    fn fail_first(&mut self, ready: &mut Ready<W::Op>) -> bool {
-        while let Some(item) = self.staged.pop() {
-            match item {
-                Ok(event) => ready.push(Ok(event)),
-                Err(error) => {
-                    let error = error
-                        .with_provider_status(self.status)
-                        .with_provider_request_id(self.staged.request_id().map(str::to_owned))
-                        .with_response_headers(self.headers.take());
-                    if let Some(slot) = &self.driver.slot {
-                        slot.fail(&error);
-                    }
-                    ready.push(Err(error));
-                    return true;
-                }
-            }
-        }
-        false
-    }
-}
-
-/// Drives one reply's frames through a decoder and the operation's fold.
-/// Known frames are interpreted; unknown frames produce metadata-only
-/// warnings and reach the fold's passthrough; corrupt frames yield errors
-/// without stopping consumption. A transport failure flushes delivered
-/// content before one final error.
-struct FrameDriver<D, F> {
-    decoder: D,
-    slot: Option<AdapterSlot>,
-    analysis_only: Option<fn(&F) -> bool>,
-    /// Frames counted for observation's EOF and corruption positions.
-    frames: usize,
-    done: bool,
-    /// The document the decoder reassembled, when it did.
-    decoded: Option<serde_json::Value>,
-}
-
-impl<D, F> FrameDriver<D, F> {
-    fn new(decoder: D, slot: Option<AdapterSlot>, analysis_only: Option<fn(&F) -> bool>) -> Self {
-        Self {
-            decoder,
+        let Opened {
+            mut frames,
+            request_id,
+            status,
+            headers,
+            route,
+            document,
             slot,
             analysis_only,
-            frames: 0,
-            done: false,
-            decoded: None,
-        }
-    }
-
-    fn push<Op>(&mut self, frame: F, fold: &mut Op::Fold, ready: &mut Ready<Op>)
-    where
-        Op: Operation,
-        D: Decoder<Op, F>,
-    {
-        if self.done {
-            return;
-        }
-        let analysis_only = self.slot.is_some()
-            && self
-                .analysis_only
-                .is_some_and(|analysis_only| analysis_only(&frame));
-        let classified = self.decoder.classify(frame);
-        // Never exempt a corrupt frame, even when the provider's metadata
-        // predicate accepts its shape.
-        let corrupt = matches!(classified, WireEvent::Corrupt(_));
-        if (corrupt || !analysis_only) && self.slot.is_some() {
-            self.frames += 1;
-        }
-        let corruption = match classified {
-            WireEvent::Known(event) => {
-                if self.step(fold, ready, None, |decoder, out| {
-                    decoder.interpret(event, out)
-                }) {
-                    self.done = true;
-                }
-                None
-            }
-            // Skipped semantically, but surfaced verbatim where the
-            // operation has a raw passthrough channel; aggregation never
-            // folds it into the answer.
-            WireEvent::Unknown { event_type, value } => {
-                warn_unmodeled(&event_type, &value);
-                self.step(fold, ready, None, |_, out| {
-                    out.fold.unknown(value, out.ready)
-                });
-                None
-            }
-            WireEvent::Corrupt(error) => {
-                if let Some(slot) = &self.slot {
-                    slot.corrupt(self.frames);
-                }
-                self.step(fold, ready, None, |_, _| {});
-                Some(error)
+        } = match opened {
+            Ok(opened) => opened,
+            Err(error) => {
+                fail(reply, slot_none(), error);
+                return;
             }
         };
-        if let Some(error) = corruption {
-            ready.push(Err(ProviderError::from(error)));
+        record_request_id(&span, request_id.as_deref());
+        {
+            let mut state = lock(reply);
+            state.request_id.clone_from(&request_id);
+            state.document = document;
+            state.route = route.unwrap_or_default();
         }
-    }
-
-    /// Flush delivered content before a final transport error. Does
-    /// nothing after the reply ended.
-    fn fail<Op>(&mut self, error: ProviderError, fold: &mut Op::Fold, ready: &mut Ready<Op>)
-    where
-        Op: Operation,
-        D: Decoder<Op, F>,
-    {
-        if self.done {
-            return;
-        }
-        if let Some(slot) = &self.slot {
-            slot.fail(&error);
-        }
-        self.step(fold, ready, Some(End::Failed), |decoder, out| {
-            decoder.end(out, End::Failed);
-        });
-        ready.push(Err(error));
-        self.done = true;
-    }
-
-    /// End of reply: flush what the decoder still holds. Never runs after a
-    /// transport error or after a terminal.
-    fn eof<Op>(&mut self, fold: &mut Op::Fold, ready: &mut Ready<Op>)
-    where
-        Op: Operation,
-        D: Decoder<Op, F>,
-    {
-        if self.done {
-            return;
-        }
-        if let Some(slot) = &self.slot {
-            slot.transport_eof(self.frames);
-        }
-        self.step(fold, ready, Some(End::Eof), |decoder, out| {
-            decoder.end(out, End::Eof);
-        });
-        if let Some(slot) = &self.slot {
-            slot.eof(self.frames);
-        }
-        self.done = true;
-    }
-
-    /// Run one decoder step through the fold and report what it produced.
-    /// Returns whether the decoder consumed its wire's own terminal
-    /// failure, which ends the reply.
-    fn step<Op>(
-        &mut self,
-        fold: &mut Op::Fold,
-        ready: &mut Ready<Op>,
-        end: Option<End>,
-        run: impl FnOnce(&mut D, &mut Out<'_, Op>),
-    ) -> bool
-    where
-        Op: Operation,
-        D: Decoder<Op, F>,
-    {
-        let before = ready.items.len();
-        let mut finished = false;
-        run(
-            &mut self.decoder,
-            &mut Out {
-                fold: &mut *fold,
-                ready: &mut *ready,
-                finished: &mut finished,
-                document: &mut self.decoded,
-            },
-        );
-        fold.settle(ready, end.or(finished.then_some(End::Eof)));
-        self.collect(ready, before);
-        finished
-    }
-
-    /// Report the items one step produced to observation, and stop at the
-    /// provider's terminal.
-    fn collect<Op: Operation>(&mut self, ready: &Ready<Op>, before: usize) {
-        let mut terminal = false;
-        for item in ready.items.iter().skip(before) {
-            let is_terminal = matches!(item, Ok(event) if Op::is_terminal(event));
-            if let Some(slot) = &self.slot {
-                match item {
-                    Ok(_) if is_terminal => slot.finish(AdapterEnding::Terminal),
-                    Err(error) => slot.fail(error),
-                    Ok(_) => {}
+        let enrich = |error: ProviderError| match mode {
+            // A unary reply's failure carries what the transport reported.
+            Mode::Unary => error
+                .with_provider_status(status)
+                .with_provider_request_id(request_id.clone())
+                .with_response_headers(headers.clone()),
+            Mode::Streaming => error,
+        };
+        let mut decoder = wire.decoder();
+        // Frames counted for observation's EOF and corruption positions.
+        let mut counted = 0usize;
+        loop {
+            let step = match frames.next().await {
+                Some(Ok(frame)) => {
+                    let analysis = slot.is_some()
+                        && analysis_only.is_some_and(|analysis_only| analysis_only(&frame));
+                    let classified = decoder.classify(frame);
+                    // A corrupt frame is never exempt, whatever its shape.
+                    let corrupt = matches!(classified, WireEvent::Corrupt(_));
+                    if slot.is_some() && (corrupt || !analysis) {
+                        counted += 1;
+                    }
+                    match classified {
+                        WireEvent::Known(event) => decoder.decode(event, Out::new(reply)),
+                        // Unmodeled, but always delivered: the consumer sees
+                        // it, and aggregation never folds it into the answer.
+                        WireEvent::Unknown { event_type, value } => {
+                            warn_unmodeled(&event_type, &value);
+                            Out::new(reply).unknown(value);
+                            Ok(Flow::More)
+                        }
+                        WireEvent::Corrupt(error) => {
+                            if let Some(slot) = &slot {
+                                slot.corrupt(counted);
+                            }
+                            Err(ProviderError::from(error))
+                        }
+                    }
+                }
+                Some(Err(error)) => {
+                    fail(reply, slot.as_ref(), error);
+                    return;
+                }
+                None => {
+                    if let Some(slot) = &slot {
+                        slot.transport_eof(counted);
+                    }
+                    // A decoder that saw the provider's end ends the reply
+                    // here; otherwise the frames ran out on it.
+                    let step = decoder.eof(Out::new(reply));
+                    if !matches!(step, Ok(Flow::Ended(_)))
+                        && let Some(slot) = &slot
+                    {
+                        slot.eof(counted);
+                    }
+                    match step {
+                        Ok(Flow::More) => Err(ProviderError::Truncated),
+                        step => step,
+                    }
+                }
+            };
+            match step {
+                Ok(Flow::More) => yield (),
+                Ok(Flow::Ended(_)) => break,
+                Err(error) => {
+                    fail(reply, slot.as_ref(), enrich(error));
+                    return;
                 }
             }
-            terminal |= is_terminal;
         }
-        if terminal {
-            self.done = true;
+        if let Some(slot) = &slot {
+            slot.finish(AdapterEnding::Terminal);
         }
+        {
+            let state = lock(reply);
+            if let Some(document) = state.raw.as_ref().or(state.document.as_ref()) {
+                crate::providers::internal::trace_json(
+                    crate::providers::internal::LogTarget::Completions,
+                    "reply",
+                    document,
+                );
+            }
+        }
+        yield ();
+    };
+    let mut reading: WasmBoxedStream<'static, ()> = Box::pin(reading);
+    match mode {
+        // A stream decodes under the call's span.
+        Mode::Streaming => Box::pin(futures::stream::poll_fn(move |cx| {
+            let _decoding = decoding.enter();
+            reading.as_mut().poll_next(cx)
+        })),
+        Mode::Unary => reading,
     }
 }
 
-/// Drives one reply's frames through a decoder, outside any transport: what
-/// a caller that reads a provider's frames itself (a websocket session, a
-/// test) uses. Items pass the operation's fold as they do in a call.
-pub struct WireDriver<Op: Operation, D, F = WireFrame> {
-    fold: Op::Fold,
-    ready: Ready<Op>,
-    driver: FrameDriver<D, F>,
+/// A reply decoded from frames already in hand: its items, then its
+/// response or the error that ended it.
+#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+pub(crate) struct Decoded<Op: Operation> {
+    pub(crate) items: Vec<Result<crate::streaming::Item<Op::Event>, ProviderError>>,
+    pub(crate) outcome: Result<Op::Response, ProviderError>,
 }
 
-impl<Op, D, F> WireDriver<Op, D, F>
+/// What the driver does with a classified frame: a known event is decoded,
+/// an unmodeled payload is warned about and delivered, and a corrupt frame
+/// is the error that ends the reply.
+#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<crate::streaming::Item<E>, ProviderError> {
+    match event {
+        WireEvent::Known(event) => Ok(crate::streaming::Item::Event(event)),
+        WireEvent::Unknown { event_type, value } => {
+            warn_unmodeled(&event_type, &value);
+            Ok(crate::streaming::Item::Unknown(value))
+        }
+        WireEvent::Corrupt(error) => Err(ProviderError::from(error)),
+    }
+}
+
+/// Decode one frame already in hand into `reply`, as [`read`] does.
+#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+pub(crate) fn step<'id, Op, F, D>(
+    decoder: &mut D,
+    reply: &'id Mutex<Shared<Op>>,
+    frame: F,
+) -> Result<Flow, ProviderError>
 where
     Op: Operation,
-    Op::Fold: Default,
-    D: Decoder<Op, F>,
+    D: crate::wire::Decoder<'id, Op, F>,
 {
-    /// A driver over one reply, without observation.
-    pub fn new(decoder: D) -> Self {
-        Self {
-            fold: Op::Fold::default(),
-            ready: Ready::default(),
-            driver: FrameDriver::new(decoder, None, None),
+    match triage(decoder.classify(frame))? {
+        crate::streaming::Item::Event(event) => decoder.decode(event, Out::new(reply)),
+        crate::streaming::Item::Unknown(value) => {
+            Out::new(reply).unknown(value);
+            Ok(Flow::More)
         }
     }
+}
 
-    /// Whether the provider's genuine terminal already arrived: the driver
-    /// stops consuming, and never runs the EOF flush.
-    pub fn done(&self) -> bool {
-        self.driver.done
+/// Feed frames already in hand through `decoder` into `reply` as [`read`]
+/// does: the reply ends at the provider's end, or the decoder decides at EOF.
+#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+fn feed<'id, Op, F, D>(
+    decoder: &mut D,
+    reply: &'id Mutex<Shared<Op>>,
+    frames: impl IntoIterator<Item = F>,
+) -> Result<(), ProviderError>
+where
+    Op: Operation,
+    D: crate::wire::Decoder<'id, Op, F>,
+{
+    for frame in frames {
+        if let Flow::Ended(_) = step(decoder, reply, frame)? {
+            return Ok(());
+        }
+    }
+    match decoder.eof(Out::new(reply))? {
+        Flow::Ended(_) => Ok(()),
+        Flow::More => Err(ProviderError::Truncated),
+    }
+}
+
+/// Fold a fed reply: its items, then its response, or the error that ended
+/// it. `reply.raw` stands unless it is null, when the decoder's record does.
+#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+pub(crate) fn settle<Op: Operation>(
+    shared: Mutex<Shared<Op>>,
+    fed: Result<(), ProviderError>,
+    reply: crate::wire::Reply,
+) -> Decoded<Op> {
+    let Shared {
+        mut fold,
+        items,
+        end,
+        raw,
+        ..
+    } = shared
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut absorbed = Ok(());
+    for item in &items {
+        if let (Ok(crate::streaming::Item::Event(event)), Ok(())) = (item, &absorbed) {
+            absorbed = crate::wire::Fold::absorb(&mut fold, event);
+        }
+    }
+    let outcome = fed.and(absorbed).and_then(|()| {
+        let reply = crate::wire::Reply {
+            raw: if reply.raw.is_null() {
+                raw.unwrap_or(serde_json::Value::Null)
+            } else {
+                reply.raw
+            },
+            ..reply
+        };
+        crate::wire::Fold::finish(fold, end.ok_or(ProviderError::Truncated)?, reply)
+    });
+    let mut items: Vec<_> = items.into_iter().collect();
+    if let Err(error) = &outcome
+        && !items.iter().any(Result::is_err)
+    {
+        items.push(Err(error.clone()));
+    }
+    Decoded { items, outcome }
+}
+
+/// Decode a reply whose frames are already in hand through `wire`'s
+/// decoder and `fold`, without a transport: what a caller that reads a
+/// provider's frames itself (a websocket session, a whole body) finishes a
+/// reply with.
+#[cfg(any(test, feature = "websocket"))]
+pub(crate) fn decode_frames<W: Wire>(
+    wire: &W,
+    fold: <W::Op as Operation>::Fold,
+    frames: impl IntoIterator<Item = W::Frame>,
+    reply: crate::wire::Reply,
+) -> Result<Response<W>, ProviderError> {
+    let shared = Mutex::new(Shared::new(fold));
+    let fed = feed(&mut wire.decoder(), &shared, frames);
+    settle(shared, fed, reply).outcome
+}
+
+/// A whole reply body of an HTTP wire, decoded as its one frame: what a
+/// caller holding the body finishes a reply with.
+#[cfg(any(test, feature = "websocket"))]
+pub(crate) fn decode_body<W: Wire<Frame = crate::wire::WireFrame>>(
+    wire: &W,
+    fold: <W::Op as Operation>::Fold,
+    body: String,
+    reply: crate::wire::Reply,
+) -> Result<Response<W>, ProviderError> {
+    decode_frames(wire, fold, [crate::wire::WireFrame::Text(body)], reply)
+}
+
+/// A completion reply decoded from frames already in hand, as the bus
+/// relays it: its items, then the response, or the error that ended it.
+#[cfg(any(test, feature = "test-utils"))]
+pub(crate) fn relay_frames<W>(
+    wire: &W,
+    frames: impl IntoIterator<Item = W::Frame>,
+) -> crate::streaming::StreamEvents
+where
+    W: Wire<Op = crate::operation::Completion>,
+{
+    use crate::error::ErrorReport;
+    use crate::streaming::Relayed;
+
+    let provider = wire.describe().name.to_owned();
+    let shared = Mutex::new(Shared::new(crate::operation::Turn::new(provider.clone())));
+    let fed = feed(&mut wire.decoder(), &shared, frames);
+    let decoded = settle(
+        shared,
+        fed,
+        crate::wire::Reply {
+            provider,
+            raw: serde_json::Value::Null,
+            provider_request_id: None,
+        },
+    );
+    let relayed: Vec<Result<Relayed, ErrorReport>> = decoded
+        .items
+        .into_iter()
+        .map(|item| match item {
+            Ok(item) => Ok(Relayed::Item(item)),
+            Err(error) => Err(ErrorReport::from(&error)),
+        })
+        // An error that ended the reply is already its last item.
+        .chain(
+            decoded
+                .outcome
+                .ok()
+                .map(|response| Ok(Relayed::Done(Box::new(response)))),
+        )
+        .collect();
+    Box::pin(futures::stream::iter(relayed))
+}
+
+#[cfg(test)]
+impl Decoded<crate::operation::Completion> {
+    /// The events the reply yielded, without unmodeled payloads.
+    pub(crate) fn events(&self) -> Vec<&crate::streaming::StreamEvent> {
+        self.items
+            .iter()
+            .filter_map(|item| match item {
+                Ok(crate::streaming::Item::Event(event)) => Some(event),
+                _ => None,
+            })
+            .collect()
     }
 
-    /// Feed one frame.
-    pub fn push(&mut self, frame: F) {
-        self.driver.push(frame, &mut self.fold, &mut self.ready);
+    /// What each part ended with, in the order the parts ended.
+    pub(crate) fn ended(&self) -> Vec<crate::message::AssistantContent> {
+        self.events()
+            .into_iter()
+            .filter_map(|event| match event {
+                crate::streaming::StreamEvent::End { content, .. } => Some(content.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+/// Decode typed `events` through `decoder` as one completion reply from
+/// `provider`, then EOF: a decoder's test harness, without frames.
+#[cfg(test)]
+macro_rules! decode_events {
+    ($decoder:expr, $provider:expr, $events:expr) => {
+        $crate::driver::decode_with(
+            $crate::operation::Turn::new($provider),
+            $provider,
+            |reply| {
+                let mut decoder = $decoder;
+                for event in $events {
+                    if let $crate::wire::Flow::Ended(_) =
+                        $crate::wire::Decoder::decode(&mut decoder, event, reply.out())?
+                    {
+                        return Ok(());
+                    }
+                }
+                match $crate::wire::Decoder::eof(&mut decoder, reply.out())? {
+                    $crate::wire::Flow::Ended(_) => Ok(()),
+                    $crate::wire::Flow::More => Err($crate::error::ProviderError::Truncated),
+                }
+            },
+        )
+    };
+}
+#[cfg(test)]
+pub(crate) use decode_events;
+
+/// Decode `frames` through `decoder`, classifier included, as one
+/// completion reply from `provider`: what the driver does with frames it
+/// read.
+#[cfg(test)]
+macro_rules! feed_frames {
+    ($decoder:expr, $provider:expr, $frames:expr) => {
+        $crate::driver::decode_with(
+            $crate::operation::Turn::new($provider),
+            $provider,
+            |reply| {
+                let mut decoder = $decoder;
+                reply.feed(&mut decoder, $frames)
+            },
+        )
+    };
+}
+#[cfg(test)]
+pub(crate) use feed_frames;
+
+/// One reply's writer, for a test that drives a decoder by hand.
+#[cfg(test)]
+pub(crate) struct Replying<'id, Op: Operation>(&'id Mutex<Shared<Op>>);
+
+#[cfg(test)]
+impl<'id, Op: Operation> Replying<'id, Op> {
+    /// A writer for the next event.
+    pub(crate) fn out(&self) -> Out<'id, Op> {
+        Out::new(self.0)
     }
 
-    /// Flush delivered content before a final transport error. Does nothing
-    /// after termination.
-    pub fn fail(&mut self, error: ProviderError) {
-        self.driver.fail(error, &mut self.fold, &mut self.ready);
+    /// Feed frames through `decoder`, as the driver does.
+    pub(crate) fn feed<F, D: crate::wire::Decoder<'id, Op, F>>(
+        &self,
+        decoder: &mut D,
+        frames: impl IntoIterator<Item = F>,
+    ) -> Result<(), ProviderError> {
+        feed(decoder, self.0, frames)
     }
+}
 
-    /// End of reply: flush what the decoder still holds.
-    pub fn finish(&mut self) {
-        self.driver.eof(&mut self.fold, &mut self.ready);
-    }
+/// Drive one reply by hand: `run` decodes into it until the reply ends, or
+/// fails with what ended it, and the reply folds into `fold` as a stream
+/// would.
+#[cfg(test)]
+pub(crate) fn decode_with<Op: Operation>(
+    fold: Op::Fold,
+    provider: &str,
+    run: impl for<'id> FnOnce(Replying<'id, Op>) -> Result<(), ProviderError>,
+) -> Decoded<Op> {
+    let shared = Mutex::new(Shared::new(fold));
+    let fed = run(Replying(&shared));
+    settle(
+        shared,
+        fed,
+        crate::wire::Reply {
+            provider: provider.to_owned(),
+            raw: serde_json::Value::Null,
+            provider_request_id: None,
+        },
+    )
+}
 
-    /// Take the items the pushed frames produced.
-    pub fn drain(&mut self) -> impl Iterator<Item = Result<Op::Event, ProviderError>> + '_ {
-        std::iter::from_fn(|| self.ready.pop())
-    }
+/// No observation slot, for a reply that failed before it opened.
+fn slot_none() -> Option<&'static AdapterSlot> {
+    None
+}
 
-    /// The reply as one document, when the decoder reassembled it.
-    pub fn document(&self) -> Option<serde_json::Value> {
-        self.driver.decoded.clone()
+/// The reply failed: the error is its last item.
+fn fail<Op: Operation>(
+    reply: &Mutex<Shared<Op>>,
+    slot: Option<&AdapterSlot>,
+    error: ProviderError,
+) {
+    if let Some(slot) = slot {
+        slot.fail(&error);
     }
+    lock(reply).items.push_back(Err(error));
+}
+
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Read pages until one names no cursor, names the cursor it was asked
@@ -835,30 +804,6 @@ where
         cursor = Some(next);
     }
     Ok(pages)
-}
-
-/// One frame after [`triage_frame`]: a modeled event for `interpret`, or an
-/// unknown frame's raw payload for the passthrough channel.
-#[derive(Debug)]
-pub enum TriagedFrame<T> {
-    /// A modeled event, ready for [`Decoder::interpret`].
-    Event(T),
-    /// Unknown payload, already logged without content. Forward through a raw
-    /// channel when available; do not interpret it as modeled content.
-    Unknown(crate::streaming::UnknownPayload),
-}
-
-/// Returns known events or unknown payloads, warning without content for the
-/// latter. Corrupt frames return a JSON error.
-pub fn triage_frame<T>(event: WireEvent<T>) -> Result<TriagedFrame<T>, ProviderError> {
-    match event {
-        WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
-        WireEvent::Unknown { event_type, value } => {
-            warn_unmodeled(&event_type, &value);
-            Ok(TriagedFrame::Unknown(value))
-        }
-        WireEvent::Corrupt(error) => Err(ProviderError::from(error)),
-    }
 }
 
 /// Logs an unmodeled payload's kind and serialized size, never its content.

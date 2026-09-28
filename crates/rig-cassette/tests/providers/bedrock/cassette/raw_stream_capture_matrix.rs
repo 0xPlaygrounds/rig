@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on Bedrock's ConverseStream path
-//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -17,7 +17,7 @@
 //! payloads of the `messageStop` and `metadata` events inside it.
 //!
 //! Both cells stream their one recorded turn through the shared execution
-//! helper [`capture_sole_terminal`](crate::raw_capture::capture_sole_terminal)
+//! helper [`capture_terminal`](crate::raw_capture::capture_terminal)
 //! — Bedrock's contract is exactly one terminal record — and assert against
 //! the parked terminal after the wrapper returns. The shared *format*
 //! contracts (`raw_capture::chat`, `raw_capture::responses`) do not apply:
@@ -52,9 +52,8 @@ use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
 use crate::cassettes::recorded_interaction_bodies;
-use crate::raw_capture::{
-    assert_normalized_lacks, capture_sole_terminal, stream_normalized_without_raw,
-};
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal};
+use crate::support::normalized_without_raw;
 use crate::support::Observed;
 use rig::completion::CompletionRequest;
 
@@ -135,7 +134,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -180,7 +179,7 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_bedrock_stop_reason",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -190,9 +189,9 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
     let terminal = captured.take();
     // The normalized terminal spells the finish reason in rig's vocabulary;
     // Bedrock's own spelling is only on raw.
-    assert_normalized_lacks(&stream_normalized_without_raw(&terminal), &["stop_reason"]);
+    assert_normalized_lacks(&normalized_without_raw(terminal.clone()), &["stop_reason"]);
     assert_eq!(
-        terminal.finish_reason,
+        terminal.finish_reason(),
         Some(rig::completion::FinishReason::Stop)
     );
 

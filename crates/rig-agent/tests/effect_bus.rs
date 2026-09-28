@@ -1803,7 +1803,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
     let unary = within(model.call(request("hi"))).await.expect("unary");
     let mut stream = streamer.stream(request("hi"));
     assert_eq!(
-        stream.folded().provider(),
+        stream.partial().provider,
         "streamer",
         "before the terminal record the stream carries the handler's label"
     );
@@ -1811,7 +1811,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         item.expect("a clean stream");
     }
     let streamed = stream
-        .finish()
+        .finish().await
         .expect("the stream produced a terminal record");
     assert_eq!(
         streamed.provider, unary.provider,

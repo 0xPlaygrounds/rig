@@ -121,6 +121,7 @@ async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionRes
     while response.next().await.is_some() {}
     response
         .finish()
+        .await
         .expect("the stream produced a terminal record")
 }
 
@@ -218,11 +219,7 @@ fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
 /// One request's body, for a turn other than the bare [`prompt`].
 fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> serde_json::Value {
     let encoded = wire.encode(request, mode).expect("the request encodes");
-    let request = encoded
-        .requests
-        .first()
-        .expect("a Responses request is one request");
-    let Body::Bytes(body) = request.body() else {
+    let Body::Bytes(body) = encoded.request.body() else {
         panic!("a Responses body is bytes");
     };
     serde_json::from_slice(body).expect("the body is JSON")
@@ -433,7 +430,7 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
     assert_eq!(
-        encoded.requests.first().expect("one request").uri(),
+        encoded.request.uri(),
         "https://api.x.ai/v1/responses"
     );
 

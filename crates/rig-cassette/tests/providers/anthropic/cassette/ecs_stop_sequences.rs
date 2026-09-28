@@ -35,7 +35,7 @@ async fn agent_stream_single_sequence() {
                     );
                     ecs.prompt(terminal::LIST_PROMPT, true).await;
                     assert_eq!(
-                        ecs_lifecycle::provider_final(&mut ecs).finish_reason,
+                        ecs_lifecycle::provider_final(&mut ecs).finish_reason(),
                         Some(FinishReason::Stop)
                     );
                 },
@@ -108,7 +108,7 @@ async fn agent_stream_empty_stop_sequence() {
                         "the run finishes with empty output rather than an error"
                     );
                     assert_eq!(
-                        ecs_lifecycle::provider_final(&mut ecs).finish_reason,
+                        ecs_lifecycle::provider_final(&mut ecs).finish_reason(),
                         Some(FinishReason::Stop)
                     );
                 },

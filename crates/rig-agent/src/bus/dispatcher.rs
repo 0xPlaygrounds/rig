@@ -29,7 +29,7 @@ use futures::{
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
-    streaming::StreamEvent,
+    streaming::Relayed,
     tool::{PublishedContext, ToolContext},
 };
 
@@ -634,7 +634,7 @@ pub(super) struct Command {
 
 pub(super) enum Reply {
     Unary(oneshot::Sender<Result<Outcome, ErrorReport>>),
-    Stream(mpsc::Sender<Result<StreamEvent, ErrorReport>>),
+    Stream(mpsc::Sender<Result<Relayed, ErrorReport>>),
 }
 
 impl Reply {
@@ -773,8 +773,8 @@ impl Dispatcher {
     /// `HandlerUnavailable`.
     ///
     /// A streaming kind (`Completion { stream: true }`) may be dispatched
-    /// unary: the driver folds the handler's events and resolves the
-    /// aggregated completion at `Final`.
+    /// unary: the driver resolves the completion the handler's stream
+    /// ended with.
     pub fn dispatch(&self, key: &HandlerKey, kind: EffectKind) -> Pending {
         self.dispatch_with(key, kind, DispatchOptions::default())
     }
@@ -993,7 +993,7 @@ fn reentrant(key: &HandlerKey) -> ErrorReport {
     .with_retryable(false)
 }
 
-/// A stream that ended before its `Final`: the returned stream ended
+/// A stream that ended before its response: the returned stream ended
 /// mid-stream (the provider stream ended early, or the handler failed
 /// without reporting).
 pub(super) fn stream_truncated() -> ErrorReport {
@@ -1167,10 +1167,10 @@ impl Future for Pending {
 enum StreamState {
     Sending {
         command: Option<Command>,
-        receiver: Option<mpsc::Receiver<Result<StreamEvent, ErrorReport>>>,
+        receiver: Option<mpsc::Receiver<Result<Relayed, ErrorReport>>>,
     },
     Receiving {
-        receiver: mpsc::Receiver<Result<StreamEvent, ErrorReport>>,
+        receiver: mpsc::Receiver<Result<Relayed, ErrorReport>>,
         saw_terminal: bool,
     },
     /// Rejected before any send (an invalid dispatch): yields the report once.
@@ -1178,7 +1178,7 @@ enum StreamState {
     Done,
 }
 
-/// Executor-independent stream of events ending with `Final` or an error.
+/// Executor-independent stream of events ending with the response or an error.
 /// Dropping signals cancellation; polling the driver releases handler work.
 /// Pausing consumption applies backpressure through the bounded event channel.
 #[must_use = "a dispatch does nothing until polled"]
@@ -1215,7 +1215,7 @@ impl fmt::Debug for EffectStream {
 }
 
 impl Stream for EffectStream {
-    type Item = Result<StreamEvent, ErrorReport>;
+    type Item = Result<Relayed, ErrorReport>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -1278,7 +1278,7 @@ impl Stream for EffectStream {
                     return match Pin::new(receiver).poll_next(cx) {
                         Poll::Pending => Poll::Pending,
                         Poll::Ready(Some(item)) => {
-                            if matches!(item, Ok(StreamEvent::Final(_)) | Err(_)) {
+                            if matches!(item, Ok(Relayed::Done(_)) | Err(_)) {
                                 *saw_terminal = true;
                             }
                             Poll::Ready(Some(item))

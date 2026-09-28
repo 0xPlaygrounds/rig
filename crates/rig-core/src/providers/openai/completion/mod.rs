@@ -979,7 +979,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 fn message_with_tool_ids(
     source: message::Message,
     position: usize,
-    ids: &crate::providers::internal::tool_call_ids::ToolCallIds,
+    ids: &crate::providers::internal::wire_ids::WireIds,
     reasoning_details: bool,
     issuers: &[message::Issuer],
 ) -> Result<Vec<Message>, message::MessageError> {
@@ -1592,9 +1592,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let partial_history = chat_history.into_vec();
 
-        let tool_ids =
-            crate::providers::internal::tool_call_ids::ToolCallIds::new(&partial_history)
-                .map_err(EncodeError::request)?;
+        let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&partial_history);
 
         let mut full_history: Vec<Message> = Vec::new();
         full_history.extend(

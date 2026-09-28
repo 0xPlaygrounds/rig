@@ -8,7 +8,7 @@ use crate::types::{
 use crate::completion::{Converse, ConverseFrame, ConverseRequest};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
-use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::{
     completion,
@@ -27,14 +27,10 @@ fn mirrored(block: aws_bedrock::ContentBlock) -> ContentBlock {
 struct Reply(InternalConverseOutput);
 
 impl Transport<Converse> for Reply {
-    fn send(
-        &self,
-        payload: ConverseRequest,
-        _exchange: Exchange,
-    ) -> Result<Sending<ConverseFrame>, ProviderError> {
+    fn send(&self, payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
         let output = self.0.clone();
         let request_id = output.request_id().map(str::to_owned);
-        Ok(Sending::later(async move {
+        Opening::ready(
             Opened::new(futures::stream::iter([
                 Ok(ConverseFrame::Opened {
                     model: payload.model,
@@ -42,8 +38,8 @@ impl Transport<Converse> for Reply {
                 }),
                 Ok(ConverseFrame::Whole(Box::new(output))),
             ]))
-            .with_request_id(request_id)
-        }))
+            .with_request_id(request_id),
+        )
     }
 }
 

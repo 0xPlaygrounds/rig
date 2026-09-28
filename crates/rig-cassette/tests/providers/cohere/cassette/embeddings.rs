@@ -111,35 +111,42 @@ async fn embed_images_preserves_batch_order() {
     with_cohere_cassette(
         "embeddings/embed_images_preserves_batch_order",
         |client| async move {
+            // Cohere embeds one image per request, so a batch is one call
+            // per image, in input order.
             let model = client.image_embedding();
-            let response = model
-                .call(vec![decode_image(PNG_2X2), decode_image(GIF_2X2)])
-                .await
-                .expect("image embedding batch should succeed");
-            let embeddings = response.embeddings.clone();
+            let mut embeddings = Vec::new();
+            let mut raw = Vec::new();
+            for image in [decode_image(PNG_2X2), decode_image(GIF_2X2)] {
+                let response = model
+                    .call(vec![image])
+                    .await
+                    .expect("image embedding should succeed");
+                embeddings.extend(response.embeddings.clone());
+                raw.push(
+                    serde_json::from_value::<cohere::embeddings::ImageEmbeddingResponse>(
+                        response.raw.clone(),
+                    )
+                    .expect("raw is Cohere's reply"),
+                );
+            }
 
             assert_embeddings_nonempty_and_consistent(&embeddings, 2);
-            // Two images are two requests on this wire, so the operation has
-            // two pages and `raw` is the per-image sequence in input order —
-            // what the per-request escape hatch used to return. Each page
-            // carries its own `meta.billed_units.images`, the only route to an
-            // image count: `Usage` is token-denominated and has no slot for it.
-            let raw: Vec<cohere::embeddings::ImageEmbeddingResponse> =
-                serde_json::from_value(response.raw.clone()).expect("raw is the per-image array");
-            assert_eq!(raw.len(), 2, "one answer per input image: {raw:?}");
+            // Each reply carries its own `meta.billed_units.images`, the only
+            // route to an image count: `Usage` is token-denominated and has no
+            // slot for it.
             for page in &raw {
                 assert_eq!(
                     page.meta.as_ref().map(|meta| meta.billed_units.images),
                     Some(1),
-                    "each page bills its own image: {page:?}"
+                    "each reply bills its own image: {page:?}"
                 );
                 assert_eq!(
                     page.embeddings.values.len(),
                     1,
-                    "one embedding per per-image answer: {page:?}"
+                    "one embedding per image: {page:?}"
                 );
             }
-            // Not byte equality between the pages: Cohere mints a fresh
+            // Not byte equality between the replies: Cohere mints a fresh
             // generation id per call, so the two recorded replies differ in
             // `id` alone. What repeats is the shape and the billing.
             assert_ne!(

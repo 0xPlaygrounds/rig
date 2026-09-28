@@ -305,12 +305,6 @@ impl Issuer {
         Self(Cow::Borrowed(name))
     }
 
-    /// The placeholder the completion writer seals reasoning with until the
-    /// reply names its issuer. Nothing accepts it.
-    pub(crate) const fn unstamped() -> Self {
-        Self(Cow::Borrowed(""))
-    }
-
     /// The issuer's name.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -397,10 +391,5 @@ impl<T> Sealed<T> {
     /// The value, for the completion writer that assembles it.
     pub(crate) fn value(&self) -> &T {
         &self.value
-    }
-
-    /// The value, for the completion writer that assembles it.
-    pub(crate) fn value_mut(&mut self) -> &mut T {
-        &mut self.value
     }
 }

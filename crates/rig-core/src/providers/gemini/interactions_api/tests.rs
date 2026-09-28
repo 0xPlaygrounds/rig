@@ -1155,7 +1155,7 @@ fn a_tool_round_trip_is_top_level_steps() {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{
+    use crate::providers::internal::wire_ids::tests::{
         adapter_requests, assert_adapter_pairs,
     };
     for request in adapter_requests() {
@@ -1278,6 +1278,7 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
     }
     let streamed = stream
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     assert_eq!(shape(&buffered), shape(&streamed));
@@ -1321,10 +1322,7 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
 
 /// The one request an `Encoded` carries: this wire sends one per call.
 fn sole(encoded: &crate::wire::Encoded) -> &http::Request<crate::wire::Body> {
-    match encoded.requests.as_slice() {
-        [request] => request,
-        requests => panic!("expected one request, got {}", requests.len()),
-    }
+    &encoded.request
 }
 
 #[test]

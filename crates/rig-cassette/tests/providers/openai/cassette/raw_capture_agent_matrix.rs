@@ -136,10 +136,11 @@ impl Route {
                 .as_array()
                 .is_some_and(|calls| !calls.is_empty()),
             (Route::Chat, true) => raw["finish_reason"] == "tool_calls",
-            (Route::Responses, false) => raw["output"]
+            // A streamed reply's raw is the same response object a blocking
+            // one keeps.
+            (Route::Responses, _) => raw["output"]
                 .as_array()
                 .is_some_and(|items| items.iter().any(|item| item["type"] == "function_call")),
-            (Route::Responses, true) => raw.get("message_id").is_none_or(Value::is_null),
         }
     }
 }
@@ -244,8 +245,6 @@ impl AgentHook for RetryOnceOnMarker {
 #[derive(Default)]
 struct RunObservation {
     calls: Vec<rig::agent::CompletionCall>,
-    /// The `raw` of every streamed `StreamedAssistantContent::Final`, in order.
-    finals: Vec<Value>,
     /// The `raw` of every streamed `MultiTurnStreamItem::CompletionCall`.
     stream_calls: Vec<Value>,
     output: String,
@@ -313,9 +312,6 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
             let mut final_response = None;
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should succeed") {
-                    MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(terminal)) => {
-                        observation.finals.push(terminal.raw.clone())
-                    }
                     MultiTurnStreamItem::CompletionCall(call) => {
                         observation.stream_calls.push(call.raw.clone());
                     }
@@ -491,11 +487,6 @@ fn assert_streamed_hooks_see_raw(
         "{scenario}: ModelTurnFinished hook sees the terminal's raw"
     );
     assert_eq!(
-        observation.finals,
-        vec![call_raw.clone()],
-        "{scenario}: the streamed Final carries the turn's raw"
-    );
-    assert_eq!(
         observation.stream_calls,
         vec![call_raw],
         "{scenario}: the streamed CompletionCall item carries the turn's raw"
@@ -585,13 +576,6 @@ fn assert_tool_run_records_distinct_raw(
         assert_eq!(
             observation.stream_calls, raws,
             "{scenario}: streamed CompletionCall items carry each attempt's raw in order"
-        );
-        // Only turns that streamed text yield a Final; the last one is the
-        // final answer's, and it carries the final turn's payload.
-        assert_eq!(
-            observation.finals.last(),
-            Some(last),
-            "{scenario}: the streamed Final carries the final turn's raw"
         );
     }
 }

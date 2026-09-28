@@ -235,14 +235,9 @@ async fn streaming_empty_stop_sequence() {
                 errors.is_empty(),
                 "streamed twin must not error: {errors:?}"
             );
-            assert!(stream.folded().snapshot().is_empty());
-            assert_eq!(
-                stream
-                    .folded()
-                    .terminal()
-                    .and_then(|final_| final_.finish_reason.clone()),
-                Some(FinishReason::Stop)
-            );
+            let response = stream.finish().await.expect("the stream ends");
+            assert!(response.choice.is_empty());
+            assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
         },
     )
     .await;

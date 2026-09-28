@@ -451,7 +451,7 @@ async fn completion_non_success_preserves_status_and_body() {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{
+    use crate::providers::internal::wire_ids::tests::{
         adapter_requests, assert_adapter_pairs,
     };
     for request in adapter_requests() {

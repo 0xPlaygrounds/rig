@@ -7,17 +7,16 @@
 //! ```
 
 use rig_core::error::ProviderError;
-use rig_core::streaming::BlockId;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
     agent::hook::{AgentHook, RunSettled, SettledOutcome, StepEventKind},
     agent::runner::{AgentRunner, RunOrigin},
-    streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent},
+    streaming::{Item, StreamEvent, StreamedUserContent},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::pin::Pin;
 use tracing_futures::Instrument;
 
@@ -37,37 +36,33 @@ pub type StreamingResult =
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 /// One item of a streamed run: a provider stream event, a committed tool
 /// call, a lifecycle marker, or the run's final response.
 pub enum MultiTurnStreamItem {
-    /// A provider stream event containing model-emitted content: block
-    /// starts and ends, text/reasoning deltas, tool-call deltas, the
-    /// terminal record, unmodeled passthrough items. Tool-call block ends
-    /// are not forwarded; the model's completed calls are reported as
-    /// [`ToolCall`](Self::ToolCall) when the turn commits.
-    StreamAssistantItem(StreamEvent),
+    /// A provider stream item containing model-emitted content: part
+    /// starts and ends, text and reasoning fragments, the call parts of a
+    /// validated tool call, and unmodeled passthrough payloads. The model's
+    /// completed calls are also reported as [`ToolCall`](Self::ToolCall)
+    /// when the turn commits.
+    StreamAssistantItem(Item<StreamEvent>),
     /// A tool call the **model emitted**, reported when the model turn is
     /// committed, for each call Rig routes to execution. Such a call is
     /// reported whether or not the tool body ultimately runs (a hook skip
     /// still reports it); it is **not** an execution-lifecycle event (see
     /// [`ToolExecutionCommitted`](Self::ToolExecutionCommitted)).
     ///
-    /// Two kinds of model tool call are **not** reported here (their
-    /// arguments still stream as tool-call deltas): a call rejected and
+    /// Two kinds of model tool call are **not** reported here: a call rejected and
     /// handled by invalid-tool-call recovery (surfaced via that recovery
     /// path), and a structured-output Tool-mode output-tool call, which
     /// finalizes the run directly; its structured result is surfaced in
     /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
     /// call.
     ToolCall {
-        /// The call as the model emitted it.
+        /// The call as the model emitted it. Its id is equal on its
+        /// execution commit and its result.
         tool_call: rig_core::message::ToolCall,
-        /// The block this call streamed under (a buffered turn's call is
-        /// keyed by its durable id): equal on its deltas, its execution
-        /// commit and its result.
-        block_id: BlockId,
     },
     /// Confirmation that Rig **executed and committed** a tool call. This is not
     /// a real-time start notification: it is surfaced together with its
@@ -77,7 +72,7 @@ pub enum MultiTurnStreamItem {
     /// This item is emitted only for a tool whose body actually ran (it passed
     /// its `ToolCall` hook checks), never for a call dropped by a sibling's
     /// termination, skipped by a hook, or resolved by invalid-call recovery.
-    /// Correlate it with the model call and result through `block_id`.
+    /// Correlate it with the model call and result through the call's id.
     ToolExecutionCommitted {
         /// The tool call as **executed**: the model's call with any
         /// [`DispatchAction::Patch`](crate::agent::DispatchAction::Patch) hook rewrite
@@ -85,10 +80,6 @@ pub enum MultiTurnStreamItem {
         /// model's *original* call is reported via
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
         tool_call: rig_core::message::ToolCall,
-        /// The block id correlating this execution with the model tool call
-        /// ([`ToolCall::block_id`](Self::ToolCall)) and the resulting
-        /// [`StreamedUserContent::ToolResult`].
-        block_id: BlockId,
     },
     /// A streamed user content item: the **result** of an executed (or
     /// hook-skipped) tool call. The tool batch commits and surfaces atomically at
@@ -149,7 +140,7 @@ fn final_response_from_content(
 }
 
 impl MultiTurnStreamItem {
-    pub(crate) fn stream_item(item: StreamEvent) -> Self {
+    pub(crate) fn stream_item(item: Item<StreamEvent>) -> Self {
         Self::StreamAssistantItem(item)
     }
 
@@ -196,24 +187,6 @@ impl MultiTurnStreamItem {
     }
 }
 
-/// Drain a provider stream abandoned by invalid tool-call recovery so the
-/// reported usage for the recovered completion call is not lost.
-pub(crate) async fn drain_stream_usage(
-    stream: &mut crate::streaming::CompletionStream,
-) -> Result<crate::completion::Usage, StreamingError> {
-    while let Some(content) = stream.next().await {
-        match content {
-            Ok(StreamEvent::Final(final_resp)) => {
-                return Ok(final_resp.usage);
-            }
-            Ok(_) => {}
-            Err(err) => return Err(err.into()),
-        }
-    }
-
-    Ok(crate::completion::Usage::default())
-}
-
 /// Replace calls and prose in a finished output-tool turn with final output text,
 /// retaining reasoning and images. Call only after finalization, when remaining
 /// calls are output-tool calls. Persisted history retains prose independently;
@@ -247,13 +220,23 @@ pub(crate) fn finalize_streamed_choice(
 pub enum StreamingError {
     /// The provider stream failed.
     #[error("CompletionError: {0}")]
-    Completion(#[from] ProviderError),
+    Completion(ProviderError),
     /// Structured failure from the bus, a handler, a hook, or a stream item.
     #[error("{0}")]
     Report(#[from] rig_core::error::ErrorReport),
     /// The run failed for a reason the blocking surface reports the same way.
     #[error("PromptError: {0}")]
     Prompt(#[from] PromptError),
+}
+
+/// A failure relayed over the bus is the report the origin sent.
+impl From<ProviderError> for StreamingError {
+    fn from(error: ProviderError) -> Self {
+        match error {
+            ProviderError::Relayed(report) => Self::Report(*report),
+            error => Self::Completion(error),
+        }
+    }
 }
 
 impl From<rig_core::memory::MemoryError> for StreamingError {
@@ -529,18 +512,17 @@ pub async fn stream_to_stdout(
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
                 ..
-            })) => {
+            }))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
-                end: BlockClose::Reasoning { .. },
-                block: Some(AssistantContent::Reasoning(reasoning)),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
                 ..
-            })) => {
+            }))) => {
                 let reasoning = reasoning
                     .open(reasoning.issuer())
                     .map(|reasoning| reasoning.display_text())

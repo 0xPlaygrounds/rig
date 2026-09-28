@@ -58,7 +58,7 @@ use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
 };
-use rig::streaming::{BlockClose, CompletionStream, Delta, StreamEvent};
+use rig::streaming::{CompletionStream, StreamEvent};
 
 const MODEL: &str = "gemini-2.5-flash";
 /// Inject the disruption once this many output chars have streamed, so there is
@@ -165,19 +165,9 @@ impl Stream for Disrupt {
 /// Length of human-visible text in a stream item (text + reasoning deltas).
 fn visible_len(item: &StreamEvent) -> usize {
     match item {
-        StreamEvent::BlockDelta {
-            delta: Delta::Text { text },
-            ..
-        } => text.chars().count(),
-        StreamEvent::BlockDelta {
-            delta: Delta::Reasoning { text },
-            ..
-        } => text.chars().count(),
-        StreamEvent::BlockEnd {
-            end: BlockClose::Reasoning { .. },
-            block: Some(AssistantContent::Reasoning(r)),
-            ..
-        } => r
+        StreamEvent::Text { text, .. } => text.chars().count(),
+        StreamEvent::Reasoning { text, .. } => text.chars().count(),
+        StreamEvent::End { content: AssistantContent::Reasoning(r), .. } => r
             .open(r.issuer())
             .map_or(0, |r| r.display_text().chars().count()),
         _ => 0,
@@ -240,21 +230,11 @@ where
                 break;
             }
             Ok(Some(Ok(item))) => match item {
-                StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                } => output.push_str(&text),
-                StreamEvent::BlockDelta {
-                    delta: Delta::Reasoning { text },
-                    ..
-                } => {
+                StreamEvent::Text { text, .. } => output.push_str(&text),
+                StreamEvent::Reasoning { text, .. } => {
                     output.push_str(&text);
                 }
-                StreamEvent::BlockEnd {
-                    end: BlockClose::Reasoning { .. },
-                    block: Some(AssistantContent::Reasoning(r)),
-                    ..
-                } => {
+                StreamEvent::End { content: AssistantContent::Reasoning(r), .. } => {
                     output.push_str(
                         &r.open(r.issuer())
                             .map(Reasoning::display_text)

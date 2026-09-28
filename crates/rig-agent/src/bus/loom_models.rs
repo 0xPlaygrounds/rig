@@ -418,7 +418,12 @@ impl rig_core::serve::Recorder for Begun {
     fn keep_events(&self) -> bool {
         false
     }
-    fn event(&self, _id: EffectId, _event: &rig_core::streaming::StreamEvent) {}
+    fn event(
+        &self,
+        _id: EffectId,
+        _item: &rig_core::streaming::Item<rig_core::streaming::StreamEvent>,
+    ) {
+    }
     fn resolve(
         &self,
         _id: EffectId,

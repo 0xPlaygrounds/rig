@@ -638,40 +638,52 @@ impl Serve for EffectLogReplayer {
                                 .unwrap_or_default();
                             published.publish(context.with_result_context(output));
                         }
-                        // Preserve original item positions, including items after a terminal.
-                        // Append only failures not reproduced by kept items or EOF.
+                        // Preserve original item positions; the stream then ends with
+                        // the recorded response, or with the recorded failure when no
+                        // kept item reproduced it.
                         if let (Some(events), true) = (record.events, dispatch.is_stream()) {
                             let errors = self
                                 .stream_errors
                                 .get(&record.id)
                                 .cloned()
                                 .unwrap_or_default();
-                            let mut tap = rig_core::serve::StreamTap::new();
-                            let folded = events
-                                .iter()
-                                .any(|event| tap.observe(&Ok(event.clone())).is_some());
-                            let fallback = match record.outcome {
+                            // A reply that ended well ended before any error it
+                            // went on to carry: an earlier error would have been
+                            // its outcome.
+                            let (mut done, ending) = match record.outcome {
+                                Ok(rig_core::effect::Outcome::Completion(response)) => {
+                                    (Some(Box::new(response)), None)
+                                }
                                 Err(error)
                                     if errors.is_empty()
-                                        && !folded
                                         && error != rig_core::serve::stream_truncated() =>
                                 {
-                                    Some(error)
+                                    (None, Some(Err(error)))
                                 }
-                                Ok(_) | Err(_) => None,
+                                Ok(_) | Err(_) => (None, None),
                             };
-                            let total = events.len() + errors.len();
+                            let items = events.into_items();
+                            let events = items.len();
+                            let mut replayed = Vec::with_capacity(events + errors.len() + 1);
                             let mut errors = errors.into_iter().peekable();
-                            let mut events = events.into_iter();
-                            let items = (0..total)
-                                .filter_map(move |position| {
-                                    if errors.peek().is_some_and(|error| error.item == position) {
-                                        errors.next().map(|error| Err(error.error))
-                                    } else {
-                                        events.next().map(Ok)
+                            let mut items = items.into_iter();
+                            for position in 0..events + errors.len() {
+                                if errors.peek().is_some_and(|error| error.item == position) {
+                                    if position >= events
+                                        && let Some(response) = done.take()
+                                    {
+                                        replayed.push(Ok(rig_core::streaming::Relayed::Done(response)));
                                     }
-                                })
-                                .chain(fallback.map(Err));
+                                    replayed.extend(errors.next().map(|error| Err(error.error)));
+                                } else {
+                                    replayed.extend(
+                                        items.next().map(|item| Ok(rig_core::streaming::Relayed::Item(item))),
+                                    );
+                                }
+                            }
+                            replayed.extend(done.map(|response| Ok(rig_core::streaming::Relayed::Done(response))));
+                            replayed.extend(ending);
+                            let items = replayed;
                             return Reply::Stream(Box::pin(futures::stream::iter(items)));
                         }
                         record.outcome

@@ -15,7 +15,7 @@ use bevy_tasks::Task;
 use rig_core::{
     effect::{CustomEffect, EffectId, EffectKind, Family, HandlerKey, Key, Outcome},
     error::ErrorReport,
-    streaming::{StreamEvent, StreamEvents},
+    streaming::{StreamEvents, Transcript},
     tool::{PublishedContext, ToolContext},
 };
 use serde::{Deserialize, Serialize};
@@ -199,7 +199,7 @@ pub struct Serving;
 pub struct Streaming {
     /// Bounded worker delivery, exclusively consumed by Collect.
     pub events: futures::channel::mpsc::Receiver<
-        Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>,
+        Result<rig_core::streaming::Relayed, rig_core::error::ErrorReport>,
     >,
     /// The shared core fold of delivered events.
     pub fold: rig_core::serve::StreamTap,
@@ -216,7 +216,7 @@ fn spawn_stream_worker(
     wake: super::plugin::Wake,
 ) -> (
     futures::channel::mpsc::Receiver<
-        Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>,
+        Result<rig_core::streaming::Relayed, rig_core::error::ErrorReport>,
     >,
     Task<()>,
 ) {
@@ -326,7 +326,7 @@ pub struct Streamed {
     pub errors: Vec<(usize, ErrorReport)>,
     /// Every event, in order.
     #[reflect(remote = crate::bus::reflect::StreamEventsReflect)]
-    pub events: Vec<StreamEvent>,
+    pub events: Transcript,
     /// The text deltas concatenated.
     pub text: String,
     /// The fold's outcome at the terminal record, or the error that ended

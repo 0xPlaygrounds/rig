@@ -59,7 +59,7 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
             let encoded = model
                 .encode(request, Mode::Unary)
                 .expect("encode Anthropic request");
-            let request = encoded.requests.first().expect("one request");
+            let request = &encoded.request;
             let Body::Bytes(bytes) = request.body() else {
                 panic!("JSON body")
             };

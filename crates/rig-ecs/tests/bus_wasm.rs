@@ -19,6 +19,7 @@
     clippy::indexing_slicing
 )]
 
+use rig_core::streaming::Item;
 use std::{
     cell::Cell,
     rc::Rc,
@@ -431,7 +432,7 @@ async fn cancellation_reaches_setup_unary_fold_idle_and_full_queue_without_host_
                 entered.set(true);
                 if full {
                     produced.set(produced.get() + 1);
-                    std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Unknown(
+                    std::task::Poll::Ready(Some(Ok(Item::Unknown(
                         rig_core::streaming::UnknownPayload::new(serde_json::Value::Null),
                     ))))
                 } else {

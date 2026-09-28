@@ -1261,24 +1261,14 @@ where
 
     let mut stream = model.stream(request())?;
     let mut streamed_text = String::new();
-    let mut streamed_usage = None;
     while let Some(item) = stream.next().await {
-        match item? {
-            crate::streaming::StreamEvent::BlockDelta {
-                delta: crate::streaming::Delta::Text { text },
-                ..
-            } => {
-                streamed_text.push_str(&text);
-            }
-            crate::streaming::StreamEvent::Final(response) => {
-                streamed_usage = Some(response.usage);
-            }
-            crate::streaming::StreamEvent::BlockStart { .. }
-            | crate::streaming::StreamEvent::BlockDelta { .. }
-            | crate::streaming::StreamEvent::BlockEnd { .. }
-            | crate::streaming::StreamEvent::Unknown(_) => {}
+        if let crate::streaming::Item::Event(crate::streaming::StreamEvent::Text { text, .. }) =
+            item?
+        {
+            streamed_text.push_str(&text);
         }
     }
+    let streamed_usage = Some(stream.finish().await?.usage);
     let usage = streamed_usage.ok_or_else(|| {
         ScenarioError::contract(SCENARIO, "raw stream omitted its final response metadata")
     })?;
@@ -1839,10 +1829,10 @@ where
     let mut streamed_result_ids = Vec::new();
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::ToolCall { block_id, .. } => streamed_call_ids.push(block_id),
+            MultiTurnStreamItem::ToolCall { tool_call } => streamed_call_ids.push(tool_call.id),
             MultiTurnStreamItem::StreamUserItem(
-                crate::streaming::StreamedUserContent::ToolResult { id, .. },
-            ) => streamed_result_ids.push(id),
+                crate::streaming::StreamedUserContent::ToolResult { tool_result },
+            ) => streamed_result_ids.push(tool_result.call),
             MultiTurnStreamItem::CompletionCall(call) => completion_usage += call.usage,
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_count += 1;

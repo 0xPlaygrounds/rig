@@ -14,7 +14,7 @@ use rig::bedrock;
 use rig::bedrock::client::BedrockRuntime;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig::bedrock::types::converse_output::InternalConverseOutput;
-use rig::driver::{Exchange, Model, Sending, Transport};
+use rig::driver::{Exchange, Model, Opening, Transport};
 use rig::error::ProviderError;
 
 use super::super::support::with_bedrock_cassette;
@@ -49,12 +49,12 @@ impl Transport<Converse> for Keep {
         &self,
         payload: ConverseRequest,
         exchange: Exchange,
-    ) -> Result<Sending<ConverseFrame>, ProviderError> {
-        let sent = Transport::<Converse>::send(&self.runtime, payload, exchange)?;
+    ) -> Opening<ConverseFrame> {
+        let sent = Transport::<Converse>::send(&self.runtime, payload, exchange);
         let outputs = Arc::clone(&self.outputs);
-        Ok(Sending::each(sent.map(move |opened| {
-            let outputs = Arc::clone(&outputs);
-            opened.map_frames(move |frames| {
+        Opening::new(async move {
+            let opened = sent.await?;
+            Ok(opened.map_frames(move |frames| {
                 frames.inspect(move |frame: &Result<ConverseFrame, ProviderError>| {
                     if let Ok(ConverseFrame::Whole(output)) = frame {
                         outputs
@@ -63,8 +63,8 @@ impl Transport<Converse> for Keep {
                             .push((**output).clone());
                     }
                 })
-            })
-        })))
+            }))
+        })
     }
 }
 
@@ -141,7 +141,7 @@ async fn guardrail_trace_survives_into_the_converse_frame() {
 #[tokio::test]
 async fn request_id_survives_into_streamed_terminal() {
     use futures::StreamExt;
-    use rig::streaming::StreamEvent;
+    
 
     with_bedrock_cassette(
         "raw_provider_data/request_id_survives_into_streamed_terminal",
@@ -151,13 +151,10 @@ async fn request_id_survives_into_streamed_terminal() {
                 CompletionRequest::new("Reply with the single word: ready.").max_tokens(16);
 
             let mut stream = model.stream(request).expect("stream should start");
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.expect("stream should yield a terminal record");
             assert!(
                 terminal

@@ -177,9 +177,9 @@ pub async fn decode(
     }
     let mut stream = model.stream("parity").map_err(|error| error.kind())?;
     while let Some(item) = stream.next().await {
-        item.map_err(|report| report.kind)?;
+        item.map_err(|error| error.kind())?;
     }
-    stream.finish().map_err(|error| error.kind())
+    stream.finish().await.map_err(|error| error.kind())
 }
 
 /// The compared fields of one outcome.

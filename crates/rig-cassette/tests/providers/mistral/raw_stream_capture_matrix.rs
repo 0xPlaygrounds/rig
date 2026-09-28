@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the chat-completions terminal
+//! [`rig::completion::CompletionResponse::raw`] carries the chat-completions terminal
 //! record the wire's decoder assembled, serialized — and it carries it whole:
 //! a dialect's own usage fields ride along beside the OpenAI-compatible ones
 //! that [`chat::Terminal`] models. Capture is always on: there is
@@ -31,11 +31,12 @@
 //! for `lookup_city` (and that the recorded request forced the call), so a
 //! recording that stopped calling fails instead of covering nothing.
 
+use rig::streaming::Item;
 use rig::message::AssistantContent;
 
 use futures::StreamExt as _;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
-use rig::streaming::{StreamEvent, StreamFinal};
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::DEFAULT_MODEL;
@@ -85,7 +86,7 @@ fn tool_request() -> CompletionRequest {
 /// terminal record.
 struct ToolStreamObservation {
     tool_calls: Vec<rig::message::ToolCall>,
-    terminal: Option<StreamFinal>,
+    terminal: Option<rig::completion::CompletionResponse>,
 }
 
 async fn collect_tool_calls_and_terminal(
@@ -97,17 +98,15 @@ async fn collect_tool_calls_and_terminal(
     };
     while let Some(item) = stream.next().await {
         match item.expect("stream item should not be an error") {
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
-                ..
-            } => {
+            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => {
                 observation.tool_calls.push(tool_call);
-            }
-            StreamEvent::Final(final_record) => {
-                observation.terminal = Some(final_record);
             }
             _ => {}
         }
+    }
+    {
+        let final_record = stream.finish().await.expect("the stream ends");
+        observation.terminal = Some(final_record);
     }
     observation
 }
@@ -299,7 +298,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
 
     // The normalized terminal reports ToolCalls, and raw's own finish reason
     // agrees once mapped through the terminal type.
-    assert_eq!(terminal.finish_reason, Some(FinishReason::ToolCalls));
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::ToolCalls));
     assert_eq!(terminal.raw["finish_reason"], json!("tool_calls"));
     // The stream yielded exactly the recorded call, with object arguments.
     assert_eq!(observation.tool_calls.len(), 1, "one streamed tool call");

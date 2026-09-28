@@ -20,6 +20,67 @@ pub enum Framing {
     Whole,
 }
 
+impl Framing {
+    /// Split a whole reply body into the frames a decoder reads: one per SSE
+    /// event with a non-blank `data` field, one per NDJSON line, or the
+    /// whole body.
+    ///
+    /// ```
+    /// use rig_http::http_client::framing::{Framing, WireFrame};
+    ///
+    /// let frames = Framing::Sse.split(b"data: {}\n\ndata: [DONE]\n\n");
+    /// assert_eq!(frames.len(), 2);
+    /// assert_eq!(frames[1].as_str(), "[DONE]");
+    /// ```
+    pub fn split(&self, bytes: &[u8]) -> Vec<WireFrame> {
+        match self {
+            Self::Sse => SseFramer::new()
+                .push(bytes)
+                .filter(|event| !event.data.trim().is_empty())
+                .map(|event| WireFrame::Text(event.data))
+                .collect(),
+            Self::Ndjson => {
+                let mut framer = NdjsonFramer::new();
+                let mut lines: Vec<Vec<u8>> = framer.push(bytes).collect();
+                lines.extend(framer.finish());
+                lines.into_iter().map(WireFrame::from_bytes).collect()
+            }
+            Self::Whole if bytes.is_empty() => Vec::new(),
+            Self::Whole => vec![WireFrame::from_bytes(bytes.to_vec())],
+        }
+    }
+}
+
+/// One transport frame, after framing but before decoding.
+///
+/// The transport layer (SSE framer, NDJSON splitter, websocket reader) owns
+/// byte splitting and yields these; a decoder never splits bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WireFrame {
+    /// Text payload, such as an SSE `data:` field or WebSocket message.
+    Text(String),
+    /// Byte payload, such as an NDJSON line or binary frame.
+    Bytes(Vec<u8>),
+}
+
+impl WireFrame {
+    /// The frame payload as text (lossy for byte frames).
+    pub fn as_str(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            Self::Text(text) => std::borrow::Cow::Borrowed(text),
+            Self::Bytes(bytes) => String::from_utf8_lossy(bytes),
+        }
+    }
+
+    /// A frame of `bytes`: text when they are UTF-8.
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        match String::from_utf8(bytes) {
+            Ok(text) => Self::Text(text),
+            Err(error) => Self::Bytes(error.into_bytes()),
+        }
+    }
+}
+
 /// One dispatched `text/event-stream` event.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SseEvent {

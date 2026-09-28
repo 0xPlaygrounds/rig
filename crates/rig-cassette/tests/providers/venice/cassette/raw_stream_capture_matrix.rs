@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own terminal
 //! record — for Venice the shared chat-completions
 //! [`StreamingCompletionResponse`], whose accounting is [`ChatUsage`] —
 //! serialized. That is a serialization rather than the socket's bytes, so the
@@ -127,6 +127,6 @@ async fn stream_raw_exposes_terminal_cost() {
         json!("chat.completion.chunk")
     );
     // The normalized terminal has no slot for either.
-    let normalized = crate::raw_capture::stream_normalized_without_raw(&terminal);
+    let normalized = crate::support::normalized_without_raw(terminal.clone());
     crate::raw_capture::assert_normalized_lacks(&normalized, &["cost", "additional_params"]);
 }

@@ -29,7 +29,7 @@ use rig_core::{
     effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    streaming::StreamEvent,
+    streaming::{Item, Relayed, StreamEvent, Transcript},
     test_utils::{MockCompletionModel, MockStreamEvent},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
@@ -38,7 +38,7 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
-    struct Items(Vec<Result<StreamEvent, ErrorReport>>);
+    struct Items(Vec<Result<Relayed, ErrorReport>>);
     impl Serve for Items {
         type Family = rig_core::effect::family::Completion;
         fn descriptor(&self) -> HandlerDescriptor {
@@ -57,10 +57,13 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
     }
     for error_first in [false, true] {
         let error = Err(ErrorReport::new(ErrorKind::Response, "first error"));
-        let terminal = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
-            "test",
-            rig_core::completion::Usage::default(),
-            serde_json::json!({}),
+        let terminal = Ok(Relayed::Done(Box::new(
+            rig_core::completion::CompletionResponse::new(
+                Vec::new(),
+                rig_core::completion::Usage::default(),
+                "test",
+                serde_json::json!({}),
+            ),
         )));
         let mut items = if error_first {
             vec![error, terminal]
@@ -92,10 +95,16 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
                 .collect::<Vec<_>>(),
         )
         .await;
-        assert_eq!(
-            serde_json::to_value(replay).unwrap(),
-            serde_json::to_value(live).unwrap()
-        );
+        // What a consumer reads: the items up to the first that ends the
+        // stream, a response or an error.
+        let read = |items: Vec<Result<Relayed, ErrorReport>>| {
+            let end = items
+                .iter()
+                .position(|item| !matches!(item, Ok(Relayed::Item(_))))
+                .map_or(items.len(), |at| at + 1);
+            items.into_iter().take(end).collect::<Vec<_>>()
+        };
+        assert_eq!(read(replay), read(live));
     }
 }
 
@@ -518,20 +527,20 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
         panic!("expected a tool result");
     };
     assert_eq!(result.output().as_json(), Some(&json!(2)));
-    // A recorded completion answers a stream dispatch as events + Final.
-    let events: Vec<_> = within(
+    // A recorded completion answers a stream dispatch as events, then the
+    // response.
+    let items: Vec<_> = within(
         dispatcher
             .dispatch_stream(&HandlerKey::from("model"), completion_kind(true))
             .collect(),
     )
     .await;
-    let events: Vec<StreamEvent> = events.into_iter().map(|e| e.expect("ok")).collect();
-    assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
-    assert!(
-        events
-            .iter()
-            .any(|e| matches!(e, StreamEvent::BlockDelta { .. }))
-    );
+    let items: Vec<Relayed> = items.into_iter().map(|e| e.expect("ok")).collect();
+    assert!(matches!(items.last(), Some(Relayed::Done(_))));
+    assert!(items.iter().any(|item| matches!(
+        item,
+        Relayed::Item(Item::Event(StreamEvent::Text { .. }))
+    )));
     // Past the log: a divergence, never a hang.
     let report = within(dispatcher.dispatch(&HandlerKey::from("add"), custom(json!(1))))
         .await
@@ -780,7 +789,11 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
     // Keeping events: the record holds them verbatim.
     let (seen, kept) = record(EffectLogRecorder::keeping_stream_events()).await;
     let recorded = kept[0].events.as_ref().expect("events kept");
-    assert_eq!(recorded.len(), seen, "every event the consumer received");
+    assert_eq!(
+        recorded.len() + 1,
+        seen,
+        "every item the consumer received, then the response"
+    );
     assert!(
         matches!(kept[0].outcome, Ok(Outcome::Completion(_))),
         "and still the fold"
@@ -800,10 +813,19 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
         }
         items
     };
-    let recorded = recorded.clone();
-    let from_kept = replay(kept).await;
+    let items = |relayed: Vec<Relayed>| -> Vec<Item<StreamEvent>> {
+        relayed
+            .into_iter()
+            .filter_map(|relayed| match relayed {
+                Relayed::Item(item) => Some(item),
+                Relayed::Done(_) => None,
+            })
+            .collect()
+    };
+    let recorded = recorded.items().to_vec();
+    let from_kept = items(replay(kept).await);
     assert_eq!(from_kept, recorded, "the recorded events, verbatim");
-    let from_fold = replay(folded).await;
+    let from_fold = items(replay(folded).await);
     assert_ne!(
         from_fold, recorded,
         "the fold re-emits its own boundaries, not the original deltas"
@@ -996,8 +1018,8 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     drop(stream);
     let mut log = recorder.take();
     let events = log.records[0].events.as_mut().expect("events kept");
-    events.truncate(1);
-    let first = events[0].clone();
+    let first = events.items()[0].clone();
+    *events = Transcript::from_items(vec![first.clone()]).expect("a prefix");
     log.records[0].outcome = Err(ErrorReport::new(ErrorKind::Cancelled, "dropped mid-stream"));
 
     let (dispatcher, _registrar, mut driver) = Bus::channel();
@@ -1005,7 +1027,7 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     let _task = spawn(driver);
     let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
     let replayed = within(stream.next()).await.expect("the recorded event");
-    assert_eq!(replayed.expect("the event"), first);
+    assert_eq!(replayed.expect("the event"), Relayed::Item(first));
     let then = within(stream.next()).await.expect("then the error");
     let report = then.expect_err("the record's outcome");
     assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
@@ -1162,118 +1184,20 @@ async fn a_record_names_the_scope_of_the_program_that_made_it() {
     assert_eq!(restored[1].scope.as_deref(), Some("run-1"));
 }
 
-/// A tool call closed with malformed arguments under
-/// `UnparseableToolInput::Error` reaches the consumer as the handler's sink
-/// made it: the malformed close is an error item in the call's place, and
-/// the record's outcome is that error. A replay with kept events re-emits
-/// the items as they were and nothing more, and a re-record folds to the
-/// same outcome.
-#[tokio::test]
-async fn kept_events_replay_a_malformed_call_as_the_items_that_carried_it() {
-    use rig_core::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
-
-    struct Items(Vec<Result<StreamEvent, ErrorReport>>);
-    impl Serve for Items {
-        type Family = rig_core::effect::family::Completion;
-        fn descriptor(&self) -> HandlerDescriptor {
-            HandlerDescriptor {
-                key: "model".into(),
-                family: FamilyDescriptor::Completion {
-                    model: rig_core::completion::ModelRef::new("malformed"),
-                    capabilities: rig_core::completion::ProviderCapabilities::default(),
-                },
-                layers: vec![],
-            }
-        }
-        async fn serve(&self, _: EffectKind, _dispatch: Dispatch) -> Reply {
-            Reply::Stream(Box::pin(futures::stream::iter(self.0.clone())))
-        }
-    }
-    // The handler writes through the completion sink, as every handler does.
-    let call = BlockId::wire("call_1");
-    let mut sink = rig_core::operation::AdapterOutput::self_closing();
-    sink.tool_name(&call, "lookup");
-    sink.tool_arguments(&call, "{not json");
-    sink.tool_end(call, ToolCallEnd::new(UnparseableToolInput::Error));
-    sink.final_record(StreamFinal::new(
-        "test",
-        rig_core::completion::Usage::default(),
-        serde_json::json!({}),
-    ));
-    let items: Vec<Result<StreamEvent, ErrorReport>> = sink
-        .drain()
-        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
-        .collect();
-    assert!(
-        items.iter().any(Result::is_err),
-        "the malformed close is an error item"
-    );
-    let key = HandlerKey::from("model");
-    let (dispatcher, _, mut driver) = Bus::channel();
-    let recorder = EffectLogRecorder::keeping_stream_events();
-    driver.register(key.clone(), Items(items.clone())).unwrap();
-    driver.record_to(recorder.clone());
-    let _live = spawn(driver);
-    let live = within(
-        dispatcher
-            .dispatch_stream(&key, completion_kind(true))
-            .collect::<Vec<_>>(),
-    )
-    .await;
-    assert_eq!(
-        serde_json::to_value(&live).unwrap(),
-        serde_json::to_value(&items).unwrap(),
-        "the consumer receives the items as the handler's sink made them"
-    );
-    drop(dispatcher);
-    let log = recorder.take();
-    assert_eq!(log.len(), 1);
-    let report = log[0]
-        .outcome
-        .as_ref()
-        .expect_err("the malformed close is the record's outcome");
-    assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-
-    let (dispatcher, _, mut driver) = Bus::channel();
-    super::register_all(&log, &mut driver).expect("fresh keys");
-    let again = EffectLogRecorder::keeping_stream_events();
-    driver.record_to(again.clone());
-    let _replay = spawn(driver);
-    let replayed = within(
-        dispatcher
-            .dispatch_stream(&key, completion_kind(true))
-            .collect::<Vec<_>>(),
-    )
-    .await;
-    assert_eq!(
-        serde_json::to_value(&replayed).unwrap(),
-        serde_json::to_value(&live).unwrap(),
-        "a replay re-emits the live items and nothing more"
-    );
-    drop(dispatcher);
-    let rerecorded = again.take();
-    assert_eq!(
-        serde_json::to_value(&rerecorded[0].outcome).unwrap(),
-        serde_json::to_value(&log[0].outcome).unwrap(),
-        "a re-record of the replay folds to the same outcome"
-    );
-}
-
-/// A log recorded before streams were canonical carries its text as deltas
-/// alone: no end closes the block and no end carries it. This record is the
-/// last turn of `anthropic_causal_completion_streamed` as it was recorded
-/// then (at `22368226f`), outcome and events verbatim. Replay re-emits those
-/// items, and a consumer folds them through the completion fold, so the
-/// replayed turn still holds its text.
-#[tokio::test]
-async fn a_log_recorded_before_canonical_streams_replays_its_text() {
-    let key = HandlerKey::from("golden/model:default");
+/// A log recorded before streams were typed carries its events in the old
+/// shape: block deltas and a final record. This record is the last turn of
+/// `anthropic_causal_completion_streamed` as it was recorded then (at
+/// `22368226f`), outcome and events verbatim. Its events are no longer a
+/// transcript, so the log does not decode: it is re-recorded, not replayed
+/// through a translation.
+#[test]
+fn a_log_recorded_before_typed_streams_does_not_decode() {
     let EffectKind::Completion { request, .. } = completion_kind(true) else {
         panic!("a completion kind");
     };
     let events: serde_json::Value = serde_json::from_str(LEGACY_EVENTS).expect("legacy events");
     let outcome: serde_json::Value = serde_json::from_str(LEGACY_OUTCOME).expect("legacy outcome");
-    let log: EffectLog = serde_json::from_value(json!({
+    let log = serde_json::from_value::<EffectLog>(json!({
         "header": {
             "handlers": [{
                 "key": "golden/model:default",
@@ -1291,40 +1215,8 @@ async fn a_log_recorded_before_canonical_streams_replays_its_text() {
             "events": events,
             "tool_output": null,
         }],
-    }))
-    .expect("the legacy log decodes");
-    assert!(
-        log[0]
-            .events
-            .iter()
-            .flatten()
-            .all(|event| !matches!(event, StreamEvent::BlockEnd { .. })),
-        "the legacy record never ends its text"
-    );
-
-    let (dispatcher, _, mut driver) = Bus::channel();
-    super::register_all(&log, &mut driver).expect("fresh keys");
-    let model: rig_agent::bus::ModelHandle = dispatcher.handle(&key).unwrap();
-    let _replay = spawn(driver);
-    let mut stream = model.stream(request);
-    let mut items = Vec::new();
-    while let Some(item) = within(stream.next()).await {
-        items.push(item.expect("no error"));
-    }
-    assert!(
-        items.iter().any(|item| matches!(
-            item,
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Text(_)),
-                ..
-            }
-        )),
-        "the consumer's stream closes the text: {items:?}"
-    );
-    assert_eq!(
-        stream.finish().expect("a terminal record").choice,
-        vec![AssistantContent::text("Paris")]
-    );
+    }));
+    assert!(log.is_err(), "the legacy events are not a transcript");
 }
 
 /// The legacy record's events, verbatim.

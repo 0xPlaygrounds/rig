@@ -12,7 +12,7 @@ pub mod streaming_conformance;
 mod streaming_conformance_suite;
 mod tracing_isolation;
 
-pub use completion::{MockCompletionModel, MockError, MockScript, MockTurn};
+pub use completion::{MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn};
 pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use relay::MockRelay;
@@ -21,12 +21,35 @@ pub use rig_http::test_utils::{
     NonSuccessStreamingClient, RecordingHttpClient, SequencedHttpClient,
     SequencedStreamingHttpClient,
 };
-#[cfg(test)]
-pub(crate) use streaming::scripted_stream;
-pub use streaming::{MOCK_PROVIDER, MockStreamEvent, mock_final, mock_final_with_total_tokens};
+pub use streaming::{
+    MOCK_PROVIDER, MockDecoder, MockFrame, MockStreamEvent, mock_final,
+    mock_final_with_total_tokens,
+};
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,
 };
+
+/// Decode one reply of `wire` to `request` from frames already in hand,
+/// folded as `mode` folds it: the one decoder and fold a live call runs.
+#[cfg(test)]
+pub(crate) fn decode_reply<W: crate::wire::Wire>(
+    wire: &W,
+    request: &crate::wire::Request<W>,
+    mode: crate::wire::Mode,
+    frames: impl IntoIterator<Item = W::Frame>,
+    raw: serde_json::Value,
+) -> Result<crate::wire::Response<W>, crate::error::ProviderError> {
+    crate::driver::decode_frames(
+        wire,
+        fold_for(request, wire, mode),
+        frames,
+        crate::wire::Reply {
+            provider: wire.describe().name.to_owned(),
+            raw,
+            provider_request_id: None,
+        },
+    )
+}
 
 /// The fold a call to `wire` in `mode` opens for `request`, for tests that
 /// drive a decoder by hand.

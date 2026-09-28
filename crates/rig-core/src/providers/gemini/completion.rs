@@ -93,7 +93,7 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = super::streaming::GenerateContentDecoder;
+    type Decoder<'id> = super::streaming::GenerateContentDecoder<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -136,8 +136,8 @@ impl Wire for GenerateContent {
             .with_analysis_only(super::streaming::GenerateContentDecoder::is_analysis_only))
     }
 
-    fn decoder(&self, mode: Mode) -> Self::Decoder {
-        super::streaming::GenerateContentDecoder::new(mode)
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        super::streaming::GenerateContentDecoder::new()
     }
 }
 

@@ -1,7 +1,7 @@
 use google_cloud_aiplatform_v1::model::GenerateContentResponse;
 use rig_core::Model;
 use rig_core::completion::{CompletionRequest, CompletionResponse};
-use rig_core::driver::{Exchange, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
 use rig_vertexai::completion::{GEMINI_2_5_FLASH, GenerateContent, VertexRequest};
@@ -15,11 +15,8 @@ impl Transport<GenerateContent> for Stored {
         &self,
         _payload: VertexRequest,
         _exchange: Exchange,
-    ) -> Result<Sending<GenerateContentResponse>, ProviderError> {
-        let reply = self.0.clone();
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter([Ok(reply)]))
-        }))
+    ) -> Opening<GenerateContentResponse> {
+        Opening::ready(Opened::new(futures::stream::iter([Ok(self.0.clone())])))
     }
 }
 

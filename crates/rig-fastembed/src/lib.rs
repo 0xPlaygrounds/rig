@@ -27,7 +27,7 @@ pub use fastembed::EmbeddingModel as FastembedModel;
 #[cfg(feature = "hf-hub")]
 use fastembed::InitOptions;
 use fastembed::{InitOptionsUserDefined, TextEmbedding, UserDefinedEmbeddingModel};
-use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
 use rig_core::embeddings;
 use rig_core::error::ProviderError;
 use rig_core::operation::Embedding;
@@ -137,9 +137,9 @@ impl Transport<Local<Embedding>> for Fastembed {
         &self,
         texts: Vec<String>,
         _exchange: Exchange,
-    ) -> Result<Sending<Result<embeddings::EmbeddingResponse, ProviderError>>, ProviderError> {
+    ) -> Opening<Step<Embedding>> {
         let embedder = Arc::clone(&self.embedder);
-        Ok(Sending::later(async move {
+        Opening::new(async move {
             let embedded = embedder
                 .embed(texts.iter().map(String::as_str).collect(), None)
                 .map(|vectors| {
@@ -155,7 +155,7 @@ impl Transport<Local<Embedding>> for Fastembed {
                 })
                 .map_err(|err| ProviderError::Provider(err.to_string()));
             // A failed embed fails the reply, as a transport failure does.
-            Opened::new(futures::stream::iter([embedded.map(Ok)]))
-        }))
+            Ok(Opened::new(futures::stream::iter([embedded.map(Step::End)])))
+        })
     }
 }

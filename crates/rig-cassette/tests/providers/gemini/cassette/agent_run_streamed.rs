@@ -3,6 +3,7 @@
 //! tool-call recovery, per-call usage recording, and the built-in streaming
 //! driver divergences pinned by #1899.
 
+use rig::streaming::Item;
 use std::collections::{BTreeSet, VecDeque};
 
 use futures::StreamExt;
@@ -17,7 +18,7 @@ use rig::agent::{
 use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{
@@ -58,7 +59,6 @@ async fn run_streamed_turn(
         .stream(agent.request(prompt, history))
         .expect("gemini stream should open");
     let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
-    let mut recorded = false;
 
     while let Some(item) = stream.next().await {
         let item = item.expect("stream item should be ok");
@@ -69,37 +69,15 @@ async fn run_streamed_turn(
         while let Some(event) = events.pop_front() {
             match event {
                 StreamedTurnEvent::EmitIngested => {
-                    if let StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } = &item
+                    if let Item::Event(StreamEvent::Text { text, .. }) = &item
                     {
                         collected_text.push_str(text);
                     }
                 }
-                StreamedTurnEvent::EmitToolCallDelta { .. } => {}
-                StreamedTurnEvent::Completed {
-                    usage,
-                    finish_reason,
-                    raw,
-                    ..
-                } => {
-                    if !recorded {
-                        run.record_streamed_completion_call(
-                            usage,
-                            rig::completion::ResponseIdentity::default(),
-                            finish_reason,
-                            raw,
-                        )
-                        .expect("completion call should record while the turn is pending");
-                        recorded = true;
-                    }
-                }
+                StreamedTurnEvent::HoldToolCall | StreamedTurnEvent::EmitToolCall { .. } => {}
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
-                    let partial = assembler.partial_turn(
-                        stream.folded().message_id().map(str::to_owned),
-                        stream.folded().reasoning_issuer(),
-                    );
+                    let partial =
+                        assembler.partial_turn(stream.message_id(), &stream.partial().choice);
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
                     assert!(context.is_streaming);
                     assert_eq!(context.tool_name, invalid.tool_call.function.name);
@@ -120,15 +98,17 @@ async fn run_streamed_turn(
                                 StreamedResolution::TurnAbandoned {
                                     skipped_tool_result,
                                 } => {
-                                    let terminal = drain_stream_terminal(&mut stream).await;
-                                    if !recorded {
-                                        let terminal = terminal.expect(
-                                            "an abandoned turn's stream still reaches its terminal record",
-                                        );
-                                        run.record_streamed_completion_call(terminal.usage, rig::completion::ResponseIdentity::default(), None, terminal.raw).expect(
-                                            "abandoned turns may still record their completion call",
-                                        );
-                                    }
+                                    let response = stream
+                                        .finish()
+                                        .await
+                                        .expect("an abandoned turn's stream still ends");
+                                    run.record_streamed_completion_call(
+                                        response.usage,
+                                        response.identity(),
+                                        response.finish_reason(),
+                                        response.raw,
+                                    )
+                                    .expect("abandoned turns still record their completion call");
                                     return Ok(TurnEnd::Abandoned {
                                         skipped_tool_result,
                                     });
@@ -141,32 +121,17 @@ async fn run_streamed_turn(
         }
     }
 
-    assert!(
-        assembler.pending_delta_error().is_none(),
-        "the provider stream should end consistently"
-    );
-    assert!(
-        recorded,
-        "a stream that reached its end delivered its terminal record, which recorded the call"
-    );
-    let streamed_turn = assembler.finish(
-        stream.folded().message_id().map(str::to_owned),
-        &stream.folded().snapshot(),
-        stream.folded().reasoning_issuer(),
-    );
+    let response = stream.finish().await.expect("the stream ends");
+    run.record_streamed_completion_call(
+        response.usage,
+        response.identity(),
+        response.finish_reason(),
+        response.raw.clone(),
+    )
+    .expect("completion call should record while the turn is pending");
+    let streamed_turn = assembler.finish(response.message_id.clone(), &response);
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
-}
-
-async fn drain_stream_terminal(
-    stream: &mut rig::streaming::CompletionStream,
-) -> Option<rig::streaming::StreamFinal> {
-    while let Some(item) = stream.next().await {
-        if let Ok(StreamEvent::Final(final_response)) = item {
-            return Some(final_response);
-        }
-    }
-    None
 }
 
 #[tokio::test]
@@ -218,17 +183,6 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                         assert!(matches!(end, TurnEnd::Finished));
                     }
                     AgentRunStep::CallTools { calls } => {
-                        for call in &calls {
-                            // A streamed turn's call carries the block id it
-                            // arrived under: the wire id when the provider
-                            // issued one, else the id the adapter minted.
-                            match &call.block_id {
-                                rig::streaming::BlockId::Wire(id) => {
-                                    assert_eq!(call.tool_call.id.provider().as_ref().map(|provider| provider.call_id.as_str()), Some(id.as_str()), "{call:?}");
-                                }
-                                rig::streaming::BlockId::Minted { .. } => {}
-                            }
-                        }
                         run.tool_results(execute_pending_calls(&calls))
                             .expect("tool results should be accepted");
                     }

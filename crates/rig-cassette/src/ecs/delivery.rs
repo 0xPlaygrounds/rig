@@ -14,7 +14,7 @@ use bevy_ecs::{prelude::*, world::CommandQueue};
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId, Outcome},
     error::{ErrorKind, ErrorReport},
-    streaming::{Delta, StreamEvent},
+    streaming::{Item, Relayed, StreamEvent},
 };
 use std::task::Poll;
 
@@ -145,6 +145,8 @@ impl ReplayDelivery {
                 )));
             }
             if let Some(events) = &record.events {
+                // Batches count the kept events and errors; the response
+                // that ends a stream is its outcome, not an item.
                 let count = items.get(&record.id).copied().unwrap_or_default();
                 let maximum = events.len().saturating_add(
                     log.header
@@ -171,23 +173,16 @@ impl ReplayDelivery {
                         .get(&record.id)
                         .map(Vec::as_slice)
                         .unwrap_or_default();
-                    let mut errors = errors.iter().peekable();
-                    let mut events = events.iter();
-                    let mut tap = rig_core::serve::StreamTap::new();
-                    let mut first = None;
-                    for position in 0..minimum {
-                        let item = if errors.peek().is_some_and(|error| error.item == position) {
-                            errors.next().map(|error| Err(error.error.clone()))
-                        } else {
-                            events.next().cloned().map(Ok)
-                        };
-                        if first.is_none()
-                            && let Some(item) = item
-                        {
-                            first = tap.observe(&item);
-                        }
-                    }
-                    let folded = first.unwrap_or_else(|| Err(rig_core::serve::stream_truncated()));
+                    // A stream that answered ended with its response: any
+                    // error it recorded came after. Otherwise the first error
+                    // ended it, and without one it was cut short.
+                    let folded = match &record.outcome {
+                        Ok(outcome) => Ok(outcome.clone()),
+                        Err(_) => Err(errors.first().map_or_else(
+                            rig_core::serve::stream_truncated,
+                            |error| error.error.clone(),
+                        )),
+                    };
                     if serde_json::to_value(&folded).map_err(|error| invalid(error.to_string()))?
                         != serde_json::to_value(&record.outcome)
                             .map_err(|error| invalid(error.to_string()))?
@@ -271,7 +266,7 @@ enum Buffered {
     },
     Stream {
         streaming: Streaming,
-        items: VecDeque<Result<StreamEvent, ErrorReport>>,
+        items: VecDeque<Result<Relayed, ErrorReport>>,
         closed: bool,
         unary: bool,
     },
@@ -520,7 +515,12 @@ pub fn collect_replayed(world: &mut World) {
                 (DeliveryKind::Stream { items: count }, Buffered::Stream { items, closed, .. }) => {
                     let total = needed.entry(step.id).or_default();
                     *total += count;
-                    if items.len() < *total {
+                    // Batches count items and errors, never the response.
+                    let buffered = items
+                        .iter()
+                        .filter(|item| !matches!(item, Ok(Relayed::Done(_))))
+                        .count();
+                    if buffered < *total {
                         if *closed {
                             deliveries.apply(world);
                             fail(
@@ -561,13 +561,19 @@ pub fn collect_replayed(world: &mut World) {
                 }
                 DeliveryKind::Stream { items } => deliver_stream(world, &mut deliveries, entity, step.id, items),
                 DeliveryKind::Outcome => {
-                    if replay.folded.contains(&step.id) {
-                        let count = match world.get::<Buffered>(entity) {
-                            Some(Buffered::Stream { items, .. }) => items.len(),
-                            _ => 0,
-                        };
-                        deliver_stream(world, &mut deliveries, entity, step.id, count);
-                    }
+                    // A folded replay delivers the items and errors left; any
+                    // replay passes the response, which is the outcome, not
+                    // an item.
+                    let count = match world.get::<Buffered>(entity) {
+                        Some(Buffered::Stream { items, .. }) if replay.folded.contains(&step.id) => {
+                            items
+                                .iter()
+                                .filter(|item| !matches!(item, Ok(Relayed::Done(_))))
+                                .count()
+                        }
+                        _ => 0,
+                    };
+                    deliver_stream(world, &mut deliveries, entity, step.id, count);
                     deliveries.push(move |world: &mut World| {
                         deliver_outcome(world, entity);
                     });
@@ -682,34 +688,61 @@ fn deliver_stream(
     if let Some(mut streamed) = world.get_mut::<Streamed>(entity) {
         let start = streamed.events.len() + streamed.errors.len();
         let mut delivered = Vec::with_capacity(count);
-        for item in items.drain(..count) {
-            delivered.push(item.clone());
-            if let Err(error) = &item {
-                let position = streamed.events.len() + streamed.errors.len();
-                streamed.errors.push((position, error.clone()));
+        // A batch counts items and errors; the response it may pass is the
+        // outcome, not an item.
+        let mut taken = 0;
+        let end = items
+            .iter()
+            .position(|item| {
+                if !matches!(item, Ok(Relayed::Done(_))) {
+                    taken += 1;
+                }
+                taken > count
+            })
+            .unwrap_or(items.len());
+        for item in items.drain(..end) {
+            match &item {
+                Ok(Relayed::Item(event)) => delivered.push(Ok(event.clone())),
+                Ok(Relayed::Done(_)) => {}
+                Err(error) => {
+                    delivered.push(Err(error.clone()));
+                    let position = streamed.events.len() + streamed.errors.len();
+                    streamed.errors.push((position, error.clone()));
+                }
             }
             if let (Some(recording), false) = (&recording, observed)
                 && recording.keep_events()
             {
                 match &item {
-                    Ok(event) => recording.event(id, event),
+                    Ok(Relayed::Item(item)) => recording.event(id, item),
+                    Ok(Relayed::Done(_)) => {}
                     Err(error) => recording.stream_error(id, error),
                 }
             }
             if streamed.outcome.is_none()
                 && let Some(outcome) = streaming.fold.observe(&item)
             {
-                streamed.outcome = Some(outcome);
+                // The response is the stream's end, not a delivery, as live
+                // collection treats it.
+                if matches!(item, Ok(Relayed::Done(_))) {
+                    streamed.bypass_change_detection().outcome = Some(outcome);
+                } else {
+                    streamed.outcome = Some(outcome);
+                }
             }
-            if let Ok(event) = item {
-                if let StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                } = &event
-                {
+            if let Ok(Relayed::Item(item)) = item {
+                if let Item::Event(StreamEvent::Text { text, .. }) = &item {
                     streamed.text.push_str(text);
                 }
-                streamed.events.push(event);
+                let position = streamed.events.len() + streamed.errors.len();
+                if let Err(error) = streamed.events.push(item) {
+                    // A recorded stream out of the writer's order: the item
+                    // stands as the defect, as live collection records it.
+                    streamed.errors.push((
+                        position,
+                        ErrorReport::new(ErrorKind::Response, error.to_string()),
+                    ));
+                }
             }
         }
         if !delivered.is_empty() {

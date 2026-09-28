@@ -1,5 +1,6 @@
 //! Anthropic streaming tools smoke test.
 
+use rig::streaming::Item;
 use rig::message::AssistantContent;
 use rig_cassette::agent::AgentReplayExt;
 
@@ -7,7 +8,7 @@ use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
 use rig::message::{CallId, Message, UserContent};
 use rig::providers::anthropic;
-use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
+use rig::streaming::{StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -347,34 +348,19 @@ async fn collect_concurrent_tool_observation(
                 }
                 observation.events.push("final_response");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text: _ },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text: _, .. }))) => {
                 observation.events.push("text");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments { .. }))) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(_)),
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(_), .. }))) => {
                 observation.events.push("reasoning");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { .. },
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning { .. }))) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
-                observation.events.push("stream_final");
-            }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Unknown(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Unknown(_))) => {
                 observation.events.push("unknown");
             }
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {}

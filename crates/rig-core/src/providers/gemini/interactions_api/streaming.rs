@@ -1,19 +1,16 @@
 use serde::{Deserialize, Serialize};
 
-use super::PROVIDER_NAME;
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
     Step, TextContent, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
     ThoughtSummaryDelta, map_interaction_status,
 };
+use crate::error::ProviderError;
+use crate::operation::{CallFragment, Completion, Finish, IfMalformed, TextPart};
 use crate::providers::gemini::streaming::shared_parts;
-use crate::providers::internal::chunk_lifecycle::ChunkParts;
-use crate::providers::internal::tool_call_bridge::ToolCallBridge;
-
-use crate::operation::Completion;
+use crate::providers::internal::thoughts::Thoughts;
 use crate::providers::internal::wire;
-use crate::streaming;
-use crate::wire::{Decoder, Out, WireEvent, WireFrame};
+use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 use serde_json::{Map, Value};
 
 /// Recognized Interactions SSE tags. Listed events must decode fully;
@@ -88,48 +85,118 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
     }
 }
 
-/// The Gemini Interactions wire's decoder, for both of its modes.
-///
-/// Holds the per-reply state (thought lifecycle, open function-call step
-/// assemblies); frame-triage policy is the driver's, not this decoder's.
-pub struct InteractionsDecoder {
+/// The Gemini Interactions wire's decoder: one state machine for the whole
+/// interaction and its stream of steps.
+pub struct InteractionsDecoder<'id> {
     /// Thought boundaries inferred from content transitions and signatures.
-    reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Open function calls keyed by step index, retaining argument deltas.
-    /// Its id minter is shared with whole calls to prevent local identity collisions.
-    open_function_steps: ToolCallBridge<u32>,
+    thoughts: Thoughts<'id>,
+    /// The answer text part text extends.
+    text: Option<TextPart<'id>>,
 }
 
-impl Default for InteractionsDecoder {
+impl Default for InteractionsDecoder<'_> {
     fn default() -> Self {
         Self {
-            reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                crate::streaming::MintKind::Reasoning,
-            ),
-            open_function_steps: ToolCallBridge::new(),
+            thoughts: Thoughts::new(),
+            text: None,
         }
     }
 }
 
+/// One content item as the decoder writes it.
+enum Chunk {
+    Thought {
+        text: String,
+        signature: Option<String>,
+    },
+    Text(String),
+    Call {
+        name: String,
+        arguments: Option<Value>,
+        id: Option<String>,
+    },
+    /// A content item the choice has no part for, kept verbatim on a text
+    /// part's metadata.
+    Raw(crate::message::AdditionalParams),
+}
+
+impl<'id> InteractionsDecoder<'id> {
+    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
+        if let Some(part) = self.text.take() {
+            out.close_text(part);
+        }
+    }
+
+    /// Write one content item: thoughts, the boundary text or a call
+    /// makes, text, then the call.
+    fn write(&mut self, chunk: Chunk, out: &mut Out<'id, Completion>) -> Result<(), ProviderError> {
+        match chunk {
+            Chunk::Thought { text, signature } => {
+                if !text.is_empty() {
+                    self.close_text(out);
+                }
+                self.thoughts.fragment(out, &text);
+                if let Some(signature) = signature {
+                    self.thoughts.signature(out, signature);
+                }
+            }
+            Chunk::Text(text) => {
+                if text.is_empty() {
+                    return Ok(());
+                }
+                self.thoughts.boundary();
+                let part = self.text.get_or_insert_with(|| out.text());
+                out.push_text(part, &text);
+            }
+            Chunk::Call {
+                name,
+                arguments,
+                id,
+            } => {
+                self.thoughts.boundary();
+                self.close_text(out);
+                shared_parts::function_call(
+                    out,
+                    name,
+                    arguments.unwrap_or(Value::Object(Map::new())),
+                    id,
+                    None,
+                )?;
+            }
+            Chunk::Raw(params) => {
+                self.thoughts.boundary();
+                self.close_text(out);
+                let part = out.text();
+                out.text_params(&part, params);
+                out.close_text(part);
+            }
+        }
+        Ok(())
+    }
+}
+
 /// EOF without `interaction.completed` is truncation, not successful
-/// completion, so the decoder adds nothing at the end of the reply.
-impl Decoder<Completion> for InteractionsDecoder {
+/// completion, so the decoder has nothing to add at the end of the reply.
+impl<'id> Decoder<'id, Completion> for InteractionsDecoder<'id> {
     type Event = InteractionsEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<InteractionsEvent> {
         classify_interactions_frame(&frame.as_str())
     }
 
-    fn interpret(&mut self, event: InteractionsEvent, out: &mut Out<'_, Completion>) {
+    fn decode(
+        &mut self,
+        event: InteractionsEvent,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         let event = match event {
             InteractionsEvent::Sse(event) => event,
-            // Unary content uses the same lifecycle so block ordering matches streaming.
+            // The whole interaction states its content at once, in the
+            // order a stream would write it.
             InteractionsEvent::Whole(interaction) => {
                 for content in interaction.output_contents() {
-                    if let Some(parts) =
-                        content_to_parts(content, self.open_function_steps.minted_ids())
-                    {
-                        self.reasoning.emit_chunk(parts, out);
+                    if let Some(chunk) = content_chunk(content) {
+                        self.write(chunk, &mut out)?;
                     }
                 }
                 InteractionSseEvent::InteractionCompleted {
@@ -142,13 +209,17 @@ impl Decoder<Completion> for InteractionsDecoder {
         match event {
             InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
                 ContentDelta::ArgumentsDelta(arguments_delta) => {
-                    if let (Some(slot), Some(fragment)) = (
-                        self.open_function_steps.get_mut(index),
-                        arguments_delta.arguments,
-                    ) {
-                        slot.saw_arguments_delta = true;
-                        let key = slot.key().clone();
-                        out.tool_arguments(&key, fragment);
+                    let index = index as usize;
+                    if let Some(fragment) = arguments_delta.arguments
+                        && !out.pending_name(index).is_empty()
+                    {
+                        out.call_fragment(
+                            index,
+                            CallFragment {
+                                arguments: Some(fragment.as_str()),
+                                ..CallFragment::default()
+                            },
+                        )?;
                     } else {
                         tracing::warn!(
                             step_index = index,
@@ -158,37 +229,22 @@ impl Decoder<Completion> for InteractionsDecoder {
                 }
                 ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
                     if let ThoughtSummaryContent::Text(text) = content {
-                        self.reasoning.emit_chunk(
-                            ChunkParts {
-                                reasoning: Some(text.text),
-                                reasoning_signature: None,
-                                text: None,
-                                text_meta: None,
-                                tool_events: Vec::new(),
+                        self.write(
+                            Chunk::Thought {
+                                text: text.text,
+                                signature: None,
                             },
-                            out,
-                        );
+                            &mut out,
+                        )?;
                     }
                 }
                 ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
                     // Signatures must survive even when no reasoning text streamed.
-                    self.reasoning.emit_chunk(
-                        ChunkParts {
-                            reasoning: None,
-                            reasoning_signature: Some(signature),
-                            text: None,
-                            text_meta: None,
-                            tool_events: Vec::new(),
-                        },
-                        out,
-                    );
+                    self.thoughts.signature(&mut out, signature);
                 }
                 delta => {
-                    if let Some(parts) = delta_content(delta).and_then(|content| {
-                        content_to_parts(content, self.open_function_steps.minted_ids())
-                    }) {
-                        // Interleaving content must close any open thought block.
-                        self.reasoning.emit_chunk(parts, out);
+                    if let Some(chunk) = delta_content(delta).and_then(content_chunk) {
+                        self.write(chunk, &mut out)?;
                     }
                 }
             },
@@ -199,52 +255,38 @@ impl Decoder<Completion> for InteractionsDecoder {
                     id,
                 }) = step
                 {
-                    // Keep the call open because its arguments may arrive in later deltas.
-                    let slot = self
-                        .open_function_steps
-                        .open(index, id.as_deref(), Some(&name));
-                    // Announcement arguments are a fallback, not an appendable fragment;
-                    // combining them with later deltas could concatenate JSON objects.
-                    slot.announce_arguments = arguments.filter(|arguments| {
+                    // The call stays open: its arguments may arrive in later
+                    // deltas.
+                    self.thoughts.boundary();
+                    self.close_text(&mut out);
+                    let index = index as usize;
+                    out.call_fragment(
+                        index,
+                        CallFragment {
+                            id: id.as_deref(),
+                            name: Some(name.as_str()),
+                            ..CallFragment::default()
+                        },
+                    )?;
+                    // Announced arguments are a fallback, not an appendable
+                    // fragment: combining them with later deltas could
+                    // concatenate JSON objects.
+                    if let Some(arguments) = arguments.filter(|arguments| {
                         arguments
                             .as_object()
                             .is_none_or(|object| !object.is_empty())
-                    });
-                    let key = slot.key().clone();
-                    let tool_events = vec![
-                        streaming::StreamEvent::BlockStart {
-                            id: key.clone(),
-                            kind: streaming::BlockKind::ToolCall,
-                        },
-                        streaming::StreamEvent::BlockDelta {
-                            id: key,
-                            delta: streaming::Delta::ToolName { name },
-                        },
-                    ];
-                    // Tool content interleaving an open thought block: the
-                    // shared lifecycle synthesizes the boundary end.
-                    self.reasoning.emit_chunk(
-                        ChunkParts {
-                            reasoning: None,
-                            reasoning_signature: None,
-                            text: None,
-                            text_meta: None,
-                            tool_events,
-                        },
-                        out,
-                    );
+                    }) {
+                        out.announce_pending(index, arguments);
+                    }
                 } else {
-                    // Separate chunks preserve text/tool ordering and thought boundaries.
-                    for parts in step_start_to_parts(step, self.open_function_steps.minted_ids()) {
-                        self.reasoning.emit_chunk(parts, out);
+                    for chunk in step_start_chunks(step) {
+                        self.write(chunk, &mut out)?;
                     }
                 }
             }
             InteractionSseEvent::StepStop { index, .. } => {
-                // A completed call with malformed arguments must fail in-band.
-                if let Some(slot) = self.open_function_steps.remove(index) {
-                    out.push(Ok(function_step_end(&slot)));
-                }
+                // A completed call with malformed arguments fails the reply.
+                out.close_pending(index as usize, IfMalformed::Fail)?;
             }
             InteractionSseEvent::InteractionCompleted { interaction, .. } => {
                 let span = tracing::Span::current();
@@ -253,14 +295,15 @@ impl Decoder<Completion> for InteractionsDecoder {
                     span.record("gen_ai.response.model", model);
                 }
                 // Provider completion finalizes calls even without step.stop.
-                // Announcement order keeps parallel call output deterministic.
-                for (index, slot) in self.open_function_steps.drain_ordered_indexed() {
+                for index in out.pending_calls() {
                     tracing::debug!(
                         index,
                         "closing a function-call step left open at interaction.completed"
                     );
-                    out.push(Ok(function_step_end(&slot)));
+                    out.close_pending(index, IfMalformed::Fail)?;
                 }
+                self.close_text(&mut out);
+                self.thoughts.close(&mut out, None);
 
                 // Lifecycle status supplies the finish reason; absent status stays unknown.
                 let model_version = interaction.model.clone();
@@ -269,49 +312,33 @@ impl Decoder<Completion> for InteractionsDecoder {
                     interaction: Some(interaction),
                     model_version,
                 };
-                let raw = match serde_json::to_value(&native) {
-                    Ok(raw) => raw,
-                    Err(err) => {
-                        out.error(err.into());
-                        return;
-                    }
-                };
+                out.raw(serde_json::to_value(&native)?);
                 let usage = (&native).into();
                 let interaction = native.interaction.as_ref();
                 let finish_reason = interaction
                     .and_then(|interaction| interaction.status.as_ref())
                     .map(map_interaction_status);
-                let message_id = interaction
-                    .map(|interaction| interaction.id.as_str())
+                let response_id = interaction
+                    .map(|interaction| interaction.id.clone())
                     .filter(|id| !id.is_empty());
-                out.final_record(
-                    streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
-                        .with_optional_finish_reason(finish_reason)
-                        .with_optional_response_id(message_id)
-                        .with_optional_model(native.model_version.as_deref()),
-                );
+                return Ok(out.end(
+                    Finish::new(usage)
+                        .with_optional_reason(finish_reason)
+                        .with_optional_response_id(response_id)
+                        .with_optional_model(native.model_version),
+                ));
             }
             event @ InteractionSseEvent::Error { .. } => {
-                // Preserve modeled error fields without inventing an HTTP status
-                // for an in-band failure, and stop: later frames cannot
-                // report the turn complete.
+                // Preserve modeled error fields without inventing an HTTP
+                // status for an in-band failure.
                 let body = serde_json::to_string(&event).unwrap_or_default();
-                out.push(Err(crate::error::ProviderError::from_provider_body(body)));
-                out.end_reply();
+                return Err(crate::error::ProviderError::from_provider_body(body));
             }
             InteractionSseEvent::InteractionCreated { .. }
             | InteractionSseEvent::InteractionStatusUpdate { .. } => {}
         }
+        Ok(Flow::More)
     }
-}
-
-/// Close a function call using accumulated arguments, announcement fallback,
-/// or `{}` if neither exists. Malformed arguments fail in-band.
-/// Preserve the provider id as `tool_id` only.
-fn function_step_end(
-    slot: &crate::providers::internal::tool_call_bridge::ToolCallSlot,
-) -> streaming::StreamEvent {
-    slot.end_event(streaming::UnparseableToolInput::Error)
 }
 
 /// The content item a `step.delta` restates: a text or whole-call delta is
@@ -327,75 +354,39 @@ fn delta_content(delta: ContentDelta) -> Option<Content> {
     }
 }
 
-/// A whole function call as one declared chunk (its start and end in the
-/// tool-event slot).
-fn function_call_parts(
-    name: String,
-    arguments: Option<Value>,
-    id: Option<String>,
-    tool_ids: &mut streaming::SyntheticIds,
-) -> ChunkParts {
-    // Tool names cannot identify calls because a turn may call the same tool twice.
-    ChunkParts {
-        reasoning: None,
-        reasoning_signature: None,
-        text: None,
-        text_meta: None,
-        tool_events: shared_parts::function_call(
-            name,
-            arguments.unwrap_or(Value::Object(Map::new())),
-            id,
-            None,
-            tool_ids,
-        ),
-    }
-}
-
-/// Visible text as one declared chunk.
-fn text_parts(text: String) -> ChunkParts {
-    ChunkParts {
-        reasoning: None,
-        reasoning_signature: None,
-        text: Some(text),
-        text_meta: None,
-        tool_events: Vec::new(),
-    }
-}
-
-fn step_start_to_parts(step: Step, tool_ids: &mut streaming::SyntheticIds) -> Vec<ChunkParts> {
+fn step_start_chunks(step: Step) -> Vec<Chunk> {
     match step {
         // Model output can interleave multiple text and function-call items.
-        Step::ModelOutput { content } => content
-            .into_iter()
-            .filter_map(|content| content_to_parts(content, tool_ids))
-            .collect(),
-        Step::FunctionCall(call) => content_to_parts(Content::FunctionCall(call), tool_ids)
+        Step::ModelOutput { content } => content.into_iter().filter_map(content_chunk).collect(),
+        Step::FunctionCall(call) => content_chunk(Content::FunctionCall(call))
             .into_iter()
             .collect(),
         _ => Vec::new(),
     }
 }
 
-/// Convert supported output content into a canonical chunk; skip other content.
-fn content_to_parts(
-    content: Content,
-    tool_ids: &mut streaming::SyntheticIds,
-) -> Option<ChunkParts> {
+/// A supported output content item as the chunk it writes; other content is
+/// skipped.
+fn content_chunk(content: Content) -> Option<Chunk> {
     match content {
-        Content::Text(text) if !text.text.is_empty() => Some(text_parts(text.text)),
+        Content::Text(text) if !text.text.is_empty() => Some(Chunk::Text(text.text)),
         Content::FunctionCall(FunctionCallContent {
             name,
             arguments,
             id,
-        }) => Some(function_call_parts(name?, arguments, id, tool_ids)),
+        }) => Some(Chunk::Call {
+            name: name?,
+            arguments,
+            id,
+        }),
         // A thought the reply states whole: the summary's text is the
-        // block's content and the signature closes it, which is the same
-        // pair the streamed `thought_summary`/`thought_signature` deltas
-        // deliver piecewise.
+        // part's content and the signature closes it, the same pair the
+        // streamed `thought_summary`/`thought_signature` deltas deliver
+        // piecewise.
         Content::Thought(ThoughtContent {
             summary, signature, ..
         }) => {
-            let reasoning: String = summary
+            let text: String = summary
                 .unwrap_or_default()
                 .into_iter()
                 .filter_map(|content| match content {
@@ -403,56 +394,20 @@ fn content_to_parts(
                     _ => None,
                 })
                 .collect();
-            if reasoning.is_empty() && signature.is_none() {
+            if text.is_empty() && signature.is_none() {
                 return None;
             }
-            Some(ChunkParts {
-                reasoning: (!reasoning.is_empty()).then_some(reasoning),
-                reasoning_signature: signature,
-                text: None,
-                text_meta: None,
-                tool_events: Vec::new(),
-            })
+            Some(Chunk::Thought { text, signature })
         }
-        // Preserve images in metadata because canonical stream blocks cannot represent them.
-        image @ Content::Image(_) => raw_content_parts(image, tool_ids),
+        // Images ride on a text part's metadata: the choice has no part for
+        // them.
+        image @ Content::Image(_) => crate::message::AdditionalParams::from_entries([(
+            crate::providers::gemini::GEMINI_RAW_CONTENT_KEY,
+            serde_json::json!(image),
+        )])
+        .map(Chunk::Raw),
         _ => None,
     }
-}
-
-/// A content item the stream vocabulary has no block kind for, preserved as
-/// a text block carrying the part verbatim under
-/// [`GEMINI_RAW_CONTENT_KEY`](crate::providers::gemini::GEMINI_RAW_CONTENT_KEY).
-fn raw_content_parts(
-    content: Content,
-    tool_ids: &mut streaming::SyntheticIds,
-) -> Option<ChunkParts> {
-    let params = crate::message::AdditionalParams::from_entries([(
-        crate::providers::gemini::GEMINI_RAW_CONTENT_KEY,
-        serde_json::json!(content),
-    )])?;
-    // Keyed from the same counter every id-less block on this wire draws
-    // from, so a raw block can never collide with a minted tool-call key.
-    let id = tool_ids.mint();
-    Some(ChunkParts {
-        reasoning: None,
-        reasoning_signature: None,
-        text: None,
-        text_meta: None,
-        tool_events: vec![
-            streaming::StreamEvent::BlockStart {
-                id: id.clone(),
-                kind: streaming::BlockKind::Text {
-                    additional_params: Some(params),
-                },
-            },
-            streaming::StreamEvent::BlockEnd {
-                id,
-                end: streaming::BlockClose::Text,
-                block: None,
-            },
-        ],
-    })
 }
 
 #[cfg(test)]

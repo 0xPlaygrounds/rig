@@ -35,7 +35,7 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
             let mut stream = agent
                 .prompt("Write a detailed five paragraph essay about the ocean.")
                 .stream();
-            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (_response, provider_final) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("streaming prompt should succeed");
@@ -61,7 +61,7 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
                 .build();
 
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (_response, provider_final) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("streaming prompt should succeed");

@@ -9,7 +9,11 @@
 //! ```
 
 use bevy_ecs::prelude::*;
-use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
+use rig_core::{
+    effect::EffectId,
+    error::ErrorReport,
+    streaming::{Item, StreamEvent},
+};
 
 /// Newly collected items from one streaming effect, in their delivery order.
 ///
@@ -38,7 +42,7 @@ use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
 ///
 /// ```
 /// use bevy_ecs::prelude::*;
-/// use rig_core::streaming::{Delta, StreamEvent};
+/// use rig_core::streaming::{Item, StreamEvent};
 /// use rig_ecs::bus::StreamItemsDelivered;
 ///
 /// #[derive(Resource, Default)]
@@ -48,9 +52,7 @@ use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
 /// world.add_observer(
 ///     |delivery: On<StreamItemsDelivered>, mut text: ResMut<TextByEffect>| {
 ///         for item in &delivery.items {
-///             if let Ok(StreamEvent::BlockDelta {
-///                 delta: Delta::Text { text: piece }, ..
-///             }) = item {
+///             if let Ok(Item::Event(StreamEvent::Text { text: piece, .. })) = item {
 ///                 text.0.entry(delivery.effect).or_default().push_str(piece);
 ///             }
 ///         }
@@ -67,5 +69,7 @@ pub struct StreamItemsDelivered {
     /// Zero-based item offset within this effect, counting events and errors.
     pub start: usize,
     /// Actual newly delivered items, preserving event/error interleaving.
-    pub items: Vec<Result<StreamEvent, ErrorReport>>,
+    /// The response that ends the stream is the effect's outcome, not an
+    /// item.
+    pub items: Vec<Result<Item<StreamEvent>, ErrorReport>>,
 }

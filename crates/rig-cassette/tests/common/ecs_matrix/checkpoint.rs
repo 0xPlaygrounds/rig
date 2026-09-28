@@ -176,10 +176,6 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
     if cell.program.streamed {
         use rig_core::message::AssistantContent;
 
-        use rig_core::streaming::BlockKind;
-
-        use rig_core::streaming::Delta;
-
         use rig_core::streaming::StreamEvent;
 
         for (turn, record) in requests.iter().enumerate() {
@@ -187,29 +183,20 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
                 record.kind,
                 EffectKind::Completion { stream: true, .. }
             ));
+            // A transcript is in order by construction: every event's part
+            // started, and the record's outcome is the one response.
             let events = record
                 .events
                 .as_ref()
                 .expect("actual provider stream delivery is retained");
-            assert_eq!(
-                events
-                    .iter()
-                    .filter(|event| matches!(event, StreamEvent::Final(_)))
-                    .count(),
-                1,
-                "one actual terminal per completion"
-            );
             if turn < tool_turns(cell) {
-                // Gemini REST delivers function calls atomically; it need not
-                // fabricate partial argument deltas to prove stream delivery.
                 let delivered: Vec<_> = events
-                    .iter()
+                    .events()
                     .filter_map(|event| match event {
-                        StreamEvent::BlockEnd {
-                            id,
-                            block: Some(AssistantContent::ToolCall(_)),
-                            ..
-                        } => Some(id),
+                        StreamEvent::End {
+                            part,
+                            content: AssistantContent::ToolCall(_),
+                        } => Some(*part),
                         _ => None,
                     })
                     .collect();
@@ -218,13 +205,13 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
                     1,
                     "one completed tool call delivered in this dependent turn"
                 );
-                assert!(events.iter().any(|event| matches!(event,
-                    StreamEvent::BlockStart { id, kind: BlockKind::ToolCall }
-                    | StreamEvent::BlockDelta { id, delta: Delta::ToolName { .. } | Delta::ToolArguments { .. } }
-                    if id == delivered[0]
-                )), "the completed call has actual matching tool-block or delta delivery");
+                assert!(
+                    events.events().any(|event| matches!(event,
+                        StreamEvent::Arguments { part, .. } if *part == delivered[0])),
+                    "the completed call's arguments were delivered"
+                );
             } else {
-                assert!(events.iter().any(|event| matches!(event, StreamEvent::BlockDelta { delta: Delta::Text { text }, .. } if !text.is_empty())), "actual final answer text was streamed");
+                assert!(events.events().any(|event| matches!(event, StreamEvent::Text { text, .. } if !text.is_empty())), "actual final answer text was streamed");
             }
         }
     }

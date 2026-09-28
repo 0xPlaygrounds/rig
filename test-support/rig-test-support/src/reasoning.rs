@@ -33,21 +33,13 @@ use rig_core::message::AssistantContent;
 
 use rig_core::message::Message;
 
-use rig_core::message::Reasoning;
-
 use rig_core::message::ReasoningContent;
 
 use rig_core::message::ToolResultContent;
 
 use rig_core::message::UserContent;
 
-use rig_core::streaming::BlockClose;
-
-use rig_core::streaming::BlockKind;
-
-use rig_core::streaming::Delta;
-
-use rig_core::streaming::StreamEvent;
+use rig_core::streaming::{Item, StreamEvent};
 
 use rig_core::streaming::StreamedUserContent;
 
@@ -65,8 +57,7 @@ Think through the counting carefully, then answer with only the integer.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ReasoningDeltaSnapshot {
-    id: String,
-    provider_id: Option<String>,
+    part: usize,
     delta: String,
     aggregated: Option<String>,
     turn: usize,
@@ -84,13 +75,12 @@ struct ReasoningDeltaHookRecorder {
 }
 
 impl ReasoningDeltaHookRecorder {
-    fn record_stream_delta(&self, id: String, provider_id: Option<String>, delta: String) {
+    fn record_stream_delta(&self, part: usize, delta: String) {
         self.timeline
             .lock()
             .expect("reasoning delta timeline lock")
             .push(ReasoningDeltaTimelineItem::Stream(ReasoningDeltaSnapshot {
-                id,
-                provider_id,
+                part,
                 delta,
                 aggregated: None,
                 turn: 1,
@@ -119,8 +109,7 @@ impl AgentHook for ReasoningDeltaHookRecorder {
             .lock()
             .expect("reasoning delta timeline lock")
             .push(ReasoningDeltaTimelineItem::Hook(ReasoningDeltaSnapshot {
-                id: event.id.to_string(),
-                provider_id: event.provider_id.map(str::to_owned),
+                part: event.part.index(),
                 delta: event.delta.to_owned(),
                 aggregated: Some(event.aggregated.to_owned()),
                 turn: ctx.turn(),
@@ -152,28 +141,14 @@ pub async fn run_reasoning_delta_hook_streaming(
         .add_hook(hook)
         .stream();
     let mut final_text = None;
-    // The provider reasoning id is announced once at the block's start; the
-    // deltas carry only the block id.
-    let mut block_provider_ids = HashMap::<String, String>::new();
 
     while let Some(item) = stream.next().await {
         match item.unwrap_or_else(|error| panic!("[{provider}] agent stream failed: {error}")) {
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockStart {
-                id,
-                kind:
-                    BlockKind::Reasoning {
-                        provider_id: Some(provider_id),
-                    },
-            }) => {
-                block_provider_ids.insert(id.to_string(), provider_id);
-            }
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                id,
-                delta: Delta::Reasoning { text: reasoning },
-            }) => {
-                let id = id.to_string();
-                let provider_id = block_provider_ids.get(&id).cloned();
-                probe.record_stream_delta(id, provider_id, reasoning);
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
+                part,
+                text: reasoning,
+            })) => {
+                probe.record_stream_delta(part.index(), reasoning);
             }
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_text = Some(response.output().to_owned());
@@ -199,8 +174,7 @@ pub async fn run_reasoning_delta_hook_streaming(
         "[{provider}] every hooked reasoning delta must be emitted"
     );
 
-    let mut aggregates = HashMap::<String, String>::new();
-    let mut provider_ids = HashMap::<String, String>::new();
+    let mut aggregates = HashMap::<usize, String>::new();
     for pair in timeline.chunks_exact(2) {
         let (ReasoningDeltaTimelineItem::Hook(hooked), ReasoningDeltaTimelineItem::Stream(emitted)) =
             (&pair[0], &pair[1])
@@ -211,30 +185,16 @@ pub async fn run_reasoning_delta_hook_streaming(
         };
 
         assert_eq!(hooked.turn, 1, "[{provider}] unexpected hook turn");
-        assert_eq!(hooked.id, emitted.id, "[{provider}] correlator drift");
-        assert_eq!(
-            hooked.provider_id, emitted.provider_id,
-            "[{provider}] provider reasoning id drift"
-        );
+        assert_eq!(hooked.part, emitted.part, "[{provider}] part drift");
         assert_eq!(hooked.delta, emitted.delta, "[{provider}] delta drift");
 
-        let expected_aggregate = aggregates.entry(hooked.id.clone()).or_default();
+        let expected_aggregate = aggregates.entry(hooked.part).or_default();
         expected_aggregate.push_str(&hooked.delta);
         assert_eq!(
             hooked.aggregated.as_deref(),
             Some(expected_aggregate.as_str()),
             "[{provider}] aggregate must contain exactly this part's deltas through the current fragment"
         );
-
-        if let Some(provider_id) = &hooked.provider_id {
-            let prior = provider_ids
-                .entry(hooked.id.clone())
-                .or_insert_with(|| provider_id.clone());
-            assert_eq!(
-                prior, provider_id,
-                "[{provider}] one Rig correlator mapped to multiple provider reasoning ids"
-            );
-        }
     }
 }
 
@@ -286,17 +246,30 @@ impl ReasoningRoundtripAgent {
     }
 }
 
+/// The issuer the reply's reasoning was sealed to, or its provider when it
+/// sent none.
+fn stream_issuer(response: &completion::CompletionResponse) -> rig_core::message::Issuer {
+    response
+        .choice
+        .iter()
+        .find_map(|content| match content {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| rig_core::message::Issuer::from(response.provider.clone()))
+}
+
 /// Run and assert the two-turn streaming reasoning-history roundtrip.
 pub async fn run_reasoning_roundtrip_streaming(agent: ReasoningRoundtripAgent) {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
 }
 
-/// Run the streaming roundtrip and inspect each provider final with a custom oracle.
+/// Run the streaming roundtrip and inspect turn 1's response with a custom oracle.
 pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
     agent: ReasoningRoundtripAgent,
     mut inspect_final: F,
 ) where
-    F: FnMut(&rig_core::streaming::StreamFinal),
+    F: FnMut(&completion::CompletionResponse),
 {
     let turn1_prompt = Message::User {
         content: rig_core::NonEmpty::new(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
@@ -320,56 +293,20 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 
     let mut stream = agent.model.stream(request).expect("Turn 1 stream");
 
-    let mut assistant_content = Vec::new();
-    let mut saw_reasoning_block = false;
-    let mut reasoning_delta_text = String::new();
     let mut streamed_text = String::new();
 
     while let Some(chunk) = stream.next().await {
         match chunk {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => {
-                streamed_text.push_str(&text);
-            }
-            // A block the provider announced: its own end, a restatement or
-            // a signature. A boundary the adapter synthesized carries the
-            // deltas, which the fallback below replays.
-            Ok(StreamEvent::BlockEnd {
-                end:
-                    BlockClose::Reasoning {
-                        reasoning: restatement,
-                        signature,
-                        wire_sent,
-                    },
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            }) if wire_sent || restatement.is_some() || signature.is_some() => {
-                saw_reasoning_block = true;
-                assistant_content.push(AssistantContent::Reasoning(reasoning));
-            }
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text },
-                ..
-            }) => {
-                reasoning_delta_text.push_str(&text);
-            }
-            Ok(StreamEvent::Final(response)) => inspect_final(&response),
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => streamed_text.push_str(&text),
             Ok(_) => {}
             Err(error) => panic!("Turn 1 stream error: {error}"),
         }
     }
+    let response = stream.finish().await.expect("Turn 1 finishes");
+    inspect_final(&response);
 
     if agent.expects_signed_reasoning_block {
-        assert!(
-            saw_reasoning_block,
-            "Provider opted into signed reasoning but streamed no complete Reasoning block \
-             (reasoning deltas seen: {} chars). A signature-only block must not be dropped.",
-            reasoning_delta_text.len()
-        );
-
-        let signed = assistant_content.iter().any(|content| match content {
+        let signed = response.choice.iter().any(|content| match content {
             AssistantContent::Reasoning(reasoning) => reasoning
                 .open(reasoning.issuer())
                 .is_some_and(|reasoning| reasoning.content.iter().any(|block| matches!(block, ReasoningContent::Text { signature, .. } if signature.is_some()))),
@@ -377,30 +314,49 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
         });
         assert!(
             signed,
-            "Provider opted into signed reasoning but no streamed Reasoning block carried a \
-             signature: {assistant_content:#?}"
+            "Provider opted into signed reasoning but no streamed Reasoning part carried a \
+             signature (a signature-only part must not be dropped): {:#?}",
+            response.choice
         );
-    }
-
-    // Providers like Gemini 2.5 emit thinking as deltas without signatures,
-    // so turn the deltas into a single reasoning block before round-tripping.
-    if !saw_reasoning_block && !reasoning_delta_text.is_empty() {
-        let issuer = stream
-            .folded()
-            .reasoning_issuer()
-            .expect("a finished stream names its reasoning issuer")
-            .to_owned();
-        assistant_content.push(AssistantContent::Reasoning(
-            Reasoning::new(&reasoning_delta_text).sealed(issuer),
-        ));
     }
 
     assert!(!streamed_text.is_empty(), "Turn 1 produced no text output.");
 
+    // The history this suite recorded replays the reasoning the provider
+    // announced (an id, a signature, or content other than plain text) and
+    // the answer's text. A stream that only sent reasoning fragments
+    // replays them as one part.
+    let reasoning: Vec<_> = response
+        .choice
+        .iter()
+        .filter(|content| match content {
+            AssistantContent::Reasoning(reasoning) => reasoning
+                .open(reasoning.issuer())
+                .is_some_and(|reasoning| {
+                    reasoning.id.is_some()
+                        || reasoning.content.iter().any(|block| {
+                            !matches!(block, ReasoningContent::Text { signature: None, .. })
+                        })
+                }),
+            _ => false,
+        })
+        .cloned()
+        .collect();
+    let mut assistant_content = if reasoning.is_empty() {
+        let fragments = response.reasoning();
+        if fragments.is_empty() {
+            Vec::new()
+        } else {
+            vec![AssistantContent::Reasoning(
+                rig_core::message::Reasoning::new(&fragments).sealed(stream_issuer(&response)),
+            )]
+        }
+    } else {
+        reasoning
+    };
     assistant_content.push(AssistantContent::text(&streamed_text));
-
     let turn1_assistant = Message::Assistant {
-        id: stream.folded().message_id().map(str::to_owned),
+        id: response.message_id.clone(),
         content: rig_core::NonEmpty::from_vec(assistant_content).expect("non-empty"),
     };
 
@@ -429,12 +385,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 
     while let Some(chunk) = stream2.next().await {
         match chunk {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => {
-                turn2_text.push_str(&text);
-            }
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => turn2_text.push_str(&text),
             Ok(_) => {}
             Err(error) => panic!("Turn 2 stream error: {error}"),
         }
@@ -695,7 +646,11 @@ impl StreamStats {
     }
 }
 
-fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &str) {
+fn record_reasoning(
+    stats: &mut StreamStats,
+    reasoning: &rig_core::message::Reasoning,
+    provider: &str,
+) {
     stats.reasoning_block_count += 1;
     stats.events.push("reasoning_block");
 
@@ -741,55 +696,40 @@ pub async fn collect_stream_stats(
                 stats.events.push("tool_call");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
-                StreamEvent::BlockEnd {
-                    end: BlockClose::Reasoning { .. },
-                    block: Some(AssistantContent::Reasoning(ref reasoning)),
+                Item::Event(StreamEvent::End {
+                    content: AssistantContent::Reasoning(ref reasoning),
                     ..
-                } => {
+                }) => {
                     if let Some(reasoning) = reasoning.open(reasoning.issuer()) {
                         record_reasoning(&mut stats, reasoning, provider);
                     }
                 }
-                StreamEvent::BlockDelta {
-                    delta: Delta::Reasoning { .. },
-                    ..
-                } => {
+                Item::Event(StreamEvent::Reasoning { .. }) => {
                     stats.reasoning_delta_count += 1;
                     if stats.events.last() != Some(&"reasoning_delta") {
                         stats.events.push("reasoning_delta");
                     }
                 }
-                StreamEvent::BlockDelta {
-                    delta: Delta::Text { ref text },
-                    ..
-                } => {
+                Item::Event(StreamEvent::Text { ref text, .. }) => {
                     stats.text_chunks += 1;
                     stats.final_turn_text.push_str(text);
                     if stats.events.last() != Some(&"text") {
                         stats.events.push("text");
                     }
                 }
-                StreamEvent::BlockDelta {
-                    delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                    ..
-                } => {
+                Item::Event(StreamEvent::Arguments { .. }) => {
                     if stats.events.last() != Some(&"tool_call_delta") {
                         stats.events.push("tool_call_delta");
                     }
                 }
-                StreamEvent::Final(_) => {
-                    stats.events.push("final");
-                }
-                StreamEvent::Unknown(_) => {
+                Item::Unknown(_) => {
                     stats.events.push("unknown");
                 }
-                StreamEvent::BlockStart { .. }
-                | StreamEvent::BlockDelta {
-                    delta: Delta::TextMeta { .. },
-                    ..
-                }
-                | StreamEvent::BlockEnd { .. } => {}
+                Item::Event(StreamEvent::Start { .. } | StreamEvent::End { .. }) => {}
             },
+            Ok(MultiTurnStreamItem::CompletionCall(_)) => {
+                stats.events.push("final");
+            }
             Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
                 StreamedUserContent::ToolResult { .. } => {
                     stats.tool_results_in_stream += 1;

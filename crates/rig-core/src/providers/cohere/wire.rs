@@ -13,6 +13,7 @@ use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::json_utils;
 use crate::operation::{Completion, Embedding, ImageEmbedding};
+use crate::wire::Flow;
 use crate::wire::{
     Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
     WireFrame,
@@ -124,7 +125,7 @@ impl Wire for Chat {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ChatDecoder;
+    type Decoder<'id> = ChatDecoder<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
@@ -162,7 +163,7 @@ impl Wire for Chat {
         ))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ChatDecoder::default()
     }
 }
@@ -243,7 +244,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = EmbeddingsDecoder;
+    type Decoder<'id> = EmbeddingsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -264,7 +265,7 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         EmbeddingsDecoder
     }
 }
@@ -272,27 +273,29 @@ impl Wire for Embeddings {
 /// Decodes one `/v1/embed` reply for texts.
 pub struct EmbeddingsDecoder;
 
-impl Decoder<Embedding> for EmbeddingsDecoder {
+impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
     type Event = EmbedReply<CohereEmbeddingResponse>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_embed_reply(&frame.as_str())
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, Embedding>) {
+    fn decode(
+        &mut self,
+        reply: Self::Event,
+        out: Out<'id, Embedding>,
+    ) -> Result<Flow, ProviderError> {
         let reply = match reply {
             EmbedReply::Reply(reply) => reply,
             // Preserve the error body so the driver can attach its HTTP status.
             EmbedReply::Failure(body) => {
-                out.push(Err(ProviderError::from_provider_body(body)));
-                return;
+                return Err(ProviderError::from_provider_body(body));
             }
         };
         let raw = match serde_json::to_value(&reply) {
             Ok(raw) => raw,
             Err(error) => {
-                out.push(Err(error.into()));
-                return;
+                return Err(error.into());
             }
         };
         let usage = reply
@@ -312,21 +315,19 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
             })
             .collect();
         // Cohere's `/v1/embed` reply names no model.
-        out.push(Ok(crate::embeddings::EmbeddingResponse::new(
-            vectors,
-            PROVIDER_NAME,
-        )
-        .with_response_id(reply.id)
-        .with_usage(usage)
-        .with_raw(raw)));
+        return Ok(out.end(
+            crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
+                .with_response_id(reply.id)
+                .with_usage(usage)
+                .with_raw(raw),
+        ));
     }
 }
 
 /// The image-embedding wire: `POST /v1/embed`, one image per request.
 ///
-/// Cohere Embed v3 accepts a single image per call, so a batch is a batch of
-/// requests ([`Encoded::batch`]) whose replies the operation's fold
-/// concatenates in input order.
+/// Cohere Embed v3 accepts a single image per call, so the wire's batch limit
+/// is one image.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageEmbeddings {
     /// The provider this wire speaks to.
@@ -337,7 +338,7 @@ impl Wire for ImageEmbeddings {
     type Op = ImageEmbedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ImageEmbeddingsDecoder;
+    type Decoder<'id> = ImageEmbeddingsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -346,27 +347,29 @@ impl Wire for ImageEmbeddings {
     }
 
     fn encode(&self, images: Vec<Vec<u8>>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let requests = images
-            .into_iter()
-            .map(|image| {
-                // Reject invalid images before any batch request can be sent.
-                let media_type = validate_image(&image)?;
-                let body = serde_json::json!({
-                    "model": super::EMBED_ENGLISH_V3,
-                    "images": [image_data_url(&image, media_type)],
-                    "input_type": "image",
-                    "embedding_types": ["float"],
-                });
-                self.provider
-                    .post("/v1/embed")
-                    .body(Body::Bytes(serde_json::to_vec(&body)?))
-                    .map_err(EncodeError::from)
-            })
-            .collect::<Result<Vec<_>, EncodeError>>()?;
-        Ok(Encoded::batch(requests, Framing::Whole))
+        // The wire's batch limit is one image: a caller splits larger
+        // batches into one call per image.
+        let [image] = images.as_slice() else {
+            return Err(EncodeError::request(format!(
+                "Cohere embeds one image per request, not {}",
+                images.len()
+            )));
+        };
+        let media_type = validate_image(image)?;
+        let body = serde_json::json!({
+            "model": super::EMBED_ENGLISH_V3,
+            "images": [image_data_url(image, media_type)],
+            "input_type": "image",
+            "embedding_types": ["float"],
+        });
+        let request = self
+            .provider
+            .post("/v1/embed")
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
+        Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ImageEmbeddingsDecoder
     }
 }
@@ -374,30 +377,32 @@ impl Wire for ImageEmbeddings {
 /// Decodes one `/v1/embed` reply for a single image.
 pub struct ImageEmbeddingsDecoder;
 
-impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
+impl<'id> Decoder<'id, ImageEmbedding> for ImageEmbeddingsDecoder {
     type Event = EmbedReply<CohereImageEmbeddingResponse>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_embed_reply(&frame.as_str())
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, ImageEmbedding>) {
+    fn decode(
+        &mut self,
+        reply: Self::Event,
+        out: Out<'id, ImageEmbedding>,
+    ) -> Result<Flow, ProviderError> {
         let reply = match reply {
             EmbedReply::Reply(reply) => reply,
             // Same 200-with-an-envelope reply as the text route: the body
             // verbatim, with the driver stamping the status.
             EmbedReply::Failure(body) => {
-                out.push(Err(ProviderError::from_provider_body(body)));
-                return;
+                return Err(ProviderError::from_provider_body(body));
             }
         };
         // Each request carries one image, so any other vector count is invalid.
         let [vector] = reply.embeddings.values.as_slice() else {
-            out.push(Err(ProviderError::Response(format!(
+            return Err(ProviderError::Response(format!(
                 "Expected 1 image embedding, got {}",
                 reply.embeddings.values.len()
-            ))));
-            return;
+            )));
         };
         let usage = reply
             .meta
@@ -418,7 +423,7 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
         if let Some(id) = reply.id {
             response = response.with_response_id(id);
         }
-        out.push(Ok(response));
+        return Ok(out.end(response));
     }
 }
 

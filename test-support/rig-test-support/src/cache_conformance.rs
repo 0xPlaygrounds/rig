@@ -541,37 +541,26 @@ async fn stream_turn(
 ) -> (Usage, String, Option<String>) {
     use futures::StreamExt;
 
-    use rig_core::streaming::Delta;
-
-    use rig_core::streaming::StreamEvent;
+    use rig_core::streaming::{Item, StreamEvent};
 
     let mut stream = model
         .stream(probe.request(chat_history))
         .unwrap_or_else(|error| panic!("streamed cache probe {label} should start: {error}"));
 
     let mut text = String::new();
-    let mut usage = None;
-
     while let Some(item) = stream.next().await {
-        match item
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) = item
             .unwrap_or_else(|error| panic!("streamed cache probe {label} should succeed: {error}"))
         {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: delta },
-                ..
-            } => text.push_str(&delta),
-            StreamEvent::Final(response) => usage = Some(response.usage),
-            _ => {}
+            text.push_str(&delta);
         }
     }
 
-    let usage = usage.unwrap_or_else(|| {
-        panic!(
-            "streamed cache probe {label} produced no final usage — the accumulator dropped it, \
-             which is exactly the streaming-path bug class this probe exists to catch"
-        )
-    });
-    (usage, text, stream.folded().message_id().map(str::to_owned))
+    let response = stream
+        .finish()
+        .await
+        .unwrap_or_else(|error| panic!("streamed cache probe {label} should finish: {error}"));
+    (response.usage, text, response.message_id)
 }
 
 /// Turn 1 must create a cache entry, or read one that was already warm.

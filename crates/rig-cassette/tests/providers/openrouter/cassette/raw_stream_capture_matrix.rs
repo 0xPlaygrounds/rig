@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the record the chat decoder
+//! [`rig::completion::CompletionResponse::raw`] carries the record the chat decoder
 //! reassembled from the reply's frames — the shared chat terminal
 //! (`openai::wire::StreamingCompletionResponse`), serialized. Unlike a unary
 //! reply's `raw`, this one is a serialization of that record rather than the

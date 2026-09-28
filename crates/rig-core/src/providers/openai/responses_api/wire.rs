@@ -16,7 +16,7 @@ use crate::wire::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::streaming::{ResponsesDecoder, ResponsesStreamOptions};
+use super::streaming::ResponsesDecoder;
 use super::{
     CompletionRequest, Include, ResponsesRequestParams, ResponsesToolDefinition,
     SystemInstructionsPlacement,
@@ -218,7 +218,7 @@ impl Wire for Responses {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ResponsesDecoder;
+    type Decoder<'id> = ResponsesDecoder<'id>;
 
     /// The xAI contract does not compose native structured output with tools.
     fn describe(&self) -> Descriptor<'_> {
@@ -239,16 +239,9 @@ impl Wire for Responses {
         self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
     }
 
-    fn decoder(&self, _mode: Mode) -> ResponsesDecoder {
+    fn decoder<'id>(&self) -> ResponsesDecoder<'id> {
         let quirks = &self.provider.dialect.quirks.responses;
-        let options = if quirks.contract == ResponsesContract::Xai {
-            // xAI answers a 200 with its error envelope, and the same
-            // gateway publishes a finished call at its `output_item.done`.
-            ResponsesStreamOptions::strict_with_immediate_tool_calls()
-        } else {
-            ResponsesStreamOptions::strict()
-        };
-        let mut decoder = ResponsesDecoder::new(self.provider.dialect.name, options);
+        let mut decoder = ResponsesDecoder::new(self.provider.dialect.name);
         if quirks.contract == ResponsesContract::Codex {
             // The codex gateway's replayed frames may omit their envelope
             // bookkeeping; elsewhere an envelope-less frame is a defect
@@ -269,24 +262,19 @@ pub(crate) fn fold_body(
     provider: &str,
     response: super::CompletionResponse,
 ) -> Result<completion::CompletionResponse, crate::error::ProviderError> {
-    use super::streaming::ResponsesEvent;
-    use crate::operation::AdapterOutput;
-    use crate::wire::{Fold, Mode, Reply};
+    use crate::wire::Reply;
 
     let reply = Reply {
         provider: provider.to_owned(),
         raw: serde_json::to_value(&response)?,
         provider_request_id: response.provider_request_id.clone(),
     };
-    let mut decoder = ResponsesDecoder::new(provider, ResponsesStreamOptions::strict());
-    let mut out = AdapterOutput::new();
-    decoder.interpret_event(ResponsesEvent::Whole(Box::new(response)), &mut out);
-
-    let mut fold = crate::operation::CompletionFold::opened(provider, None, Mode::Unary);
-    for item in out.drain() {
-        fold.absorb(&item?)?;
-    }
-    fold.finish(reply)
+    let body = serde_json::to_string(&response)?;
+    let wire = Responses::new(
+        crate::providers::openai::OpenAIConfig::new("decode-only"),
+        String::new(),
+    );
+    crate::driver::decode_body(&wire, crate::operation::Turn::new(provider), body, reply)
 }
 
 #[derive(Default, Deserialize)]

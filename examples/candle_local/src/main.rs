@@ -5,7 +5,7 @@ use futures::StreamExt;
 use rig::candle::CandleCompletionResponse;
 use rig::candle::{CandleModel, ModelData};
 use rig::completion::CompletionRequest;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -41,16 +41,16 @@ async fn main() -> anyhow::Result<()> {
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         match item? {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => {
+            StreamEvent::Text { text, .. } => {
                 print!("{text}");
                 std::io::stdout().flush()?;
             }
-            StreamEvent::Final(final_record) => final_response = Some(final_record),
             _ => {}
         }
+    }
+    {
+        let final_record = stream.finish().await.expect("the stream ends");
+        final_response = Some(final_record);
     }
     println!();
     let raw: CandleCompletionResponse = serde_json::from_value(

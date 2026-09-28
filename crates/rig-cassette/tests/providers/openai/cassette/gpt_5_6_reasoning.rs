@@ -8,13 +8,14 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::streaming::Item;
 use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::driver::Model;
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::providers::openai;
 use rig::providers::openai::wire::OpenAiWire;
-use rig::streaming::{BlockKind, Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -56,7 +57,7 @@ struct StoredResponseTurn {
 struct StoredStreamingTurn {
     user: Message,
     assistant: Message,
-    final_response: openai::responses_api::streaming::StreamingCompletionResponse,
+    final_response: openai::responses_api::CompletionResponse,
 }
 
 /// Issue one GPT-5.6 completion and return both views of the single recorded
@@ -341,41 +342,24 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 let mut text = String::new();
                 let mut reasoning_blocks = Vec::new();
                 let mut reasoning_delta = String::new();
-                let mut final_response = None;
-                let mut message_id = None;
 
                 while let Some(item) = stream.next().await {
                     match item.unwrap_or_else(|error| {
                         panic!("turn {} stream should succeed: {error}", turn_index + 1)
                     }) {
-                        StreamEvent::BlockDelta {
-                            delta: Delta::Text { text: delta },
-                            ..
-                        } => text.push_str(&delta),
-                        StreamEvent::BlockEnd {
-                            block: Some(AssistantContent::Reasoning(reasoning)),
-                            ..
-                        } => {
+                        Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
+                        Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
                             reasoning_blocks.push(AssistantContent::Reasoning(reasoning));
                         }
-                        StreamEvent::BlockDelta {
-                            delta: Delta::Reasoning { text: reasoning },
-                            ..
-                        } => {
+                        Item::Event(StreamEvent::Reasoning { text: reasoning, .. }) => {
                             reasoning_delta.push_str(&reasoning);
-                        }
-                        StreamEvent::Final(response) => {
-                            final_response = Some(response);
-                        }
-                        StreamEvent::BlockStart {
-                            id,
-                            kind: BlockKind::Message,
-                        } => {
-                            message_id = id.wire_str().map(str::to_owned);
                         }
                         _ => {}
                     }
                 }
+                let response = stream.finish().await.expect("the stream ends");
+                let message_id = response.message_id.clone();
+                let final_response = Some(response);
 
                 assert_eq!(
                     text.trim(),
@@ -388,7 +372,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 });
                 // The provider-native record rides on `raw`; the reasoning
                 // metadata lives there, not on the normalized `StreamFinal`.
-                let final_response: openai::responses_api::streaming::StreamingCompletionResponse =
+                let final_response: openai::responses_api::CompletionResponse =
                     serde_json::from_value(final_record.raw.clone())
                         .expect("the terminal's raw is the Responses record");
                 // Same precedence the normalized stream applies: an explicit
@@ -405,7 +389,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 );
                 let final_json = serde_json::to_value(&final_response)
                     .expect("final streaming response should serialize");
-                let roundtripped: openai::responses_api::streaming::StreamingCompletionResponse =
+                let roundtripped: openai::responses_api::CompletionResponse =
                     serde_json::from_value(final_json.clone())
                         .expect("final streaming response should deserialize after serialization");
                 assert_eq!(
@@ -488,21 +472,17 @@ async fn streaming_reasoning_metadata() {
             });
 
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(record) =
-                    item.expect("GPT-5.6 reasoning stream should succeed")
-                {
-                    let response: openai::responses_api::streaming::StreamingCompletionResponse =
+                item.expect("GPT-5.6 reasoning stream should succeed");
+            }
+            {
+                let record = stream.finish().await.expect("the stream ends");
+                let response: openai::responses_api::CompletionResponse =
                         serde_json::from_value(record.raw.clone())
                             .expect("the terminal's raw is the Responses record");
                     assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
                     assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());
-                    assert_eq!(
-                        serde_json::to_value(&response)
-                            .expect("streaming response should serialize")["reasoning_metadata"],
-                        expected
-                    );
+                    assert_eq!(record.raw["reasoning"], expected);
                     return;
-                }
             }
 
             panic!("GPT-5.6 reasoning stream should yield a final response");

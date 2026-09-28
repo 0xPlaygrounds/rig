@@ -10,13 +10,13 @@
 //! `None`.
 
 use rig_core::completion::{CompletionRequest, FinishReason};
-use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     InterleavedReasoningFixture, ProviderWireFixture, WireDriver, WireInput, event_frame,
     fixtures::drain,
 };
-use rig_gemini_grpc::completion::{GenerateContent, GrpcFrame};
+use rig_gemini_grpc::completion::GenerateContent;
 use rig_gemini_grpc::proto;
 
 /// Replays scripted protobuf chunks as a streamed reply.
@@ -30,18 +30,14 @@ impl Transport<GenerateContent> for Scripted {
         &self,
         _request: proto::GenerateContentRequest,
         _exchange: Exchange,
-    ) -> Result<Sending<GrpcFrame>, ProviderError> {
-        let chunks = std::mem::take(
-            &mut *self
-                .0
-                .lock()
-                .map_err(|_| ProviderError::Provider("script lock poisoned".to_owned()))?,
-        );
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter(
-                chunks.into_iter().map(|chunk| chunk.map(GrpcFrame::Chunk)),
-            ))
-        }))
+    ) -> Opening<proto::GenerateContentResponse> {
+        let chunks = match self.0.lock() {
+            Ok(mut chunks) => std::mem::take(&mut *chunks),
+            Err(_) => {
+                return Opening::failed(ProviderError::Provider("script lock poisoned".to_owned()));
+            }
+        };
+        Opening::ready(Opened::new(futures::stream::iter(chunks)))
     }
 }
 

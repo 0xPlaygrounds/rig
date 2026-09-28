@@ -15,7 +15,7 @@ use rig_core::serve::{Origin, Recorder};
 use rig_core::{
     effect::{EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    streaming::StreamEvent,
+    streaming::{Item, StreamEvent},
 };
 
 use super::{EffectLog, LogHeader};
@@ -44,7 +44,7 @@ struct RecordSlot {
     key: HandlerKey,
     kind: EffectKind,
     outcome: Option<Result<Outcome, ErrorReport>>,
-    events: Option<Vec<StreamEvent>>,
+    events: Option<Vec<Item<StreamEvent>>>,
 }
 
 impl RecordSlot {
@@ -57,7 +57,10 @@ impl RecordSlot {
             key: self.key.clone(),
             kind: self.kind.clone(),
             outcome: outcome.clone(),
-            events: self.events.clone(),
+            events: self
+                .events
+                .clone()
+                .and_then(|items| rig_core::streaming::Transcript::from_items(items).ok()),
         })
     }
 }
@@ -203,7 +206,7 @@ impl EffectLogRecorder {
 
     // Active slots are usually newest; reverse scanning avoids traversing
     // completed records for each streamed event.
-    fn event_slot(&self, id: EffectId, event: &StreamEvent) {
+    fn event_slot(&self, id: EffectId, event: &Item<StreamEvent>) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id)
             && let Some(events) = slot.events.as_mut()
@@ -361,8 +364,8 @@ impl Recorder for EffectLogRecorder {
         self.keep_events
     }
 
-    fn event(&self, id: EffectId, event: &StreamEvent) {
-        self.event_slot(id, event);
+    fn event(&self, id: EffectId, item: &Item<StreamEvent>) {
+        self.event_slot(id, item);
     }
 
     fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {

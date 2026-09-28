@@ -33,7 +33,6 @@ use rig_core::{
     message::AssistantContent,
     observe::{Action, ObservationLog},
     serve::{Dispatch, Reply, Serve},
-    streaming::{BlockId, BlockKind, Delta, StreamEvent},
 };
 use rig_ecs::{
     agent::{
@@ -477,23 +476,7 @@ impl Serve for Truncating {
         let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if call == 0 {
             return Reply::written(move |mut writer| async move {
-                let id = BlockId::Wire("cut".into());
-                writer
-                    .event(StreamEvent::BlockStart {
-                        id: id.clone(),
-                        kind: BlockKind::Text {
-                            additional_params: None,
-                        },
-                    })
-                    .await
-                    .expect("open stream");
-                writer
-                    .event(StreamEvent::BlockDelta {
-                        id,
-                        delta: Delta::Text { text: "par".into() },
-                    })
-                    .await
-                    .expect("open stream");
+                writer.text("par").await.expect("open stream");
                 // The connection drops here: no terminal record.
             });
         }

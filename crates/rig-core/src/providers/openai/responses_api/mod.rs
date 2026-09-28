@@ -1165,9 +1165,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         let mut instruction_parts = Vec::new();
         let mut input = {
             let mut full_history: Vec<InputItem> = Vec::new();
-            let tool_ids =
-                crate::providers::internal::tool_call_ids::ToolCallIds::new(&chat_history)
-                    .map_err(EncodeError::request)?;
+            let tool_ids = crate::providers::internal::wire_ids::WireIds::new(&chat_history);
             for (position, history_item) in chat_history.into_iter().enumerate() {
                 let mut items = input_items(history_item, &issuers)?;
                 tool_ids

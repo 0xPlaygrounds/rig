@@ -15,7 +15,7 @@ use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::serve::adapters::ModelAdapter;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig_ecs::{
     agent::{DefaultMaxTurns, Failure, MaxTurns, RunResult, Settled, Temperature},
     bus::{BusSet, EffectOutcome, RigSchedule, Streamed},
@@ -30,13 +30,10 @@ fn drop_at_tool_delta(
     streams: Query<(Entity, &Streamed), Without<EffectOutcome>>,
 ) {
     for (entity, stream) in &streams {
-        if stream.events.iter().any(|event| {
+        if stream.events.events().any(|event| {
             matches!(
                 event,
-                StreamEvent::BlockDelta {
-                    delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                    ..
-                }
+                StreamEvent::Arguments { .. }
             )
         }) {
             commands.entity(entity).despawn();

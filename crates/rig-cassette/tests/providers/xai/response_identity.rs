@@ -4,7 +4,6 @@
 use futures::StreamExt;
 use rig::providers::openai::responses_api;
 use rig::providers::xai;
-use rig::streaming::StreamEvent;
 use serde::Deserialize;
 
 use super::support::with_xai_cassette;
@@ -55,13 +54,10 @@ async fn streaming_terminal_carries_identity() {
                 ))
                 .expect("stream should open");
 
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_request_id(
                 terminal.provider_request_id.as_deref(),

@@ -1,9 +1,10 @@
 //! Operations, provider wires and their decoders. An [`Operation`] names what
-//! goes in and what comes out event by event, and its [`Fold`] is one reply's
-//! state. A [`Wire`] describes a provider endpoint as plain data, encodes
-//! requests without transport access, and names a fresh [`Decoder`] for each
-//! reply. The driver supplies transport and framing, so buffered and streamed
-//! replies use the same decoder and fold.
+//! goes in, what comes out event by event and what ends a reply, and its
+//! [`Fold`] turns one reply's events and end into the response. A [`Wire`]
+//! describes a provider endpoint as plain data, encodes requests without
+//! transport access, and names a fresh [`Decoder`] for each reply. A decoder
+//! is told nothing about how the reply arrives, so buffered and streamed
+//! replies go through the same decoder and fold.
 //!
 //! ```
 //! use rig_core::wire::WireFrame;
@@ -12,13 +13,12 @@
 //! assert_eq!(frame.as_str(), "response");
 //! ```
 
-use std::borrow::Cow;
 
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
-pub use crate::http_client::framing::Framing;
+pub use crate::http_client::framing::{Framing, WireFrame};
 pub use crate::observe::{
     AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationSink,
 };
@@ -26,28 +26,6 @@ pub use crate::observe::{
 pub(crate) mod secret;
 
 pub use secret::Secret;
-
-/// One transport frame, after framing but before decoding.
-///
-/// The transport layer (SSE framer, NDJSON splitter, websocket reader) owns
-/// byte splitting and yields these; a decoder never splits bytes.
-#[derive(Debug, Clone)]
-pub enum WireFrame {
-    /// Text payload, such as an SSE `data:` field or WebSocket message.
-    Text(String),
-    /// Byte payload, such as an NDJSON line or binary frame.
-    Bytes(Vec<u8>),
-}
-
-impl WireFrame {
-    /// The frame payload as text (lossy for byte frames).
-    pub fn as_str(&self) -> Cow<'_, str> {
-        match self {
-            Self::Text(text) => Cow::Borrowed(text),
-            Self::Bytes(bytes) => String::from_utf8_lossy(bytes),
-        }
-    }
-}
 
 /// The request a wire sends, and how its reply is framed.
 ///
@@ -58,9 +36,8 @@ impl WireFrame {
 /// queries, header values or bodies. Paths are not scrubbed: callers must
 /// still avoid placing sensitive data in them.
 pub struct Encoded {
-    /// HTTP requests in dispatch order. Buffered calls fold all replies into
-    /// one response; streaming requires exactly one request.
-    pub requests: Vec<http::Request<Body>>,
+    /// The HTTP request.
+    pub request: http::Request<Body>,
     /// How the reply's bytes split into frames.
     pub framing: Framing,
     /// The reply header carrying the provider's transport request id
@@ -90,13 +67,8 @@ pub type Projector = fn(&[u8], &mut ObservationSink<'_>);
 impl Encoded {
     /// One request whose provider reports no transport request id.
     pub fn new(request: http::Request<Body>, framing: Framing) -> Self {
-        Self::batch(vec![request], framing)
-    }
-
-    /// Several requests whose replies fold into one response, in order.
-    pub fn batch(requests: Vec<http::Request<Body>>, framing: Framing) -> Self {
         Self {
-            requests,
+            request,
             framing,
             request_id_header: None,
             relaxed_content_type: false,
@@ -169,21 +141,11 @@ impl std::fmt::Debug for Encoded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Diagnostics omit query, authority, headers and bodies. A caller's
         // path can still contain sensitive data; it is not scrubbed here.
-        struct Requests<'a>(&'a [http::Request<Body>]);
-
-        impl std::fmt::Debug for Requests<'_> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.debug_list()
-                    .entries(
-                        self.0
-                            .iter()
-                            .map(|request| (request.method(), request.uri().path())),
-                    )
-                    .finish()
-            }
-        }
         f.debug_struct("Encoded")
-            .field("requests", &Requests(&self.requests))
+            .field(
+                "request",
+                &(self.request.method(), self.request.uri().path()),
+            )
             .field("framing", &self.framing)
             .field("request_id_header", &self.request_id_header)
             .field("relaxed_content_type", &self.relaxed_content_type)
@@ -193,7 +155,7 @@ impl std::fmt::Debug for Encoded {
     }
 }
 
-/// Reply mode used by the wire to select request encoding, framing, and decoder state.
+/// Reply mode used by the wire to select request encoding and framing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     /// One whole reply ([`Model::call`](crate::driver::Model::call)).
@@ -202,19 +164,8 @@ pub enum Mode {
     Streaming,
 }
 
-/// How a reply ended without the provider's terminal record.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum End {
-    /// The frames ran out. A decoder must not synthesize a terminal here:
-    /// EOF without the provider's end event is truncation.
-    Eof,
-    /// A transport failure is about to reach the consumer. A decoder flushes
-    /// content the provider fully delivered, and pushes no terminal.
-    Failed,
-}
-
-/// An operation: what goes in, what comes out event by event, and how those
-/// events fold into one response.
+/// An operation: what goes in, what comes out event by event, what ends a
+/// reply, and how those fold into one response.
 ///
 /// Implemented once per operation, never per provider, so every provider of
 /// an operation is interchangeable behind a [`DynModel`](crate::DynModel).
@@ -223,15 +174,18 @@ pub trait Operation: Sized + 'static {
     type Request: WasmCompatSend + 'static;
     /// One decoded step of a reply.
     type Event: WasmCompatSend + 'static;
-    /// The normalized response the events fold into.
+    /// What the provider sends when it ends the reply. A fold needs one to
+    /// produce a response, so a reply that stopped early has none.
+    type End: WasmCompatSend + 'static;
+    /// The normalized response the events and the end fold into.
     type Response: WasmCompatSend + 'static;
-    /// One reply's state: what decoders write through, and what folds the
-    /// events the consumer sees into the response.
+    /// One reply's state: it absorbs the events the consumer sees, then
+    /// folds them with the end into the response.
     type Fold: Fold<Self> + WasmCompatSend + 'static;
-
-    /// Whether this event is the provider's end of the reply. The driver
-    /// stops reading at it.
-    fn is_terminal(event: &Self::Event) -> bool;
+    /// Who builds the events: [`Free`] for events a decoder writes itself,
+    /// [`Assembled`] for the completion events only the writer's part
+    /// handles build.
+    type Emit: Emit<Self>;
 
     /// The state for one reply to `request`, before its first frame. The
     /// call says who answers and in which mode; an operation that records
@@ -239,6 +193,23 @@ pub trait Operation: Sized + 'static {
     /// [`Call::instrument`].
     fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold;
 }
+
+/// Events a decoder builds and writes with [`Out::event`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Free {}
+
+/// Events only the completion writer's part handles build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Assembled {}
+
+/// Who builds an operation's events: [`Free`] or [`Assembled`]. Sealed.
+pub trait Emit<Op: Operation>: reply::Closing<Op> {}
+
+impl<Op: Operation> reply::Closing<Op> for Free {
+    fn close(_shared: &mut Shared<Op>) {}
+}
+
+impl<Op: Operation> Emit<Op> for Free {}
 
 /// What the driver knows about a call before its first frame.
 pub struct Call<'a> {
@@ -250,9 +221,8 @@ pub struct Call<'a> {
 }
 
 impl<'a> Call<'a> {
-    /// A call to the wire `wire` describes, in `mode`, under no span: what
-    /// a caller that drives a decoder by hand opens a fold with.
-    pub fn new(wire: &'a Descriptor<'a>, mode: Mode) -> Self {
+    /// A call to the wire `wire` describes, in `mode`, under no span.
+    pub(crate) fn new(wire: &'a Descriptor<'a>, mode: Mode) -> Self {
         Self {
             wire,
             mode,
@@ -269,114 +239,91 @@ impl<'a> Call<'a> {
 
 /// One reply's state for an operation.
 ///
-/// Every item a decoder pushes passes [`Self::push`] into the reply's
-/// [`Ready`] queue, and each event is [`absorb`](Self::absorb)ed as the
-/// consumer takes it, so the fold never runs ahead of what was delivered.
-/// An operation whose events need no normalization implements only
-/// `absorb` and `finish`.
+/// Each event is [`absorb`](Self::absorb)ed as the consumer takes it, so
+/// the fold never runs ahead of what was delivered. The reply's end is what
+/// [`finish`](Self::finish) needs: without the provider's end there is no
+/// response.
 pub trait Fold<Op: Operation> {
     /// Absorb one event the consumer is about to see. An error fails the
-    /// operation.
+    /// reply.
     fn absorb(&mut self, event: &Op::Event) -> Result<(), ProviderError>;
 
-    /// The folded response, from the events absorbed and what the driver
-    /// learned about the reply.
-    fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError>;
-
-    /// Accept one item a decoder pushed. The default queues it as is.
-    fn push(&mut self, item: Result<Op::Event, ProviderError>, ready: &mut Ready<Op>) {
-        ready.push(item);
-    }
-
-    /// An unmodeled payload a decoder classified but cannot interpret. The
-    /// default skips it.
-    fn unknown(&mut self, _payload: crate::streaming::UnknownPayload, _ready: &mut Ready<Op>) {}
-
-    /// A decoder step finished: after every frame, and once more when the
-    /// reply ends (`end` is `Some`). The default does nothing.
-    fn settle(&mut self, _ready: &mut Ready<Op>, _end: Option<End>) {}
+    /// The response, from the events absorbed, the provider's end and what
+    /// the driver learned about the reply.
+    fn finish(self, end: Op::End, reply: Reply) -> Result<Op::Response, ProviderError>;
 }
 
-/// The items of one reply waiting for the consumer, and what the transport
-/// reported about the reply so far.
-pub struct Ready<Op: Operation> {
-    pub(crate) items: std::collections::VecDeque<Result<Op::Event, ProviderError>>,
-    request_id: Option<String>,
-}
-
-impl<Op: Operation> Default for Ready<Op> {
-    fn default() -> Self {
-        Self {
-            items: std::collections::VecDeque::new(),
-            request_id: None,
-        }
-    }
-}
-
-impl<Op: Operation> Ready<Op> {
-    /// Queue one item for the consumer.
-    pub fn push(&mut self, item: Result<Op::Event, ProviderError>) {
-        self.items.push_back(item);
-    }
-
-    /// The provider's transport request id for the reply being read.
-    pub fn request_id(&self) -> Option<&str> {
-        self.request_id.as_deref()
-    }
-
-    pub(crate) fn set_request_id(&mut self, request_id: Option<String>) {
-        self.request_id = request_id;
-    }
-
-    pub(crate) fn pop(&mut self) -> Option<Result<Op::Event, ProviderError>> {
-        self.items.pop_front()
-    }
-}
-
-/// Where a decoder writes one step's items: through the operation's
-/// [`Fold`] into the reply's [`Ready`] queue.
-pub struct Out<'a, Op: Operation> {
-    pub(crate) fold: &'a mut Op::Fold,
-    pub(crate) ready: &'a mut Ready<Op>,
-    pub(crate) finished: &'a mut bool,
-    pub(crate) document: &'a mut Option<serde_json::Value>,
-}
-
-impl<Op: Operation> Out<'_, Op> {
-    /// The operation's per-reply fold, for the operation's own writer
-    /// helpers.
-    pub fn fold(&mut self) -> &mut Op::Fold {
-        self.fold
-    }
-
-    /// Push one event or one in-band error the reply continues past.
-    pub fn push(&mut self, item: Result<Op::Event, ProviderError>) {
-        self.fold.push(item, self.ready);
-    }
-
-    /// The decoder consumed the wire's own in-band terminal failure and
-    /// pushed the flush-then-error sequence itself: the reply ends here.
-    pub fn end_reply(&mut self) {
-        *self.finished = true;
-    }
-
-    /// The provider document of a whole reply the decoder reassembled from
-    /// its frames, for a reply whose body is not one JSON document.
-    pub fn document(&mut self, document: serde_json::Value) {
-        *self.document = Some(document);
-    }
-}
-
-/// What the driver learned about a reply beyond its events: the provider's
-/// name, the body as JSON (a completion's `raw`) and the transport request
-/// id.
+/// What the driver learned about a reply beyond its events.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Reply {
     /// The provider descriptor name, for the response's `provider` field.
     pub provider: String,
-    /// The reply body parsed as JSON, `Null` when it is not JSON.
+    /// The reply's provider document (a completion's `raw`): the whole body
+    /// when it is one JSON document, else what the decoder recorded, else
+    /// `Null`.
     pub raw: serde_json::Value,
     /// The provider's transport request id from the reply headers.
     pub provider_request_id: Option<String>,
+}
+
+/// Whether a decoder step left the reply open. Only [`Out::end`] makes an
+/// [`Ended`].
+#[derive(Debug)]
+#[must_use]
+pub enum Flow {
+    /// The reply continues.
+    More,
+    /// The provider ended the reply; nothing is read after it.
+    Ended(Ended),
+}
+
+/// Proof that a decoder ended its reply with [`Out::end`].
+#[derive(Debug)]
+pub struct Ended(());
+
+pub(crate) use reply::Shared;
+
+pub(crate) mod reply {
+    use std::collections::VecDeque;
+
+    use super::{Operation, ProviderError};
+    use crate::streaming::Item;
+
+    /// One reply's items and end, shared by the driver that writes them and
+    /// the stream that takes them.
+    pub struct Shared<Op: Operation> {
+        pub(crate) fold: Op::Fold,
+        pub(crate) items: VecDeque<Result<Item<Op::Event>, ProviderError>>,
+        pub(crate) end: Option<Op::End>,
+        pub(crate) raw: Option<serde_json::Value>,
+        /// The response a relayed reply's origin already folded.
+        pub(crate) response: Option<Op::Response>,
+        /// What the transport reported: the reply's request id, its whole
+        /// document and its request path.
+        pub(crate) request_id: Option<String>,
+        pub(crate) document: Option<serde_json::Value>,
+        pub(crate) route: String,
+    }
+
+    impl<Op: Operation> Shared<Op> {
+        pub(crate) fn new(fold: Op::Fold) -> Self {
+            Self {
+                fold,
+                items: VecDeque::new(),
+                end: None,
+                raw: None,
+                response: None,
+                request_id: None,
+                document: None,
+                route: String::new(),
+            }
+        }
+    }
+
+    /// What the reply's end closes before it is recorded.
+    pub trait Closing<Op: Operation> {
+        fn close(shared: &mut Shared<Op>);
+    }
 }
 
 /// What a runtime accounts for about a model. Each field matters to the
@@ -514,6 +461,21 @@ pub enum WireEvent<T> {
 }
 
 impl<T> WireEvent<T> {
+    /// An event a typed transport (an SDK event stream, a gRPC stream)
+    /// reported that this client does not model. The detail is kept for
+    /// raw passthrough, never for warning logs.
+    pub fn unrecognized(event_type: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self::Unknown {
+            event_type: event_type.into(),
+            value: serde_json::Value::String(detail.into()).into(),
+        }
+    }
+
+    /// A modeled event a typed transport failed to decode.
+    pub fn malformed(message: impl std::fmt::Display) -> Self {
+        Self::Corrupt(<serde_json::Error as serde::de::Error>::custom(message))
+    }
+
     /// Map the `Known` payload, preserving the classification.
     ///
     /// This is how an adapter layers a pure event-shape mapping on top of a
@@ -528,29 +490,101 @@ impl<T> WireEvent<T> {
     }
 }
 
-/// Triage of one already-deserialized event from a typed-transport wire
-/// (an aws-sdk event stream, a prost/tonic gRPC stream, an in-process
-/// generation channel), for
-/// [`classify_typed_event`](crate::providers::internal::wire::classify_typed_event).
-#[derive(Debug)]
-pub enum TypedEvent<T> {
-    /// A variant this client models.
-    Modeled(T),
-    /// An unrecognized variant reported by the transport SDK.
-    Unrecognized {
-        /// Discriminator for the driver's warn log.
-        event_type: String,
-        /// Frame detail retained for raw passthrough, not warning logs.
-        detail: String,
-    },
-    /// SDK decode failure for a modeled event.
-    Malformed(String),
+/// Where a decoder writes one reply. The `'id` brand ties it, and every
+/// part handle it hands out, to that one reply: a handle cannot be used
+/// with another reply's writer or kept past its own.
+///
+/// ```compile_fail
+/// use rig_core::operation::Completion;
+/// use rig_core::wire::Out;
+///
+/// // A text part opened on one reply cannot grow on another.
+/// fn cross<'a, 'b>(a: &mut Out<'a, Completion>, b: &mut Out<'b, Completion>) {
+///     let part = a.text();
+///     b.push_text(&part, "x");
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use rig_core::operation::{Completion, TextPart};
+/// use rig_core::wire::Out;
+///
+/// // A handle cannot outlive its reply to be used on a later one.
+/// struct Stash(Option<TextPart<'static>>);
+///
+/// fn keep<'id>(stash: &mut Stash, out: &mut Out<'id, Completion>) {
+///     stash.0 = Some(out.text());
+/// }
+/// ```
+pub struct Out<'id, Op: Operation> {
+    shared: &'id std::sync::Mutex<Shared<Op>>,
+    brand: std::marker::PhantomData<fn(&'id ()) -> &'id ()>,
 }
 
-/// Synchronous state machine for one reply. Classifies frames and interprets
-/// known events without transport access. HTTP wires read [`WireFrame`]s;
-/// other transports name their own frame type.
-pub trait Decoder<Op: Operation, Frame = WireFrame> {
+impl<'id, Op: Operation> Out<'id, Op> {
+    pub(crate) fn new(shared: &'id std::sync::Mutex<Shared<Op>>) -> Self {
+        Self {
+            shared,
+            brand: std::marker::PhantomData,
+        }
+    }
+
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'id, Shared<Op>> {
+        self.shared
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// End the reply with what the provider sent at its end. It consumes the
+    /// writer: nothing is written after the end.
+    pub fn end(self, end: Op::End) -> Flow {
+        let mut shared = self.lock();
+        <Op::Emit as reply::Closing<Op>>::close(&mut shared);
+        shared.end = Some(end);
+        Flow::Ended(Ended(()))
+    }
+
+    /// Record the reply's provider document: a completion's `raw`.
+    pub fn raw(&mut self, raw: serde_json::Value) {
+        self.lock().raw = Some(raw);
+    }
+
+    /// A payload the provider sent that this decoder does not model. It
+    /// reaches the consumer as [`Item::Unknown`](crate::streaming::Item).
+    pub fn unknown(&mut self, payload: crate::streaming::UnknownPayload) {
+        self.lock()
+            .items
+            .push_back(Ok(crate::streaming::Item::Unknown(payload)));
+    }
+}
+
+impl<Op: Operation<Emit = Free>> Out<'_, Op> {
+    /// One event of the reply.
+    ///
+    /// Only an operation whose decoders build their own events has this; a
+    /// completion's events come from its part handles:
+    ///
+    /// ```compile_fail
+    /// use rig_core::operation::Completion;
+    /// use rig_core::streaming::StreamEvent;
+    /// use rig_core::wire::Out;
+    ///
+    /// fn reinject(out: &mut Out<'_, Completion>, seen: &StreamEvent) {
+    ///     out.event(seen.clone());
+    /// }
+    /// ```
+    pub fn event(&mut self, event: Op::Event) {
+        self.lock()
+            .items
+            .push_back(Ok(crate::streaming::Item::Event(event)));
+    }
+}
+
+/// Synchronous state machine for one reply. It classifies frames and
+/// decodes known events into the reply's writer, without transport access
+/// and without being told how the reply arrives. HTTP wires read
+/// [`WireFrame`]s; other transports name their own frame type.
+pub trait Decoder<'id, Op: Operation, Frame = WireFrame> {
     /// The wire's typed event, produced by this decoder's classifier.
     type Event;
 
@@ -559,13 +593,17 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
     /// decode-then-validate policy is not re-derived per provider.
     fn classify(&self, frame: Frame) -> WireEvent<Self::Event>;
 
-    /// Map one `Known` event onto the operation's items. Stateful: index
-    /// maps, open-block state and wire-quirk quarantine live here.
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Op>);
+    /// Write one `Known` event into the reply. An error ends the reply with
+    /// it.
+    fn decode(&mut self, event: Self::Event, out: Out<'id, Op>) -> Result<Flow, ProviderError>;
 
-    /// The reply ended without the provider's terminal record. The default
-    /// does nothing.
-    fn end(&mut self, _out: &mut Out<'_, Op>, _end: End) {}
+    /// The frames ran out without an end. A decoder that already saw the
+    /// provider's end, in a form the provider sends before its last frame,
+    /// ends the reply here; otherwise the reply is truncated.
+    fn eof(&mut self, out: Out<'id, Op>) -> Result<Flow, ProviderError> {
+        let _ = out;
+        Err(ProviderError::Truncated)
+    }
 }
 
 /// A provider endpoint: plain data that encodes requests and names a decoder
@@ -583,8 +621,8 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     type Payload: WasmCompatSend + 'static;
     /// One unit of a reply, as the transport delivers it.
     type Frame: WasmCompatSend + 'static;
-    /// The decoder for one of its replies.
-    type Decoder: Decoder<Self::Op, Self::Frame> + WasmCompatSend + 'static;
+    /// The decoder for one of its replies, branded with that reply.
+    type Decoder<'id>: Decoder<'id, Self::Op, Self::Frame> + WasmCompatSend;
 
     /// What the wire says about itself.
     fn describe(&self) -> Descriptor<'_>;
@@ -594,16 +632,43 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     /// [`EncodeError`], which always reports as a request failure.
     fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Self::Payload, EncodeError>;
 
-    /// A fresh decoder for one reply, in the mode [`Self::encode`] was
-    /// given.
-    ///
-    /// The mode is what this reply's EOF will mean: a whole reply that
-    /// named no terminal is the provider answering with nothing, while a
-    /// stream that ends the same way stopped early and reports truncation
-    /// by carrying no terminal record. A decoder whose terminal is
-    /// deferred to EOF needs that difference, and it is known before the
-    /// first frame rather than stated afterwards.
-    fn decoder(&self, mode: Mode) -> Self::Decoder;
+    /// A fresh decoder for one reply.
+    fn decoder<'id>(&self) -> Self::Decoder<'id>;
+}
+
+/// The decoder of a reply that is one JSON document: the document is the
+/// operation's end, and is kept as the reply's `raw`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Json;
+
+impl<'id, Op> Decoder<'id, Op, WireFrame> for Json
+where
+    Op: Operation,
+    Op::End: serde::de::DeserializeOwned,
+{
+    type Event = (Op::End, serde_json::Value);
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        // Read from the text, so an end holding raw JSON can borrow it.
+        let text = frame.as_str();
+        let document = match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(document) => document,
+            Err(error) => return WireEvent::Corrupt(error),
+        };
+        match serde_json::from_str::<Op::End>(&text) {
+            Ok(end) => WireEvent::Known((end, document)),
+            Err(error) => WireEvent::Corrupt(error),
+        }
+    }
+
+    fn decode(
+        &mut self,
+        (end, document): Self::Event,
+        mut out: Out<'id, Op>,
+    ) -> Result<Flow, ProviderError> {
+        out.raw(document);
+        Ok(out.end(end))
+    }
 }
 
 /// A wire's request type.

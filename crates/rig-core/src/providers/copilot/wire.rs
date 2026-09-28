@@ -12,6 +12,8 @@
 //! # }
 //! ```
 
+use crate::error::ProviderError;
+use crate::wire::Flow;
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
@@ -317,7 +319,7 @@ impl Wire for CopilotWire {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = OpenAiDecoder;
+    type Decoder<'id> = OpenAiDecoder<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         self.wire.describe()
@@ -330,8 +332,8 @@ impl Wire for CopilotWire {
             })
     }
 
-    fn decoder(&self, mode: Mode) -> OpenAiDecoder {
-        self.wire.decoder(mode)
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        self.wire.decoder()
     }
 }
 
@@ -393,15 +395,19 @@ impl From<ModelEntry> for ModelInfo {
 #[derive(Default)]
 pub struct ModelsDecoder;
 
-impl Decoder<ModelListing> for ModelsDecoder {
+impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
     type Event = ModelsReply;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, ModelListing>) {
-        out.push(Ok(ModelPage {
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, ModelListing>,
+    ) -> Result<Flow, ProviderError> {
+        return Ok(out.end(ModelPage {
             models: ModelList::new(event.into_models()),
             next: None,
         }));
@@ -412,7 +418,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ModelsDecoder;
+    type Decoder<'id> = ModelsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -432,7 +438,7 @@ impl Wire for Models {
         Ok(Encoded::new(request, Framing::Whole).with_request_id_header(REQUEST_ID_HEADER))
     }
 
-    fn decoder(&self, _mode: Mode) -> ModelsDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ModelsDecoder
     }
 }

@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own terminal
 //! record — for DeepSeek the shared chat-completions
 //! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
 //! is always on: there is no flag to request it, nothing about it reaches the
@@ -35,13 +35,14 @@
 //! thinking), so a recording that stopped reasoning fails instead of
 //! covering nothing.
 
+use rig::streaming::Item;
 use rig::message::AssistantContent;
 
 use futures::StreamExt as _;
 use rig::completion::CompletionRequest;
 use rig::message::ReasoningContent;
 use rig::providers::deepseek;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::StreamEvent;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -78,7 +79,7 @@ fn reasoning_request() -> CompletionRequest {
 struct ReasoningStreamObservation {
     reasoning: String,
     text: String,
-    terminal: Option<StreamFinal>,
+    terminal: Option<rig::completion::CompletionResponse>,
 }
 
 /// Stays local: the shared [`capture_text_and_terminal`] keeps the text and
@@ -94,16 +95,10 @@ async fn collect_reasoning_text_and_terminal(
     };
     while let Some(item) = stream.next().await {
         match item.expect("stream item should not be an error") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text: reasoning },
-                ..
-            } => {
+            Item::Event(StreamEvent::Reasoning { text: reasoning, .. }) => {
                 observation.reasoning.push_str(&reasoning);
             }
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            } => {
+            Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
                 observation.reasoning = reasoning
                     .open(reasoning.issuer())
                     .expect("sealed reasoning")
@@ -115,15 +110,13 @@ async fn collect_reasoning_text_and_terminal(
                     })
                     .collect();
             }
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: chunk },
-                ..
-            } => observation.text.push_str(&chunk),
-            StreamEvent::Final(final_record) => {
-                observation.terminal = Some(final_record);
-            }
+            Item::Event(StreamEvent::Text { text: chunk, .. }) => observation.text.push_str(&chunk),
             _ => {}
         }
+    }
+    {
+        let final_record = stream.finish().await.expect("the stream ends");
+        observation.terminal = Some(final_record);
     }
     observation
 }

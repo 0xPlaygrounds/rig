@@ -1,7 +1,7 @@
 use super::*;
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::{CompletionRequest, CompletionResponse};
-use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 
 /// Answers every request with one scripted SDK reply.
 #[derive(Clone)]
@@ -12,11 +12,8 @@ impl Transport<crate::completion::GenerateContent> for Reply {
         &self,
         _payload: crate::completion::VertexRequest,
         _exchange: Exchange,
-    ) -> Result<Sending<vertexai::model::GenerateContentResponse>, ProviderError> {
-        let reply = self.0.clone();
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter([Ok(reply)]))
-        }))
+    ) -> Opening<vertexai::model::GenerateContentResponse> {
+        Opening::ready(Opened::new(futures::stream::iter([Ok(self.0.clone())])))
     }
 }
 

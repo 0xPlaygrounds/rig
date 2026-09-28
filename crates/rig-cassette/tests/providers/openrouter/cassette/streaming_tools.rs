@@ -4,6 +4,7 @@
 //! `reasoning_details` of type `reasoning.encrypted` (`openai/o4-mini` with
 //! `reasoning.effort: high` + `include_reasoning: true`). Re-record them with:
 //! `RIG_PROVIDER_TEST_MODE=record OPENROUTER_API_KEY=... cargo test -p rig --all-features --test openrouter stream_encrypted_reasoning -- --test-threads=1`
+use rig::streaming::Item;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
@@ -62,7 +63,7 @@ async fn observe_stream(
     stream: &mut rig::streaming::CompletionStream,
 ) -> EncryptedReasoningObservation {
     use futures::StreamExt;
-    use rig::streaming::{Delta, StreamEvent};
+    use rig::streaming::StreamEvent;
 
     let mut observation = EncryptedReasoningObservation {
         errors: Vec::new(),
@@ -73,22 +74,13 @@ async fn observe_stream(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => observation.text.push_str(&text),
-            Ok(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => observation.text.push_str(&text),
+            Ok(Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. })) => {
                 observation.streamed_encrypted.extend(encrypted_blocks_of(
                     reasoning.open(reasoning.issuer()).expect("reasoning opens"),
                 ));
             }
-            Ok(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. })) => {
                 observation.tool_calls.push(tool_call);
             }
             Ok(_) => {}
@@ -176,7 +168,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                 "the recorded turn carries encrypted reasoning_details; the stream must emit them as reasoning blocks"
             );
 
-            let aggregated = encrypted_blocks_in_choice(&stream.folded().snapshot());
+            let aggregated = encrypted_blocks_in_choice(&stream.partial().choice);
             assert_eq!(
                 aggregated, streamed,
                 "every streamed encrypted reasoning block must reach the aggregated choice"
@@ -227,7 +219,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 first_turn.errors
             );
 
-            let aggregated = encrypted_blocks_in_choice(&stream.folded().snapshot());
+            let aggregated = encrypted_blocks_in_choice(&stream.partial().choice);
             assert!(
                 !aggregated.is_empty(),
                 "first turn should aggregate the encrypted reasoning block"
@@ -243,8 +235,8 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // The whole choice — reasoning block included — is what a caller
             // replays as history.
             let assistant_message = Message::Assistant {
-                id: stream.folded().message_id().map(str::to_owned),
-                content: rig_core::NonEmpty::from_vec(stream.folded().snapshot()).expect("non-empty"),
+                id: stream.message_id(),
+                content: rig_core::NonEmpty::from_vec(stream.partial().choice).expect("non-empty"),
             };
             let tool_result_message = Message::User {
         content: rig_core::NonEmpty::new(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")))),

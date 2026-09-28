@@ -295,12 +295,9 @@ fn the_recorder_kept_five_thousand_events_in_order() {
     assert_eq!(log.len(), 201);
     let events = log[200].events.as_ref().expect("kept");
     let deltas: Vec<&str> = events
-        .iter()
+        .events()
         .filter_map(|event| match event {
-            rig_core::streaming::StreamEvent::BlockDelta {
-                delta: rig_core::streaming::Delta::Text { text },
-                ..
-            } => Some(text.as_str()),
+            rig_core::streaming::StreamEvent::Text { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect();

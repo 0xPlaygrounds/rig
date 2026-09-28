@@ -1,9 +1,10 @@
 use super::*;
 use futures::{FutureExt, Stream};
 use rig::{
-    completion::Usage,
+    completion::{CompletionResponse, Usage},
     error::{ErrorKind, ErrorReport},
-    streaming::{BlockClose, BlockId, BlockKind, StreamFinal},
+    message::{AssistantContent, ToolCall, ToolFunction, ToolName},
+    streaming::Transcript,
 };
 use std::{
     collections::VecDeque,
@@ -13,13 +14,13 @@ use std::{
 };
 
 struct Tracked {
-    items: VecDeque<Result<StreamEvent, ErrorReport>>,
+    items: VecDeque<Result<Relayed, ErrorReport>>,
     polls: Arc<AtomicUsize>,
     dropped: Arc<AtomicBool>,
 }
 
 impl Stream for Tracked {
-    type Item = Result<StreamEvent, ErrorReport>;
+    type Item = Result<Relayed, ErrorReport>;
     fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.polls.fetch_add(1, Ordering::SeqCst);
         Poll::Ready(self.items.pop_front())
@@ -32,27 +33,45 @@ impl Drop for Tracked {
     }
 }
 
-fn items() -> Vec<Result<StreamEvent, ErrorReport>> {
-    let id = BlockId::Wire("real-call".into());
-    vec![
-        Ok(StreamEvent::BlockStart {
-            id: id.clone(),
-            kind: BlockKind::ToolCall,
-        }),
-        Err(ErrorReport::new(ErrorKind::Provider, "preserved error")),
-        Ok(StreamEvent::BlockDelta {
-            id: id.clone(),
-            delta: Delta::ToolName {
-                name: "tool".into(),
-            },
-        }),
-        Ok(StreamEvent::BlockDelta {
-            id,
-            delta: Delta::ToolArguments {
-                arguments: "{}".into(),
-            },
-        }),
-    ]
+/// `events` as a stream relays them, with `errors` at their positions.
+fn relayed(
+    events: serde_json::Value,
+    errors: &[(usize, &str)],
+) -> Vec<Result<Relayed, ErrorReport>> {
+    let mut items: Vec<_> = Transcript::parse_prefix(events)
+        .expect("a stream in order")
+        .into_items()
+        .into_iter()
+        .map(|item| Ok(Relayed::Item(item)))
+        .collect();
+    for (at, message) in errors {
+        items.insert(*at, Err(ErrorReport::new(ErrorKind::Provider, *message)));
+    }
+    items
+}
+
+fn event(value: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"item": "event", "value": value})
+}
+
+/// A tool call, with an error after its start.
+fn items() -> Vec<Result<Relayed, ErrorReport>> {
+    let call = ToolCall::from_wire(
+        "real-call",
+        ToolFunction::new(ToolName::new("add").expect("tool name"), serde_json::json!({})),
+    );
+    relayed(
+        serde_json::json!([
+            event(serde_json::json!({"event": "start", "part": 0, "kind": "tool_call"})),
+            event(serde_json::json!({"event": "arguments", "part": 0, "json": "{}"})),
+            event(serde_json::json!({
+                "event": "end",
+                "part": 0,
+                "content": AssistantContent::ToolCall(call),
+            })),
+        ]),
+        &[(1, "preserved error")],
+    )
 }
 
 #[tokio::test]
@@ -89,52 +108,46 @@ async fn boundary_pauses_before_polling_and_release_preserves_every_item() {
     );
     release.add_permits(1);
     observed.extend(stream.collect::<Vec<_>>().await);
-    assert_eq!(
-        serde_json::to_value(observed).unwrap(),
-        serde_json::to_value(expected).unwrap()
-    );
+    assert_eq!(observed, expected);
     assert!(dropped.load(Ordering::SeqCst));
 }
 
 /// An always-ready upstream exposes the gate's boundary without transport timing.
 #[tokio::test]
 async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() {
-    let mut expected = items();
-    let id = BlockId::Wire("text".into());
-    expected.extend([
-        Ok(StreamEvent::BlockStart {
-            id: id.clone(),
-            kind: BlockKind::Text {
-                additional_params: None,
-            },
-        }),
-        Ok(StreamEvent::BlockDelta {
-            id: id.clone(),
-            delta: Delta::Text {
-                text: "first".into(),
-            },
-        }),
-        Err(ErrorReport::new(ErrorKind::Provider, "error after text")),
-        Ok(StreamEvent::BlockDelta {
-            id: id.clone(),
-            delta: Delta::Text {
-                text: " second".into(),
-            },
-        }),
-        Ok(StreamEvent::BlockEnd {
-            id,
-            end: BlockClose::Text,
-            block: None,
-        }),
-        Ok(StreamEvent::Final(
-            StreamFinal::new(
-                "anthropic",
-                Usage::default(),
-                serde_json::json!({"stop_reason": "end_turn"}),
-            )
-            .with_message_id("message"),
-        )),
-    ]);
+    let call = ToolCall::from_wire(
+        "real-call",
+        ToolFunction::new(ToolName::new("add").expect("tool name"), serde_json::json!({})),
+    );
+    let mut expected = relayed(
+        serde_json::json!([
+            event(serde_json::json!({"event": "start", "part": 0, "kind": "tool_call"})),
+            event(serde_json::json!({"event": "arguments", "part": 0, "json": "{}"})),
+            event(serde_json::json!({
+                "event": "end",
+                "part": 0,
+                "content": AssistantContent::ToolCall(call),
+            })),
+            event(serde_json::json!({"event": "start", "part": 1, "kind": "text"})),
+            event(serde_json::json!({"event": "text", "part": 1, "text": "first"})),
+            event(serde_json::json!({"event": "text", "part": 1, "text": " second"})),
+            event(serde_json::json!({
+                "event": "end",
+                "part": 1,
+                "content": AssistantContent::text("first second"),
+            })),
+        ]),
+        &[(1, "preserved error"), (6, "error after text")],
+    );
+    expected.push(Ok(Relayed::Done(Box::new(
+        CompletionResponse::new(
+            Vec::new(),
+            Usage::default(),
+            "anthropic",
+            serde_json::json!({"stop_reason": "end_turn"}),
+        )
+        .with_message_id("message"),
+    ))));
     let polls = Arc::new(AtomicUsize::new(0));
     let dropped = Arc::new(AtomicBool::new(false));
     let release = Arc::new(Semaphore::new(0));
@@ -177,10 +190,7 @@ async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() 
             .now_or_never()
             .expect("one release drains all remaining items without another pause"),
     );
-    assert_eq!(
-        serde_json::to_value(observed).unwrap(),
-        serde_json::to_value(expected).unwrap()
-    );
+    assert_eq!(observed, expected);
     assert!(dropped.load(Ordering::SeqCst));
 }
 

@@ -8,12 +8,17 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor},
     error::{ErrorKind, ErrorReport},
     serve::{Dispatch, Reply, Serve},
-    streaming::{StreamEvent, StreamFinal},
+    streaming::{Item, Relayed, StreamEvent},
 };
 use rig_ecs::bus::{EffectOutcome, PendingEffect, StreamItemsDelivered, Streamed};
 use std::sync::{Arc, Mutex};
 
 type Trace = Arc<Mutex<Vec<(usize, serde_json::Value)>>>;
+
+/// A delivered batch, as the trace keeps it: each item's rendering.
+fn batch(items: &[Result<Item<StreamEvent>, ErrorReport>]) -> serde_json::Value {
+    items.iter().map(|item| format!("{item:?}")).collect()
+}
 
 fn observe(app: &mut bevy_app::App) -> Trace {
     let trace = Trace::default();
@@ -32,7 +37,7 @@ fn observe(app: &mut bevy_app::App) -> Trace {
             );
             output.lock().unwrap().push((
                 delivery.start,
-                serde_json::to_value(&delivery.items).unwrap(),
+                batch(&delivery.items),
             ));
         },
     );
@@ -56,11 +61,7 @@ impl Serve for WithErrors {
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
         Reply::Stream(Box::pin(futures::stream::iter([
             Err(ErrorReport::new(ErrorKind::Response, "before final")),
-            Ok(StreamEvent::Final(StreamFinal::new(
-                "mock",
-                Usage::default(),
-                serde_json::json!({}),
-            ))),
+            bus_support::done("mock"),
             Err(ErrorReport::new(ErrorKind::Provider, "after final")),
         ])))
     }
@@ -99,10 +100,10 @@ fn independent_consumers_preserve_interleaved_errors_without_a_recorder() {
     let effect = run(&mut app);
     assert_eq!(*first.lock().unwrap(), *second.lock().unwrap());
     let items = flattened(&first);
-    assert_eq!(items.len(), 3);
-    assert_eq!(items[0]["Err"]["message"], "before final");
-    assert!(items[1].get("Ok").is_some());
-    assert_eq!(items[2]["Err"]["message"], "after final");
+    // The response between the errors is the outcome, not an item.
+    assert_eq!(items.len(), 2);
+    assert!(items[0].as_str().unwrap().contains("before final"));
+    assert!(items[1].as_str().unwrap().contains("after final"));
     assert_eq!(
         app.world()
             .get::<Streamed>(effect)
@@ -111,7 +112,7 @@ fn independent_consumers_preserve_interleaved_errors_without_a_recorder() {
             .iter()
             .map(|(index, _)| *index)
             .collect::<Vec<_>>(),
-        vec![0, 2]
+        vec![0, 1]
     );
     assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_err());
 }
@@ -166,7 +167,7 @@ fn policy_replay_preserves_notification_batches_and_checkpoint_load_emits_none()
 }
 
 #[test]
-fn terminal_delivery_remains_readable_when_an_observer_despawns_the_effect() {
+fn error_delivery_remains_readable_when_an_observer_despawns_the_effect() {
     let mut app = bus_support::app();
     let mut traces = Vec::new();
     for remove in [true, false] {
@@ -177,13 +178,8 @@ fn terminal_delivery_remains_readable_when_an_observer_despawns_the_effect() {
                 trace
                     .lock()
                     .unwrap()
-                    .push((event.start, serde_json::to_value(&event.items).unwrap()));
-                if remove
-                    && event
-                        .items
-                        .iter()
-                        .any(|item| matches!(item, Ok(StreamEvent::Final(_))))
-                {
+                    .push((event.start, batch(&event.items)));
+                if remove && event.items.iter().any(Result::is_err) {
                     commands.entity(event.effect).despawn();
                 }
             },
@@ -198,9 +194,7 @@ fn terminal_delivery_remains_readable_when_an_observer_despawns_the_effect() {
     assert!(flattened(&traces[0]).len() >= 2);
 }
 
-type Item = Result<StreamEvent, ErrorReport>;
-
-struct Controlled(Mutex<Option<futures::channel::mpsc::UnboundedReceiver<Item>>>);
+struct Controlled(Mutex<Option<futures::channel::mpsc::UnboundedReceiver<bus_support::Relay>>>);
 
 impl Serve for Controlled {
     type Family = rig_core::effect::family::Completion;
@@ -212,20 +206,17 @@ impl Serve for Controlled {
     }
 }
 
-fn text(value: &str) -> Item {
-    Ok(StreamEvent::BlockDelta {
-        id: rig_core::streaming::BlockId::Wire("text".into()),
-        delta: rig_core::streaming::Delta::Text { text: value.into() },
-    })
+fn text(value: &str) -> bus_support::Relay {
+    bus_support::text_item(value)
 }
 
 #[test]
 fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
-    use rig_core::streaming::Delta;
     let mut app = bus_support::app();
     let (sender, receiver) = futures::channel::mpsc::unbounded();
     bus_support::register(&mut app, "model", Controlled(Mutex::new(Some(receiver))));
     let effect = spawn_stream(&mut app, "model");
+    sender.unbounded_send(bus_support::text_start_item()).unwrap();
     sender.unbounded_send(text("early α")).unwrap();
     bus_support::tick_until(&mut app, "initial prefix", |world| {
         world
@@ -241,10 +232,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
     app.add_observer(move |event: On<StreamItemsDelivered>| {
         if active.load(std::sync::atomic::Ordering::SeqCst) {
             for item in &event.items {
-                if let Ok(StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                }) = item
+                if let Ok(Item::Event(StreamEvent::Text { text, .. })) = item
                 {
                     output.lock().unwrap().push_str(text);
                 }
@@ -268,13 +256,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
     *shown.lock().unwrap() = app.world().get::<Streamed>(effect).unwrap().text.clone();
     enabled.store(true, std::sync::atomic::Ordering::SeqCst);
     sender.unbounded_send(text(" ω")).unwrap();
-    sender
-        .unbounded_send(Ok(StreamEvent::Final(StreamFinal::new(
-            "mock",
-            Usage::default(),
-            serde_json::json!({}),
-        ))))
-        .unwrap();
+    sender.unbounded_send(bus_support::done("mock")).unwrap();
     drop(sender);
     bus_support::tick_until(&mut app, "hydrated stream closed", |world| {
         world.get::<EffectOutcome>(effect).is_some()
@@ -353,18 +335,16 @@ fn live_visibility_is_independent_of_recorder_event_retention() {
 }
 
 #[test]
-fn final_delivery_precedes_run_settlement_and_terminal_graph_cleanup() {
+fn delivery_precedes_run_settlement_and_terminal_graph_cleanup() {
     use rig_ecs::{agent::Settled, systems::RunCommands};
     let mut app = run_support::app();
     let trace = observe(&mut app);
     let final_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let observed = final_seen.clone();
     app.add_observer(move |event: On<StreamItemsDelivered>| {
-        if event
-            .items
-            .iter()
-            .any(|item| matches!(item, Ok(StreamEvent::Final(_))))
-        {
+        if event.items.iter().any(|item| {
+            matches!(item, Ok(Item::Event(StreamEvent::Text { .. })))
+        }) {
             observed.store(true, std::sync::atomic::Ordering::SeqCst);
         }
     });
@@ -397,9 +377,10 @@ fn cancellation_and_truncated_closure_do_not_fabricate_delivery_items() {
         let (sender, receiver) = futures::channel::mpsc::unbounded();
         bus_support::register(&mut app, "model", Controlled(Mutex::new(Some(receiver))));
         let effect = spawn_stream(&mut app, "model");
+        sender.unbounded_send(bus_support::text_start_item()).unwrap();
         sender.unbounded_send(text("partial")).unwrap();
         bus_support::tick_until(&mut app, "prefix delivered", |_| {
-            flattened(&trace).len() == 1
+            flattened(&trace).len() == 2
         });
         if cancel {
             app.world_mut().despawn(effect);
@@ -414,15 +395,19 @@ fn cancellation_and_truncated_closure_do_not_fabricate_delivery_items() {
             });
             assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_err());
         }
-        assert_eq!(
-            flattened(&trace),
-            vec![serde_json::to_value(text("partial")).unwrap()]
-        );
+        let delivered: Vec<_> = [bus_support::text_start_item(), text("partial")]
+            .into_iter()
+            .map(|item| match item {
+                Ok(Relayed::Item(item)) => Ok(item),
+                other => panic!("an item: {other:?}"),
+            })
+            .collect();
+        assert_eq!(flattened(&trace), batch(&delivered).as_array().unwrap().clone());
     }
 }
 
 #[test]
-fn empty_final_and_unary_stream_fold_have_distinct_delivery_contracts() {
+fn an_empty_reply_delivers_no_items_on_either_surface() {
     for streaming in [false, true] {
         let mut app = bus_support::app();
         let trace = observe(&mut app);
@@ -436,25 +421,14 @@ fn empty_final_and_unary_stream_fold_have_distinct_delivery_contracts() {
             .world_mut()
             .spawn(PendingEffect::new("model", kind))
             .id();
-        let terminal = Ok(StreamEvent::Final(StreamFinal::new(
-            "mock",
-            Usage::default(),
-            serde_json::json!({}),
-        )));
-        sender.unbounded_send(terminal.clone()).unwrap();
+        sender.unbounded_send(bus_support::done("mock")).unwrap();
         drop(sender);
         bus_support::tick_until(&mut app, "empty stream closed", |world| {
             world.get::<EffectOutcome>(effect).is_some()
         });
         assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_ok());
-        assert_eq!(
-            flattened(&trace),
-            if streaming {
-                vec![serde_json::to_value(terminal).unwrap()]
-            } else {
-                vec![]
-            }
-        );
+        // The response is the outcome, not an item.
+        assert!(flattened(&trace).is_empty());
     }
 }
 
@@ -484,11 +458,7 @@ impl Serve for RetryingStream {
                 .unwrap();
             if !first {
                 writer
-                    .finish(StreamFinal::new(
-                        "mock",
-                        Usage::default(),
-                        serde_json::json!({}),
-                    ))
+                    .finish("mock", rig_core::operation::Finish::new(Usage::default()))
                     .await
                     .unwrap();
             }
@@ -498,7 +468,6 @@ impl Serve for RetryingStream {
 
 #[test]
 fn retried_streams_have_distinct_delivery_identities_and_identical_requests() {
-    use rig_core::streaming::Delta;
     use rig_ecs::{
         agent::{MaxTurns, RunResult, Settled},
         systems::RunCommands,
@@ -518,10 +487,7 @@ fn retried_streams_have_distinct_delivery_identities_and_identical_requests() {
         assert_eq!(*count, event.start);
         *count += event.items.len();
         for item in &event.items {
-            if let Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text: piece },
-                ..
-            }) = item
+            if let Ok(Item::Event(StreamEvent::Text { text: piece, .. })) = item
             {
                 text.push_str(piece);
             }
@@ -572,7 +538,9 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
             let value = self.text;
             let first = futures::stream::once(async move {
                 gate.wait().await;
-                text(value)
+            })
+            .flat_map(move |()| {
+                futures::stream::iter([bus_support::text_start_item(), text(value)])
             });
             let open = futures::stream::poll_fn(move |_| {
                 // The worker polls again only after placing the first item in
@@ -594,7 +562,7 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
                     trace.lock().unwrap().push((
                         event.id.as_u64(),
                         event.start,
-                        serde_json::to_value(&event.items).unwrap(),
+                        batch(&event.items),
                     ));
                     if index == 0 {
                         commands
@@ -687,7 +655,8 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
                 record.outcome.as_ref().unwrap_err().kind,
                 ErrorKind::Cancelled
             );
-            assert_eq!(record.events.as_ref().unwrap().len(), 1);
+            // The text part's start, then its fragment.
+            assert_eq!(record.events.as_ref().unwrap().len(), 2);
         }
     }
     assert_eq!(

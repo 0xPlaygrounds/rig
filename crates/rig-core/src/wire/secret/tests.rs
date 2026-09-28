@@ -107,9 +107,7 @@ pub(crate) fn request_envelope<W: Wire<Op = Completion, Payload = crate::wire::E
     let encoded = wire
         .encode(probe_request(), Mode::Unary)
         .expect("the request encodes");
-    encoded
-        .requests
-        .iter()
+    std::iter::once(&encoded.request)
         .map(|request| {
             let headers: String = request
                 .headers()
@@ -213,7 +211,7 @@ fn gemini_encoded_debug_redacts_query_without_removing_authentication() -> anyho
         .completion("gemini-2.5-flash")
         .encode(probe_request(), Mode::Unary)?;
     anyhow::ensure!(
-        encoded.requests[0].uri().query() == Some("key=synthetic-gemini-query-key"),
+        encoded.request.uri().query() == Some("key=synthetic-gemini-query-key"),
         "Gemini query credential changed"
     );
     for debug in [format!("{encoded:?}"), format!("{encoded:#?}")] {
@@ -232,17 +230,10 @@ fn encoded_debug_excludes_every_non_path_request_surface() -> anyhow::Result<()>
     use crate::http_client::framing::Framing;
     use crate::wire::{Body, Encoded};
 
-    let encoded = Encoded::batch(
-        vec![
-            http::Request::post(
-                "https://synthetic-authority.invalid/first?unknown=synthetic-query",
-            )
+    let encoded = Encoded::new(
+        http::Request::post("https://synthetic-authority.invalid/first?unknown=synthetic-query")
             .header("authorization", "synthetic-header")
             .body(Body::Bytes(b"synthetic-body".to_vec()))?,
-            http::Request::get("http://second-authority.invalid/second?key=second-query")
-                .header("x-private", "second-header")
-                .body(Body::Bytes(b"second-body".to_vec()))?,
-        ],
         Framing::Whole,
     );
     for debug in [format!("{encoded:?}"), format!("{encoded:#?}")] {
@@ -251,16 +242,11 @@ fn encoded_debug_excludes_every_non_path_request_surface() -> anyhow::Result<()>
             "synthetic-query",
             "synthetic-header",
             "synthetic-body",
-            "second-authority",
-            "second-query",
-            "second-header",
-            "second-body",
             "https://",
-            "http://",
         ] {
             anyhow::ensure!(!debug.contains(marker), "Encoded leaked {marker}");
         }
-        for useful in ["POST", "/first", "GET", "/second"] {
+        for useful in ["POST", "/first"] {
             anyhow::ensure!(debug.contains(useful), "Encoded omitted {useful}");
         }
     }

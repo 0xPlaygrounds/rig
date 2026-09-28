@@ -7,7 +7,6 @@
 //! ```
 
 use rig_core::message::{Message, ToolChoice};
-use rig_core::streaming::BlockId;
 use serde::{Deserialize, Serialize};
 
 /// Why a model-emitted tool call was rejected. Name repair is permitted for
@@ -35,8 +34,6 @@ pub struct InvalidToolCallContext {
     /// Durable tool-call id: the provider's when it issued one, else rig's
     /// minted handle. Absent only when no call object exists at all.
     pub tool_call_id: Option<rig_core::message::CallId>,
-    /// The stream block the call arrived under, when it streamed.
-    pub block_id: Option<BlockId>,
     /// Emitted JSON arguments, when present. For
     /// [`InvalidToolCallReason::MalformedArguments`] this is the raw text
     /// exactly as the wire delivered it.

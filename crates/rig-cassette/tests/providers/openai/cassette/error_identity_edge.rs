@@ -118,7 +118,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
                             break;
                         }
                     }
-                    yielded.expect("the failed handshake must surface an error")
+                    rig::ErrorReport::from(&yielded.expect("the failed handshake must surface an error"))
                 }
             };
             assert_eq!(error.kind, ErrorKind::ProviderResponse, "error: {error}");

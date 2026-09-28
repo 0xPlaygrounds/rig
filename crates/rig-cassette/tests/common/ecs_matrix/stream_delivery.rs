@@ -19,7 +19,7 @@ use serde::Serialize;
 
 use super::cells::Cell;
 
-type Item = Result<StreamEvent, ErrorReport>;
+type Item = Result<rig_core::streaming::Item<StreamEvent>, ErrorReport>;
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct Batch {
@@ -83,14 +83,15 @@ fn consume<const N: usize>(
         "each consumer receives this effect without gaps or duplicates"
     );
     let durable = durable_items(streamed);
-    let end = delivered.start + delivered.items.len();
+    let items = delivered.items.clone();
+    let end = delivered.start + items.len();
     assert!(
         durable.len() >= end,
         "durable state is visible before notification"
     );
     assert_eq!(
         serde_json::to_value(&durable[delivered.start..end]).unwrap(),
-        serde_json::to_value(&delivered.items).unwrap(),
+        serde_json::to_value(&items).unwrap(),
         "notification is the actual newly collected durable slice, including errors"
     );
     let turn = parent.map(ChildOf::parent);
@@ -103,13 +104,13 @@ fn consume<const N: usize>(
         turn_entity: turn.map(Entity::to_bits),
         run_entity: run.map(Entity::to_bits),
         start: delivered.start,
-        items: delivered.items.clone(),
+        items,
     });
 }
 
 fn durable_items(streamed: &Streamed) -> Vec<Item> {
     merge_items(
-        &streamed.events,
+        streamed.events.items(),
         streamed
             .errors
             .iter()
@@ -118,7 +119,7 @@ fn durable_items(streamed: &Streamed) -> Vec<Item> {
 }
 
 fn merge_items<'a>(
-    events: &[StreamEvent],
+    events: &[rig_core::streaming::Item<StreamEvent>],
     errors: impl Iterator<Item = (usize, &'a ErrorReport)>,
 ) -> Vec<Item> {
     let errors: BTreeMap<_, _> = errors.collect();
@@ -217,7 +218,7 @@ pub(crate) fn assert_complete(world: &World, cell: &Cell, log: &EffectLog, head:
                 .into_iter()
                 .flatten()
                 .map(|error| (error.item, &error.error));
-            let items = merge_items(events, errors);
+            let items = merge_items(events.items(), errors);
             if !items.is_empty() {
                 expected.insert(record.id.as_u64(), items);
             }

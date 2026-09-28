@@ -1663,14 +1663,10 @@ fn raw_finish_reason(thinking: ThinkingWire, raw: &serde_json::Value) -> serde_j
     }
 }
 
-/// The streamed cells: one terminal per completion, every dispatched call
-/// delivered as a completed tool block with actual delta or block-start
-/// delivery, the answer's text streamed.
+/// The streamed cells: every dispatched call delivered as a completed tool
+/// part with its arguments, the answer's text streamed. A transcript is in
+/// order by construction, and the record's outcome is the one response.
 fn assert_stream_delivery(cell: &Cell, turns: &[Turn<'_>]) {
-    use rig_core::streaming::BlockKind;
-
-    use rig_core::streaming::Delta;
-
     use rig_core::streaming::StreamEvent;
 
     for (n, turn) in turns.iter().enumerate() {
@@ -1683,41 +1679,32 @@ fn assert_stream_delivery(cell: &Cell, turns: &[Turn<'_>]) {
             .events
             .as_ref()
             .expect("actual provider stream delivery is retained");
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| matches!(event, StreamEvent::Final(_)))
-                .count(),
-            1,
-            "{}: one actual terminal for completion {n}",
-            cell.name
-        );
         let delivered: Vec<_> = events
-            .iter()
+            .events()
             .filter_map(|event| match event {
-                StreamEvent::BlockEnd {
-                    id,
-                    block: Some(AssistantContent::ToolCall(_)),
-                    ..
-                } => Some(id),
+                StreamEvent::End {
+                    part,
+                    content: AssistantContent::ToolCall(_),
+                } => Some(*part),
                 _ => None,
             })
             .collect();
         assert_eq!(
             delivered.len(),
             turn.tools.len(),
-            "{}: completion {n} delivered one completed tool block per dispatched call",
+            "{}: completion {n} delivered one completed tool part per dispatched call",
             cell.name
         );
-        for id in &delivered {
-            assert!(events.iter().any(|event| matches!(event,
-                StreamEvent::BlockStart { id: started, kind: BlockKind::ToolCall }
-                | StreamEvent::BlockDelta { id: started, delta: Delta::ToolName { .. } | Delta::ToolArguments { .. } }
-                if started == *id
-            )), "{}: the completed call has actual matching tool-block or delta delivery", cell.name);
+        for part in &delivered {
+            assert!(
+                events.events().any(|event| matches!(event,
+                    StreamEvent::Arguments { part: at, .. } if at == part)),
+                "{}: the completed call's arguments were delivered",
+                cell.name
+            );
         }
         if turn.tools.is_empty() && turn.completion.outcome.is_ok() {
-            assert!(events.iter().any(|event| matches!(event, StreamEvent::BlockDelta { delta: Delta::Text { text }, .. } if !text.is_empty())), "{}: actual answer text was streamed", cell.name);
+            assert!(events.events().any(|event| matches!(event, StreamEvent::Text { text, .. } if !text.is_empty())), "{}: actual answer text was streamed", cell.name);
         }
     }
 }

@@ -402,12 +402,9 @@ async fn five_thousand_events_effect_log_is_the_golden_fixture() {
     assert_eq!(output, expected);
     let events = log.records[200].events.as_ref().expect("kept");
     let deltas: Vec<&str> = events
-        .iter()
+        .events()
         .filter_map(|event| match event {
-            rig::streaming::StreamEvent::BlockDelta {
-                delta: rig::streaming::Delta::Text { text },
-                ..
-            } => Some(text.as_str()),
+            rig::streaming::StreamEvent::Text { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect();

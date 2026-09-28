@@ -82,11 +82,11 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         results,
         [calls[1].clone(), calls[0].clone(), calls[2].clone()]
     );
+    // The provider's id is sent as it is, and the rig-issued id is one alias
+    // wherever its call appears, distinct from it.
     assert_eq!(calls[1], hint);
-    assert_eq!(
-        calls.iter().collect::<std::collections::HashSet<_>>().len(),
-        3
-    );
+    assert_eq!(calls[0], calls[2]);
+    assert_ne!(calls[0], calls[1]);
 }
 
 #[test]

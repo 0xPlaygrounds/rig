@@ -7,7 +7,7 @@ use bevy_ecs::prelude::*;
 use rig::{
     effect::{EffectKind, Outcome},
     message::AssistantContent,
-    streaming::{Delta, StreamEvent},
+    streaming::StreamEvent,
 };
 use rig_ecs::{
     agent::{Cancelled, Failed, Failure, Outputs, RunResult, Settled, Turn},
@@ -145,7 +145,7 @@ fn stop_stream(world: &mut World, reason: &str, predicate: impl Fn(&StreamEvent)
     let mut query = world.query_filtered::<(Entity, &ChildOf, &Streamed), Without<EffectOutcome>>();
     let stops: Vec<_> = query
         .iter(world)
-        .filter(|(_, _, stream)| stream.events.iter().any(&predicate))
+        .filter(|(_, _, stream)| stream.events.events().any(&predicate))
         .map(|(entity, parent, _)| (entity, parent.parent()))
         .collect();
     for (effect, turn) in stops {
@@ -165,10 +165,7 @@ pub(super) fn stop_text_delta(world: &mut World) {
     stop_stream(world, STOP_ON_TEXT_DELTA, |event| {
         matches!(
             event,
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { .. },
-                ..
-            }
+            StreamEvent::Text { .. }
         )
     });
 }
@@ -176,10 +173,7 @@ pub(super) fn stop_tool_delta(world: &mut World) {
     stop_stream(world, STOP_ON_TOOL_CALL_DELTA, |event| {
         matches!(
             event,
-            StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            }
+            StreamEvent::Arguments { .. }
         )
     });
 }

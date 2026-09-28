@@ -142,12 +142,10 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
         }
         Transport::Streaming => {
             let mut stream = model.stream(request)?;
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(record) = item? {
-                    terminal = Some(record);
-                }
+                item?;
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.context("stream should carry a terminal record")?;
             // The provider-native chat-completions terminal rides serialized
             // on `StreamFinal::raw`; decode it to prove the shape, then read

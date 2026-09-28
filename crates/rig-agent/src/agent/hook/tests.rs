@@ -1,6 +1,22 @@
 use super::*;
 
-static BLOCK: BlockId = BlockId::Wire(String::new());
+/// The call the shared test events answer.
+fn call_id() -> &'static CallId {
+    static CALL: std::sync::OnceLock<CallId> = std::sync::OnceLock::new();
+    CALL.get_or_init(|| CallId::from_wire("tc1"))
+}
+
+/// A reasoning part, as a stream carries it.
+fn reasoning_part() -> rig_core::streaming::Part {
+    rig_core::streaming::Transcript::parse_prefix(serde_json::json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "reasoning"}}
+    ]))
+    .expect("a transcript")
+    .events()
+    .next()
+    .expect("its start")
+    .part()
+}
 use crate::tool::{ToolErrorKind, ToolExecutionError};
 
 /// Rewrites the run-start prompt by appending its tag; used to observe
@@ -153,7 +169,7 @@ fn dispatch_event(kind: &EffectKind) -> DispatchEvent<'_> {
         id: EffectId::from_raw(1),
         kind,
         turn: 1,
-        block_id: Some(&BLOCK),
+        call_id: Some(call_id()),
         context: None,
     }
 }
@@ -168,7 +184,7 @@ fn outcome_event<'a>(
         kind,
         outcome,
         turn: 1,
-        block_id: Some(&BLOCK),
+        call_id: Some(call_id()),
         context: None,
     }
 }
@@ -759,7 +775,6 @@ fn invalid_tool_call_context() -> InvalidToolCallContext {
     InvalidToolCallContext {
         tool_name: "unknown".into(),
         tool_call_id: Some(rig_core::message::CallId::from_wire("tc1")),
-        block_id: Some(BlockId::wire("tc1")),
         args: Some("{}".into()),
         available_tools: vec!["add".into()],
         allowed_tools: vec!["add".into()],
@@ -868,8 +883,7 @@ async fn reasoning_delta_observation_preserves_nested_order_and_stop() {
             .on_reasoning_delta(
                 &ctx(),
                 ReasoningDelta {
-                    id: &BlockId::wire("corr_1"),
-                    provider_id: Some("rs_1"),
+                    part: reasoning_part(),
                     delta: "think",
                     aggregated: "think",
                 },

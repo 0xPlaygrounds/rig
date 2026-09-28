@@ -30,12 +30,7 @@ pub mod responses;
 
 use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::error::ProviderError;
-use rig_core::streaming::StreamFinal;
-
-use crate::support::{
-    Observed, collect_required_terminal, collect_sole_terminal, collect_text_and_sole_terminal,
-    collect_text_and_terminal,
-};
+use crate::support::{Observed, collect_required_terminal, collect_text_and_terminal};
 
 /// Run one recorded blocking turn and park the response it produced.
 ///
@@ -70,64 +65,28 @@ pub async fn capture_completion_pair(
     Ok(())
 }
 
-/// Stream one recorded turn and park the visible text beside the terminal
-/// record the stream must have ended with.
+/// Stream one recorded turn and park the visible text beside the response
+/// the stream must have finished with.
 pub async fn capture_text_and_terminal(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
-    sink: Observed<(String, StreamFinal)>,
+    sink: Observed<(String, CompletionResponse)>,
 ) -> Result<(), ProviderError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let (text, terminal) = collect_text_and_terminal(model.stream(request)?).await;
-    sink.put((
-        text,
-        terminal.expect("stream should end with a terminal record"),
-    ));
+    sink.put((text, terminal.expect("stream should finish with a response")));
     Ok(())
 }
 
-/// Stream one recorded turn and park the terminal record it must have ended
+/// Stream one recorded turn and park the response it must have finished
 /// with, discarding the visible text.
-///
-/// Keeps the last terminal record, so a dialect that repeats its accounting
-/// across closing frames is fine here; a dialect whose contract is *one*
-/// terminal record uses [`capture_sole_terminal`] instead.
 pub async fn capture_terminal(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     request: CompletionRequest,
-    sink: Observed<StreamFinal>,
+    sink: Observed<CompletionResponse>,
 ) -> Result<(), ProviderError> {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     sink.put(collect_required_terminal(model.stream(request)?).await);
-    Ok(())
-}
-
-/// Stream one recorded turn and park its one terminal record, failing when
-/// the stream emitted none or more than one.
-pub async fn capture_sole_terminal(
-    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    request: CompletionRequest,
-    sink: Observed<StreamFinal>,
-) -> Result<(), ProviderError> {
-    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
-    sink.put(collect_sole_terminal(model.stream(request)?).await);
-    Ok(())
-}
-
-/// Stream one recorded turn and park the visible text beside its one
-/// terminal record, failing when the stream emitted none or more than one.
-///
-/// For the dialects whose contract is a single terminal record *and* whose
-/// cells are about what the stream said — [`capture_text_and_terminal`]
-/// keeps the last of several records, [`capture_sole_terminal`] drops the
-/// text.
-pub async fn capture_text_and_sole_terminal(
-    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    request: CompletionRequest,
-    sink: Observed<(String, StreamFinal)>,
-) -> Result<(), ProviderError> {
-    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
-    sink.put(collect_text_and_sole_terminal(model.stream(request)?).await);
     Ok(())
 }
 
@@ -154,22 +113,10 @@ pub fn assert_no_request_id(observed: Option<&str>, dialect: &str) {
     );
 }
 
-/// A streamed terminal record serialized with its raw capture cleared, so an
-/// assertion about the normalized surface cannot be satisfied by something
-/// `raw` happens to carry.
-///
-/// The blocking counterpart is [`crate::support::normalized_without_raw`].
-pub fn stream_normalized_without_raw(terminal: &StreamFinal) -> serde_json::Value {
-    let mut terminal = terminal.clone();
-    terminal.raw = serde_json::Value::Null;
-    serde_json::to_value(&terminal).expect("terminal record should serialize")
-}
-
 /// Assert the normalized surface has no slot for any of the named fields.
 ///
 /// The values are reachable only through the capture, which is the claim the
 /// "provider-only field" cells make; `normalized` comes from
-/// [`stream_normalized_without_raw`] or
 /// [`crate::support::normalized_without_raw`] so the capture cannot satisfy
 /// the check it is the counterexample to.
 pub fn assert_normalized_lacks(normalized: &serde_json::Value, fields: &[&str]) {

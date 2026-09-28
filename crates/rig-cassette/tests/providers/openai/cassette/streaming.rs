@@ -22,10 +22,6 @@ async fn streaming_smoke() {
                 .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-        assert_eq!(
-            provider_final.provider, "openai",
-            "the terminal stream record should be attributed to the OpenAI provider"
-        );
         assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
     })
     .await;

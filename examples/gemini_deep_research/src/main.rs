@@ -5,7 +5,7 @@ use rig::providers::gemini::Gemini;
 use rig::providers::gemini::interactions_api::{
     AgentConfig, Content, Interaction, InteractionStatus, Step, ThinkingSummaries,
 };
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::{Item, StreamEvent};
 use serde_json::json;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -131,54 +131,46 @@ struct StreamState {
     interaction: Option<Interaction>,
 }
 
-fn handle_stream_event(state: &mut StreamState, event: StreamEvent) {
-    match event {
+fn handle_stream_item(state: &mut StreamState, item: Item<StreamEvent>) {
+    match item {
         // Deep Research thinking summaries arrive as reasoning; the answer
-        // itself as text. Both are deltas of a block, so the interesting part
-        // of an event is its fragment.
-        StreamEvent::BlockDelta {
-            delta: Delta::Text { text },
-            ..
-        } => {
+        // itself as text. The interesting part of an event is its fragment.
+        Item::Event(StreamEvent::Text { text, .. }) => {
             print!("{text}");
             state.saw_text = true;
         }
-        StreamEvent::BlockDelta {
-            delta: Delta::Reasoning { text },
-            ..
-        } => {
+        Item::Event(StreamEvent::Reasoning { text, .. }) => {
             println!("\nThought: {text}");
         }
-        // The terminal record carries the interaction id rig normalizes and,
-        // under `interaction`, Gemini's own document for the finished run.
-        StreamEvent::Final(final_record) => {
-            if let Some(response_id) = final_record.response_id.as_deref() {
-                state.interaction_id = Some(response_id.to_owned());
-            }
-            state.interaction = final_record
-                .raw
-                .get("interaction")
-                .cloned()
-                .and_then(|interaction| serde_json::from_value(interaction).ok());
-
-            println!("\nResearch complete.");
-            if !state.saw_text {
-                match state
-                    .interaction
-                    .as_ref()
-                    .and_then(|interaction| last_model_output_text(&interaction.steps))
-                {
-                    Some(text) => println!("{text}"),
-                    None => println!("No text output returned."),
-                }
-            }
-            state.is_complete = true;
-        }
-        StreamEvent::BlockStart { .. }
-        | StreamEvent::BlockDelta { .. }
-        | StreamEvent::BlockEnd { .. }
-        | StreamEvent::Unknown(_) => {}
+        Item::Event(_) | Item::Unknown(_) => {}
     }
+}
+
+/// The finished stream's response carries the interaction id rig normalizes
+/// and, under `interaction` in its `raw`, Gemini's own document for the
+/// finished run.
+fn finish_research(state: &mut StreamState, response: rig::completion::CompletionResponse) {
+    if let Some(response_id) = response.response_id.as_deref() {
+        state.interaction_id = Some(response_id.to_owned());
+    }
+    state.interaction = response
+        .raw
+        .get("interaction")
+        .cloned()
+        .and_then(|interaction| serde_json::from_value(interaction).ok());
+
+    println!("\nResearch complete.");
+    if !state.saw_text {
+        match state
+            .interaction
+            .as_ref()
+            .and_then(|interaction| last_model_output_text(&interaction.steps))
+        {
+            Some(text) => println!("{text}"),
+            None => println!("No text output returned."),
+        }
+    }
+    state.is_complete = true;
 }
 
 #[tokio::main]
@@ -224,17 +216,21 @@ async fn main() -> Result<()> {
                 }
             };
 
-            while let Some(event) = stream.next().await {
-                match event {
-                    Ok(event) => handle_stream_event(&mut state, event),
+            let mut failed = false;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(item) => handle_stream_item(&mut state, item),
                     Err(err) => {
                         eprintln!("Stream error: {err}");
+                        failed = true;
                         break;
                     }
                 }
-
-                if state.is_complete {
-                    break;
+            }
+            if !failed {
+                match stream.finish().await {
+                    Ok(response) => finish_research(&mut state, response),
+                    Err(err) => eprintln!("Stream ended early: {err}"),
                 }
             }
 

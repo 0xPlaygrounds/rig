@@ -268,7 +268,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     let request = crate::completion::CompletionRequest::new("hi");
     let mut stream = model.stream(request).expect("mock stream");
     while stream.next().await.is_some() {}
-    let choice = stream.folded().snapshot();
+    let choice = stream.finish().await.expect("the reply ended").choice;
     // The provenance funnel: a minted stream identity never becomes the
     // durable `Reasoning::id`, so the replayed history carries no id at
     // all — there is nothing for a serializer gate to filter, and no
@@ -2814,7 +2814,7 @@ mod raw_capture {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{
+    use crate::providers::internal::wire_ids::tests::{
         adapter_requests, assert_adapter_pairs,
     };
     for request in adapter_requests() {

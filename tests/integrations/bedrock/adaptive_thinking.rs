@@ -63,10 +63,10 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
 
     while let Some(item) = stream.next().await {
         match item.expect("adaptive-thinking Bedrock stream item should succeed") {
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
+            rig::streaming::Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
                 ..
-            } => {
+            }) => {
                 reasoning_chunks += 1;
                 let reasoning = reasoning.open(reasoning.issuer()).expect("reasoning opens");
                 if reasoning.first_signature().is_some() {
@@ -76,9 +76,12 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
                     }
                 }
             }
-            StreamEvent::Final(_) => got_final = true,
             _ => {}
         }
+    }
+    {
+        let _final = stream.finish().await.expect("the stream ends");
+        got_final = true;
     }
 
     assert!(got_final, "stream should emit a final response");

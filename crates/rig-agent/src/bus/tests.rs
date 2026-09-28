@@ -31,7 +31,7 @@ use rig_core::{
     memory::InMemoryConversationMemory,
     message::AssistantContent,
     rerank::{RerankResponse, RerankResult},
-    streaming::StreamEvent,
+    streaming::{Item, Relayed, StreamEvent},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolContext, ToolExecutionError, ToolOutput},
 };
@@ -780,18 +780,15 @@ async fn streaming_completion_flows_through_the_bus_final_terminated() {
 
     let stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
     let items: Vec<_> = within(stream.collect()).await;
-    let events: Vec<StreamEvent> = items
+    let items: Vec<Relayed> = items
         .into_iter()
         .map(|item| item.expect("no report"))
         .collect();
-    assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
-    let text: String = events
+    assert!(matches!(items.last(), Some(Relayed::Done(_))));
+    let text: String = items
         .iter()
-        .filter_map(|event| match event {
-            StreamEvent::BlockDelta {
-                delta: rig_core::streaming::Delta::Text { text },
-                ..
-            } => Some(text.as_str()),
+        .filter_map(|item| match item {
+            Relayed::Item(Item::Event(StreamEvent::Text { text, .. })) => Some(text.as_str()),
             _ => None,
         })
         .collect();
@@ -1205,8 +1202,8 @@ fn an_effect_stream_polls_cleanly_without_any_runtime() {
     }
     assert!(ended, "the stream ended under manual polling: {items:?}");
     assert!(
-        matches!(items.last(), Some(Ok(StreamEvent::Final(_)))),
-        "the last item is the terminal: {items:?}"
+        matches!(items.last(), Some(Ok(Relayed::Done(_)))),
+        "the last item is the response: {items:?}"
     );
     assert!(items.iter().all(Result::is_ok), "{items:?}");
 }
@@ -1719,11 +1716,10 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
                 let _ = out.tool_call("add", json!({"x": 1})).await;
                 let _ = out.text("after").await;
                 let _ = out
-                    .finish(rig_core::streaming::StreamFinal::new(
+                    .finish(
                         "writer",
-                        rig_core::completion::Usage::default(),
-                        serde_json::json!({}),
-                    ))
+                        rig_core::operation::Finish::new(rig_core::completion::Usage::default()),
+                    )
                     .await;
             })
         }
@@ -1737,48 +1733,39 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
     while let Some(item) = within(stream.next()).await {
         items.push(item);
     }
-    // The conformance laws hold for a stream nobody minted ids for: every
-    // delta's block was started, every started block ends before the
-    // terminal, distinct blocks carry distinct ids.
-    let events: Vec<StreamEvent> = items
+    // The stream a writer makes is in order: every event's part started,
+    // every started part ends before the response, and the response holds
+    // every part.
+    let mut items: Vec<Relayed> = items
         .into_iter()
         .map(|item| item.expect("a clean stream"))
         .collect();
-    let starts: Vec<_> = events
-        .iter()
-        .filter_map(|event| match event {
-            StreamEvent::BlockStart { id, .. } => Some(id.clone()),
-            _ => None,
-        })
-        .collect();
-    let ends: Vec<_> = events
-        .iter()
-        .filter_map(|event| match event {
-            StreamEvent::BlockEnd { id, .. } => Some(id.clone()),
-            _ => None,
-        })
-        .collect();
+    let Some(Relayed::Done(response)) = items.pop() else {
+        panic!("the stream ends with the response: {items:?}");
+    };
+    let transcript = rig_core::streaming::Transcript::parse(
+        serde_json::to_value(
+            items
+                .into_iter()
+                .map(|item| match item {
+                    Relayed::Item(item) => item,
+                    Relayed::Done(_) => panic!("one response, last"),
+                })
+                .collect::<Vec<_>>(),
+        )
+        .expect("items serialize"),
+    )
+    .expect("the writer's items are in order and every part ends");
+    let starts = transcript
+        .events()
+        .filter(|event| matches!(event, StreamEvent::Start { .. }))
+        .count();
+    assert_eq!(starts, 4, "reasoning, text, tool call, text");
     assert_eq!(
-        starts.len(),
+        response.choice.len(),
         4,
-        "reasoning, text, tool call, text: {starts:?}"
-    );
-    let distinct: std::collections::BTreeSet<String> =
-        starts.iter().map(ToString::to_string).collect();
-    assert_eq!(distinct.len(), 4, "distinct minted ids: {starts:?}");
-    for id in &starts {
-        assert!(ends.contains(id), "block {id} ends before the terminal");
-    }
-    assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
-    let mut fold = rig_core::operation::CompletionFold::default();
-    for event in &events {
-        rig_core::wire::Fold::absorb(&mut fold, event).expect("the fold accepts every event");
-    }
-    let choice = fold.snapshot();
-    assert_eq!(
-        choice.len(),
-        4,
-        "reasoning, text, tool call, text as content: {choice:?}"
+        "reasoning, text, tool call, text as content: {:?}",
+        response.choice
     );
 }
 
@@ -1807,15 +1794,13 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
         &self,
         request: rig_core::operation::RerankRequest,
         _exchange: rig_core::driver::Exchange,
-    ) -> Result<rig_core::driver::Sending<Result<RerankResponse, ProviderError>>, ProviderError>
-    {
+    ) -> rig_core::driver::Opening<rig_core::driver::Step<rig_core::operation::Rerank>> {
         let failure = self.failure;
-        Ok(rig_core::driver::Sending::later(async move {
-            match failure {
+        rig_core::driver::Opening::ready(match failure {
                 Some(message) => {
                     rig_core::driver::Opened::failed(ProviderError::Response(message.to_owned()))
                 }
-                None => rig_core::driver::Opened::new(futures::stream::iter([Ok(Ok(
+                None => rig_core::driver::Opened::new(futures::stream::iter([Ok(rig_core::driver::Step::End(
                     RerankResponse::new(
                         request
                             .documents
@@ -1830,8 +1815,7 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
                         "probe",
                     ),
                 ))])),
-            }
-        }))
+            })
     }
 }
 
@@ -1968,7 +1952,7 @@ impl rig_core::serve::Recorder for Counting {
     fn keep_events(&self) -> bool {
         false
     }
-    fn event(&self, _id: rig_core::effect::EffectId, _event: &StreamEvent) {}
+    fn event(&self, _id: rig_core::effect::EffectId, _event: &Item<StreamEvent>) {}
     fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Outcome, ErrorReport>) {
         self.resolved.fetch_add(1, Ordering::SeqCst);
     }
@@ -2210,7 +2194,7 @@ fn probe(pending: &mut Pending) -> Option<Result<Outcome, ErrorReport>> {
 
 /// One poll with a no-op waker: `Some(Some(item))` for the next item,
 /// `Some(None)` once the stream ended, `None` if nothing is ready.
-fn probe_item(stream: &mut EffectStream) -> Option<Option<Result<StreamEvent, ErrorReport>>> {
+fn probe_item(stream: &mut EffectStream) -> Option<Option<Result<Relayed, ErrorReport>>> {
     let mut cx = Context::from_waker(noop_waker_ref());
     match stream.poll_next_unpin(&mut cx) {
         Poll::Ready(item) => Some(item),
@@ -3428,9 +3412,9 @@ fn full_consumer_queue_stops_pulls_and_ancestor_cancellation_keeps_its_terminal(
             CoreReply::Stream(Box::pin(futures::stream::poll_fn(move |_| {
                 let _guard = &guard;
                 polls.fetch_add(1, Ordering::SeqCst);
-                Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Unknown(
+                Poll::Ready(Some(Ok(Relayed::Item(Item::Unknown(
                     rig_core::streaming::UnknownPayload::new(json!(null)),
-                ))))
+                )))))
             })))
         }
     }

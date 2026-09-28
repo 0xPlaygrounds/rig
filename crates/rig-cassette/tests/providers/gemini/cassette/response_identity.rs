@@ -43,13 +43,10 @@ async fn streaming_request_id_is_none_by_design() {
                 ))
                 .expect("stream should open");
 
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.expect("stream should yield a terminal record");
             assert_eq!(
                 terminal.provider_request_id, None,
@@ -185,7 +182,7 @@ async fn updates_carry_the_recorded_answer_text() {
             let mut stream = model
                 .stream("Reply with exactly: stream identity probe")
                 .expect("stream should open");
-            let updates = rig_test_support::updates::collect_updates(&mut stream).await;
+            let updates = rig_test_support::updates::collect_updates(stream).await;
             let (_, parts) = rig_test_support::updates::assert_update_contract(&updates);
 
             let frames = crate::cassettes::recorded_sse_json_frames(

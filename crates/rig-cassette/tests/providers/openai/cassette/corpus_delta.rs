@@ -8,7 +8,7 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_corpus_delta_cassette;
@@ -49,12 +49,9 @@ async fn chat_baseline_effect_log_is_the_golden_fixture() {
         );
         let events = log.records[0].events.as_ref().expect("events are kept");
         assert!(
-            events.iter().any(|event| matches!(
+            events.events().any(|event| matches!(
                 event,
-                StreamEvent::BlockDelta {
-                    delta: Delta::ToolName { .. },
-                    ..
-                }
+                StreamEvent::Arguments { .. }
             )),
             "the wire streams the tool's name as a delta"
         );

@@ -1,5 +1,6 @@
 //! ChatGPT cassette coverage for terminal responses that omit `output`.
 
+use rig::streaming::Item;
 use futures::StreamExt;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::chatgpt;
@@ -98,18 +99,16 @@ async fn stream_tool_call_completed_response_without_output() {
 
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream item should be ok") {
-                    StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::ToolCall(tool_call)),
-                        ..
-                    } if tool_call.function.name == "ping" => {
+                    Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) if tool_call.function.name == "ping" => {
                         assert_eq!(tool_call.function.arguments, json!({}));
                         saw_ping_tool_call = true;
                     }
-                    StreamEvent::Final(response) => {
-                        final_usage = Some(response.usage);
-                    }
                     _ => {}
                 }
+            }
+            {
+                let response = stream.finish().await.expect("the stream ends");
+                final_usage = Some(response.usage);
             }
 
             assert!(saw_ping_tool_call, "stream should emit the ping tool call");

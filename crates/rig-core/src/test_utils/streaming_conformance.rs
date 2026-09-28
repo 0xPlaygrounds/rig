@@ -2,10 +2,11 @@
 //!
 //! The streaming sibling of `rig-agent`'s `model_conformance`: each scenario
 //! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
-//! streaming path — bytes → decode → normalize → aggregated
-//! [`CompletionStream`](crate::streaming::CompletionStream)
-//! — and asserts the [`StreamFinal`] contract
-//! table documented on that type. Scenarios state the contract; a per-provider
+//! streaming path — bytes → decode → the writer's parts →
+//! [`CompletionStream`](crate::streaming::CompletionStream) → its response
+//! — and asserts the streaming contract: an error is the stream's last item,
+//! a reply the provider did not end has no response, and every part the
+//! stream emits reaches the response exactly once. Scenarios state the contract; a per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells
 //! the same event differently.
 //!
@@ -25,15 +26,14 @@ use bytes::Bytes;
 use futures::StreamExt;
 use futures::future::BoxFuture;
 
-use crate::completion::CompletionRequest;
+use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::error::ProviderError;
-use crate::streaming::BlockId;
 use crate::{
     completion::FinishReason,
     error::ErrorReport,
     http_client,
     message::AssistantContent,
-    streaming::{Delta, StreamEvent, StreamFinal},
+    streaming::{Item, StreamEvent},
 };
 
 /// Typed failure from a wire-conformance scenario.
@@ -172,9 +172,9 @@ impl SuiteCapabilities {
 pub const CANONICAL_SCENARIOS: &[&str] = &[
     "truncation_preserves_content_without_terminal",
     "transport_error_after_tool_call_yields_err_then_end",
-    "malformed_frame_surfaces_err_and_terminal_still_completes",
+    "malformed_frame_ends_the_reply",
     "unknown_event_is_skipped",
-    "defective_known_event_surfaces_err",
+    "defective_known_event_ends_the_reply",
     "delta_less_choice_prelude_is_a_noop",
     "refusal_frames_deliver_text_without_error",
     "bare_terminal_after_only_unparseable_frames_fabricates_nothing",
@@ -379,49 +379,39 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 /// 3. **Completed-call conservation.** Every completed tool call yielded on
 ///    the stream appears in the aggregated choice exactly once, and vice
 ///    versa (counts match; aggregation neither drops nor duplicates).
-/// 4. **Delta-before-completion.** A completed call correlated with
-///    fragments (same `block_id`) never precedes its own deltas.
-/// 5. **Reasoning provenance.** The aggregate contains a reasoning part only
-///    if the stream yielded reasoning items; and when only deltas were
-///    yielded (no full block), the aggregated reasoning text is exactly
-///    their concatenation.
+/// 4. **Sequence.** The events read back through
+///    [`Transcript::parse_prefix`](crate::streaming::Transcript::parse_prefix):
+///    each part starts once, in position, grows only while open, and ends
+///    once.
+/// 5. **Reasoning provenance.** The response contains a reasoning part only
+///    if the stream ended one.
 pub fn assert_valid_event_stream(
-    items: &[Result<StreamEvent, ErrorReport>],
+    items: &[Result<Item<StreamEvent>, ErrorReport>],
     choice: &[AssistantContent],
 ) {
     use crate::message::AssistantContent;
 
-    let ok_items: Vec<&StreamEvent> = items.iter().filter_map(|item| item.as_ref().ok()).collect();
-
-    // Law 1: terminal latch.
-    let final_count = ok_items
-        .iter()
-        .filter(|item| matches!(item, StreamEvent::Final(_)))
-        .count();
-    assert!(
-        final_count <= 1,
-        "law 1 (terminal latch): {final_count} terminal records yielded"
-    );
-    if let Some(final_index) = ok_items
-        .iter()
-        .position(|item| matches!(item, StreamEvent::Final(_)))
-    {
-        for item in ok_items.get(final_index + 1..).unwrap_or_default() {
-            assert!(
-                matches!(item, StreamEvent::Unknown(_)),
-                "law 1 (terminal latch): content item after the terminal record: {item:?}"
-            );
-        }
+    // Law 1: an error is the last item.
+    if let Some(error_index) = items.iter().position(Result::is_err) {
+        assert_eq!(
+            error_index + 1,
+            items.len(),
+            "law 1 (terminal error): an item followed the stream's error"
+        );
     }
-
-    // Law 2: text conservation.
-    let streamed_text: String = ok_items
+    let events: Vec<&StreamEvent> = items
         .iter()
         .filter_map(|item| match item {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => Some(text.as_str()),
+            Ok(Item::Event(event)) => Some(event),
+            _ => None,
+        })
+        .collect();
+
+    // Law 2: text conservation.
+    let streamed_text: String = events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::Text { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect();
@@ -434,17 +424,17 @@ pub fn assert_valid_event_stream(
         .collect();
     assert_eq!(
         aggregated_text, streamed_text,
-        "law 2 (text conservation): aggregated text differs from the streamed deltas"
+        "law 2 (text conservation): aggregated text differs from the streamed fragments"
     );
 
     // Law 3: completed-call conservation.
-    let yielded_calls = ok_items
+    let yielded_calls = events
         .iter()
-        .filter(|item| {
+        .filter(|event| {
             matches!(
-                item,
-                StreamEvent::BlockEnd {
-                    block: Some(AssistantContent::ToolCall(_)),
+                event,
+                StreamEvent::End {
+                    content: AssistantContent::ToolCall(_),
                     ..
                 }
             )
@@ -460,75 +450,28 @@ pub fn assert_valid_event_stream(
          {aggregated_calls} aggregated"
     );
 
-    // Law 4: delta-before-completion.
-    let mut seen_delta_ids: Vec<BlockId> = Vec::new();
-    let mut completed_ids: Vec<BlockId> = Vec::new();
-    for item in &ok_items {
-        match item {
-            StreamEvent::BlockDelta {
-                id,
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-            } => {
-                assert!(
-                    !completed_ids.contains(id),
-                    "law 4: a delta for block {id} arrived after its completed call"
-                );
-                seen_delta_ids.push(id.clone());
-            }
-            StreamEvent::BlockEnd {
-                id,
-                block: Some(AssistantContent::ToolCall(_)),
-                ..
-            } => completed_ids.push(id.clone()),
-            _ => {}
-        }
-    }
-
-    // Law 4b: reasoning correlation. Every completed reasoning block
-    // carries a block id no other completed block shares (a delta-only
-    // part may legitimately have no completed block — e.g. a visible chain
-    // of thought whose synthesized end stays silent — so delta ids are not
-    // required to appear among the completed ids).
-    let mut completed_reasoning_ids: Vec<&BlockId> = Vec::new();
-    for item in &ok_items {
-        if let StreamEvent::BlockEnd {
-            id,
-            block: Some(AssistantContent::Reasoning(_)),
-            ..
-        } = item
-        {
-            assert!(
-                id.wire_str() != Some(""),
-                "law 4b (reasoning correlation): a completed block carries an empty wire id"
-            );
-            assert!(
-                !completed_reasoning_ids.contains(&id),
-                "law 4b (reasoning correlation): two completed blocks share block id {id}"
-            );
-            completed_reasoning_ids.push(id);
-        }
+    // Law 4: the sequence reads back.
+    let serialized = serde_json::to_value(
+        items
+            .iter()
+            .filter_map(|item| item.as_ref().ok())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_default();
+    if let Err(error) = crate::streaming::Transcript::parse_prefix(serialized) {
+        panic!("law 4 (sequence): the stream's events do not read back: {error}");
     }
 
     // Law 5: reasoning provenance.
-    let yielded_full_block = ok_items.iter().any(|item| {
+    let yielded_reasoning = events.iter().any(|event| {
         matches!(
-            item,
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(_)),
+            event,
+            StreamEvent::End {
+                content: AssistantContent::Reasoning(_),
                 ..
             }
         )
     });
-    let yielded_reasoning = yielded_full_block
-        || ok_items.iter().any(|item| {
-            matches!(
-                item,
-                StreamEvent::BlockDelta {
-                    delta: Delta::Reasoning { .. },
-                    ..
-                }
-            )
-        });
     let aggregated_reasoning = choice
         .iter()
         .any(|content| matches!(content, AssistantContent::Reasoning(_)));
@@ -536,85 +479,58 @@ pub fn assert_valid_event_stream(
         yielded_reasoning || !aggregated_reasoning,
         "law 5 (reasoning provenance): aggregated reasoning with no reasoning yielded"
     );
-    if yielded_reasoning && !yielded_full_block {
-        let streamed_reasoning: String = ok_items
-            .iter()
-            .filter_map(|item| match item {
-                StreamEvent::BlockDelta {
-                    delta: Delta::Reasoning { text },
-                    ..
-                } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect();
-        let aggregated_reasoning_text: String = choice
-            .iter()
-            .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => Some(reasoning.value().content.iter()),
-                _ => None,
-            })
-            .flatten()
-            .filter_map(|part| match part {
-                crate::message::ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            aggregated_reasoning_text, streamed_reasoning,
-            "law 5 (reasoning conservation): with no full block, the aggregated reasoning \
-             must be exactly the concatenated deltas"
-        );
-    }
 }
 
 /// Everything the consumer observed from one full pipeline run: the yielded
-/// items in order, plus the aggregated choice and terminal record.
+/// items in order, plus the response they folded into.
 #[derive(Debug)]
 pub struct DrainedStream {
     /// Every item the stream yielded, in order.
-    pub items: Vec<Result<StreamEvent, ErrorReport>>,
-    /// The final aggregated assistant message.
+    pub items: Vec<Result<Item<StreamEvent>, ErrorReport>>,
+    /// The parts that ended, in position: the response's choice, or what
+    /// arrived before the stream stopped.
     pub choice: Vec<AssistantContent>,
-    /// The normalized terminal record, absent on truncation or terminal error.
-    pub response: Option<StreamFinal>,
+    /// The response, absent on truncation or a terminal error.
+    pub response: Option<CompletionResponse>,
 }
 
 impl DrainedStream {
-    /// Text deltas yielded to the consumer, in order.
+    fn events(&self) -> impl Iterator<Item = &StreamEvent> {
+        self.items.iter().filter_map(|item| match item {
+            Ok(Item::Event(event)) => Some(event),
+            _ => None,
+        })
+    }
+
+    /// Text fragments yielded to the consumer, in order.
     pub fn texts(&self) -> Vec<&str> {
-        self.items
-            .iter()
-            .filter_map(|item| match item {
-                Ok(StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                }) => Some(text.as_str()),
+        self.events()
+            .filter_map(|event| match event {
+                StreamEvent::Text { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect()
     }
 
-    /// Names of the complete tool calls yielded to the consumer, in order.
+    /// Names of the tool calls that ended on the stream, in order.
     pub fn tool_call_names(&self) -> Vec<&str> {
-        self.items
-            .iter()
-            .filter_map(|item| match item {
-                Ok(StreamEvent::BlockEnd {
-                    block: Some(AssistantContent::ToolCall(tool_call)),
+        self.events()
+            .filter_map(|event| match event {
+                StreamEvent::End {
+                    content: AssistantContent::ToolCall(tool_call),
                     ..
-                }) => Some(tool_call.function.name.as_str()),
+                } => Some(tool_call.function.name.as_str()),
                 _ => None,
             })
             .collect()
     }
 
-    /// Raw payloads of the `Unknown` passthrough items the stream yielded,
-    /// in order.
+    /// Raw payloads of the `Unknown` items the stream yielded, in order.
     pub fn unknown_values(&self) -> Vec<&serde_json::Value> {
         self.items
             .iter()
             .filter_map(|item| match item {
-                Ok(StreamEvent::Unknown(value)) => Some(value.value()),
+                Ok(Item::Unknown(value)) => Some(value.value()),
                 _ => None,
             })
             .collect()
@@ -625,24 +541,13 @@ impl DrainedStream {
         self.items.iter().filter(|item| item.is_err()).count()
     }
 
-    /// Number of terminal records the stream yielded.
-    pub fn final_count(&self) -> usize {
-        self.items
-            .iter()
-            .filter(|item| matches!(item, Ok(StreamEvent::Final(_))))
-            .count()
-    }
-
-    /// Whether the run produced a terminal record at all, yielded or folded
-    /// into the response. Truncation and terminal transport errors must
-    /// produce neither.
+    /// Whether the provider ended the reply: it has a response.
     fn has_terminal(&self) -> bool {
-        self.response.is_some() || self.final_count() != 0
+        self.response.is_some()
     }
 
-    /// Whether the stream reached the provider's genuine terminal with no
-    /// `Err` item — the clean-completion precondition the content-shape
-    /// scenarios share.
+    /// Whether the stream reached the provider's end with no `Err` item —
+    /// the clean-completion precondition the content-shape scenarios share.
     fn completed_cleanly(&self) -> bool {
         self.error_count() == 0 && self.response.is_some()
     }
@@ -652,7 +557,7 @@ impl DrainedStream {
         self.items.iter().position(std::result::Result::is_err)
     }
 
-    /// Text blocks in the aggregated choice, in order.
+    /// Text parts in the aggregated choice, in order.
     pub fn choice_texts(&self) -> Vec<&str> {
         self.choice
             .iter()
@@ -663,12 +568,12 @@ impl DrainedStream {
             .collect()
     }
 
-    /// Reasoning items in the aggregated choice, in order.
+    /// Reasoning parts in the aggregated choice, in order.
     pub fn choice_reasoning(&self) -> Vec<&crate::message::Reasoning> {
         self.choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => Some(reasoning.value()),
+                AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()),
                 _ => None,
             })
             .collect()
@@ -916,7 +821,7 @@ impl Checks {
 }
 
 /// Truncation at every position — EOF before content, mid-text, mid-tool-args,
-/// after a fully-delivered tool call — must preserve delivered content and
+/// after a tool call's frames — must preserve the content that ended and
 /// never produce a terminal record.
 ///
 /// Pins the truncation family from round one (`rig-2257-code-review-findings-ec9f2625.md`):
@@ -966,35 +871,37 @@ pub async fn truncation_preserves_content_without_terminal(
         checks.note("EOF mid-tool-args: no terminal");
     }
 
-    // EOF after a fully-delivered tool call, before the stream terminal.
+    // EOF after a tool call's frames, before the provider's end. A call is
+    // visible once it closes: on a wire that closes calls at the end, the
+    // cut call never surfaces.
     let drained = fixture
         .driver
         .drive(ok_chunks(fixture.tool_call_frames.clone()))
         .await?;
     checks.require(
-        drained.tool_call_names() == vec![fixture.expected_tool_name],
+        drained
+            .tool_call_names()
+            .iter()
+            .all(|name| *name == fixture.expected_tool_name),
         || {
             format!(
-                "a fully-delivered tool call must survive truncation: observed {:?}",
+                "only the delivered call may surface: observed {:?}",
                 drained.tool_call_names()
             )
         },
     )?;
     checks.require(
         !drained.has_terminal(),
-        || "EOF after a delivered tool call must not synthesize a terminal record",
+        || "EOF after a tool call must not synthesize a terminal record",
     )?;
-    checks.note("EOF after tool-complete: tool call preserved, no terminal");
+    checks.note("EOF after a tool call: no terminal");
 
     Ok(checks.report())
 }
 
-/// A transport failure after a fully-delivered tool call must yield the tool
-/// call, then the `Err`, then end — with no terminal record after the error.
-///
-/// Pins the flush-before-terminal-error ordering from round five
-/// (`rig-2257-code-review-findings-5c73639c.md`): a first-`Err`-stop consumer
-/// must still see delivered tool calls.
+/// A transport failure after a tool call's frames ends the reply: the `Err`
+/// is the last item, and there is no terminal record. A call the wire closed
+/// before the failure precedes it; one still open never surfaces.
 pub async fn transport_error_after_tool_call_yields_err_then_end(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioReport, ConformanceError> {
@@ -1008,10 +915,13 @@ pub async fn transport_error_after_tool_call_yields_err_then_end(
     let drained = fixture.driver.drive(chunks).await?;
 
     checks.require(
-        drained.tool_call_names() == vec![fixture.expected_tool_name],
+        drained
+            .tool_call_names()
+            .iter()
+            .all(|name| *name == fixture.expected_tool_name),
         || {
             format!(
-                "the delivered tool call must precede the transport error: observed {:?}",
+                "only the delivered call may precede the transport error: observed {:?}",
                 drained.tool_call_names()
             )
         },
@@ -1028,23 +938,17 @@ pub async fn transport_error_after_tool_call_yields_err_then_end(
         || "a transport failure must not be papered over with a terminal record",
     )?;
 
-    checks.note("tool call, then Err, then end; no terminal");
+    checks.note("Err, then end; no terminal");
     Ok(checks.report())
 }
 
-/// A malformed frame between valid content and the genuine terminal must
-/// surface as an `Err` item while the stream keeps consuming, so the terminal
-/// still completes it.
-///
-/// Pins the malformed-frame policy row of the [`StreamFinal`] contract table
-/// (round four, `rig-2257-code-review-findings-1e5a7ad8.md`).
-pub async fn malformed_frame_surfaces_err_and_terminal_still_completes(
+/// A malformed frame between valid content and the provider's end ends the
+/// reply: it surfaces as the stream's last item, content before it is kept,
+/// and there is no response.
+pub async fn malformed_frame_ends_the_reply(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
-    let mut checks = Checks::new(
-        "malformed_frame_surfaces_err_and_terminal_still_completes",
-        fixture.driver.provider,
-    );
+    let mut checks = Checks::new("malformed_frame_ends_the_reply", fixture.driver.provider);
     let Some(malformed) = &fixture.malformed_frame else {
         return Ok(checks.skip("wire family cannot spell a frame-level decode failure"));
     };
@@ -1063,15 +967,19 @@ pub async fn malformed_frame_surfaces_err_and_terminal_still_completes(
         )
     })?;
     checks.require(
-        drained.texts() == fixture.expected_texts,
-        || "content around the malformed frame must be preserved",
+        drained.first_error_index() == Some(drained.items.len() - 1),
+        || "the malformed frame's error must be the stream's last item",
     )?;
     checks.require(
-        drained.response.is_some(),
-        || "the genuine terminal after a recoverable parse error must still complete the stream",
+        drained.texts() == fixture.expected_texts,
+        || "content before the malformed frame must be preserved",
+    )?;
+    checks.require(
+        !drained.has_terminal(),
+        || "a reply cut by a corrupt frame has no response",
     )?;
 
-    checks.note("Err surfaced, terminal still completed");
+    checks.note("Err surfaced last; content kept; no response");
     Ok(checks.ran())
 }
 
@@ -1129,18 +1037,16 @@ pub async fn unknown_event_is_skipped(
     Ok(checks.ran())
 }
 
-/// A *known* event whose payload is schema-defective must surface as an `Err`
-/// item (and the stream keeps consuming to the genuine terminal).
+/// A *known* event whose payload is schema-defective ends the reply: it
+/// surfaces as the stream's last item, and there is no response.
 ///
-/// Pins the round-5 known-type strictness policy and its silent revert for
-/// OpenAI Responses content parts — the open P2 in
-/// `rig-2257-code-review-findings-34ee8ba5.md` ("Round-5 known-type strictness
-/// silently reverted for content parts").
-pub async fn defective_known_event_surfaces_err(
+/// Pins the round-5 known-type strictness policy (a defective known event is
+/// never demoted to an unknown one).
+pub async fn defective_known_event_ends_the_reply(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
     let mut checks = Checks::new(
-        "defective_known_event_surfaces_err",
+        "defective_known_event_ends_the_reply",
         fixture.driver.provider,
     );
     let Some(defective) = &fixture.defective_known_frame else {
@@ -1163,11 +1069,11 @@ pub async fn defective_known_event_surfaces_err(
         )
     })?;
     checks.require(
-        drained.response.is_some(),
-        || "the genuine terminal must still complete the stream after the defective frame",
+        !drained.has_terminal(),
+        || "a reply cut by a defective event has no response",
     )?;
 
-    checks.note("defective known event surfaced as Err; stream completed");
+    checks.note("defective known event ended the reply with its Err");
     Ok(checks.ran())
 }
 
@@ -1347,11 +1253,12 @@ pub async fn usage_variants_are_reported_or_absent(
         },
     )?;
     checks.require(
-        response.finish_reason == fixture.expected_finish_reason,
+        response.finish_reason() == fixture.expected_finish_reason,
         || {
             format!(
                 "terminal finish reason must be normalized: expected {:?}, observed {:?}",
-                fixture.expected_finish_reason, response.finish_reason
+                fixture.expected_finish_reason,
+                response.finish_reason()
             )
         },
     )?;
@@ -1660,12 +1567,16 @@ pub mod fixtures {
     pub async fn drain(mut stream: crate::streaming::CompletionStream) -> DrainedStream {
         let mut items = Vec::new();
         while let Some(item) = stream.next().await {
-            items.push(item);
+            items.push(item.map_err(|error| ErrorReport::from(&error)));
         }
+        let partial = stream.partial().choice;
+        let response = stream.finish().await.ok();
         let drained = DrainedStream {
             items,
-            choice: stream.folded().snapshot(),
-            response: stream.folded().terminal().cloned(),
+            choice: response
+                .as_ref()
+                .map_or(partial, |response| response.choice.clone()),
+            response,
         };
         // Every fixture and cassette that drains through this helper runs
         // the lifecycle validator — the prose invariants as one executable

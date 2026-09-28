@@ -2115,27 +2115,15 @@ pub fn record_usage(
     }
 }
 
-/// The pending invalid calls of `turn`, each with its resolution, a
-/// streamed call's id resolved to the block's final identity once the
-/// stream landed.
+/// The pending invalid calls of `turn`, each with its resolution.
 fn pending_invalid_calls(
     turn: Entity,
     invalid_calls: &Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
-    stream: Option<&BusStreamed>,
 ) -> Vec<(Entity, InvalidCall, Resolution)> {
     invalid_calls
         .iter()
         .filter(|(_, child_of, _, _)| child_of.parent() == turn)
-        .map(|(entity, _, call, resolution)| {
-            let mut call = call.clone();
-            if let Some(offset) = call.stream_offset
-                && let Some(stream) = stream
-                && let Some(id) = stream_invalid::completed_call_id(&stream.events, offset)
-            {
-                call.id = id;
-            }
-            (entity, call, resolution.clone())
-        })
+        .map(|(entity, _, call, resolution)| (entity, call.clone(), resolution.clone()))
         .collect()
 }
 
@@ -2203,22 +2191,22 @@ fn abandon_turn(
     run: Entity,
     turn: Entity,
     outs: &Outputs,
-    events: Option<&[rig_core::streaming::StreamEvent]>,
-    allowed_names: &[String],
     call: &InvalidCall,
     feedback: &str,
     retries: Option<InvalidRetries>,
 ) -> Result<(), ContentError> {
     commands.entity(turn).insert(Materialised);
-    let (content, diagnostic_id) =
-        if let Some(AssistantContent::ToolCall(diagnostic)) = call.prefix.last() {
-            (call.prefix.clone(), diagnostic.id.clone())
-        } else {
-            policy::partial_turn_at(&outs.content, events, &call.id, allowed_names)
-        };
+    // A streamed call's turn is what was delivered before it; a whole
+    // turn is all of it.
+    let content = if call.prefix.is_empty() {
+        outs.content.clone()
+    } else {
+        call.prefix.clone()
+    };
+    let diagnostic_id = &call.id;
     let assistant = MessageParts::assistant(outs.message_id.clone(), content.clone())?;
     spawn_deferred(commands, assets, run, assistant)?;
-    let results = policy::invalid_peer_results(&content, &diagnostic_id, feedback)
+    let results = policy::invalid_peer_results(&content, diagnostic_id, feedback)
         .ok_or(ContentError::Shape)?;
     let skipped = match &results {
         MessageParts::User { content } => vec![ToolResultStatus::Skipped; content.len()],
@@ -2245,10 +2233,6 @@ pub fn judge_invalid_calls(
     effects: Query<LandedEffect, NotRetrieval>,
     runs: Query<(&RunOf, &RunSeq, &InvalidRetries, &OutputToolName, &RunPhase)>,
     invalid_calls: Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
-    children: Query<&Children>,
-    adverts: Query<&Advert>,
-    bound: Query<&Bound>,
-    access: Query<&ToolAccess>,
     choices: Query<&ToolChoiceSpec>,
     policies: Query<&InvalidCalls>,
 ) {
@@ -2263,14 +2247,14 @@ pub fn judge_invalid_calls(
         .collect();
     turns.sort_by_key(|(seq, ..)| *seq);
     for (_, turn, run, mut outs) in turns {
-        let Ok((RunOf(agent), _, invalid_retries, minted, &RunPhase::AwaitingModel)) =
+        let Ok((RunOf(agent), _, invalid_retries, _, &RunPhase::AwaitingModel)) =
             runs.get(run)
         else {
             continue;
         };
         let agent = *agent;
         let stream = landed_effect(turn, &effects).and_then(|effect| effect.streamed);
-        let pending = pending_invalid_calls(turn, &invalid_calls, stream);
+        let pending = pending_invalid_calls(turn, &invalid_calls);
         if pending.is_empty() {
             continue;
         }
@@ -2310,21 +2294,12 @@ pub fn judge_invalid_calls(
             InvalidVerdict::Retry(call, feedback) | InvalidVerdict::Skip(call, feedback) => {
                 let retries = matches!(invalid_verdict(&pending), InvalidVerdict::Retry(..))
                     .then(|| InvalidRetries(invalid_retries.0 + 1));
-                let granted =
-                    granted_tools(turn, &children, &adverts, &bound, access.get(turn).ok());
-                let allowed_names: Vec<String> = granted
-                    .into_iter()
-                    .map(|tool| tool.name)
-                    .chain(minted.0.clone())
-                    .collect();
                 abandon_turn(
                     &mut commands,
                     &mut assets,
                     run,
                     turn,
                     &outs,
-                    stream.map(|stream| stream.events.as_slice()),
-                    &allowed_names,
                     &call,
                     &feedback,
                     retries,

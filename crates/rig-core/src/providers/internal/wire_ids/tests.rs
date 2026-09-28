@@ -1,8 +1,8 @@
 //! Synthetic transcript tests cover identities that cannot be requested reliably
-//! from a live provider. Adapter request-boundary tests cover use of this sidecar.
+//! from a live provider. Adapter request-boundary tests cover their use.
 
 use super::*;
-use crate::message::{CallId, ToolFunction, ToolResult};
+use crate::message::{ToolCall, ToolFunction, ToolResult};
 
 /// The provider id the shared adapter history's second call carries.
 const SHARED: &str = "call_shared";
@@ -39,10 +39,11 @@ fn local() -> CallId {
 }
 
 /// A history whose calls are answered out of order across text: a
-/// rig-issued call, a provider call, and the rig-issued id reused a turn
+/// rig-issued call, a provider call, and another rig-issued call a turn
 /// later.
 pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
     let id = local();
+    let later = local();
     crate::completion::CompletionRequest {
         model: None,
         chat_history: crate::NonEmpty::with_rest(
@@ -52,9 +53,9 @@ pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
                 call(provider(SHARED)),
                 result(provider(SHARED)),
                 Message::assistant("intervening text"),
-                result(id.clone()),
-                call(id.clone()),
                 result(id),
+                call(later.clone()),
+                result(later),
             ],
         ),
         documents: vec![],
@@ -128,7 +129,7 @@ pub(crate) fn assert_adapter_pairs(wire: serde_json::Value) {
         "{wire}"
     );
     assert_eq!(calls[1], SHARED);
-    assert_eq!(calls.iter().collect::<HashSet<_>>().len(), 3, "{wire}");
+    assert_eq!(calls.iter().collect::<std::collections::HashSet<_>>().len(), 3, "{wire}");
 }
 
 pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
@@ -137,91 +138,50 @@ pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
 
 #[test]
 fn wire_slot_assignment_is_atomic_and_uses_original_content_order() {
+    let function = || ToolFunction::new(
+        crate::message::ToolName::new("test").expect("tool name"),
+        serde_json::json!({}),
+    );
     let history = vec![Message::Assistant {
         id: None,
         content: crate::NonEmpty::with_rest(
             AssistantContent::text("before"),
             [
-                AssistantContent::ToolCall(ToolCall::from_wire(
-                    "first",
-                    ToolFunction {
-                        name: crate::message::ToolName::new("test").expect("tool name"),
-                        arguments: serde_json::json!({}),
-                    },
-                )),
+                AssistantContent::ToolCall(ToolCall::new(provider("first"), function())),
                 AssistantContent::text("between"),
-                AssistantContent::ToolCall(ToolCall::from_wire(
-                    "second",
-                    ToolFunction {
-                        name: crate::message::ToolName::new("test").expect("tool name"),
-                        arguments: serde_json::json!({}),
-                    },
-                )),
+                AssistantContent::ToolCall(ToolCall::new(provider("second"), function())),
             ],
         ),
     }];
-    let ids = ToolCallIds::new(&history).unwrap();
+    let ids = WireIds::new(&history);
     for count in [1, 3] {
         let mut slots = vec!["unchanged".to_owned(); count];
-        assert!(matches!(
-            ids.apply(0, slots.iter_mut()),
-            Err(ToolCallIdError::WireSlotCount { .. })
-        ));
+        assert!(ids.apply(0, slots.iter_mut()).is_err());
         assert!(slots.iter().all(|slot| slot == "unchanged"));
     }
     let mut slots = [String::new(), String::new()];
-    ids.apply(0, slots.iter_mut()).unwrap();
+    ids.apply(0, slots.iter_mut()).expect("two slots");
     assert_eq!(slots, ["first", "second"]);
 }
 
 #[test]
-fn a_reused_rig_issued_id_is_distinguished_across_turns() {
-    let generated = local();
+fn a_rig_issued_id_is_one_alias_that_no_provider_id_takes() {
+    let issued = local();
     let history = vec![
-        call(generated.clone()),
-        result(generated.clone()),
-        call(generated.clone()),
-        result(generated),
+        call(provider("tool-0")),
+        call(issued.clone()),
+        result(issued),
+        call(local()),
     ];
-    let ids = ToolCallIds::new(&history).unwrap();
-    assert_eq!(ids.get(0, 0), ids.get(1, 0));
-    assert_eq!(ids.get(2, 0), ids.get(3, 0));
-    assert_ne!(ids.get(0, 0), ids.get(2, 0));
+    let ids = WireIds::new(&history);
+    assert_eq!(ids.get(0, 0), Some("tool-0"));
+    assert_eq!(ids.get(1, 0), Some("tool-1"));
+    assert_eq!(ids.get(1, 0), ids.get(2, 0), "a result answers its call");
+    assert_eq!(ids.get(3, 0), Some("tool-2"));
 }
 
 #[test]
 fn a_provider_result_without_its_call_keeps_the_providers_id() {
     let history = vec![result(provider("real"))];
-    let ids = ToolCallIds::new(&history).unwrap();
-    assert_eq!(ids.get(0, 0), Some("real"));
-    assert!(matches!(
-        ToolCallIds::new(&[result(local())]),
-        Err(ToolCallIdError::OrphanResult { .. })
-    ));
-}
-
-#[test]
-fn allows_sequential_real_id_reuse_but_rejects_duplicate_answers() {
-    let mut history = vec![
-        call(provider("real")),
-        result(provider("real")),
-        call(provider("real")),
-        result(provider("real")),
-    ];
-    let ids = ToolCallIds::new(&history).unwrap();
-    assert!((0..4).all(|message| ids.get(message, 0) == Some("real")));
-    history.push(result(provider("real")));
-    assert!(matches!(
-        ToolCallIds::new(&history),
-        Err(ToolCallIdError::DuplicateResult { .. })
-    ));
-}
-
-#[test]
-fn overlapping_calls_with_one_provider_id_are_ambiguous() {
-    let history = vec![call(provider("a")), call(provider("a"))];
-    assert!(matches!(
-        ToolCallIds::new(&history),
-        Err(ToolCallIdError::Ambiguous { .. })
-    ));
+    assert_eq!(WireIds::new(&history).get(0, 0), Some("real"));
 }

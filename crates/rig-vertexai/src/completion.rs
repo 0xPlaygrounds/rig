@@ -18,7 +18,7 @@ use crate::types::completion_request::VertexCompletionRequest;
 use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder};
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionRequest;
-use rig_core::driver::{Exchange, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
 use rig_core::wire::{Descriptor, Mode, Wire};
@@ -64,7 +64,7 @@ impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = VertexRequest;
     type Frame = vertexai::model::GenerateContentResponse;
-    type Decoder = VertexDecoder;
+    type Decoder<'id> = VertexDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
@@ -86,7 +86,7 @@ impl Wire for GenerateContent {
         })
     }
 
-    fn decoder(&self, _mode: Mode) -> VertexDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         VertexDecoder
     }
 }
@@ -97,23 +97,29 @@ impl Transport<GenerateContent> for VertexAi {
         &self,
         payload: VertexRequest,
         _exchange: Exchange,
-    ) -> Result<Sending<vertexai::model::GenerateContentResponse>, ProviderError> {
+    ) -> Opening<vertexai::model::GenerateContentResponse> {
         let VertexRequest { model, request } = payload;
-        let generation_config = request.generation_config()?;
+        let generation_config = match request.generation_config() {
+            Ok(config) => config,
+            Err(error) => return Opening::failed(error),
+        };
         let system_instruction = request.system_instruction();
         let tools = request.tools();
         let tool_config = request.tool_config();
-        let contents = request.contents()?;
+        let contents = match request.contents() {
+            Ok(contents) => contents,
+            Err(error) => return Opening::failed(error),
+        };
         let model_path = format!(
             "projects/{}/locations/{}/publishers/google/models/{model}",
             self.project(),
             self.location()
         );
         let client = self.clone();
-        Ok(Sending::later(async move {
+        Opening::new(async move {
             let service = match client.inner().await {
                 Ok(service) => service,
-                Err(error) => return Opened::failed(ProviderError::Provider(error.to_string())),
+                Err(error) => return Err(ProviderError::Provider(error.to_string())),
             };
             let mut request_builder = service
                 .generate_content()
@@ -137,11 +143,11 @@ impl Transport<GenerateContent> for VertexAi {
                         target: "rig_core::vertexai",
                         "Vertex AI completion response: {response:?}"
                     );
-                    Opened::new(futures::stream::iter([Ok(response)]))
+                    Ok(Opened::new(futures::stream::iter([Ok(response)])))
                 }
-                Err(error) => Opened::failed(rpc_error(&error)),
+                Err(error) => Ok(Opened::failed(rpc_error(&error))),
             }
-        }))
+        })
     }
 }
 

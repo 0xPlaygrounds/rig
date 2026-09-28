@@ -41,7 +41,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::support::with_mistral_terminal_metadata_cassette_result;
@@ -135,12 +134,10 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
         Transport::Blocking => model.call(request).await?.raw,
         Transport::Streaming => {
             let mut stream = model.stream(request)?;
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(response) = item? {
-                    terminal = Some(response);
-                }
+                item?;
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.context("raw stream should carry a terminal response")?;
             terminal.raw
         }

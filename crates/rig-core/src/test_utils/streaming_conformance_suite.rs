@@ -192,9 +192,9 @@ macro_rules! streaming_conformance_suite {
         $crate::__streaming_conformance_scenarios! {
             ungated truncation_preserves_content_without_terminal;
             ungated transport_error_after_tool_call_yields_err_then_end;
-            gated malformed_frame_surfaces_err_and_terminal_still_completes => malformed_frame;
+            gated malformed_frame_ends_the_reply => malformed_frame;
             gated unknown_event_is_skipped => unknown_event_frame;
-            gated defective_known_event_surfaces_err => defective_known_frame;
+            gated defective_known_event_ends_the_reply => defective_known_frame;
             gated delta_less_choice_prelude_is_a_noop => delta_less_prelude;
             gated refusal_frames_deliver_text_without_error => refusal;
             gated bare_terminal_after_only_unparseable_frames_fabricates_nothing

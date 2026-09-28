@@ -9,11 +9,11 @@
 //! assert!(page.next.is_none());
 //! ```
 
-use super::Take;
+use super::Whole;
 use crate::driver::{Model, Transport};
 use crate::error::ProviderError;
 use crate::model::ModelList;
-use crate::wire::{Call, Operation, Wire};
+use crate::wire::{Call, Free, Operation, Wire};
 
 /// Lists provider models, one page per call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,16 +31,14 @@ pub struct ModelPage {
 impl Operation for ModelListing {
     /// The cursor of the page to read: `None` for the first.
     type Request = Option<String>;
-    type Event = ModelPage;
+    type Event = std::convert::Infallible;
+    type End = ModelPage;
     type Response = ModelPage;
-    type Fold = Take<Self>;
-
-    fn is_terminal(_event: &Self::Event) -> bool {
-        true
-    }
+    type Fold = Whole<Self>;
+    type Emit = Free;
 
     fn fold(_request: &Self::Request, _call: &mut Call<'_>) -> Self::Fold {
-        Take::default()
+        Whole::new()
     }
 }
 

@@ -21,7 +21,6 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
     serve::{Reply, Serve, ServingPolicy},
-    streaming::StreamFinal,
     tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::{
@@ -98,18 +97,9 @@ impl Serve for Scripted {
                             AssistantContent::Reasoning(_) | AssistantContent::Image(_) => {}
                         }
                     }
+                    writer.raw(serde_json::json!({ "provider": "scripted" }));
                     let _ = writer
-                        .finish(StreamFinal {
-                            usage: Usage::default(),
-                            finish_reason: None,
-                            message_id: None,
-                            response_id: None,
-                            provider_request_id: None,
-                            provider: "scripted".to_owned(),
-                            reasoning_issuer: None,
-                            model: None,
-                            raw: serde_json::json!({ "provider": "scripted" }),
-                        })
+                        .finish("scripted", rig_core::operation::Finish::new(Usage::default()))
                         .await;
                 })
             }

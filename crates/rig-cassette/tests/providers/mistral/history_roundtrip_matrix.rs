@@ -24,6 +24,7 @@
 //! |---|---|
 //! | all 8 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_text.yaml` |
 
+use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
 
@@ -31,7 +32,7 @@ use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde_json::Value;
 
 use super::support::with_mistral_history_roundtrip_cassette_result;
@@ -157,13 +158,13 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
             };
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::Final(_) => observation.saw_terminal = true,
+                    Item::Event(StreamEvent::Text { text, .. }) => observation.text.push_str(&text),
                     _ => {}
                 }
+            }
+            {
+                let _final = stream.finish().await.expect("the stream ends");
+                observation.saw_terminal = true;
             }
             observation
         }
@@ -175,13 +176,13 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
             };
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::Final(_) => observation.saw_terminal = true,
+                    Item::Event(StreamEvent::Text { text, .. }) => observation.text.push_str(&text),
                     _ => {}
                 }
+            }
+            {
+                let _final = stream.finish().await.expect("the stream ends");
+                observation.saw_terminal = true;
             }
             observation
         }

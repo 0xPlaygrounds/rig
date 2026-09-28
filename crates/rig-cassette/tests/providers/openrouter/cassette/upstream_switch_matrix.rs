@@ -98,7 +98,7 @@ where
     while let Some(item) = stream.next().await {
         item.expect("a stream item");
     }
-    stream.finish().expect("a terminal record").choice.to_vec()
+    stream.finish().await.expect("a terminal record").choice.to_vec()
 }
 
 fn text(choice: &[AssistantContent]) -> String {

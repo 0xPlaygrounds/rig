@@ -11,11 +11,13 @@
 //! preserved); assertions derive expected IDs from the recorded turn and never
 //! mint literal IDs.
 
+use rig::streaming::Item;
+use rig::completion::CompletionResponse;
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ToolCall};
 use rig::providers::anthropic;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::StreamEvent;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{AlphaSignal, BetaSignal, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT};
@@ -26,9 +28,8 @@ struct StreamRun {
     reasoning_blocks: Vec<Reasoning>,
     reasoning_delta: String,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionResponse>,
     message_id: Option<String>,
 }
 
@@ -38,7 +39,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         reasoning_blocks: Vec::new(),
         reasoning_delta: String::new(),
         tool_calls: Vec::new(),
-        finals: Vec::new(),
         choice: vec![AssistantContent::text("")],
         response: None,
         message_id: None,
@@ -49,14 +49,8 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         let item = item.expect("stream item should be ok");
         raw_items.push(Ok(item.clone()));
         match item {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => run.text.push_str(&text),
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            } => {
+            Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
+            Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. }) => {
                 run.reasoning_blocks.push(
                     reasoning
                         .open(reasoning.issuer())
@@ -64,43 +58,32 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                         .expect("reasoning opens"),
                 );
             }
-            StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text: reasoning },
-                ..
-            } => {
+            Item::Event(StreamEvent::Reasoning { text: reasoning, .. }) => {
                 run.reasoning_delta.push_str(&reasoning);
             }
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
-                ..
-            } => run.tool_calls.push(tool_call),
-            StreamEvent::Final(response) => run.finals.push(response),
+            Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) => run.tool_calls.push(tool_call),
             _ => {}
         }
     }
+    let response = stream.finish().await.expect("the stream ends");
 
-    run.choice = stream.folded().snapshot();
+    run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.folded().terminal().cloned();
-    run.message_id = stream.folded().message_id().map(str::to_owned);
+    run.response = Some(response.clone());
+    run.message_id = response.message_id.clone();
     run
 }
 
 fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
-    assert_eq!(
-        run.finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
     let terminal = run
         .response
         .as_ref()
         .expect("aggregated stream should retain the terminal record");
     assert_eq!(
-        terminal.finish_reason.as_ref(),
-        Some(&expected_finish),
+        terminal.finish_reason(),
+        Some(expected_finish),
         "unexpected finish reason"
     );
     assert!(

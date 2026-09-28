@@ -1,5 +1,6 @@
 //! Anthropic prompt caching cassette tests.
 
+use rig::streaming::Item;
 use futures::StreamExt;
 use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, ToolDefinition, Usage,
@@ -10,7 +11,7 @@ use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
 use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::providers::anthropic::wire::Messages;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::AnthropicModels;
 use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
@@ -355,15 +356,13 @@ async fn send_matrix_streaming_probe(
 
     while let Some(item) = stream.next().await {
         match item.expect("streaming matrix Anthropic item should succeed") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: delta },
-                ..
-            } => text.push_str(&delta),
-            StreamEvent::Final(response) => {
-                usage = Some(response.usage);
-            }
+            Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
             _ => {}
         }
+    }
+    {
+        let response = stream.finish().await.expect("the stream ends");
+        usage = Some(response.usage);
     }
 
     StreamingCacheProbeResponse {
@@ -1408,15 +1407,13 @@ async fn send_streaming_cache_probe(
 
     while let Some(item) = stream.next().await {
         match item.expect("streaming prompt-cached Anthropic item should succeed") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: delta },
-                ..
-            } => text.push_str(&delta),
-            StreamEvent::Final(response) => {
-                usage = Some(response.usage);
-            }
+            Item::Event(StreamEvent::Text { text: delta, .. }) => text.push_str(&delta),
             _ => {}
         }
+    }
+    {
+        let response = stream.finish().await.expect("the stream ends");
+        usage = Some(response.usage);
     }
 
     StreamingCacheProbeResponse {

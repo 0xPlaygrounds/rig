@@ -6,7 +6,7 @@ use futures::StreamExt;
 use rig_core::completion::{Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
-use rig_core::streaming::{Delta, StreamEvent};
+use rig_core::streaming::{Item, StreamEvent};
 #[cfg(not(target_family = "wasm"))]
 use safetensors::tensor::{Dtype, View, serialize};
 use std::borrow::Cow;
@@ -34,20 +34,20 @@ impl Transport<Generation> for Scripted {
         &self,
         _request: CompletionRequest,
         _exchange: Exchange,
-    ) -> Result<Sending<CandleFrame>, ProviderError> {
-        let events = std::mem::take(
-            &mut *self
-                .0
-                .lock()
-                .map_err(|_| ProviderError::Provider("the script lock was poisoned".to_owned()))?,
-        );
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter(
-                events
-                    .into_iter()
-                    .map(|event| Ok(CandleFrame::Event(event))),
-            ))
-        }))
+    ) -> Opening<CandleFrame> {
+        let events = match self.0.lock() {
+            Ok(mut events) => std::mem::take(&mut *events),
+            Err(_) => {
+                return Opening::failed(ProviderError::Provider(
+                    "the script lock was poisoned".to_owned(),
+                ));
+            }
+        };
+        Opening::ready(Opened::new(futures::stream::iter(
+            events
+                .into_iter()
+                .map(|event| Ok(CandleFrame::Event(event))),
+        )))
     }
 }
 
@@ -303,19 +303,11 @@ async fn collect_stream(
     let mut response = generation(model).stream(request)?;
     let mut text = String::new();
     while let Some(item) = response.next().await {
-        if let StreamEvent::BlockDelta {
-            delta: Delta::Text { text: fragment },
-            ..
-        } = item?
-        {
+        if let Item::Event(StreamEvent::Text { text: fragment, .. }) = item? {
             text.push_str(&fragment);
         }
     }
-    let terminal = response
-        .folded()
-        .terminal()
-        .cloned()
-        .ok_or("stream did not emit a final response")?;
+    let terminal = response.finish().await?;
     // The local record rides the terminal's `raw`, typed back here.
     let raw: CandleCompletionResponse = serde_json::from_value(terminal.raw)?;
     Ok((text, raw))
@@ -1278,9 +1270,12 @@ async fn closed_admission_controller_fails_public_operations()
             .to_string()
             .contains("concurrency controller is closed")
     );
+    // Admission is refused as the stream's first and only item.
     let stream_error = generation(&model)
-        .stream(request(vec![Message::user("hello")]))
-        .err()
+        .stream(request(vec![Message::user("hello")]))?
+        .next()
+        .await
+        .and_then(Result::err)
         .ok_or("closed stream admission unexpectedly succeeded")?;
     assert!(
         stream_error
@@ -1696,11 +1691,7 @@ async fn stream_from_events_terminal_carries_raw()
     while let Some(item) = stream.next().await {
         item?;
     }
-    let terminal = stream
-        .folded()
-        .terminal()
-        .cloned()
-        .ok_or("stream did not emit a terminal record")?;
+    let terminal = stream.finish().await?;
 
     assert!(
         !terminal.raw.is_null(),
@@ -1776,11 +1767,7 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     while let Some(item) = stream.next().await {
         item?;
     }
-    let terminal = stream
-        .folded()
-        .terminal()
-        .cloned()
-        .ok_or("stream did not emit a terminal record")?;
+    let terminal = stream.finish().await?;
     let (_, streamed) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
 
     assert!(
@@ -1803,13 +1790,9 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     while let Some(item) = renormalized.next().await {
         item?;
     }
-    let renormalized = renormalized
-        .folded()
-        .terminal()
-        .cloned()
-        .ok_or("re-normalizing the capture did not emit a terminal record")?;
+    let renormalized = renormalized.finish().await?;
     assert_eq!(terminal.identity(), renormalized.identity());
-    assert_eq!(terminal.finish_reason, renormalized.finish_reason);
+    assert_eq!(terminal.finish_reason(), renormalized.finish_reason());
     assert_eq!(terminal.model, renormalized.model);
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(terminal.usage.output_tokens, Some(2));

@@ -14,14 +14,13 @@ use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
 use super::*;
 use crate::completion::CompletionRequest;
-use crate::driver::{Exchange, Local, Model, Opened, Sending, Transport};
+use crate::driver::{Exchange, Local, Model, Opened, Opening, Transport};
 use crate::embeddings::EmbeddingResponse;
 use crate::error::{EncodeError, ProviderError};
-use crate::operation::{Completion, Embedding, Rerank, RerankRequest, Transcription};
+use crate::operation::{Completion, Embedding, Finish, Rerank, RerankRequest, Transcription};
 use crate::rerank::RerankResponse;
-use crate::streaming::{StreamEvent, StreamFinal};
 use crate::transcription::{TranscriptionRequest, TranscriptionResponse};
-use crate::wire::{Decoder, Descriptor, Fold, Mode, Out, Wire, WireEvent};
+use crate::wire::{Decoder, Descriptor, Flow, Fold, Mode, Out, Wire, WireEvent};
 use futures::StreamExt;
 
 /// One JSON line per case, in the order [`cases`] runs them.
@@ -226,14 +225,12 @@ fn cases() -> Vec<Value> {
             let request = CompletionRequest::new("hi")
                 .preamble("sys")
                 .record_content_telemetry(true);
-            let wire = Local::<Completion>::new("prov").with_id("model");
-            let mut fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
-            let terminal = StreamFinal::new("prov", usage(), Value::Null)
+            let end = Finish::new(usage())
                 .with_message_id("msg_1")
                 .with_model("resp_model");
-            fold.absorb(&StreamEvent::Final(terminal))
-                .expect("the fold takes the terminal");
-            fold.finish(reply()).expect("the fold records its response");
+            let fold = crate::test_utils::fold_for(&request, &Scripted(end.clone()), Mode::Unary);
+            fold.finish(end, reply())
+                .expect("the fold records its response");
         },
     );
     run(
@@ -241,26 +238,29 @@ fn cases() -> Vec<Value> {
         &mut out,
         || {
             let request = CompletionRequest::new("hi").model("override");
-            let terminal = StreamFinal::new("prov", usage(), Value::Null)
+            let end = Finish::new(usage())
                 .with_response_id("resp_1")
                 .with_message_id("msg_1")
                 .with_model("m2");
-            // The streamed call's span records the terminal as it passes.
-            let stream = Model::new(Scripted(terminal.clone()), Scripted(terminal))
+            // The streamed call's span records the response it finishes with.
+            let mut stream = Model::new(Scripted(end.clone()), Scripted(end))
                 .stream(request)
                 .expect("a scripted stream opens");
-            futures::executor::block_on(stream.collect::<Vec<_>>());
+            futures::executor::block_on(async {
+                while stream.next().await.is_some() {}
+                stream.finish().await.expect("the scripted reply ends")
+            });
         },
     );
     run("embedding operation span+record", &mut out, || {
         let wire = Local::<Embedding>::new("prov").with_id("model");
-        let mut fold = crate::test_utils::fold_for(&Vec::new(), &wire, Mode::Unary);
+        let fold = crate::test_utils::fold_for(&Vec::new(), &wire, Mode::Unary);
         let response = EmbeddingResponse::new(vec![], "prov")
             .with_response_id("emb_id")
             .with_model("emb_model")
             .with_usage(usage());
-        fold.absorb(&response).expect("the fold takes the reply");
-        fold.finish(reply()).expect("the fold records its response");
+        fold.finish(response, reply())
+            .expect("the fold records its response");
     });
     run("rerank operation span+record", &mut out, || {
         let request = RerankRequest {
@@ -268,13 +268,13 @@ fn cases() -> Vec<Value> {
             documents: vec!["d".into()],
         };
         let wire = Local::<Rerank>::new("prov").with_id("model");
-        let mut fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
+        let fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
         let response = RerankResponse::new(vec![], "prov")
             .with_response_id("rr_id")
             .with_model("rr_model")
             .with_usage(usage());
-        fold.absorb(&response).expect("the fold takes the reply");
-        fold.finish(reply()).expect("the fold records its response");
+        fold.finish(response, reply())
+            .expect("the fold records its response");
     });
     run("transcription operation span+record", &mut out, || {
         let request = TranscriptionRequest {
@@ -286,12 +286,12 @@ fn cases() -> Vec<Value> {
             additional_params: None,
         };
         let wire = Local::<Transcription>::new("prov").with_id("model");
-        let mut fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
+        let fold = crate::test_utils::fold_for(&request, &wire, Mode::Unary);
         let response = TranscriptionResponse::new("text", "prov")
             .with_response_id("tr_id")
             .with_usage(usage());
-        fold.absorb(&response).expect("the fold takes the reply");
-        fold.finish(reply()).expect("the fold records its response");
+        fold.finish(response, reply())
+            .expect("the fold records its response");
     });
     run("span combinator on a native response", &mut out, || {
         SpanBuilder::new("prov", "model", GenAiOperation::Chat)
@@ -343,15 +343,15 @@ fn modality_spans_ignore_system_instructions() {
 }
 
 /// A completion wire named `prov` for `model`, whose transport answers with
-/// one scripted terminal record.
+/// one scripted end.
 #[derive(Clone)]
-struct Scripted(StreamFinal);
+struct Scripted(Finish);
 
 impl Wire for Scripted {
     type Op = Completion;
     type Payload = ();
-    type Frame = StreamEvent;
-    type Decoder = Relay;
+    type Frame = Finish;
+    type Decoder<'id> = Ends;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("prov").model("model")
@@ -361,35 +361,28 @@ impl Wire for Scripted {
         Ok(())
     }
 
-    fn decoder(&self, _mode: Mode) -> Relay {
-        Relay
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        Ends
     }
 }
 
 impl Transport<Scripted> for Scripted {
-    fn send(
-        &self,
-        _payload: (),
-        _exchange: Exchange,
-    ) -> Result<Sending<StreamEvent>, ProviderError> {
-        let terminal = self.0.clone();
-        Ok(Sending::opened(Opened::new(futures::stream::iter([Ok(
-            StreamEvent::Final(terminal),
-        )]))))
+    fn send(&self, _payload: (), _exchange: Exchange) -> Opening<Finish> {
+        Opening::ready(Opened::new(futures::stream::iter([Ok(self.0.clone())])))
     }
 }
 
-/// Forwards each scripted event as is.
-struct Relay;
+/// Ends the reply with the scripted end.
+struct Ends;
 
-impl Decoder<Completion, StreamEvent> for Relay {
-    type Event = StreamEvent;
+impl<'id> Decoder<'id, Completion, Finish> for Ends {
+    type Event = Finish;
 
-    fn classify(&self, frame: StreamEvent) -> WireEvent<StreamEvent> {
+    fn classify(&self, frame: Finish) -> WireEvent<Finish> {
         WireEvent::Known(frame)
     }
 
-    fn interpret(&mut self, event: StreamEvent, out: &mut Out<'_, Completion>) {
-        out.push(Ok(event));
+    fn decode(&mut self, end: Finish, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        Ok(out.end(end))
     }
 }

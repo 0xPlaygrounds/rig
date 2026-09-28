@@ -1,11 +1,8 @@
 use super::*;
-use crate::driver::WireDriver;
 use crate::error::ProviderError;
 use crate::message::EMPTY_RESPONSE_ERROR;
-use crate::operation::Completion;
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::wire::WireFrame;
-use crate::wire::{Fold, Wire};
 use serde_json::json;
 use serde_path_to_error::deserialize;
 
@@ -30,20 +27,12 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
         map.entry("type").or_insert_with(|| json!("message"));
     }
     let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
-    driver.push(WireFrame::Text(body.to_string()));
-    driver.finish();
-    let mut fold = crate::test_utils::fold_for(&hello_request(), &wire, crate::wire::Mode::Unary);
-    for item in driver.drain() {
-        fold.absorb(&item?)?;
-    }
-    Fold::<Completion>::finish(
-        fold,
-        crate::wire::Reply {
-            provider: "anthropic".to_owned(),
-            raw: body,
-            provider_request_id: None,
-        },
+    crate::test_utils::decode_reply(
+        &wire,
+        &hello_request(),
+        crate::wire::Mode::Unary,
+        [WireFrame::Text(body.to_string())],
+        body,
     )
 }
 
@@ -406,7 +395,7 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     .with_strict_tools()
     .encode(request, Mode::Unary)
     .expect("the request encodes");
-    let crate::wire::Body::Bytes(body) = encoded.requests.first().expect("one request").body()
+    let crate::wire::Body::Bytes(body) = &encoded.request.body()
     else {
         panic!("the Messages endpoint takes JSON")
     };
@@ -3681,7 +3670,7 @@ mod raw_capture {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{
+    use crate::providers::internal::wire_ids::tests::{
         adapter_requests, assert_adapter_pairs,
     };
     for request in adapter_requests() {

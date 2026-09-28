@@ -18,6 +18,7 @@
 //! cassettes survive re-recording. Deterministic hooks (no clocks/RNG) keep the
 //! outbound requests byte-identical for replay.
 
+use rig::streaming::Item;
 use rig_cassette::agent::AgentReplayExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -31,7 +32,7 @@ use rig::agent::{
 };
 use rig::completion::Document;
 use rig::providers::gemini;
-use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
+use rig::streaming::{StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
@@ -548,14 +549,8 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
-                        StreamEvent::BlockDelta {
-                            delta: Delta::Text { text: _ },
-                            ..
-                        } => events.push("text"),
-                        StreamEvent::BlockDelta {
-                            delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                            ..
-                        } => {
+                        Item::Event(StreamEvent::Text { text: _, .. }) => events.push("text"),
+                        Item::Event(StreamEvent::Arguments { .. }) => {
                             events.push("tool_call_delta");
                         }
                         _ => {}

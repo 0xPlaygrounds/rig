@@ -167,7 +167,7 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedChoice) -> R
             while let Some(item) = stream.next().await {
                 item?;
             }
-            stream.folded().snapshot()
+            stream.partial().choice
         }
     };
 

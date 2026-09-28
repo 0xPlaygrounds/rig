@@ -176,16 +176,18 @@ fn an_erased_stream_yields_the_direct_stream_item_for_item() {
     assert!(
         direct.iter().any(|item| matches!(
             item,
-            Ok(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(_)),
+            Ok(crate::streaming::Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(_),
                 ..
-            })
+            }))
         )),
-        "a tool call end carries its finalized block: {direct:?}"
+        "a tool call end carries its finalized call: {direct:?}"
     );
-    let direct = serde_json::to_value(&direct).expect("json");
-    let erased = serde_json::to_value(&erased).expect("json");
-    assert_eq!(direct, erased, "the erased stream yields the same items");
+    assert_eq!(
+        format!("{direct:?}"),
+        format!("{erased:?}"),
+        "the erased stream yields the same items"
+    );
     assert_eq!(
         direct_spans, erased_spans,
         "the erased stream records the same span"

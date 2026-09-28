@@ -7,11 +7,9 @@ use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
 };
-use rig_core::operation::{Completion, ImagePart};
+use rig_core::operation::{Completion, Finish};
 use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
-use rig_core::providers::internal::wire;
-use rig_core::streaming::StreamFinal;
-use rig_core::wire::{Decoder, Out, TypedEvent, WireEvent};
+use rig_core::wire::{Decoder, Flow, Out, WireEvent};
 
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
@@ -48,47 +46,41 @@ pub fn map_finish_reason(
 #[derive(Default)]
 pub struct VertexDecoder;
 
-impl Decoder<Completion, vertexai::model::GenerateContentResponse> for VertexDecoder {
+impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for VertexDecoder {
     type Event = vertexai::model::GenerateContentResponse;
 
     fn classify(
         &self,
         frame: vertexai::model::GenerateContentResponse,
     ) -> WireEvent<vertexai::model::GenerateContentResponse> {
-        wire::classify_typed_event(TypedEvent::Modeled(frame))
+        WireEvent::Known(frame)
     }
 
-    fn interpret(
+    fn decode(
         &mut self,
         response: vertexai::model::GenerateContentResponse,
-        out: &mut Out<'_, Completion>,
-    ) {
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         // The provider's own document, captured before the response is
         // consumed into normalized content.
-        let raw = match serde_json::to_value(&response) {
-            Ok(raw) => raw,
-            Err(error) => return out.error(error.into()),
-        };
-        out.document(raw.clone());
-        let choice = match assistant_content(&response) {
-            Ok(choice) => choice,
-            Err(error) => return out.error(error),
-        };
-        out.content(&choice, ImagePart::Block);
+        out.raw(serde_json::to_value(&response)?);
+        for content in assistant_content(&response)? {
+            out.content(content)?;
+        }
         let finish_reason = response
             .candidates
             .first()
             .and_then(|candidate| map_finish_reason(&candidate.finish_reason));
-        out.final_record(
-            StreamFinal::new(PROVIDER_NAME, usage(&response), raw)
-                .with_optional_finish_reason(finish_reason)
+        Ok(out.end(
+            Finish::new(usage(&response))
+                .with_optional_reason(finish_reason)
                 .with_optional_model(
                     Some(response.model_version.clone()).filter(|model| !model.is_empty()),
                 )
                 .with_optional_response_id(
                     Some(response.response_id.clone()).filter(|id| !id.is_empty()),
                 ),
-        );
+        ))
     }
 }
 

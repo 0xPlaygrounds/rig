@@ -1,3 +1,4 @@
+use rig::streaming::Item;
 use rig::message::AssistantContent;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::future::Future;
@@ -263,7 +264,7 @@ pub(super) struct RawStreamOutcome {
     /// `"reasoning"`, `"text"`, `"tool_call"` in the order the stream emitted
     /// them, deltas collapsed into their first occurrence's kind.
     pub(super) order: Vec<&'static str>,
-    pub(super) final_record: Option<rig::streaming::StreamFinal>,
+    pub(super) final_record: Option<rig::completion::CompletionResponse>,
     pub(super) errors: Vec<String>,
 }
 
@@ -271,7 +272,7 @@ impl RawStreamOutcome {
     pub(super) fn finish_reason(&self) -> Option<rig::completion::FinishReason> {
         self.final_record
             .as_ref()
-            .and_then(|record| record.finish_reason.clone())
+            .and_then(|record| record.finish_reason().clone())
     }
 
     pub(super) fn tool_call_names(&self) -> Vec<&str> {
@@ -286,7 +287,7 @@ pub(super) async fn collect_raw_stream_outcome(
     mut stream: rig::streaming::CompletionStream,
 ) -> RawStreamOutcome {
     use futures::StreamExt as _;
-    use rig::streaming::{Delta, StreamEvent};
+    use rig::streaming::StreamEvent;
 
     let mut outcome = RawStreamOutcome {
         text: String::new(),
@@ -305,28 +306,16 @@ pub(super) async fn collect_raw_stream_outcome(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => {
                 outcome.text.push_str(&text);
                 note(&mut outcome.order, "text");
             }
-            Ok(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. })) => {
                 outcome.tool_calls.push(tool_call);
                 note(&mut outcome.order, "tool_call");
             }
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            }) => {}
-            Ok(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::Arguments { .. })) => {}
+            Ok(Item::Event(StreamEvent::End { content: AssistantContent::Reasoning(reasoning), .. })) => {
                 outcome.reasoning.push_str(
                     &reasoning
                         .open(reasoning.issuer())
@@ -335,25 +324,20 @@ pub(super) async fn collect_raw_stream_outcome(
                 );
                 note(&mut outcome.order, "reasoning");
             }
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text: reasoning },
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::Reasoning { text: reasoning, .. })) => {
                 outcome.reasoning.push_str(&reasoning);
                 note(&mut outcome.order, "reasoning");
             }
-            Ok(StreamEvent::Final(record)) => outcome.final_record = Some(record),
             Ok(
-                StreamEvent::Unknown(_)
-                | StreamEvent::BlockStart { .. }
-                | StreamEvent::BlockEnd { .. }
-                | StreamEvent::BlockDelta {
-                    delta: Delta::TextMeta { .. },
-                    ..
-                },
+                Item::Unknown(_)
+                | Item::Event(StreamEvent::Start { .. })
+                | Item::Event(StreamEvent::End { .. })
             ) => {}
             Err(error) => outcome.errors.push(error.to_string()),
         }
+    }
+    if let Ok(record) = stream.finish().await {
+        outcome.final_record = Some(record);
     }
 
     outcome

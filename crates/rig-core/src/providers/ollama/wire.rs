@@ -10,8 +10,10 @@ use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
 use crate::embeddings::Embedding as Vector;
 use crate::error::EncodeError;
+use crate::error::ProviderError;
 use crate::model::{ModelInfo, ModelList};
 use crate::operation::{Completion, Embedding, ModelListing, ModelPage};
+use crate::wire::Flow;
 use crate::wire::{
     Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
     WireFrame,
@@ -145,7 +147,7 @@ impl Wire for Chat {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = OllamaDecoder;
+    type Decoder<'id> = OllamaDecoder<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
@@ -174,7 +176,7 @@ impl Wire for Chat {
         ))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         OllamaDecoder::default()
     }
 }
@@ -195,7 +197,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = EmbeddingsDecoder;
+    type Decoder<'id> = EmbeddingsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -212,7 +214,7 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         EmbeddingsDecoder
     }
 }
@@ -220,7 +222,7 @@ impl Wire for Embeddings {
 /// Decodes one `/api/embed` reply.
 pub struct EmbeddingsDecoder;
 
-impl Decoder<Embedding> for EmbeddingsDecoder {
+impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
     type Event = OllamaEmbeddingResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -230,12 +232,15 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
         )
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, Embedding>) {
+    fn decode(
+        &mut self,
+        reply: Self::Event,
+        out: Out<'id, Embedding>,
+    ) -> Result<Flow, ProviderError> {
         let raw = match serde_json::to_value(&reply) {
             Ok(raw) => raw,
             Err(error) => {
-                out.push(Err(error.into()));
-                return;
+                return Err(error.into());
             }
         };
         // Ollama counts the prompt it embedded and nothing else: every token
@@ -255,13 +260,12 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
                 vec,
             })
             .collect();
-        out.push(Ok(crate::embeddings::EmbeddingResponse::new(
-            vectors,
-            PROVIDER_NAME,
-        )
-        .with_model(reply.model)
-        .with_usage(usage)
-        .with_raw(raw)));
+        return Ok(out.end(
+            crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
+                .with_model(reply.model)
+                .with_usage(usage)
+                .with_raw(raw),
+        ));
     }
 }
 
@@ -276,7 +280,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ModelsDecoder;
+    type Decoder<'id> = ModelsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -290,7 +294,7 @@ impl Wire for Models {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ModelsDecoder
     }
 }
@@ -299,15 +303,19 @@ impl Wire for Models {
 /// once, so there is no cursor to follow.
 pub struct ModelsDecoder;
 
-impl Decoder<ModelListing> for ModelsDecoder {
+impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
     type Event = ListModelsResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["models"])
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, ModelListing>) {
-        out.push(Ok(ModelPage {
+    fn decode(
+        &mut self,
+        reply: Self::Event,
+        out: Out<'id, ModelListing>,
+    ) -> Result<Flow, ProviderError> {
+        return Ok(out.end(ModelPage {
             models: ModelList::new(reply.models.into_iter().map(ModelInfo::from).collect()),
             next: None,
         }));

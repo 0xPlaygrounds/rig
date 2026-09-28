@@ -7,14 +7,14 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
-use crate::operation::AdapterOutput;
-use crate::operation::Completion;
+use crate::error::ProviderError;
+use crate::operation::{CallFragment, Completion, Finish, IfMalformed, TextPart};
 use crate::providers::cohere::completion::{
-    AssistantContent, CompletionResponse, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
+    AssistantContent, CompletionResponse, FinishReason, Usage, map_finish_reason,
 };
+use crate::providers::internal::thoughts::Thoughts;
 use crate::providers::internal::wire;
-use crate::streaming::{BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
-use crate::wire::WireFrame;
+use crate::wire::{Flow, Out, WireFrame};
 use serde::{Deserialize, Serialize};
 
 /// One streamed frame of Cohere's `/v2/chat`, named by its `type`.
@@ -127,8 +127,7 @@ pub struct MessageEndDelta {
 }
 
 /// Cohere's terminal stream record: the `message-end` payload as rig parsed
-/// it, serialized onto [`StreamFinal::raw`] by the adapter's terminal
-/// mapping.
+/// it: a streamed response's `raw`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
@@ -140,29 +139,27 @@ pub struct StreamingCompletionResponse {
     pub message_id: Option<String>,
 }
 
-/// Stateful decoder for unary and streaming v2 chat replies. Tracks open calls,
-/// message identity, and reasoning boundaries; the driver handles corrupt frames.
-pub struct ChatDecoder {
-    /// Wire id of the open tool call, when one is streaming. Only the wire
-    /// identity is tracked here; fragment assembly, internal-id minting, and
-    /// finalize policy live in the shared accumulator.
-    current_tool_call: Option<BlockId>,
-    /// Keys for calls whose wire id is empty: an absent id is not an id.
-    tool_ids: crate::streaming::SyntheticIds,
+/// The `/v2/chat` decoder: one state machine for the whole reply and its
+/// stream of events.
+pub struct ChatDecoder<'id> {
+    /// The wire index the open tool call's fragments are buffered under.
+    current_tool_call: Option<usize>,
+    /// Tool calls opened so far.
+    calls: usize,
     message_id: Option<String>,
-    /// Derives reasoning closure when subsequent content changes block type.
-    reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
+    /// Reasoning closes when subsequent content changes block type.
+    thoughts: Thoughts<'id>,
+    text: Option<TextPart<'id>>,
 }
 
-impl Default for ChatDecoder {
+impl Default for ChatDecoder<'_> {
     fn default() -> Self {
         Self {
             current_tool_call: None,
-            tool_ids: crate::streaming::SyntheticIds::tool(),
+            calls: 0,
             message_id: None,
-            reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                MintKind::Reasoning,
-            ),
+            thoughts: Thoughts::new(),
+            text: None,
         }
     }
 }
@@ -177,32 +174,54 @@ pub enum ChatEvent {
     Reply(CompletionResponse),
 }
 
-impl ChatDecoder {
+impl<'id> ChatDecoder<'id> {
+    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
+        if let Some(part) = self.text.take() {
+            out.close_text(part);
+        }
+    }
+
+    /// Reasoning then text, as one content fragment carries them.
+    fn content(
+        &mut self,
+        out: &mut Out<'id, Completion>,
+        thinking: Option<&str>,
+        text: Option<&str>,
+    ) {
+        if let Some(thinking) = thinking.filter(|thinking| !thinking.is_empty()) {
+            self.close_text(out);
+            self.thoughts.fragment(out, thinking);
+        }
+        if let Some(text) = text.filter(|text| !text.is_empty()) {
+            self.thoughts.boundary();
+            let part = self.text.get_or_insert_with(|| out.text());
+            out.push_text(part, text);
+        }
+    }
+
     /// Interpret one streamed `/v2/chat` frame.
-    fn interpret_stream(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
+    fn interpret_stream(
+        &mut self,
+        event: StreamingEvent,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         match event {
             StreamingEvent::MessageStart { id: Some(id) } => {
                 self.message_id = Some(id);
             }
 
             StreamingEvent::ContentDelta { delta: Some(delta) } => {
-                let Some(message) = &delta.message else {
-                    return;
-                };
-                let Some(content) = &message.content else {
-                    return;
-                };
-
-                self.reasoning.emit_chunk(
-                    crate::providers::internal::chunk_lifecycle::ChunkParts {
-                        reasoning: content.thinking.clone(),
-                        reasoning_signature: None,
-                        text: content.text.clone(),
-                        text_meta: None,
-                        tool_events: Vec::new(),
-                    },
-                    out,
-                );
+                if let Some(content) = delta
+                    .message
+                    .as_ref()
+                    .and_then(|message| message.content.as_ref())
+                {
+                    self.content(
+                        &mut out,
+                        content.thinking.as_deref(),
+                        content.text.as_deref(),
+                    );
+                }
             }
 
             StreamingEvent::MessageEnd { delta } => {
@@ -212,143 +231,135 @@ impl ChatDecoder {
                     None => (None, None),
                 };
                 let message_id = self.message_id.take();
-                self.terminal(usage, finish_reason, message_id, out);
+                return self.end(usage, finish_reason, message_id, out, true);
             }
 
             StreamingEvent::ToolCallStart { delta: Some(delta) } => {
-                let Some(message) = &delta.message else {
-                    return;
+                let Some(tool_calls) = delta
+                    .message
+                    .as_ref()
+                    .and_then(|message| message.tool_calls.as_ref())
+                else {
+                    return Ok(Flow::More);
                 };
-                let Some(tool_calls) = &message.tool_calls else {
-                    return;
+                let (Some(id), Some(function)) = (&tool_calls.id, &tool_calls.function) else {
+                    return Ok(Flow::More);
                 };
-                let Some(id) = tool_calls.id.clone() else {
-                    return;
+                let (Some(name), Some(arguments)) = (&function.name, &function.arguments) else {
+                    return Ok(Flow::More);
                 };
-                let Some(function) = &tool_calls.function else {
-                    return;
-                };
-                let Some(name) = function.name.clone() else {
-                    return;
-                };
-                let Some(arguments) = function.arguments.clone() else {
-                    return;
-                };
-
-                let key = crate::streaming::non_empty_id(id)
-                    .map_or_else(|| self.tool_ids.mint(), BlockId::wire);
-                self.current_tool_call = Some(key.clone());
-                let mut tool_events = AdapterOutput::new();
-                tool_events.tool_name(&key, name);
+                // Tool content interleaving an open thinking part stops it.
+                self.thoughts.boundary();
+                self.close_text(&mut out);
+                let index = self.calls;
+                self.calls += 1;
+                self.current_tool_call = Some(index);
                 // `tool-call-start` may carry initial argument text; on the
-                // wire it is empty, but any payload must still enter assembly.
-                if !arguments.is_empty() {
-                    tool_events.tool_arguments(&key, arguments);
-                }
-                // Tool content interleaving an open thinking block: the
-                // shared lifecycle synthesizes the boundary end.
-                self.reasoning.emit_chunk(
-                    crate::providers::internal::chunk_lifecycle::ChunkParts {
-                        reasoning: None,
-                        reasoning_signature: None,
-                        text: None,
-                        text_meta: None,
-                        tool_events: tool_events
-                            .into_items()
-                            .into_iter()
-                            .filter_map(Result::ok)
-                            .collect(),
+                // wire it is empty, but any payload is part of the call.
+                out.call_fragment(
+                    index,
+                    CallFragment {
+                        id: Some(id.as_str()),
+                        name: Some(name.as_str()),
+                        arguments: Some(arguments.as_str()),
+                        ..CallFragment::default()
                     },
-                    out,
-                );
+                )?;
             }
 
             StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
-                let Some(message) = &delta.message else {
-                    return;
+                let Some(arguments) = delta
+                    .message
+                    .as_ref()
+                    .and_then(|message| message.tool_calls.as_ref())
+                    .and_then(|tool_calls| tool_calls.function.as_ref())
+                    .and_then(|function| function.arguments.as_deref())
+                else {
+                    return Ok(Flow::More);
                 };
-                let Some(tool_calls) = &message.tool_calls else {
-                    return;
-                };
-                let Some(function) = &tool_calls.function else {
-                    return;
-                };
-                let Some(arguments) = function.arguments.clone() else {
-                    return;
-                };
-
-                // A delta with no open call has nothing to extend; skip it, as
-                // the wire never starts a call mid-delta.
-                let Some(key) = self.current_tool_call.clone() else {
-                    return;
-                };
-
-                out.tool_arguments(&key, arguments);
+                // A delta with no open call has nothing to extend; the wire
+                // never starts a call mid-delta.
+                if let Some(index) = self.current_tool_call {
+                    out.call_fragment(
+                        index,
+                        CallFragment {
+                            arguments: Some(arguments),
+                            ..CallFragment::default()
+                        },
+                    )?;
+                }
             }
 
             StreamingEvent::ToolCallEnd => {
-                let Some(key) = self.current_tool_call.take() else {
-                    return;
-                };
                 // This endpoint drops calls whose assembled arguments are unparseable.
-                out.tool_end(key, ToolCallEnd::new(UnparseableToolInput::Drop));
+                if let Some(index) = self.current_tool_call.take() {
+                    out.close_pending(index, IfMalformed::Drop)?;
+                }
             }
 
             _ => {}
         }
+        Ok(Flow::More)
     }
 
-    /// Interpret the unary reply by *synthesizing the stream* it would have
-    /// been: one block per content part, each tool call whole, then the
-    /// terminal the `message-end` event carries.
-    fn interpret_reply(&mut self, reply: CompletionResponse, out: &mut AdapterOutput) {
-        let response_id = crate::streaming::non_empty_id(reply.id.clone());
+    /// The unary reply, written as the stream it would have been: its
+    /// content parts, each tool call whole, then the end the `message-end`
+    /// event carries.
+    fn interpret_reply(
+        &mut self,
+        reply: CompletionResponse,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        let response_id = Some(reply.id.clone()).filter(|id| !id.is_empty());
         let finish_reason = Some(reply.finish_reason.clone());
         let usage = reply.usage;
-        let (content, _citations, tool_calls) = match reply.message() {
-            Ok(message) => message,
-            Err(error) => {
-                out.error(error);
-                return;
-            }
-        };
+        let (content, _citations, tool_calls) = reply.message()?;
 
         for part in content {
             match part {
-                AssistantContent::Text { text } => out.text(text),
-                AssistantContent::Thinking { thinking } => out.reasoning(thinking),
+                AssistantContent::Text { text } => self.content(&mut out, None, Some(&text)),
+                AssistantContent::Thinking { thinking } => {
+                    self.content(&mut out, Some(&thinking), None);
+                }
             }
         }
+        self.thoughts.boundary();
+        self.close_text(&mut out);
         for call in tool_calls {
             let Some(function) = call.function else {
                 continue;
             };
-            // Mint absent IDs rather than using tool names, which cannot distinguish
-            // repeated calls and are not provider-issued identity.
-            let key = call
-                .id
-                .and_then(crate::streaming::non_empty_id)
-                .map_or_else(|| self.tool_ids.mint(), BlockId::wire);
-            let mut end = ToolCallEnd::whole(function.name, function.arguments);
-            if let Some(wire_id) = key.wire_str() {
-                end = end.with_tool_id(wire_id);
-            }
-            out.tool_end(key, end);
+            // An absent id is issued by rig, never taken from the tool name,
+            // which cannot tell repeated calls apart.
+            let index = self.calls;
+            self.calls += 1;
+            out.call_fragment(
+                index,
+                CallFragment {
+                    id: call.id.as_deref(),
+                    name: Some(function.name.as_str()),
+                    ..CallFragment::default()
+                },
+            )?;
+            out.announce_pending(index, function.arguments);
+            out.close_pending(index, IfMalformed::Fail)?;
         }
-
-        out.close_active_blocks();
-        self.terminal(usage, finish_reason, response_id, out);
+        self.end(usage, finish_reason, response_id, out, false)
     }
 
-    /// The terminal record both replies end with: Cohere's usage, its finish
-    /// reason, and the message id it named.
-    fn terminal(
-        &self,
+    /// The end both replies finish with: Cohere's usage, its finish reason,
+    /// and the message id it named. A stream's `raw` is this native record;
+    /// a whole reply's is the reply itself.
+    fn end(
+        &mut self,
         usage: Option<Usage>,
         finish_reason: Option<FinishReason>,
         message_id: Option<String>,
-        out: &mut AdapterOutput,
-    ) {
+        mut out: Out<'id, Completion>,
+        streamed: bool,
+    ) -> Result<Flow, ProviderError> {
+        self.close_text(&mut out);
+        self.thoughts.close(&mut out, None);
         let recorded_usage = usage
             .as_ref()
             .map(crate::completion::Usage::from)
@@ -358,24 +369,20 @@ impl ChatDecoder {
             finish_reason,
             message_id,
         };
-        let raw = match serde_json::to_value(&native) {
-            Ok(raw) => raw,
-            Err(error) => {
-                out.error(error.into());
-                return;
-            }
-        };
+        if streamed {
+            out.raw(serde_json::to_value(&native)?);
+        }
         // Cohere's `/v2/chat` reports no model identifier in either mode, so
         // the normalized `model` stays unset.
-        out.final_record(
-            StreamFinal::new(PROVIDER_NAME, recorded_usage, raw)
-                .with_optional_finish_reason(native.finish_reason.as_ref().map(map_finish_reason))
+        Ok(out.end(
+            Finish::new(recorded_usage)
+                .with_optional_reason(native.finish_reason.as_ref().map(map_finish_reason))
                 .with_optional_response_id(native.message_id),
-        );
+        ))
     }
 }
 
-impl crate::wire::Decoder<Completion> for ChatDecoder {
+impl<'id> crate::wire::Decoder<'id, Completion> for ChatDecoder<'id> {
     type Event = ChatEvent;
 
     fn classify(&self, frame: WireFrame) -> crate::wire::WireEvent<ChatEvent> {
@@ -387,9 +394,12 @@ impl crate::wire::Decoder<Completion> for ChatDecoder {
         })
     }
 
-    /// EOF without message-end is truncation, not successful completion, so
-    /// the decoder adds nothing at the end of the reply.
-    fn interpret(&mut self, event: ChatEvent, out: &mut crate::wire::Out<'_, Completion>) {
+    /// EOF without message-end is truncation, not successful completion.
+    fn decode(
+        &mut self,
+        event: ChatEvent,
+        out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         match event {
             ChatEvent::Stream(event) => self.interpret_stream(event, out),
             ChatEvent::Reply(reply) => self.interpret_reply(reply, out),

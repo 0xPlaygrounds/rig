@@ -29,6 +29,7 @@
 //! | [`the_streaming_path_drops_the_same_cut_call`] | streaming | the same boundary, and the stream still terminates cleanly |
 //! | [`a_complete_call_under_the_same_cap_survives`] | blocking | the control: a cap large enough to finish yields a usable call |
 
+use rig::streaming::Item;
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
 use serde_json::Value;
@@ -159,13 +160,13 @@ async fn the_streaming_path_drops_the_same_cut_call() {
             let mut terminated = false;
             while let Some(item) = stream.next().await {
                 match item.expect("no stream item may be an error") {
-                    StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::ToolCall(_)),
-                        ..
-                    } => completed_calls += 1,
-                    StreamEvent::Final(_) => terminated = true,
+                    Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(_), .. }) => completed_calls += 1,
                     _ => {}
                 }
+            }
+            {
+                let _final = stream.finish().await.expect("the stream ends");
+                terminated = true;
             }
 
             assert!(

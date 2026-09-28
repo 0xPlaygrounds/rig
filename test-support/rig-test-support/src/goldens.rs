@@ -1275,28 +1275,8 @@ impl rig_core::memory::ConversationMemory for FailingMemory {
 // Matrix K: the delta wire.
 
 #[allow(dead_code)]
-/// Expected stop reason for a tool-name delta.
-pub const STOP_ON_TOOL_NAME_DELTA: &str = "stop on the tool's name delta";
-#[allow(dead_code)]
 /// Expected stop reason for a tool-arguments delta.
 pub const STOP_ON_TOOL_ARGUMENTS_DELTA: &str = "stop on the tool's arguments delta";
-
-/// `on_tool_call_delta` → `Stop` on the delta that names the tool.
-#[allow(dead_code)]
-pub struct StopOnToolNameDelta;
-impl rig_agent::agent::AgentHook for StopOnToolNameDelta {
-    async fn on_tool_call_delta(
-        &self,
-        _ctx: &rig_agent::agent::HookContext,
-        event: rig_agent::agent::ToolCallDelta<'_>,
-    ) -> rig_agent::agent::ObservationAction {
-        if event.tool_name.is_some() {
-            rig_agent::agent::ObservationAction::stop(STOP_ON_TOOL_NAME_DELTA)
-        } else {
-            rig_agent::agent::ObservationAction::continue_run()
-        }
-    }
-}
 
 /// `on_tool_call_delta` → `Stop` on the first arguments delta.
 #[allow(dead_code)]
@@ -1307,7 +1287,7 @@ impl rig_agent::agent::AgentHook for StopOnToolArgumentsDelta {
         _ctx: &rig_agent::agent::HookContext,
         event: rig_agent::agent::ToolCallDelta<'_>,
     ) -> rig_agent::agent::ObservationAction {
-        if event.tool_name.is_none() && !event.delta.is_empty() {
+        if !event.delta.is_empty() {
             rig_agent::agent::ObservationAction::stop(STOP_ON_TOOL_ARGUMENTS_DELTA)
         } else {
             rig_agent::agent::ObservationAction::continue_run()
@@ -1511,12 +1491,7 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
         &self,
         request: rig_core::operation::RerankRequest,
         _exchange: rig_core::driver::Exchange,
-    ) -> Result<
-        rig_core::driver::Sending<
-            Result<rig_core::rerank::RerankResponse, rig_core::error::ProviderError>,
-        >,
-        rig_core::error::ProviderError,
-    > {
+    ) -> rig_core::driver::Opening<rig_core::driver::Step<rig_core::operation::Rerank>> {
         let mut results: Vec<rig_core::rerank::RerankResult> = request
             .documents
             .iter()
@@ -1530,9 +1505,9 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
         results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
         let mut response = rig_core::rerank::RerankResponse::new(results, "mock");
         response.model = Some("mock-rerank".to_owned());
-        Ok(rig_core::driver::Sending::later(async move {
-            rig_core::driver::Opened::new(futures::stream::iter([Ok(Ok(response))]))
-        }))
+        rig_core::driver::Opening::ready(rig_core::driver::Opened::new(futures::stream::iter([
+            Ok(rig_core::driver::Step::End(response)),
+        ])))
     }
 }
 

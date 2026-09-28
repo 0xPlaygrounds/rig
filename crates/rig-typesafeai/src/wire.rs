@@ -4,10 +4,9 @@ use rig_core::client::{EnvError, env};
 use rig_core::driver::Model;
 use rig_core::error::EncodeError;
 use rig_core::http_client::{DynHttpClient, HttpClientExt};
-use rig_core::operation::Take;
+use rig_core::operation::Whole;
 use rig_core::wire::{
-    Body, Call, Decoder, Descriptor, Encoded, Framing, Mode, Operation, Out, Secret, Wire,
-    WireEvent, WireFrame,
+    Body, Call, Descriptor, Encoded, Framing, Free, Json, Mode, Operation, Secret, Wire,
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,20 +17,20 @@ pub struct Evaluation;
 
 impl Operation for Evaluation {
     type Request = Request;
-    type Event = Response;
+    // No events: the reply's end is the response.
+    type Event = std::convert::Infallible;
+    type End = Response;
     type Response = Response;
-    type Fold = Take<Self>;
+    type Fold = Whole<Self>;
+    type Emit = Free;
 
-    fn is_terminal(_event: &Response) -> bool {
-        true
-    }
-
-    /// The transport request id reaches the response.
-    fn fold(_request: &Request, _call: &mut Call<'_>) -> Take<Self> {
-        Take::<Self>::stamping(|response, reply| {
+    /// The transport request id and the reply document reach the response.
+    fn fold(_request: &Request, _call: &mut Call<'_>) -> Whole<Self> {
+        Whole::<Self>::stamping(|response, reply| {
             response
                 .provider_request_id
                 .clone_from(&reply.provider_request_id);
+            response.raw.clone_from(&reply.raw);
         })
     }
 }
@@ -144,7 +143,8 @@ impl Wire for JevConfig {
     type Op = Evaluation;
     type Payload = Encoded;
     type Frame = rig_core::wire::WireFrame;
-    type Decoder = JevDecoder;
+    // One JSON document in, the reply's end out, the document kept as `raw`.
+    type Decoder<'id> = Json;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("typesafeai").model(self.model.as_str())
@@ -178,25 +178,7 @@ impl Wire for JevConfig {
             .with_route(Some("/v1/systemone")))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        JevDecoder
-    }
-}
-
-/// Decoder for the endpoint's single JSON response.
-pub struct JevDecoder;
-
-impl Decoder<Evaluation> for JevDecoder {
-    type Event = Response;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Response> {
-        rig_core::providers::internal::wire::classify_marker_keyed_frame(
-            &frame.as_str(),
-            &["answers", "model"],
-        )
-    }
-
-    fn interpret(&mut self, response: Response, out: &mut Out<'_, Evaluation>) {
-        out.push(Ok(response));
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        Json
     }
 }

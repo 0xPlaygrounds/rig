@@ -218,8 +218,7 @@ impl AwsCompletionRequest {
         );
 
         let tool_ids =
-            rig_core::providers::internal::tool_call_ids::ToolCallIds::new(&full_history)
-                .map_err(ProviderError::request)?;
+            rig_core::providers::internal::wire_ids::WireIds::new(&full_history);
         let mut messages = Vec::new();
         for (position, message) in full_history.into_iter().enumerate() {
             let mut message = RigMessage(message).into_aws(&self.issuer)?;

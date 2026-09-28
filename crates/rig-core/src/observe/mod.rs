@@ -20,7 +20,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     effect::{EffectFamily, EffectId, HandlerKey, Outcome},
     error::ErrorReport,
-    streaming::StreamEvent,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
@@ -287,8 +286,11 @@ pub enum Action {
     StreamTruncated {
         /// Items the consumer had received.
         delivered: usize,
-        /// The last events seen, bounded, for after-the-fact classification.
-        tail: Vec<StreamEvent>,
+        /// What the last items seen were ([`StreamEvent::name`], or
+        /// `"Unknown"`), bounded, for after-the-fact classification.
+        ///
+        /// [`StreamEvent::name`]: crate::streaming::StreamEvent::name
+        tail: Vec<String>,
         /// Error items seen in the stream, if any.
         errors: Vec<Reason>,
     },
@@ -325,11 +327,7 @@ pub const LARGEST_PAYLOAD_BYTES: usize = 64 * 1024;
 impl Action {
     /// A truncation observation whose `tail` is cut from the front until it
     /// fits [`LARGEST_PAYLOAD_BYTES`]; `delivered` and `errors` are kept.
-    pub fn stream_truncated(
-        delivered: usize,
-        mut tail: Vec<StreamEvent>,
-        errors: Vec<Reason>,
-    ) -> Self {
+    pub fn stream_truncated(delivered: usize, mut tail: Vec<String>, errors: Vec<Reason>) -> Self {
         while !tail.is_empty()
             && serde_json::to_vec(&tail).map_or(usize::MAX, |bytes| bytes.len())
                 > LARGEST_PAYLOAD_BYTES

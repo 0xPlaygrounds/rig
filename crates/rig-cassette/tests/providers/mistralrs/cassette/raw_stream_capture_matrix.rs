@@ -1,6 +1,6 @@
 //! Matrix for raw terminal-record capture on mistral.rs's streaming
 //! `/v1/chat/completions` route
-//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! ([`StreamFinal::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -39,9 +39,8 @@ use serde_json::Value;
 
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
 use crate::cassettes::CassetteMode;
-use crate::raw_capture::{
-    assert_normalized_lacks, capture_sole_terminal, chat, stream_normalized_without_raw,
-};
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat};
+use crate::support::normalized_without_raw;
 use crate::support::Observed;
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
@@ -77,7 +76,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.chat(model_name()), request(), sink)
+            capture_terminal(client.chat(model_name()), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -128,7 +127,7 @@ async fn stream_raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
-            capture_sole_terminal(client.chat(model_name()), request(), sink)
+            capture_terminal(client.chat(model_name()), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -136,7 +135,7 @@ async fn stream_raw_exposes_envelope_fields() {
     .await;
 
     let terminal = captured.take();
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert_normalized_lacks(
         &normalized,
         &[

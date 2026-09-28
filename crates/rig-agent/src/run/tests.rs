@@ -1,6 +1,5 @@
 use super::*;
 use rig_core::message::{ToolFunction, ToolResultContent};
-use rig_core::streaming::BlockId;
 use serde_json::json;
 
 #[test]
@@ -1070,11 +1069,10 @@ fn agent_run_deserializes_suspended_state() {
 
     let calls = expect_call_tools(&mut restored);
     assert_eq!(calls.len(), 1);
-    // A buffered turn's calls carry completion-local minted block keys; the
-    // durable identity stays on the tool call's own id.
+    // The call's identity is its own id.
     assert_eq!(
-        calls[0].block_id,
-        BlockId::minted(rig_core::streaming::MintKind::Tool, 0)
+        calls[0].tool_call.id,
+        rig_core::message::CallId::from_wire("call_1")
     );
     restored
         .tool_results(vec![tool_result("call_1", "2")])
@@ -1136,12 +1134,11 @@ fn serde_round_trip_mid_run_resumes_identically() {
 
     let suspended = drive_to_pending_tools();
     let serialized = serde_json::to_string(&suspended).expect("mid-run state should serialize");
-    // The pending call's block id is part of the persisted state, not a
-    // default a decoder fills in: a resumed process keeps the id its
-    // consumers already saw.
+    // The pending call's id is part of the persisted state: a resumed
+    // process keeps the id its consumers already saw.
     assert!(
-        serialized.contains("\"block_id\""),
-        "the pending call persists its block id: {serialized}"
+        serialized.contains("\"call_1\""),
+        "the pending call persists its id: {serialized}"
     );
     let restored: AgentRun =
         serde_json::from_str(&serialized).expect("mid-run state should deserialize");
@@ -1175,9 +1172,7 @@ fn pending_invalid_tool_call_survives_serde_round_trip() {
         restored_context.chat_history.len(),
         context.chat_history.len()
     );
-    // Buffered calls have durable identity but no observed stream block.
-    assert_eq!(context.block_id, None);
-    assert_eq!(restored_context.block_id, None);
+    assert_eq!(restored_context.tool_call_id, context.tool_call_id);
     assert_eq!(
         context
             .tool_call_id

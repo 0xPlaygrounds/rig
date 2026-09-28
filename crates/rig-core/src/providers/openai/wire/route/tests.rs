@@ -71,9 +71,7 @@ fn body_with_request(
     let encoded = option(provider.completion("gpt-5.2"))
         .encode(request, Mode::Unary)
         .expect("the request encodes");
-    let [request] = encoded.requests.as_slice() else {
-        panic!("a completion route sends one request");
-    };
+    let request = &encoded.request;
     match request.body() {
         Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
         Body::Multipart(_) => panic!("neither completion route sends a multipart body"),
@@ -304,9 +302,7 @@ fn dialect_hooks_apply_to_both_routes_without_provider_identity() {
                     let encoded = wire.encode(request(), mode).unwrap();
                     calls += 1;
                     assert_eq!(ENVELOPES.load(Ordering::SeqCst), calls);
-                    let [request] = encoded.requests.as_slice() else {
-                        panic!("one request")
-                    };
+                    let request = &encoded.request;
                     assert_eq!(request.uri().host(), Some("explicit.invalid"));
                     assert_eq!(
                         request.uri().path(),

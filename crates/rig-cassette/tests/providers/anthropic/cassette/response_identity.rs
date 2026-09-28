@@ -8,7 +8,6 @@ use futures::StreamExt;
 use rig::agent::{AgentHook, HookContext, OutcomeAction, OutcomeEvent};
 use rig::completion::Message;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
@@ -61,13 +60,10 @@ async fn streaming_terminal_carries_identity() {
                 )
                 .expect("stream should open");
 
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.expect("stream should yield a terminal record");
 
             assert!(

@@ -2074,11 +2074,8 @@ impl AnthropicCompletionRequest {
                 | Content::CodeExecutionToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
                 _ => None,
             });
-        let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::with_reserved(
-            &full_history,
-            server_ids,
-        )
-        .map_err(EncodeError::request)?;
+        let tool_ids =
+            crate::providers::internal::wire_ids::WireIds::with_reserved(&full_history, server_ids);
         for (position, message) in messages.iter_mut().enumerate() {
             tool_ids
                 .apply(

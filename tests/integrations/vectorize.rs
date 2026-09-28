@@ -504,10 +504,7 @@ impl rig::driver::Transport<rig::driver::Local<rig::operation::Embedding>> for M
         &self,
         texts: Vec<String>,
         _exchange: rig::driver::Exchange,
-    ) -> Result<
-        rig::driver::Sending<Result<rig::embeddings::EmbeddingResponse, rig::error::ProviderError>>,
-        rig::error::ProviderError,
-    > {
+    ) -> rig::driver::Opening<rig::driver::Step<rig::operation::Embedding>> {
         let embeddings = texts
             .into_iter()
             .map(|text| {
@@ -525,9 +522,9 @@ impl rig::driver::Transport<rig::driver::Local<rig::operation::Embedding>> for M
             })
             .collect();
         let response = rig::embeddings::EmbeddingResponse::new(embeddings, "mock");
-        Ok(rig::driver::Sending::opened(rig::driver::Opened::new(
-            futures::stream::iter([Ok(Ok(response))]),
-        )))
+        rig::driver::Opening::ready(rig::driver::Opened::new(futures::stream::iter([Ok(
+            rig::driver::Step::End(response),
+        )])))
     }
 }
 

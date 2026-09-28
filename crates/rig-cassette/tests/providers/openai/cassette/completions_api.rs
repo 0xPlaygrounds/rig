@@ -281,7 +281,7 @@ async fn completions_api_updates_keep_parallel_tool_calls_in_place() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal));
             let mut stream = model.stream(request).expect("the stream should start");
-            let updates = rig_test_support::updates::collect_updates(&mut stream).await;
+            let updates = rig_test_support::updates::collect_updates(stream).await;
             let (_, parts) = rig_test_support::updates::assert_update_contract(&updates);
 
             let frames = crate::cassettes::recorded_sse_json_frames(
@@ -312,9 +312,9 @@ async fn completions_api_updates_keep_parallel_tool_calls_in_place() {
 
             let delivered: Vec<(String, serde_json::Value)> = parts
                 .iter()
-                .filter_map(|part| match &part.kind {
-                    rig::streaming::PartKind::ToolCall { name } => Some((
-                        name.clone(),
+                .filter_map(|part| match &part.part {
+                    rig::message::AssistantContent::ToolCall(call) => Some((
+                        call.function.name.to_string(),
                         serde_json::from_str(&part.text).expect("argument JSON"),
                     )),
                     _ => None,

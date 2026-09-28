@@ -47,13 +47,10 @@ async fn streaming_contract_and_gateway_both_report_none() {
                     "Reply with exactly: stream identity probe",
                 ))
                 .expect("stream should open");
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
+            let terminal = Some(stream.finish().await.expect("the stream ends"));
             let terminal = terminal.expect("terminal record");
             assert_eq!(terminal.provider_request_id, None);
         },

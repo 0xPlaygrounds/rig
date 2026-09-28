@@ -29,6 +29,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
 
+use rig::streaming::Item;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -36,7 +37,7 @@ use futures::StreamExt as _;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_history_roundtrip_cassette_result};
@@ -242,18 +243,16 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             };
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::Final(record) => {
-                        serde_json::from_value::<
+                    Item::Event(StreamEvent::Text { text, .. }) => observation.text.push_str(&text),
+                    _ => {}
+                }
+            }
+            {
+                let record = stream.finish().await.expect("the stream ends");
+                serde_json::from_value::<
                             openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
                         >(record.raw.clone())?;
                         observation.saw_terminal = true;
-                    }
-                    _ => {}
-                }
             }
             observation
         }
@@ -265,13 +264,13 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             };
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::Final(_) => observation.saw_terminal = true,
+                    Item::Event(StreamEvent::Text { text, .. }) => observation.text.push_str(&text),
                     _ => {}
                 }
+            }
+            {
+                let _final = stream.finish().await.expect("the stream ends");
+                observation.saw_terminal = true;
             }
             observation
         }

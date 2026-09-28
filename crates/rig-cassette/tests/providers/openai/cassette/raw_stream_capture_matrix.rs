@@ -21,7 +21,7 @@
 //! (whose `additional_params` accumulates the unmodeled top-level chunk
 //! fields — `service_tier`, `system_fingerprint` — and whose `ChatUsage`
 //! keeps the dialect's extra usage counters), and the Responses API's
-//! `openai::responses_api::streaming::StreamingCompletionResponse` (whose
+//! `openai::responses_api::CompletionResponse` (whose
 //! `status` and `message_id` come from the terminal `response.completed`
 //! event alone).
 //!
@@ -53,16 +53,15 @@
 //! with a string `encrypted_content`; cell 6 requires a chunk whose delta
 //! carries `tool_calls` and a chunk finishing with `"tool_calls"`.
 
+use rig::completion::CompletionResponse;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::streaming::StreamFinal;
 use serde_json::{Value, json};
 
 use super::super::support::{sse_json_frames, with_openai_cassette_result};
-use crate::raw_capture::{
-    assert_normalized_lacks, capture_terminal, chat, responses, stream_normalized_without_raw,
-};
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat, responses};
+use crate::support::normalized_without_raw;
 use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "openai";
@@ -161,7 +160,7 @@ fn last_chunk_field(frames: &[Value], field: &str) -> Value {
 
 /// The `raw` a streamed terminal must carry — `Value::Null` is reserved for
 /// records built by hand, which a terminal off a live stream never is.
-fn captured_raw<'a>(scenario: &str, terminal: &'a StreamFinal) -> &'a Value {
+fn captured_raw<'a>(scenario: &str, terminal: &'a CompletionResponse) -> &'a Value {
     assert!(
         !terminal.raw.is_null(),
         "{scenario}: a streamed terminal always carries `raw`"
@@ -187,7 +186,7 @@ async fn chat_stream_raw_round_trips_typed() {
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let frames = chat_frames_with_terminal_usage(SCENARIO, &bodies[0].0, &bodies[0].1);
 
-    // `raw` is there to read at all: it is the terminal record, serialized.
+    // `raw` is there to read at all: it is the terminal response object.
     captured_raw(SCENARIO, &terminal);
     // It reads back as the chat terminal type, re-serializes to exactly the
     // captured value, and agrees with the normalized terminal on identity,
@@ -253,7 +252,7 @@ async fn chat_stream_raw_exposes_service_tier() {
         last_chunk_field(&frames, "system_fingerprint").as_str(),
         &format!("{SCENARIO}: `system_fingerprint` off the captured terminal vs the fixture"),
     );
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert_normalized_lacks(&normalized, &["additional_params", "service_tier"]);
 }
 
@@ -277,17 +276,17 @@ async fn responses_stream_raw_round_trips_typed() {
 
     // `raw` is there to read at all: it is the terminal record, serialized.
     captured_raw(SCENARIO, &terminal);
-    // It reads back as the Responses terminal type, re-serializes to exactly
-    // the captured value, and agrees with the normalized terminal on identity,
-    // model and the accounting it normalized — two views of one record.
+    // It reads back as the Responses response type and agrees with the
+    // normalized response on identity, model and the accounting it
+    // normalized: two views of one document.
     let typed = responses::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        typed.response_id.as_deref(),
+        Some(typed.id.as_str()),
         completed["id"].as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        typed.model.as_deref(),
+        Some(typed.model.as_str()),
         completed["model"].as_str(),
         "{SCENARIO}: terminal model"
     );
@@ -338,19 +337,23 @@ async fn responses_stream_raw_exposes_status() {
         "{SCENARIO}: `status` is readable off the captured terminal and equals the \
          response.completed status"
     );
+    let captured_message_id = raw["output"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["type"] == "message"))
+        .and_then(|item| item["id"].as_str());
     assert_matches_recorded_token(
-        raw["message_id"].as_str(),
+        captured_message_id,
         Some(recorded_message_id),
-        &format!("{SCENARIO}: `message_id` off the captured terminal vs the fixture"),
+        &format!("{SCENARIO}: `message_id` off the captured response vs the fixture"),
     );
-    // `message_id` *is* normalized (`StreamFinal::message_id`); the captured
-    // terminal and the normalized record must agree on it.
+    // `message_id` *is* normalized; the captured response and the
+    // normalized one must agree on it.
     assert_eq!(
-        raw["message_id"].as_str(),
+        captured_message_id,
         terminal.message_id.as_deref(),
         "{SCENARIO}: captured and normalized message ids agree"
     );
-    assert_normalized_lacks(&stream_normalized_without_raw(&terminal), &["status"]);
+    assert_normalized_lacks(&normalized_without_raw(terminal.clone()), &["status"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -419,12 +422,12 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     let raw = captured_raw(SCENARIO, &terminal);
     let typed = responses::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        typed.response_id.as_deref(),
+        Some(typed.id.as_str()),
         completed["id"].as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        typed.model.as_deref(),
+        Some(typed.model.as_str()),
         completed["model"].as_str(),
         "{SCENARIO}: terminal model"
     );
@@ -442,15 +445,19 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
         completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         "{SCENARIO}: terminal reasoning tokens"
     );
-    // The terminal-only field: the completed event's `reasoning` echo.
+    // The completed event's `reasoning` echo, as the response carries it.
     assert_eq!(
-        raw["reasoning_metadata"],
+        raw["reasoning"],
         Value::Object(recorded_reasoning.clone()),
-        "{SCENARIO}: `reasoning_metadata` off the captured terminal equals the completed \
-         event's `reasoning`"
+        "{SCENARIO}: `reasoning` off the captured response equals the completed event's"
+    );
+    assert_eq!(
+        typed.reasoning_metadata.as_ref(),
+        Some(recorded_reasoning),
+        "{SCENARIO}: the typed response reads it back"
     );
     assert_normalized_lacks(
-        &stream_normalized_without_raw(&terminal),
+        &normalized_without_raw(terminal.clone()),
         &["reasoning_metadata"],
     );
     // The normalized terminal reports the reasoning tokens the completed
@@ -524,7 +531,7 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     );
     assert_eq!(typed.finish_reason, Some(FinishReason::ToolCalls));
     assert_eq!(
-        terminal.finish_reason,
+        terminal.finish_reason(),
         Some(FinishReason::ToolCalls),
         "{SCENARIO}: the normalized terminal reports the tool call"
     );

@@ -42,10 +42,7 @@ fn main() -> Result<()> {
     let response = loop {
         while let Some(event) = events.try_next() {
             match event {
-                MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                }) => {
+                MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Text { text, .. }) => {
                     print!("{text}");
                 }
                 MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {

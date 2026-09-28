@@ -16,7 +16,7 @@ use rig::providers::anthropic::{self, Anthropic};
 use rig::providers::deepseek;
 use rig::providers::openai::{self, OpenAI};
 use rig::providers::registry::ProviderRef;
-use rig::streaming::Update;
+use rig::streaming::{Item, StreamEvent};
 use rig_core::test_utils::MockStreamingClient;
 
 /// OpenAI's reply to "Reply with exactly: identity probe", from
@@ -99,17 +99,13 @@ async fn an_erased_model_streams_its_parts() -> anyhow::Result<()> {
     let erased: DynModel<Completion> = model.into();
 
     let mut stream = erased.stream("Capital of France?")?;
-    let mut updates = stream.updates();
     let mut text = String::new();
-    let mut done = None;
-    while let Some(update) = updates.next().await {
-        match update? {
-            Update::Delta { text: delta, .. } => text.push_str(&delta),
-            Update::Done(response) => done = Some(response),
-            _ => {}
+    while let Some(item) = stream.next().await {
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
+            text.push_str(&delta);
         }
     }
     anyhow::ensure!(text == "Paris.");
-    anyhow::ensure!(done.is_some_and(|response| response.text() == "Paris."));
+    anyhow::ensure!(stream.finish().await?.text() == "Paris.");
     Ok(())
 }

@@ -319,7 +319,7 @@ async fn chat_streaming_terminal_carries_usage() {
             let terminal = terminal.expect("the stream must still deliver a terminal record");
             assert!(terminal.usage.output_tokens.is_some_and(|n| n > 0));
             assert_eq!(
-                terminal.finish_reason,
+                terminal.finish_reason(),
                 Some(rig::completion::FinishReason::Stop)
             );
         },
@@ -372,7 +372,7 @@ async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
             assert_nonempty_response(&streamed_text);
             assert_eq!(
                 blocking.finish_reason(),
-                terminal.and_then(|terminal| terminal.finish_reason),
+                terminal.and_then(|terminal| terminal.finish_reason()),
                 "both transports must report the same terminal reason"
             );
 

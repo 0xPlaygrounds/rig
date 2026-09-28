@@ -96,9 +96,8 @@ async fn test_unknown_block_reason_reaches_the_error_verbatim() {
     assert!(error.is_retryable(), "{error:?}");
 }
 
-// A whole reply that names no block and carries no candidate is the
-// provider answering with nothing: the shared empty-response rejection,
-// not a block.
+// A whole reply that names no block and carries no candidate never names
+// the provider's end: it is truncated, not a block.
 #[tokio::test]
 async fn test_unspecified_block_reason_is_not_a_block() {
     let error = fold_unary(
@@ -107,10 +106,7 @@ async fn test_unspecified_block_reason_is_not_a_block() {
     )
     .await
     .expect_err("no candidates");
-    assert!(
-        matches!(&error, ProviderError::Response(message) if message == crate::message::EMPTY_RESPONSE_ERROR),
-        "{error}"
-    );
+    assert!(matches!(error, ProviderError::Truncated), "{error}");
 }
 
 #[tokio::test]
@@ -118,10 +114,8 @@ async fn test_no_candidates_without_prompt_feedback_is_still_a_response_error() 
     let error = fold_unary("gemini-2.5-flash", "{}")
         .await
         .expect_err("empty candidates should become a response error");
-    assert!(
-        matches!(&error, ProviderError::Response(message) if message == crate::message::EMPTY_RESPONSE_ERROR),
-        "{error}"
-    );
+    assert!(matches!(error, ProviderError::Truncated), "{error}");
+    assert_eq!(error.kind(), crate::error::ErrorKind::Response);
 }
 
 #[test]
@@ -1796,6 +1790,7 @@ async fn streamed(model: &str, body: &'static str) -> crate::completion::Complet
     }
     stream
         .finish()
+        .await
         .expect("the stream produced a terminal record")
 }
 
@@ -1897,13 +1892,9 @@ async fn a_signature_on_its_own_text_part_stays_on_that_text_on_both_transports(
     assert_eq!(streamed.choice.to_vec(), expected);
 }
 
-/// The one request an `Encoded` carries: every Gemini wire sends one per
-/// call — only the batch endpoints of other providers send more.
+/// The one request an `Encoded` carries.
 fn sole(encoded: &crate::wire::Encoded) -> &http::Request<crate::wire::Body> {
-    match encoded.requests.as_slice() {
-        [request] => request,
-        requests => panic!("expected one request, got {}", requests.len()),
-    }
+    &encoded.request
 }
 
 #[test]
@@ -2033,9 +2024,7 @@ fn a_text_signature_reaches_no_other_wire() {
         let encoded = wire
             .encode(request, Mode::Unary)
             .expect("the request encodes");
-        let [request] = encoded.requests.as_slice() else {
-            panic!("one request per turn");
-        };
+        let request = &encoded.request;
         let Body::Bytes(bytes) = request.body() else {
             panic!("a completion body is bytes");
         };

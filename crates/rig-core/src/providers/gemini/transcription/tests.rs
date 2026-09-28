@@ -29,7 +29,7 @@ fn the_wire_encodes_the_recorded_generate_content_request() {
         .encode(transcription_request(), Mode::Unary)
         .expect("the request encodes");
 
-    let request = encoded.requests.first().expect("exactly one request");
+    let request = &encoded.request;
     assert_eq!(request.method().as_str(), "POST");
     assert_eq!(
         request.uri().path(),

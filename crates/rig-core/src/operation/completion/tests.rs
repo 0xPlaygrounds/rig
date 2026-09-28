@@ -200,88 +200,6 @@ fn a_turn_that_held_only_foreign_reasoning_is_omitted() {
 }
 
 #[test]
-fn a_stream_stamps_its_reasoning_with_the_terminal_issuer() {
-    use crate::message::AssistantContent;
-    use crate::streaming::{StreamFinal, stamp_reasoning};
-
-    let terminal = StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null)
-        .with_reasoning_issuer("anthropic");
-    assert_eq!(terminal.issuer(), "anthropic");
-    let bare = StreamFinal::new("openai", Default::default(), serde_json::Value::Null);
-    assert_eq!(bare.issuer(), "openai");
-
-    let choice = stamp_reasoning(
-        vec![
-            AssistantContent::Reasoning(Reasoning::new("unstamped").sealed("test")),
-            AssistantContent::Reasoning(Reasoning::new("stamped").sealed("gcp.gemini")),
-        ],
-        terminal.issuer(),
-    );
-    let issuers: Vec<_> = choice
-        .iter()
-        .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().as_str()),
-            _ => None,
-        })
-        .collect();
-    // Every part of a reply's choice is this reply's reasoning.
-    assert_eq!(issuers, ["anthropic", "anthropic"]);
-
-    let json = serde_json::to_value(&terminal).expect("serializes");
-    let back: StreamFinal = serde_json::from_value(json).expect("loads");
-    assert_eq!(
-        back.issuer(),
-        "anthropic",
-        "the issuer crosses the effect bus"
-    );
-}
-
-#[tokio::test]
-async fn a_stream_names_its_reasoning_issuer_only_when_it_knows_it() {
-    use crate::streaming::{CompletionStream, StreamEvent, StreamFinal};
-    use futures::StreamExt;
-
-    type Items = Vec<Result<StreamEvent, crate::error::ProviderError>>;
-    let terminal = || StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null);
-
-    // A provider that opens its own stream knows the issuer up front.
-    let opened = |provider: &str, issuer: Option<&str>, items: Items| {
-        crate::test_utils::scripted_stream(provider, issuer, futures::stream::iter(items))
-    };
-    let mut stream = opened(
-        "aws_bedrock",
-        Some("anthropic"),
-        vec![Ok(StreamEvent::Final(
-            terminal().with_reasoning_issuer("anthropic"),
-        ))],
-    );
-    assert_eq!(
-        stream.folded().reasoning_issuer(),
-        Some("anthropic"),
-        "before the terminal"
-    );
-    while stream.next().await.is_some() {}
-    assert_eq!(
-        stream.folded().reasoning_issuer(),
-        Some("anthropic"),
-        "after it"
-    );
-
-    let plain = opened("openai", None, Items::new());
-    assert_eq!(plain.folded().reasoning_issuer(), Some("openai"));
-
-    // A stream rebuilt from bus events is opened under a handler label: the
-    // issuer is unknown until its terminal names it.
-    let events: crate::streaming::StreamEvents = Box::pin(futures::stream::iter(vec![Ok(
-        StreamEvent::Final(terminal().with_reasoning_issuer("anthropic")),
-    )]));
-    let mut rebuilt = CompletionStream::relay("default", events);
-    assert_eq!(rebuilt.folded().reasoning_issuer(), None);
-    while rebuilt.next().await.is_some() {}
-    assert_eq!(rebuilt.folded().reasoning_issuer(), Some("anthropic"));
-}
-
-#[test]
 fn a_gateway_attributes_reasoning_to_the_upstream_family() {
     use crate::providers::openai::wire::upstream_reasoning_issuer;
     assert_eq!(
@@ -586,7 +504,7 @@ async fn openrouter_reasoning_records_its_upstream_family() {
         .stream(history("unused"))
         .expect("the stream opens");
         while stream.next().await.is_some() {}
-        let streamed = stream.finish().expect("a terminal record");
+        let streamed = stream.finish().await.expect("a terminal record");
         assert_eq!(issuers(&streamed.choice), [expected], "streamed {model}");
     }
 }

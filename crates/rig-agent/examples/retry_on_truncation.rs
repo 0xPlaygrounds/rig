@@ -26,12 +26,11 @@ use rig_agent::{
         ModelTurnFinished, MultiTurnStreamItem, RequestPatch,
     },
     completion::{CompletionRequest, FinishReason, Usage},
-    streaming::{StreamEvent, StreamFinal},
 };
-use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
-use rig_core::error::ProviderError;
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::message::AssistantContent;
-use rig_core::operation::{AdapterOutput, Completion};
+use rig_core::operation::Finish;
+use rig_core::test_utils::{MockFrame, MockScript, MockStreamEvent};
 
 /// The full answer costs this many output tokens; anything less is truncated.
 const ANSWER_COST: u64 = 40;
@@ -40,7 +39,7 @@ const ANSWER: &str = "Rig normalizes every provider's stop reason into one vocab
 
 /// A local model that behaves like a real one under an output-token cap: it
 /// emits what fits and reports `Length` when the cap cut it short. It is the
-/// runtime behind a [`Local`] completion wire: it reads the request's cap and
+/// runtime behind a scripted completion wire: it reads the request's cap and
 /// answers with stream events, the same on both surfaces.
 #[derive(Clone)]
 struct Budgeted;
@@ -58,22 +57,16 @@ fn answer_under(cap: Option<u64>) -> (String, FinishReason) {
     }
 }
 
-impl Transport<Local<Completion>> for Budgeted {
-    fn send(
-        &self,
-        request: CompletionRequest,
-        _exchange: Exchange,
-    ) -> Result<Sending<Result<StreamEvent, ProviderError>>, ProviderError> {
+impl Transport<MockScript> for Budgeted {
+    fn send(&self, request: CompletionRequest, _exchange: Exchange) -> Opening<MockFrame> {
         let (text, reason) = answer_under(request.max_tokens);
-        let mut out = AdapterOutput::new();
-        out.text(text);
-        out.final_record(
-            StreamFinal::new("budgeted", Usage::default(), serde_json::Value::Null)
-                .with_finish_reason(reason),
-        );
-        Ok(Sending::opened(Opened::new(stream::iter(
-            out.into_items().into_iter().map(Ok),
-        ))))
+        let events = [
+            MockStreamEvent::text(text),
+            MockStreamEvent::FinalResponse(Finish::new(Usage::default()).with_reason(reason)),
+        ];
+        Opening::ready(Opened::new(stream::iter(
+            events.map(|event| Ok(MockFrame::Event(event))),
+        )))
     }
 }
 
@@ -147,7 +140,7 @@ impl AgentHook for GrowCapOnTruncation {
 #[tokio::main]
 async fn main() -> Result<()> {
     // One model serves both agents: erase it once, clone the handle.
-    let budgeted = Model::new(Local::new("budgeted"), Budgeted).erase();
+    let budgeted = Model::new(MockScript::new("budgeted"), Budgeted).erase();
     // Starts far below what the answer costs, so the first attempts truncate.
     let agent = AgentBuilder::new(budgeted.clone())
         .add_hook(GrowCapOnTruncation::new(8, 256))

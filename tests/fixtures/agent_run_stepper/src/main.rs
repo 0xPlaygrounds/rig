@@ -30,7 +30,7 @@ use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::operation::{AdapterOutput, Completion, ImagePart};
-use rig_core::streaming::{StreamEvent, StreamFinal};
+use rig_core::streaming::StreamEvent;
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::error::ProviderError;

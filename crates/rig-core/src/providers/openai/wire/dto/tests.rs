@@ -1,5 +1,4 @@
 use super::{StreamingFunction, StreamingToolCall};
-use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 
 /// One streamed tool-call fragment, as a chunk at wire index 0.
 fn fragment(id: Option<&str>, name: Option<&str>, arguments: Option<&str>) -> StreamingToolCall {
@@ -16,13 +15,7 @@ fn fragment(id: Option<&str>, name: Option<&str>, arguments: Option<&str>) -> St
 /// Whether the `(id, name)` call open at index 0 must be evicted to make
 /// room for `incoming`.
 fn evicts(existing: (&str, &str), incoming: &StreamingToolCall) -> bool {
-    let mut bridge = ToolCallBridge::<usize>::new();
-    let slot = bridge.open(
-        0,
-        (!existing.0.is_empty()).then_some(existing.0),
-        (!existing.1.is_empty()).then_some(existing.1),
-    );
-    incoming.evicts(slot)
+    incoming.evicts(existing.0, existing.1)
 }
 
 /// Some gateways stream two *distinct* calls under the same `index`, which

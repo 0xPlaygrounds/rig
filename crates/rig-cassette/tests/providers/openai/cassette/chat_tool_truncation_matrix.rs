@@ -37,6 +37,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_truncation_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
 
+use rig::streaming::Item;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -220,18 +221,15 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::ToolCall(tool_call)),
-                        ..
-                    }) => {
+                    Ok(Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. })) => {
                         observation.arguments.push(tool_call.function.arguments);
-                    }
-                    Ok(StreamEvent::Final(terminal)) => {
-                        observation.finish_reason = terminal.finish_reason;
                     }
                     Ok(_) => {}
                     Err(error) => observation.errors.push(error.to_string()),
                 }
+            }
+            if let Ok(terminal) = stream.finish().await {
+                observation.finish_reason = terminal.finish_reason();
             }
             observation
         }

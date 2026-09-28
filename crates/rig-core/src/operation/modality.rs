@@ -7,11 +7,13 @@
 //! assert_eq!(capabilities.declared, Some(768));
 //! ```
 
-use super::Take;
+use std::convert::Infallible;
+
+use super::Whole;
 use crate::embeddings::Embedding as Vector;
 use crate::error::ProviderError;
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Call, Capabilities, End, Fold, Mode, Operation, Ready, Reply};
+use crate::wire::{Call, Capabilities, Fold, Free, Operation, Reply};
 
 /// A reranking request: the query, the documents to order, and the batch
 /// limit's subject.
@@ -44,13 +46,11 @@ macro_rules! modality_operation {
 
         impl Operation for $op {
             type Request = $request;
-            type Event = $response;
+            type Event = Infallible;
+            type End = $response;
             type Response = $response;
             type Fold = Traced<Self, $fold>;
-
-            fn is_terminal(_event: &Self::Event) -> bool {
-                true
-            }
+            type Emit = Free;
 
             fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold {
                 let telemetry = call
@@ -70,7 +70,6 @@ macro_rules! modality_operation {
                 Traced {
                     inner,
                     span,
-                    mode: call.mode,
                     record: |span, response| {
                         span.record_response(
                             response.response_id.as_deref(),
@@ -84,57 +83,26 @@ macro_rules! modality_operation {
     };
 }
 
-/// A fold whose reply is recorded on the call's telemetry span: a unary
-/// call records its response, a stream records its one event.
+/// A fold whose response is recorded on the call's telemetry span.
 pub struct Traced<Op: Operation, F> {
     inner: F,
     span: tracing::Span,
-    mode: Mode,
     record: fn(&tracing::Span, &Op::Response),
-}
-
-impl<Op: Operation, F: Default> Default for Traced<Op, F> {
-    /// A fold that records nothing: the one a decoder driven by hand needs.
-    fn default() -> Self {
-        Self {
-            inner: F::default(),
-            span: tracing::Span::none(),
-            mode: Mode::Unary,
-            record: |_, _| {},
-        }
-    }
 }
 
 impl<Op, F> Fold<Op> for Traced<Op, F>
 where
-    Op: Operation<Event = <Op as Operation>::Response>,
+    Op: Operation,
     F: Fold<Op>,
 {
     fn absorb(&mut self, event: &Op::Event) -> Result<(), ProviderError> {
-        if self.mode == Mode::Streaming {
-            (self.record)(&self.span, event);
-        }
         self.inner.absorb(event)
     }
 
-    fn finish(self, reply: Reply) -> Result<Op::Response, ProviderError> {
-        let response = self.inner.finish(reply)?;
-        if self.mode == Mode::Unary {
-            (self.record)(&self.span, &response);
-        }
+    fn finish(self, end: Op::End, reply: Reply) -> Result<Op::Response, ProviderError> {
+        let response = self.inner.finish(end, reply)?;
+        (self.record)(&self.span, &response);
         Ok(response)
-    }
-
-    fn push(&mut self, item: Result<Op::Event, ProviderError>, ready: &mut Ready<Op>) {
-        self.inner.push(item, ready);
-    }
-
-    fn unknown(&mut self, payload: crate::streaming::UnknownPayload, ready: &mut Ready<Op>) {
-        self.inner.unknown(payload, ready);
-    }
-
-    fn settle(&mut self, ready: &mut Ready<Op>, end: Option<End>) {
-        self.inner.settle(ready, end);
     }
 }
 
@@ -186,8 +154,8 @@ modality_operation!(
         request: RerankRequest,
         response: crate::rerank::RerankResponse,
         telemetry: Rerank,
-        fold: Take<Self>,
-        seed: |_: &_, _: &Call<'_>| Take::stamping(stamp_reply!(crate::rerank::RerankResponse)),
+        fold: Whole<Self>,
+        seed: |_: &_, _: &Call<'_>| Whole::stamping(stamp_reply!(crate::rerank::RerankResponse)),
     }
 );
 
@@ -197,8 +165,8 @@ modality_operation!(
         request: crate::transcription::TranscriptionRequest,
         response: crate::transcription::TranscriptionResponse,
         telemetry: Transcription,
-        fold: Take<Self>,
-        seed: |_: &_, _: &Call<'_>| Take::stamping(stamp_reply!(crate::transcription::TranscriptionResponse)),
+        fold: Whole<Self>,
+        seed: |_: &_, _: &Call<'_>| Whole::stamping(stamp_reply!(crate::transcription::TranscriptionResponse)),
     }
 );
 
@@ -209,8 +177,8 @@ modality_operation!(
         request: crate::image_generation::ImageGenerationRequest,
         response: crate::image_generation::ImageGenerationResponse,
         telemetry: ImageGeneration,
-        fold: Take<Self>,
-        seed: |_: &_, _: &Call<'_>| Take::stamping(stamp_reply!(crate::image_generation::ImageGenerationResponse)),
+        fold: Whole<Self>,
+        seed: |_: &_, _: &Call<'_>| Whole::stamping(stamp_reply!(crate::image_generation::ImageGenerationResponse)),
     }
 );
 
@@ -221,35 +189,19 @@ modality_operation!(
         request: crate::audio_generation::AudioGenerationRequest,
         response: crate::audio_generation::AudioGenerationResponse,
         telemetry: AudioGeneration,
-        fold: Take<Self>,
-        seed: |_: &_, _: &Call<'_>| Take::stamping(stamp_reply!(crate::audio_generation::AudioGenerationResponse)),
+        fold: Whole<Self>,
+        seed: |_: &_, _: &Call<'_>| Whole::stamping(stamp_reply!(crate::audio_generation::AudioGenerationResponse)),
     }
 );
 
-/// Accumulates vectors in reply order and pairs them positionally with request
-/// documents. Finishing rejects missing replies, unequal vector/document
-/// counts, and widths that contradict the width the caller declared. Usage is
-/// summed; other metadata comes from the first reply. It sees each reply by
-/// reference, so it copies the vectors it keeps.
-#[derive(Default)]
+/// Pairs a reply's vectors positionally with the request's documents.
+/// Finishing rejects unequal vector and document counts, and widths that
+/// contradict the width the caller declared.
 pub struct Embedded {
     documents: Vec<String>,
-    /// The provider and capabilities the replies are checked against.
+    /// The provider and capabilities the reply is checked against.
     provider: String,
     capabilities: Capabilities,
-    vectors: Vec<Vec<f64>>,
-    /// The first reply's metadata; usage sums across replies.
-    metadata: Option<Metadata>,
-    usage: crate::completion::Usage,
-}
-
-/// What an embedding reply reports besides its vectors.
-struct Metadata {
-    provider: String,
-    model: Option<String>,
-    response_id: Option<String>,
-    provider_request_id: Option<String>,
-    raw: serde_json::Value,
 }
 
 impl Embedded {
@@ -260,110 +212,61 @@ impl Embedded {
             documents,
             provider: call.wire.name.to_owned(),
             capabilities: call.wire.capabilities,
-            ..Self::default()
         }
     }
 
-    /// Keep one reply's vectors and usage, and its metadata when it is the
-    /// first reply.
-    fn absorb_parts(
-        &mut self,
-        vectors: &[Vector],
-        usage: crate::completion::Usage,
-        metadata: impl FnOnce() -> Metadata,
-    ) {
-        self.vectors
-            .extend(vectors.iter().map(|vector| vector.vec.clone()));
-        self.usage += usage;
-        self.metadata.get_or_insert_with(metadata);
-    }
-
-    /// The vectors, paired with the inputs they belong to.
-    fn zipped(self) -> Result<(Vec<Vector>, Metadata, crate::completion::Usage), ProviderError> {
-        self.capabilities
-            .honour_declaration(&self.provider, self.vectors.iter().map(Vec::len))?;
-        if self.vectors.len() != self.documents.len() {
+    /// The reply's vectors, paired with the inputs they belong to.
+    fn zipped(self, vectors: Vec<Vector>) -> Result<Vec<Vector>, ProviderError> {
+        self.capabilities.honour_declaration(
+            &self.provider,
+            vectors.iter().map(|vector| vector.vec.len()),
+        )?;
+        if vectors.len() != self.documents.len() {
             return Err(ProviderError::Response(format!(
                 "provider returned {} embeddings for {} documents",
-                self.vectors.len(),
+                vectors.len(),
                 self.documents.len()
             )));
         }
-        let Some(metadata) = self.metadata else {
-            return Err(ProviderError::Response(
-                "embedding reply carried no payload".to_owned(),
-            ));
-        };
-        let embeddings = self
+        Ok(self
             .documents
             .into_iter()
-            .zip(self.vectors)
-            .map(|(document, vec)| Vector { document, vec })
-            .collect();
-        Ok((embeddings, metadata, self.usage))
+            .zip(vectors)
+            .map(|(document, vector)| Vector {
+                document,
+                vec: vector.vec,
+            })
+            .collect())
     }
 }
 
 impl Fold<Embedding> for Embedded {
-    fn absorb(
-        &mut self,
-        reply: &crate::embeddings::EmbeddingResponse,
-    ) -> Result<(), ProviderError> {
-        self.absorb_parts(&reply.embeddings, reply.usage, || Metadata {
-            provider: reply.provider.clone(),
-            model: reply.model.clone(),
-            response_id: reply.response_id.clone(),
-            provider_request_id: reply.provider_request_id.clone(),
-            raw: reply.raw.clone(),
-        });
-        Ok(())
+    fn absorb(&mut self, event: &Infallible) -> Result<(), ProviderError> {
+        match *event {}
     }
 
-    fn finish(self, reply: Reply) -> Result<crate::embeddings::EmbeddingResponse, ProviderError> {
-        let (embeddings, metadata, usage) = self.zipped()?;
-        let mut response = crate::embeddings::EmbeddingResponse {
-            embeddings,
-            usage,
-            provider: metadata.provider,
-            model: metadata.model,
-            response_id: metadata.response_id,
-            provider_request_id: metadata.provider_request_id,
-            raw: metadata.raw,
-        };
+    fn finish(
+        self,
+        mut response: crate::embeddings::EmbeddingResponse,
+        reply: Reply,
+    ) -> Result<crate::embeddings::EmbeddingResponse, ProviderError> {
+        response.embeddings = self.zipped(std::mem::take(&mut response.embeddings))?;
         stamp(&mut response.provider_request_id, &mut response.raw, &reply);
         Ok(response)
     }
 }
 
 impl Fold<ImageEmbedding> for Embedded {
-    fn absorb(
-        &mut self,
-        reply: &crate::embeddings::ImageEmbeddingResponse,
-    ) -> Result<(), ProviderError> {
-        self.absorb_parts(&reply.embeddings, reply.usage, || Metadata {
-            provider: reply.provider.clone(),
-            model: reply.model.clone(),
-            response_id: reply.response_id.clone(),
-            provider_request_id: reply.provider_request_id.clone(),
-            raw: reply.raw.clone(),
-        });
-        Ok(())
+    fn absorb(&mut self, event: &Infallible) -> Result<(), ProviderError> {
+        match *event {}
     }
 
     fn finish(
         self,
+        mut response: crate::embeddings::ImageEmbeddingResponse,
         reply: Reply,
     ) -> Result<crate::embeddings::ImageEmbeddingResponse, ProviderError> {
-        let (embeddings, metadata, usage) = self.zipped()?;
-        let mut response = crate::embeddings::ImageEmbeddingResponse {
-            embeddings,
-            usage,
-            provider: metadata.provider,
-            model: metadata.model,
-            response_id: metadata.response_id,
-            provider_request_id: metadata.provider_request_id,
-            raw: metadata.raw,
-        };
+        response.embeddings = self.zipped(std::mem::take(&mut response.embeddings))?;
         stamp(&mut response.provider_request_id, &mut response.raw, &reply);
         Ok(response)
     }

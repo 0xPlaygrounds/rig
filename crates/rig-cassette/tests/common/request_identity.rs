@@ -11,7 +11,6 @@ use std::sync::{Arc, Mutex};
 use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::error::ProviderError;
-use rig::streaming::StreamEvent;
 use serde_json::Value;
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Id, Record};
@@ -105,12 +104,10 @@ pub async fn run<W, T, Wm, Tr>(
                 .additional_params(params.clone()),
         )
         .expect("stream opens");
-    let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item") {
-            terminal = Some(record);
-        }
+        item.expect("stream item");
     }
+    let terminal = Some(stream.finish().await.expect("the stream ends"));
     let terminal = terminal.expect("the stream ends with a final record");
     let error: ProviderError = rejected
         .call(reject(
