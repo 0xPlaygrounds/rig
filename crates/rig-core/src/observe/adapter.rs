@@ -341,6 +341,7 @@ impl AdapterContext {
 
     /// Begins a send over a connection authenticated earlier, scrubbing the
     /// credentials its handshake carried (see [`handshake_secrets`]).
+    #[cfg(feature = "websocket")]
     pub(crate) fn attempt_with_secrets(
         &self,
         method: &http::Method,
@@ -417,6 +418,7 @@ impl AdapterContext {
 
 /// The credentials `request` carries, for scrubbing the attempts sent over
 /// the connection it opens.
+#[cfg(feature = "websocket")]
 pub(crate) fn handshake_secrets<B>(request: &http::Request<B>) -> Arc<[String]> {
     scrub::request_secrets(request).into()
 }
