@@ -2,27 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -43,14 +27,6 @@
       },
       {
         "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -90,14 +66,6 @@
         }
       },
       {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 19,
         "id": 0,
         "kind": {
@@ -126,11 +94,51 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 22,
+        "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -239,180 +247,149 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Map"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "le"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " trees"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " are"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " known"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " for"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " their"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " vibrant"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " fall"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " foli"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "age"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " which"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " can"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " range"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " from"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Maple trees are known for their vibrant fall foliage, which can range from"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 978,
-            "output_tokens": 16,
-            "total_tokens": 994
-          },
-          "finish_reason": "length",
-          "message_id": null,
-          "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 978,
-              "completion_tokens": 16,
-              "total_tokens": 994
-            },
-            "finish_reason": "length",
-            "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0000956875
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Maple trees are known for their vibrant fall foliage, which can range from"
             }
           }
         }

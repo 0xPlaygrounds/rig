@@ -2,45 +2,29 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 14,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 21,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 26,
+        "batch": 27,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -51,78 +35,14 @@
         "batch": 27,
         "id": 2,
         "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 28,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
         "batch": 29,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 30,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 40,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 40,
-        "id": 2,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 42,
         "id": 3,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 49,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 50,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 51,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -130,111 +50,47 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 55,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 55,
+        "batch": 57,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 56,
+        "batch": 59,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 72,
+        "batch": 90,
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 73,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 74,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 75,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 76,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 77,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 85,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 85,
+        "batch": 90,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 87,
+        "batch": 91,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 98,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 99,
+        "batch": 106,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -242,15 +98,23 @@
         }
       },
       {
-        "batch": 101,
+        "batch": 107,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 101,
+        "batch": 114,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 114,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -392,6 +256,20 @@
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "id": "resp_066f7395b9262418006ab39668cd8487d0b162595b2ed07873",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 136,
               "input_tokens_details": {
@@ -403,139 +281,91 @@
               },
               "total_tokens": 152
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
+                "arguments": "{\"token\":\"start\"}",
+                "call_id": "call_gC9wujVciPMSjRRPuT0p2Mx0",
+                "name": "checkpoint_step",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "resp_066f7395b9262418006ab39668cd8487d0b162595b2ed07873",
-            "model": "gpt-4.1-mini-2025-04-14"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"token\":\"start\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "start"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
-            "name": "checkpoint_step",
-            "arguments": {
-              "token": "start"
-            },
-            "call_id": "call_gC9wujVciPMSjRRPuT0p2Mx0",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_gC9wujVciPMSjRRPuT0p2Mx0",
-                "item_id": "fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e"
-              }
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "start"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 136,
-            "output_tokens": 16,
-            "total_tokens": 152,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "resp_066f7395b9262418006ab39668cd8487d0b162595b2ed07873",
-          "provider_request_id": "req_eac76f56d19246e29152a5e0eafda451",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "input_tokens": 136,
-              "input_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_gC9wujVciPMSjRRPuT0p2Mx0",
+                  "item_id": "fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e"
+                }
               },
-              "output_tokens": 16,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "start"
+                }
               },
-              "total_tokens": 152
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_066f7395b9262418006ab39668cd8487d0b162595b2ed07873",
-            "model": "gpt-4.1-mini-2025-04-14"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -704,6 +534,20 @@
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "id": "resp_066f7395b9262418006ab39669d1dc87d096e910b1ac702f47",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 178,
               "input_tokens_details": {
@@ -715,163 +559,91 @@
               },
               "total_tokens": 197
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
+                "arguments": "{\"token\":\"cobalt-17\"}",
+                "call_id": "call_nRlY1ZjXyu6glRaMmogw0OG1",
+                "name": "checkpoint_step",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "resp_066f7395b9262418006ab39669d1dc87d096e910b1ac702f47",
-            "model": "gpt-4.1-mini-2025-04-14"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"token\":\"cobalt-17\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "c"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "obalt"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "17"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
-            "name": "checkpoint_step",
-            "arguments": {
-              "token": "cobalt-17"
-            },
-            "call_id": "call_nRlY1ZjXyu6glRaMmogw0OG1",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_nRlY1ZjXyu6glRaMmogw0OG1",
-                "item_id": "fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b"
-              }
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "cobalt-17"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 178,
-            "output_tokens": 19,
-            "total_tokens": 197,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "resp_066f7395b9262418006ab39669d1dc87d096e910b1ac702f47",
-          "provider_request_id": "req_cab5e7022af7462297a6219d6ec45556",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "input_tokens": 178,
-              "input_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_nRlY1ZjXyu6glRaMmogw0OG1",
+                  "item_id": "fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b"
+                }
               },
-              "output_tokens": 19,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "cobalt-17"
+                }
               },
-              "total_tokens": 197
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_066f7395b9262418006ab39669d1dc87d096e910b1ac702f47",
-            "model": "gpt-4.1-mini-2025-04-14"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -1088,6 +860,20 @@
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "id": "resp_066f7395b9262418006ab3966add3887d0be32fcedb76bb7a6",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 223,
               "input_tokens_details": {
@@ -1099,163 +885,91 @@
               },
               "total_tokens": 242
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
+                "arguments": "{\"token\":\"orchard-29\"}",
+                "call_id": "call_iNpuUWwtvpj0tFmBYJer2wcr",
+                "name": "checkpoint_step",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "resp_066f7395b9262418006ab3966add3887d0be32fcedb76bb7a6",
-            "model": "gpt-4.1-mini-2025-04-14"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"token\":\"orchard-29\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "orch"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ard"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "29"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
-            "name": "checkpoint_step",
-            "arguments": {
-              "token": "orchard-29"
-            },
-            "call_id": "call_iNpuUWwtvpj0tFmBYJer2wcr",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_iNpuUWwtvpj0tFmBYJer2wcr",
-                "item_id": "fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1"
-              }
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "orchard-29"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 223,
-            "output_tokens": 19,
-            "total_tokens": 242,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "resp_066f7395b9262418006ab3966add3887d0be32fcedb76bb7a6",
-          "provider_request_id": "req_0ff721b6f05b471cbf153359d6cbf90b",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "input_tokens": 223,
-              "input_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_iNpuUWwtvpj0tFmBYJer2wcr",
+                  "item_id": "fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1"
+                }
               },
-              "output_tokens": 19,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "orchard-29"
+                }
               },
-              "total_tokens": 242
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_066f7395b9262418006ab3966add3887d0be32fcedb76bb7a6",
-            "model": "gpt-4.1-mini-2025-04-14"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -1520,6 +1234,20 @@
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "id": "resp_066f7395b9262418006ab3966bb7b087d08155123805b71a49",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 268,
               "input_tokens_details": {
@@ -1531,163 +1259,91 @@
               },
               "total_tokens": 287
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
+                "arguments": "{\"token\":\"harbor-43\"}",
+                "call_id": "call_u3Y3pTAHwR0gEd3GKaGd6NYy",
+                "name": "checkpoint_step",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "resp_066f7395b9262418006ab3966bb7b087d08155123805b71a49",
-            "model": "gpt-4.1-mini-2025-04-14"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"token\":\"harbor-43\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "har"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "bor"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "43"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
-            "name": "checkpoint_step",
-            "arguments": {
-              "token": "harbor-43"
-            },
-            "call_id": "call_u3Y3pTAHwR0gEd3GKaGd6NYy",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_u3Y3pTAHwR0gEd3GKaGd6NYy",
-                "item_id": "fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb"
-              }
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "harbor-43"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 268,
-            "output_tokens": 19,
-            "total_tokens": 287,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "resp_066f7395b9262418006ab3966bb7b087d08155123805b71a49",
-          "provider_request_id": "req_f517397f9bb24f41a554d0f2d2fe3181",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "input_tokens": 268,
-              "input_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_u3Y3pTAHwR0gEd3GKaGd6NYy",
+                  "item_id": "fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb"
+                }
               },
-              "output_tokens": 19,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "harbor-43"
+                }
               },
-              "total_tokens": 287
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_066f7395b9262418006ab3966bb7b087d08155123805b71a49",
-            "model": "gpt-4.1-mini-2025-04-14"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -1987,6 +1643,20 @@
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
+            "id": "resp_066f7395b9262418006ab3966c85ac87d0bd80b96ab26fbaec",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 310,
               "input_tokens_details": {
@@ -1998,104 +1668,100 @@
               },
               "total_tokens": 315
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "checkpoint-complete",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-            "response_id": "resp_066f7395b9262418006ab3966c85ac87d0bd80b96ab26fbaec",
-            "model": "gpt-4.1-mini-2025-04-14"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "checkpoint"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-com"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "plete"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "checkpoint-complete"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 310,
-            "output_tokens": 5,
-            "total_tokens": 315,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-          "response_id": "resp_066f7395b9262418006ab3966c85ac87d0bd80b96ab26fbaec",
-          "provider_request_id": "req_4dc39a797fcd4aa984fa8f6a37d893fe",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "input_tokens": 310,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 5,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 315
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-            "response_id": "resp_066f7395b9262418006ab3966c85ac87d0bd80b96ab26fbaec",
-            "model": "gpt-4.1-mini-2025-04-14"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "checkpoint-complete"
+            }
           }
         }
       ],

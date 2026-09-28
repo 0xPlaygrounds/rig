@@ -181,1288 +181,1254 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:reasoning:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " user"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " wants"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " me"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "7"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " using"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " `"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "`"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " then"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " reply"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " just"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " resulting"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " number"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " **"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "Ident"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "ify"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "**:"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " `"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "`"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " **"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "Ident"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "ify"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " arguments"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "**:"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " `"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "x"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " ="
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " 1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "7"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "`,"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " `"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "y"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " ="
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "`\n3."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " **"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "Execute"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "**:"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " Call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " `"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "(x"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "="
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "7"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " y"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "="
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": ")"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "`."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " **"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "Process"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " result"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "**:"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " will"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " return"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " **"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "Format"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " output"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "**:"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " user"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " requested"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "just"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " number"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\"."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "Plan"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " Call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " `"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "`"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "7"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " Return"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " result"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\"."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "venice",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result \"42\".\n"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"x\": 17, \"y\": 25}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "chatcmpl-tool-860b566f9f15b4d3"
                 }
-              }
-            ]
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-tool-860b566f9f15b4d3",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:chatcmpl-tool-860b566f9f15b4d3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 17, \"y\": 25}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:chatcmpl-tool-860b566f9f15b4d3",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "chatcmpl-tool-860b566f9f15b4d3",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "chatcmpl-tool-860b566f9f15b4d3"
-              }
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1308,
-            "output_tokens": 191,
-            "total_tokens": 1499
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1308,
-              "completion_tokens": 191,
-              "total_tokens": 1499
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0012571000000000001
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "venice",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result \"42\".\n"
+                  }
+                }
+              ]
             }
           }
         }
@@ -1662,224 +1628,193 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:reasoning:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " returned"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " user"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " requested"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "just"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " number"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\"."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "venice",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "The tool returned 42. The user requested \"just the number\".\n"
-                }
-              }
-            ]
-          }
-        },
-        {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "\n\n4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "2"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "\n\n42"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "\n\n42"
+            }
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1516,
-            "output_tokens": 21,
-            "total_tokens": 1537
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1516,
-              "completion_tokens": 21,
-              "total_tokens": 1537
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0007557
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "venice",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "The tool returned 42. The user requested \"just the number\".\n"
+                  }
+                }
+              ]
             }
           }
         }

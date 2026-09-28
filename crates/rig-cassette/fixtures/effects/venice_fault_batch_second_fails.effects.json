@@ -175,112 +175,76 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:RBXrYYxPA",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_harbor_label"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:RBXrYYxPA",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:j15nBs9VU",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_orchard_label"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "RBXrYYxPA"
+                }
+              },
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:j15nBs9VU",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:RBXrYYxPA",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "RBXrYYxPA",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "RBXrYYxPA"
-              }
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:j15nBs9VU",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "j15nBs9VU",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "j15nBs9VU"
-              }
-            },
-            "function": {
-              "name": "lookup_orchard_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1169,
-            "output_tokens": 16,
-            "total_tokens": 1185
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-RPsC3bqUwfjZHSfmpEwtI2ag",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1169,
-              "completion_tokens": 16,
-              "total_tokens": 1185
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RPsC3bqUwfjZHSfmpEwtI2ag",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00011359375
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "j15nBs9VU"
+                }
+              },
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -505,260 +469,229 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " harbor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " label"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " cr"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "imson"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-h"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "bor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " orch"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'s"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " error"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " orch"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " lookup"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " broken"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "\"."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\"."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1233,
-            "output_tokens": 27,
-            "total_tokens": 1260
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-R3DwA5rUzWHKUjkA0SJ8AAt2",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1233,
-              "completion_tokens": 27,
-              "total_tokens": 1260
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-R3DwA5rUzWHKUjkA0SJ8AAt2",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00012234375
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\"."
             }
           }
         }

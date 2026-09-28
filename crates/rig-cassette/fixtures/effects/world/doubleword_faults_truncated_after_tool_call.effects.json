@@ -2,15 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -131,57 +123,14 @@
         "Err": {
           "kind": "response",
           "retryable": true,
-          "message": "the stream ended before its terminal record",
+          "message": "ResponseError: the reply ended before the provider ended it",
           "code": null,
           "http_status": null,
           "refusal": false,
           "source_chain": []
         }
       },
-      "events": [
-        {
-          "event": "block_delta",
-          "id": "wire:call_da13de3a85724b40afdbff41",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_da13de3a85724b40afdbff41",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 17, \"y\": 25}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_da13de3a85724b40afdbff41",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_da13de3a85724b40afdbff41",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_da13de3a85724b40afdbff41"
-              }
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        }
-      ],
+      "events": [],
       "scope": "golden/run#0"
     }
   ]

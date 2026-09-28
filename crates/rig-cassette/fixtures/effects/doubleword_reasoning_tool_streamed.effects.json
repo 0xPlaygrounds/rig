@@ -191,476 +191,430 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:reasoning:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " user"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " wants"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " me"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "7"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " using"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " then"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " reply"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " just"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " number"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " I"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " need"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " function"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " x"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "="
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "7"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " y"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "="
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "doubleword",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"x\": 17, \"y\": 25}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_ea77dbfa169343d99fcf1c60"
                 }
-              }
-            ]
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_ea77dbfa169343d99fcf1c60",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_ea77dbfa169343d99fcf1c60",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 17, \"y\": 25}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_ea77dbfa169343d99fcf1c60",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_ea77dbfa169343d99fcf1c60",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_ea77dbfa169343d99fcf1c60"
-              }
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 344,
-            "output_tokens": 84,
-            "total_tokens": 428,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 37
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "gen-1790146058-VX9hg69qzIBq1i9RQk9i",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 344,
-              "completion_tokens": 84,
-              "total_tokens": 428,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 37
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790146058-VX9hg69qzIBq1i9RQk9i",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "doubleword",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
+                  }
+                }
+              ]
             }
           }
         }
@@ -870,452 +824,409 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:reasoning:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " returned"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " which"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " correct"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " sum"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "7"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " user"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " asked"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " me"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " reply"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " just"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " number"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " so"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " I"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " should"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " respond"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\"."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "\n"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "doubleword",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n"
-                }
-              }
-            ]
-          }
-        },
-        {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "2"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "42"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "42"
+            }
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 445,
-            "output_tokens": 48,
-            "total_tokens": 493,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 37
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "gen-1790146060-9ucQ9iyBwY3UPEeLMwza",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 445,
-              "completion_tokens": 48,
-              "total_tokens": 493,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 37
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146060-9ucQ9iyBwY3UPEeLMwza",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "doubleword",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n"
+                  }
+                }
+              ]
             }
           }
         }

@@ -129,60 +129,29 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ready"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "ready"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 975,
-            "output_tokens": 2,
-            "total_tokens": 977
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 975,
-              "completion_tokens": 2,
-              "total_tokens": 977
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00009190625
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "ready"
             }
           }
         }
@@ -360,60 +329,29 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "again"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "again"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 988,
-            "output_tokens": 2,
-            "total_tokens": 990
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-R59bgLcVjxW7Czl4xhMtOSad",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 988,
-              "completion_tokens": 2,
-              "total_tokens": 990
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-R59bgLcVjxW7Czl4xhMtOSad",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.000093125
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "again"
             }
           }
         }

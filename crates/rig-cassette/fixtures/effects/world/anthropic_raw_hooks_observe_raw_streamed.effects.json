@@ -6,27 +6,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
         "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -130,68 +114,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "agent"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " raw probe"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "agent raw probe"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 14,
-            "output_tokens": 6,
-            "total_tokens": 20,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcfr6pTtkcwU7MrJuqy",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcfqdnwT7Pj5P6nCH61",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 6,
-              "input_tokens": 14,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcfr6pTtkcwU7MrJuqy",
-            "model": "claude-haiku-4-5-20251001"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "agent raw probe"
+            }
           }
         }
       ],

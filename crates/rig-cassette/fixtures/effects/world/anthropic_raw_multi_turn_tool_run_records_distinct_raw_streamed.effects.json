@@ -13,66 +13,26 @@
         "batch": 8,
         "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 19,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 5
         }
       },
       {
-        "batch": 20,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 22,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -242,106 +202,43 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:toolu_01EVxu9UfcJoLZU66p5wP294",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01EVxu9UfcJoLZU66p5wP294",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\": 2, \"y\": 3}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01EVxu9UfcJoLZU66p5wP294",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01EVxu9UfcJoLZU66p5wP294",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01EVxu9UfcJoLZU66p5wP294",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ", \"y\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01EVxu9UfcJoLZU66p5wP294",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "3}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01EVxu9UfcJoLZU66p5wP294",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-              }
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 2,
-                "y": 3
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 630,
-            "output_tokens": 69,
-            "total_tokens": 699,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcfvBtvoCFDVTDD65fr",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcfukqkmSTJAem7jXub",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 69,
-              "input_tokens": 630,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcfvBtvoCFDVTDD65fr",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 2,
+                  "y": 3
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -511,76 +408,46 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The result of 2 + "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "3 is **"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "5**."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The result of 2 + 3 is **5**."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 712,
-            "output_tokens": 17,
-            "total_tokens": 729,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcfycm2iz8jVgwumdAQ",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcfyDhdHNbPGF59ftW4",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 17,
-              "input_tokens": 712,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcfycm2iz8jVgwumdAQ",
-            "model": "claude-haiku-4-5-20251001"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The result of 2 + 3 is **5**."
+            }
           }
         }
       ],

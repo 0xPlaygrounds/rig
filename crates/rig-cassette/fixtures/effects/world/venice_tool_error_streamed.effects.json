@@ -2,61 +2,69 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 25,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 25,
+        "batch": 32,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 8
+          "items": 2
         }
       },
       {
-        "batch": 25,
+        "batch": 33,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 35,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -223,76 +231,42 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:lF1k4i4gW",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:lF1k4i4gW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 17, \"y\": 25}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\": 17, \"y\": 25}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:lF1k4i4gW",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "lF1k4i4gW",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "lF1k4i4gW"
-              }
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1086,
-            "output_tokens": 18,
-            "total_tokens": 1104
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-RyHtbNcRsOD4glITBzQ4HGE1",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1086,
-              "completion_tokens": 18,
-              "total_tokens": 1104
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RyHtbNcRsOD4glITBzQ4HGE1",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001063125
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "lF1k4i4gW"
+                }
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -470,92 +444,61 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " ad"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "der"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " broken"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "the adder is broken"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1131,
-            "output_tokens": 6,
-            "total_tokens": 1137
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-REc2Aq6uoWxUVDveyNmccMRC",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1131,
-              "completion_tokens": 6,
-              "total_tokens": 1137
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-REc2Aq6uoWxUVDveyNmccMRC",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00010753125
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "the adder is broken"
             }
           }
         }

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -83,17 +83,18 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_077dacab6f1410f2006ab394cc4b8c87d0b5da6a8ca116afc5",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "A"
           }
         }

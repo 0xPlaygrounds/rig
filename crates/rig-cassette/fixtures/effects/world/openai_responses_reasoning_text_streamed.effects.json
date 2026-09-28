@@ -2,39 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 21,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -46,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -70,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -78,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -134,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -142,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -158,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -166,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -174,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -190,7 +158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -206,7 +174,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -222,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -238,7 +206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -254,7 +222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -278,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -286,7 +254,31 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 54,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -298,7 +290,23 @@
         }
       },
       {
-        "batch": 72,
+        "batch": 58,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 59,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 60,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -306,7 +314,87 @@
         }
       },
       {
-        "batch": 72,
+        "batch": 61,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 62,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 63,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 64,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 66,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 67,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 69,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 85,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 85,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -415,6 +503,21 @@
           "provider": "openai",
           "model": "gpt-5-mini-2025-08-07",
           "raw": {
+            "id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": 4096,
+            "model": "gpt-5-mini-2025-08-07",
+            "reasoning": {
+              "context": "current_turn",
+              "effort": "low",
+              "mode": "standard",
+              "summary": "detailed"
+            },
             "usage": {
               "input_tokens": 37,
               "input_tokens_details": {
@@ -426,35 +529,62 @@
               },
               "total_tokens": 171
             },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "low",
-              "mode": "standard",
-              "summary": "detailed"
+            "output": [
+              {
+                "type": "reasoning",
+                "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
+                "summary": [],
+                "encrypted_content": "gAAAAABqsrSCTU6YPL2R_FBOX2rbGPrwzFHbqNDsw-4brOAc7_G_QdP9Morhe7DDknsZ2ysgpvvRJqjaXXx-kSBYIvlBAp9w1NnyIBo9BWXYGPKWRvX5keuUahIIg3Tf06aA-nt-6YWVPasX2HTTx7CkVJ-ho68PWYV_NOp4MgvGe7suzgnWhvFT9NGPP1K6V0OGc63pso8xvTg9vHbWU8ez-78dwEcy3EIplVASjE3Qdyx1FM5kQM2-EdrcJG_7yjpb-IaPEZiLNlT47x-G4eIkLuKicP4YWmRF756VdhmtgwcbGPzlU-RsPG0ur_zKIxPiOWMk2T-oifZCXSE1dr-lCnB_DRGc1x6nucqTCu3x4QKoH-3qHNnxYIMHfE50OWterQZyMYzhJ_EyshuAErYmYyfH2wC1_ArBO6hf-nYc_lcfrT9Nk1k5HfI1S2OsdoIjXpGGz7JM1bXXxUAMCRdZGxsXyXc6cO165FpL-v-B0_VnDi0kU7UkqSU0LAwMTO6agzkUC-IsWKYDxRTdjRLq2e0qpmiSfHssOYjF5oJ5jL2WmHXN-CelvOtcCULz7KqYDRTSRJKva-YZ_93PcFcDk_D3GSQuJ5ss8XfC6nYYe8WwjMz77WDCHdcnd6dJEWK1EAYjrN8JsfPXzj_SxISvuWXsF2lcg2DjgGHc2jPKHjCgHwey_iC1EX3VOMDd5SyA5qrEuZfHR7yfywvH6uNVOIgn7KeWbziill0aPyCpk53l4H1WoVRHH_u-ene0Dg5HvtGZhZ7Fh5M34nHegrWnOeuB74VGfynljIZaZbDZtG6xz3E65NYXyPAJnIiVJhR1uZEnmCse9mepql4JI_F1R1X6prwBNkGGqaxZi09KgMjNQHoeTqYW3VEyu4RS6r_JiEDlALt2zYOm9afqBP-njUFMmmtDdqncXL56Lvtp4WiUJC2HTIdKEn2b37jKwji834qMdkoNPwIwaLkH7LrggzbpQwVMfVwCDLTEgEAAC0p2x6lkANJkxa_j6EqYl_AvUbydI1u7JWtyxotNKBOFCG2EMB7H5qgPu82DMv-ELc8c0YcLTkBCz3sp9rL5r6L27DUcxoz-oKAspjyVKXAhhQivLt0ec0z-034TC0equJ7Se1RFv_oBLJfz29ETo4QcI-ygyNdu9KPVo7UpFoj-3cz1nmKo6FIj-QxCv76wFpuuUrd55yERzEgUNqqpVQ4P0qU2RyjzasPTQG9KCTd-mO-YynZ8QLzgNjruXMlYZKrQIiu_JVIRw8PcipOdphE9MHt38h-AJ1Gw-_I2Q8_RmztnDpjKUEUXGfcWnD__E8nM2J7bQId8ZWd6GmLdxYkrZrzVDSvILmJHuzyQI10rT7Or3fl36txgsWbKy4UD6Msh9GGuBNPRitywVokFz396YVxy0DTwppvYmkGSlo52NQ4f4h300HNkwyOfnXnSTZ0wOOysMIWl20ZJ2oY-zvloLVCiLN0KpWPf550IMhOfy67GgqEa1xSiC-O6JPSAh062sbdeoVWZUZ09dKpUYBFjgipRoryDLvbmhHkTbIU6op4rkOw71kq0lVfa2oy28NfKxhrLKEbsm6MLZuct8ZDLy630KJzQfWXbdCUKgV_TDWeAo4F6TNMVIkSIkwqH4si5-eTGgIY=",
+                "status": null
+              },
+              {
+                "id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "reasoning_context": "current_turn",
-            "status": "completed",
-            "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-            "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
-            "model": "gpt-5-mini-2025-08-07"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
-          "kind": {
-            "kind": "reasoning",
-            "provider_id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "reasoning"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
-          "end": {
-            "close": "reasoning",
-            "reasoning": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "openai",
               "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
               "content": [
                 {
@@ -462,548 +592,490 @@
                   "content": "gAAAAABqsrSBrB4PW4cT2FbqP1VMQQLVVB-dto2IYstKxGB60JpLjNYB2oMRYp-j9tWe1Hzdcd48eZasYirM91DfZ14JMopjtCjAcyo-jlmcXPc20KYSY349Xg4kcyS6apCxP1ZmmB46N6P15qYE4td5_JQS0wuiG3RcnkAzmR2kOiI6XzinBugJC7YkvWqto585FfP3Op4oxTUT2jSeFswEO3PRbAcr2tWvDbHVQUefouFOO6cYqQDj1fHKxk8UaFpDcuhgIaT1RnpA2r9Kq3cQmrDymJo__12EfV9T4LTKwwxOkXC79ywdtUPM0FtM_Jo40QdNs3kNzE_1qqIbuIWDLu1V_soqjC6iwsuBkxE-xc--JVsIQBX8fS1EITSXDcW1cYKr5uFscGq70Fwv9deaRWBgekdnwty1VaggX1ydkAMStqFcvzoaQZGxCJwtDfYgWhpF_aCTWO0LthMJap1mtOsgcBuUZu3Ay7ALQo3SaBly-4RIwSqowmLTt15YC7VOW-XwDBIXQ6Xy98oltamLkZ4KygkT02R3u7lHwDcCt3SNkPAo-Tc3obXwMePDXusT3hzyWHFEx--xcEi5iX4owbAwr8w79b14J9oxS5jjNOeWVXII_xkd0fke04Dlzhwdpsn3w7Vr3Gk6__ZIcYSLzwto-7FibIzq8fiN0daMRqye64C2bN68ITlM_JzrEG7Esx84qSBSQR9AEtXQkRYCU9Un6gNnLVt_QiZsYWDT4uDMKmEP12T2nJkMg3wmEL8XlX-h60d5jIz6RhFTdN5YCsckQGjRxg-I9QkHFDPduUGgb0Ja5rsZ6fcaOIDBcQm2YcbxdPV77l9_gMTel8WXrzRWXmW_mz_onTYOziy5lmViGeENhuF1Mmzwu8qy0B02t1bo39qv5k1c5qjyDiduMwOxSr19WninIDl-C--oZtWk2ggHTmywGhLOb9dfZook5SkALyNIquIvPvgE4RLE0PXpbMybR_anFbxN2EXcgLuswu7EVVvtqRiLxZqPELv_NK6IB3ik9JRhidR2vRzu-bmQJswe0ZcPPaP6YfBTdtGt1Z38ffvhVTQuigM7tIpHi9BLtV7qxj0uH4RoQgM-nK_-kzGkMF8AdkDJUB0MxzRl5FdU3tjFdFkXNZ1U4blSfOumr6mHZcZ9r_uohlGOQH0ViJp2cNL8NX5swLoRuU-x9cHiTVb4uzwhlkD8Q0BD7GUAtAzTxvqnIdsvW4uT_vpDoE--IRhJr-vGsNK1dtcYSLDnobQUh45JShSpxdqSKn7LbotKMrXQfjZTD0G2qa0BGelg-PwzjtWNxzMp7_TVIxid-esZ7_q3Mp3yxuFIl_0UYCfc_dfvF_f8ipuqdx_RJ3JBj-jlF6mqqod-XXpvSuQAL6tn_FiAfDeylC3AW5DMeLCWc73xcg9F61_EFGNSlmRLsfdLM_O-D8WNOjJ8ZZV99uNjHRx7POzazHi_h3sb5hBn9pAuu9r0L1UrvUb14NTdXJAgeGDbxNtLbRQoNHEkLeOmbEhWuE5cMxNRq4jAIXSY9tKmSVZxSSqGCI6_icb4hh9E0-PcBCpZuh5KkYAmDTAdZ8JpNnukRKu_1MyLG_X_4YpF5OGjvOc9OZ06MYn-nWtpE2CZhvAX-s06rn-Jdo8="
                 }
               ]
-            },
-            "wire_sent": true
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "openai",
-            "id": "rs_0f8a29a984eb7c8b006ab2b480467487d086d05eda0e6c86f0",
-            "content": [
-              {
-                "type": "encrypted",
-                "content": "gAAAAABqsrSBrB4PW4cT2FbqP1VMQQLVVB-dto2IYstKxGB60JpLjNYB2oMRYp-j9tWe1Hzdcd48eZasYirM91DfZ14JMopjtCjAcyo-jlmcXPc20KYSY349Xg4kcyS6apCxP1ZmmB46N6P15qYE4td5_JQS0wuiG3RcnkAzmR2kOiI6XzinBugJC7YkvWqto585FfP3Op4oxTUT2jSeFswEO3PRbAcr2tWvDbHVQUefouFOO6cYqQDj1fHKxk8UaFpDcuhgIaT1RnpA2r9Kq3cQmrDymJo__12EfV9T4LTKwwxOkXC79ywdtUPM0FtM_Jo40QdNs3kNzE_1qqIbuIWDLu1V_soqjC6iwsuBkxE-xc--JVsIQBX8fS1EITSXDcW1cYKr5uFscGq70Fwv9deaRWBgekdnwty1VaggX1ydkAMStqFcvzoaQZGxCJwtDfYgWhpF_aCTWO0LthMJap1mtOsgcBuUZu3Ay7ALQo3SaBly-4RIwSqowmLTt15YC7VOW-XwDBIXQ6Xy98oltamLkZ4KygkT02R3u7lHwDcCt3SNkPAo-Tc3obXwMePDXusT3hzyWHFEx--xcEi5iX4owbAwr8w79b14J9oxS5jjNOeWVXII_xkd0fke04Dlzhwdpsn3w7Vr3Gk6__ZIcYSLzwto-7FibIzq8fiN0daMRqye64C2bN68ITlM_JzrEG7Esx84qSBSQR9AEtXQkRYCU9Un6gNnLVt_QiZsYWDT4uDMKmEP12T2nJkMg3wmEL8XlX-h60d5jIz6RhFTdN5YCsckQGjRxg-I9QkHFDPduUGgb0Ja5rsZ6fcaOIDBcQm2YcbxdPV77l9_gMTel8WXrzRWXmW_mz_onTYOziy5lmViGeENhuF1Mmzwu8qy0B02t1bo39qv5k1c5qjyDiduMwOxSr19WninIDl-C--oZtWk2ggHTmywGhLOb9dfZook5SkALyNIquIvPvgE4RLE0PXpbMybR_anFbxN2EXcgLuswu7EVVvtqRiLxZqPELv_NK6IB3ik9JRhidR2vRzu-bmQJswe0ZcPPaP6YfBTdtGt1Z38ffvhVTQuigM7tIpHi9BLtV7qxj0uH4RoQgM-nK_-kzGkMF8AdkDJUB0MxzRl5FdU3tjFdFkXNZ1U4blSfOumr6mHZcZ9r_uohlGOQH0ViJp2cNL8NX5swLoRuU-x9cHiTVb4uzwhlkD8Q0BD7GUAtAzTxvqnIdsvW4uT_vpDoE--IRhJr-vGsNK1dtcYSLDnobQUh45JShSpxdqSKn7LbotKMrXQfjZTD0G2qa0BGelg-PwzjtWNxzMp7_TVIxid-esZ7_q3Mp3yxuFIl_0UYCfc_dfvF_f8ipuqdx_RJ3JBj-jlF6mqqod-XXpvSuQAL6tn_FiAfDeylC3AW5DMeLCWc73xcg9F61_EFGNSlmRLsfdLM_O-D8WNOjJ8ZZV99uNjHRx7POzazHi_h3sb5hBn9pAuu9r0L1UrvUb14NTdXJAgeGDbxNtLbRQoNHEkLeOmbEhWuE5cMxNRq4jAIXSY9tKmSVZxSSqGCI6_icb4hh9E0-PcBCpZuh5KkYAmDTAdZ8JpNnukRKu_1MyLG_X_4YpF5OGjvOc9OZ06MYn-nWtpE2CZhvAX-s06rn-Jdo8="
-              }
-            ]
+            }
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " modern"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " systems"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " programming"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " language"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " that"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " provides"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " performance"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " like"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " C"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "/C"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "++"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " while"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " enforcing"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " strong"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " compile"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "-time"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " guarantees"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " for"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " memory"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " safety"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " safe"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " concurrency"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " without"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " garbage"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " collector"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " Memory"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " safety"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " matters"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " because"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " it"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " prevents"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " bugs"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " such"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " as"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " use"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "-after"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "-free"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " buffer"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " over"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "flows"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " data"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " races"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " that"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " cause"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " crashes"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " security"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " vulnerabilities"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 134,
-            "total_tokens": 171,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-          "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
-          "provider_request_id": "req_ef25c3cf2746490994dc4cf80b4f34cf",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "input_tokens": 37,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 134,
-              "output_tokens_details": {
-                "reasoning_tokens": 64
-              },
-              "total_tokens": 171
-            },
-            "reasoning_metadata": {
-              "context": "current_turn",
-              "effort": "low",
-              "mode": "standard",
-              "summary": "detailed"
-            },
-            "reasoning_context": "current_turn",
-            "status": "completed",
-            "message_id": "msg_0f8a29a984eb7c8b006ab2b48197d487d0a8528ef132e90c05",
-            "response_id": "resp_0f8a29a984eb7c8b006ab2b47fb03c87d08368425381fd8c8b",
-            "model": "gpt-5-mini-2025-08-07"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "Rust is a modern systems programming language that provides performance like C/C++ while enforcing strong compile-time guarantees for memory safety and safe concurrency without a garbage collector. Memory safety matters because it prevents bugs such as use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities."
+            }
           }
         }
       ],

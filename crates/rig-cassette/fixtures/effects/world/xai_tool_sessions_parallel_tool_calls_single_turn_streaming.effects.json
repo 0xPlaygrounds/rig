@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 14
+          "items": 2
         }
       },
       {
-        "batch": 13,
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,28 +18,68 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 42,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 43,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 61,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -47,15 +87,135 @@
         }
       },
       {
-        "batch": 29,
+        "batch": 62,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 20
+          "items": 1
         }
       },
       {
-        "batch": 29,
+        "batch": 63,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 64,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 71,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 72,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 73,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 74,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 75,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 76,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 77,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 79,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 80,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 81,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 93,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 93,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -233,6 +393,19 @@
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
+            "id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "model": "grok-4.3",
+            "reasoning": {
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 398,
               "input_tokens_details": {
@@ -244,63 +417,126 @@
               },
               "total_tokens": 673
             },
-            "reasoning_metadata": {
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "type": "reasoning",
+                "id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
+                "summary": [
+                  {
+                    "type": "summary_text",
+                    "text": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
+                  }
+                ],
+                "encrypted_content": null,
+                "status": "completed"
+              },
+              {
+                "id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
+                "arguments": "{}",
+                "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
+                "name": "lookup_harbor_label",
+                "status": "completed",
+                "type": "function_call"
+              },
+              {
+                "id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
+                "arguments": "{}",
+                "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
+                "name": "lookup_orchard_label",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "lookup_harbor_label",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Return the alpha signal marker."
+              },
+              {
+                "type": "function",
+                "name": "lookup_orchard_label",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Return the beta signal marker."
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-            "model": "grok-4.3"
+            "top_p": 0.949999988079071,
+            "truncation": "disabled",
+            "metadata": {
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            },
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "kind": {
-            "kind": "reasoning",
-            "provider_id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "I will call `lookup_harbor_label`"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and `lookup_orchard_label`"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " exactly once each before"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " answering."
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "end": {
-            "close": "reasoning",
-            "reasoning": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
               "content": [
                 {
@@ -308,155 +544,83 @@
                   "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
                 }
               ]
-            },
-            "wire_sent": true
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "xai",
-            "id": "rs_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-            "content": [
-              {
-                "type": "summary",
-                "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
-              }
-            ]
+            }
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_harbor_label"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
+                  "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0"
+                }
+              },
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0",
-            "name": "lookup_harbor_label",
-            "arguments": {},
-            "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-0",
-                "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_0"
-              }
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_start",
-          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 2,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_orchard_label"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 2,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1",
-            "name": "lookup_orchard_label",
-            "arguments": {},
-            "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
-                "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1"
-              }
-            },
-            "function": {
-              "name": "lookup_orchard_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 398,
-            "output_tokens": 275,
-            "total_tokens": 673,
-            "cached_input_tokens": 384,
-            "reasoning_tokens": 259
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "provider_request_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "usage": {
-              "input_tokens": 398,
-              "input_tokens_details": {
-                "cached_tokens": 384
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 2,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call-3760ce69-6ff7-4206-9ccd-8beda471b031-1",
+                  "item_id": "fc_e5ce863f-4d6c-9a7a-bb96-3628f1b6c113_1"
+                }
               },
-              "output_tokens": 275,
-              "output_tokens_details": {
-                "reasoning_tokens": 259
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
               },
-              "total_tokens": 673
-            },
-            "reasoning_metadata": {
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "e5ce863f-4d6c-9a7a-bb96-3628f1b6c113",
-            "model": "grok-4.3"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -684,6 +848,19 @@
           "provider": "xai",
           "model": "grok-4.3",
           "raw": {
+            "id": "fe602993-cc54-916d-8917-e2d32b577a49",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "model": "grok-4.3",
+            "reasoning": {
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 432,
               "input_tokens_details": {
@@ -695,64 +872,124 @@
               },
               "total_tokens": 684
             },
-            "reasoning_metadata": {
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "type": "reasoning",
+                "id": "rs_fe602993-cc54-916d-8917-e2d32b577a49",
+                "summary": [
+                  {
+                    "type": "summary_text",
+                    "text": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
+                  }
+                ],
+                "encrypted_content": null,
+                "status": "completed"
+              },
+              {
+                "id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "The outputs are crimson-harbor and silver-orchard.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "lookup_harbor_label",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Return the alpha signal marker."
+              },
+              {
+                "type": "function",
+                "name": "lookup_orchard_label",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Return the beta signal marker."
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
-            "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-            "model": "grok-4.3"
+            "top_p": 0.949999988079071,
+            "truncation": "disabled",
+            "metadata": {
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            },
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
-          "kind": {
-            "kind": "reasoning",
-            "provider_id": "rs_fe602993-cc54-916d-8917-e2d32b577a49"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "I will call `lookup_harbor_label`"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " and `lookup_orchard_label`"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " exactly once each before"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " answering."
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:rs_fe602993-cc54-916d-8917-e2d32b577a49",
-          "end": {
-            "close": "reasoning",
-            "reasoning": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_fe602993-cc54-916d-8917-e2d32b577a49",
               "content": [
                 {
@@ -760,177 +997,122 @@
                   "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
                 }
               ]
-            },
-            "wire_sent": true
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "xai",
-            "id": "rs_fe602993-cc54-916d-8917-e2d32b577a49",
-            "content": [
-              {
-                "type": "summary",
-                "content": "I will call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering."
-              }
-            ]
+            }
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " outputs"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " are"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " crimson"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "-har"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "bor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": " silver"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "-"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "orch"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "ard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The outputs are crimson-harbor and silver-orchard."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 432,
-            "output_tokens": 252,
-            "total_tokens": 684,
-            "cached_input_tokens": 192,
-            "reasoning_tokens": 240
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
-          "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-          "provider_request_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-          "provider": "xai",
-          "model": "grok-4.3",
-          "raw": {
-            "usage": {
-              "input_tokens": 432,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "output_tokens": 252,
-              "output_tokens_details": {
-                "reasoning_tokens": 240
-              },
-              "total_tokens": 684
-            },
-            "reasoning_metadata": {
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_fe602993-cc54-916d-8917-e2d32b577a49",
-            "response_id": "fe602993-cc54-916d-8917-e2d32b577a49",
-            "model": "grok-4.3"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "The outputs are crimson-harbor and silver-orchard."
+            }
           }
         }
       ],

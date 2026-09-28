@@ -2,11 +2,27 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 10
         }
       },
       {
@@ -22,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 7
+          "items": 1
         }
       },
       {
@@ -30,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -38,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
@@ -46,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -70,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -78,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -86,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -102,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -110,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -118,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 52
+          "items": 2
         }
       },
       {
@@ -126,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 14
+          "items": 1
         }
       },
       {
@@ -134,7 +150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -142,7 +158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -150,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -158,7 +174,127 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 30,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 32,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 35,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 37,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -170,7 +306,55 @@
         }
       },
       {
+        "batch": 41,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 43,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 45,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 47,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -186,7 +370,39 @@
         }
       },
       {
+        "batch": 49,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 50,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 51,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 52,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 53,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -202,7 +418,31 @@
         }
       },
       {
+        "batch": 55,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 56,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 57,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 58,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -218,11 +458,27 @@
         }
       },
       {
+        "batch": 60,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 61,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
+        }
+      },
+      {
+        "batch": 62,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -262,6 +518,14 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 68,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
@@ -282,7 +546,23 @@
         }
       },
       {
+        "batch": 71,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 72,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 73,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -294,7 +574,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -306,7 +586,23 @@
         }
       },
       {
+        "batch": 76,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 77,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -323,6 +619,14 @@
       },
       {
         "batch": 80,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 81,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -346,6 +650,14 @@
         }
       },
       {
+        "batch": 84,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 85,
         "id": 0,
         "kind": {
@@ -358,7 +670,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -370,7 +682,7 @@
         }
       },
       {
-        "batch": 89,
+        "batch": 88,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -378,11 +690,19 @@
         }
       },
       {
-        "batch": 90,
+        "batch": 89,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 90,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -398,6 +718,118 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 93,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 94,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 95,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 96,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 97,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 98,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 99,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 100,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 101,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 102,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 103,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 104,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 105,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 106,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
@@ -406,11 +838,51 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 108,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 109,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 110,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
         "batch": 111,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 112,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 113,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -434,6 +906,14 @@
         }
       },
       {
+        "batch": 116,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 117,
         "id": 0,
         "kind": {
@@ -443,6 +923,14 @@
       },
       {
         "batch": 118,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 119,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -462,7 +950,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -478,7 +966,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -486,7 +974,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -502,7 +990,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -510,7 +998,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -518,7 +1006,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -534,7 +1022,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -550,7 +1038,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -558,7 +1046,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -582,7 +1070,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -606,7 +1094,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -614,7 +1102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -622,7 +1110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -638,7 +1126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -670,7 +1158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -678,7 +1166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -686,7 +1174,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -702,7 +1190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -710,7 +1198,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -742,7 +1230,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -750,7 +1238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -814,7 +1302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -846,7 +1334,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -854,7 +1342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -862,7 +1350,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -878,7 +1366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -907,14 +1395,6 @@
       },
       {
         "batch": 177,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 178,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -958,7 +1438,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -974,7 +1454,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1030,7 +1510,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1054,7 +1534,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1062,7 +1542,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1078,7 +1558,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1094,7 +1574,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1102,7 +1582,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1118,7 +1598,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1126,7 +1606,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1134,7 +1614,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1158,7 +1638,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1198,7 +1678,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1230,7 +1710,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1238,7 +1718,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1254,7 +1734,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1270,7 +1750,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1286,7 +1766,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1310,7 +1790,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1318,7 +1798,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1334,7 +1814,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1350,7 +1830,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1366,7 +1846,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1374,7 +1854,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1406,7 +1886,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1422,7 +1902,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1430,11 +1910,27 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 243,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
         "batch": 244,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 245,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1446,7 +1942,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1482,6 +1978,14 @@
         }
       },
       {
+        "batch": 251,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 252,
         "id": 0,
         "kind": {
@@ -1494,7 +1998,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1506,11 +2010,19 @@
         }
       },
       {
-        "batch": 256,
+        "batch": 255,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
+        }
+      },
+      {
+        "batch": 256,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -1539,6 +2051,14 @@
       },
       {
         "batch": 260,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 261,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1574,7 +2094,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1582,7 +2102,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 267,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -1610,6 +2138,14 @@
         }
       },
       {
+        "batch": 271,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 272,
         "id": 0,
         "kind": {
@@ -1630,7 +2166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1650,71 +2186,7 @@
         }
       },
       {
-        "batch": 278,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 279,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 280,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 282,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 283,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 284,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 285,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 286,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 287,
+        "batch": 277,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1722,7 +2194,7 @@
         }
       },
       {
-        "batch": 288,
+        "batch": 316,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1730,31 +2202,7 @@
         }
       },
       {
-        "batch": 289,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 311,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 327,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 327,
+        "batch": 316,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -1844,6 +2292,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 32,
               "input_tokens_details": {
@@ -1855,2984 +2317,2960 @@
               },
               "total_tokens": 396
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-            "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " systems"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " programming"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " language"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " that"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " emerged"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " from"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " project"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " initiated"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " by"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Mozilla"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " employee"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Gray"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "don"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Ho"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "are"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "200"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "6"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Initially"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " personal"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " project"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " aimed"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " create"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " language"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " that"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " offered"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " both"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " performance"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " safety"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " addressing"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " common"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " issues"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " like"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " memory"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " errors"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " concurrency"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " problems"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " prevalent"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " languages"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " like"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " C"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " C"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "++."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Mozilla"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " saw"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " potential"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " began"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " sponsoring"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " its"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " development"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "200"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "9"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " providing"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " resources"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " support"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " refine"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " language"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ".\n\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " first"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " major"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " milestone"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " for"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " was"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " release"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " version"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "0"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "201"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "0"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " which"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " showcased"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " its"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " core"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " principles"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " memory"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " safety"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " without"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " garbage"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " collector"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " concurrency"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " zero"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-cost"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " abstra"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ctions"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'s"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " unique"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " ownership"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " model"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " which"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " en"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "forces"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " strict"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " rules"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " on"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " how"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " memory"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " accessed"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " managed"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " was"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " groundbreaking"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " feature"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " that"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " set"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " it"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " apart"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " from"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " other"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " languages"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " This"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " model"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " prevents"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " data"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " races"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " ensures"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " memory"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " safety"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " at"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " compile"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " time"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " eliminating"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " significant"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " class"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " bugs"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ".\n\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "In"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "201"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " reached"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " significant"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " milestone"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " release"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " version"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "1"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "0"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " This"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " release"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " marked"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " as"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " stable"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " production"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-ready"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " leading"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " increased"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " adoption"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " various"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " industries"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " language"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'s"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " emphasis"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " on"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " safety"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " performance"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " made"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " it"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " particularly"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " appealing"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " for"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " developing"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " web"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " browsers"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " operating"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " systems"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " other"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " performance"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-critical"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " applications"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Mozilla"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'s"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " own"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " browser"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " engine"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Servo"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " was"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " one"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " first"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " major"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " projects"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " leverage"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " demonstrating"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " its"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " capabilities"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " real"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-world"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " applications"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ".\n\n"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Since"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " then"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " has"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " continued"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " grow"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " popularity"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " driven"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " by"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " strong"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " community"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " active"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " development"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " language"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " has"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " been"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " consistently"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " praised"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " for"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " its"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " excellent"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " documentation"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " tooling"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " community"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " support"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " It"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " has"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " been"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " adopted"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " by"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " major"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " companies"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " like"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Microsoft"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Amazon"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Dropbox"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " for"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " various"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " projects"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " further"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " cement"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ing"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " its"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " reputation"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " as"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " reliable"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " efficient"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " language"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " for"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " systems"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " programming"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Rust"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'s"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " ongoing"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " evolution"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " its"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " focus"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " on"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " safety"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " concurrency"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " continue"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " attract"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " developers"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " looking"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " for"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " modern"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " alternative"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " traditional"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " systems"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " programming"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " languages"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 32,
-            "output_tokens": 364,
-            "total_tokens": 396,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
-          "provider_request_id": "req_e6d807d301384958abbb64c43868f444",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 32,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 364,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 396
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-            "response_id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
-            "model": "gpt-4o-2024-08-06"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages."
+            }
           }
         }
       ],

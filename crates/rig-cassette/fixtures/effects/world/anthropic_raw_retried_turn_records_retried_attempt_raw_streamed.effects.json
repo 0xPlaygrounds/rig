@@ -6,66 +6,26 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 9,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
-        "batch": 17,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -169,68 +129,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "agent"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " raw probe"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "agent raw probe"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 14,
-            "output_tokens": 6,
-            "total_tokens": 20,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcg5JKuZueX1QmD4A5r",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcg4sGnerTaHDu3d7fJ",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 6,
-              "input_tokens": 14,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcg5JKuZueX1QmD4A5r",
-            "model": "claude-haiku-4-5-20251001"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "agent raw probe"
+            }
           }
         }
       ],
@@ -306,68 +236,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "agent"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " raw probe"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "agent raw probe"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 14,
-            "output_tokens": 6,
-            "total_tokens": 20,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcg7kuYVkLE5BmVcUz8",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcg7KMsrFfjNHuVXDdk",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 6,
-              "input_tokens": 14,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcg7kuYVkLE5BmVcUz8",
-            "model": "claude-haiku-4-5-20251001"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "agent raw probe"
+            }
           }
         }
       ],

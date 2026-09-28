@@ -126,103 +126,63 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:reasoning:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "gcp.gemini",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n"
-                }
-              }
-            ]
-          }
-        },
-        {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text_meta",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
+                }
               }
             }
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
-              }
-            }
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 29,
-            "total_tokens": 42,
-            "reasoning_tokens": 13
-          },
-          "finish_reason": "length",
-          "message_id": null,
-          "response_id": "0q-yaua_B6Cdz7IPi4_soQw",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 29,
-              "totalTokenCount": 42,
-              "thoughtsTokenCount": 13,
-              "promptTokensDetails": [
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "gcp.gemini",
+              "id": null,
+              "content": [
                 {
-                  "modality": "TEXT",
-                  "tokenCount": 29
+                  "type": "text",
+                  "content": {
+                    "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n"
+                  }
                 }
               ]
-            },
-            "finish_reason": "MAX_TOKENS",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "0q-yaua_B6Cdz7IPi4_soQw"
+            }
           }
         }
       ]

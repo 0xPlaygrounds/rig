@@ -108,84 +108,54 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "A g"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "larb-glarb is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " an ancient farming tool from planet"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Jiro."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "A glarb-glarb is an ancient farming tool from planet Jiro."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 107,
-            "output_tokens": 22,
-            "total_tokens": 129,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLce6yy2fo7XCu5zTbpZ",
-          "response_id": null,
-          "provider_request_id": "req_011CfLce6YvUqeEo95pZ95RQ",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 22,
-              "input_tokens": 107,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLce6yy2fo7XCu5zTbpZ",
-            "model": "claude-sonnet-4-6"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "A glarb-glarb is an ancient farming tool from planet Jiro."
+            }
           }
         }
       ]

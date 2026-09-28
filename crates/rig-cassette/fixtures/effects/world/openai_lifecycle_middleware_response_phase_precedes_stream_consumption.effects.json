@@ -2,35 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
         "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -46,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -62,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -70,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -94,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -102,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -118,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -126,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -134,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -142,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -150,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -158,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -190,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -214,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -222,7 +198,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -238,7 +214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -254,7 +230,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -262,7 +238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -294,7 +270,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -310,7 +286,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -326,7 +302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -342,7 +318,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -358,7 +334,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -374,7 +350,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -382,7 +358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -390,7 +366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -398,7 +374,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -406,7 +382,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -414,7 +390,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -422,7 +398,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -430,7 +406,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -438,11 +414,51 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 63,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 64,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 66,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 67,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -458,7 +474,47 @@
         }
       },
       {
+        "batch": 70,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 71,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 72,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 73,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 74,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 75,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -466,7 +522,143 @@
         }
       },
       {
-        "batch": 74,
+        "batch": 76,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 77,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 78,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 79,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 80,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 81,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 82,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 83,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 84,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 86,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 87,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 88,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 90,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 91,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 92,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 93,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 108,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 108,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -556,6 +748,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_0d91e0cef7d35154006ab3969d49f887d080edc22fa299946b",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly in plain text.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 35,
               "input_tokens_details": {
@@ -567,848 +773,824 @@
               },
               "total_tokens": 132
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "A solar eclipse occurs when the moon passes between the Earth and the Sun, blocking all or part of the Sun's light. This alignment causes the moon to cast a shadow on the Earth, which can be observed in specific areas. There are different types of solar eclipses: total, partial, and annular, depending on the alignment and distances involved. During a total eclipse, the day briefly becomes night in the path of totality, where the moon completely covers the Sun.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-            "response_id": "resp_0d91e0cef7d35154006ab3969d49f887d080edc22fa299946b",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "A"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " solar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " eclipse"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " occurs"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " when"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " moon"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " passes"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " between"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Earth"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Sun"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " blocking"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " all"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " or"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " part"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Sun"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'s"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " light"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " This"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " alignment"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " causes"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " moon"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " cast"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " shadow"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " on"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Earth"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " which"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " can"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " be"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " observed"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " specific"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " areas"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " There"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " are"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " different"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " types"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " solar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " eclips"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "es"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " total"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " partial"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " ann"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ular"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " depending"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " on"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " alignment"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " distances"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " involved"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " During"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " total"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " eclipse"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " day"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " briefly"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " becomes"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " night"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " path"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " total"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ity"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " where"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " moon"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " completely"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " covers"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Sun"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "A solar eclipse occurs when the moon passes between the Earth and the Sun, blocking all or part of the Sun's light. This alignment causes the moon to cast a shadow on the Earth, which can be observed in specific areas. There are different types of solar eclipses: total, partial, and annular, depending on the alignment and distances involved. During a total eclipse, the day briefly becomes night in the path of totality, where the moon completely covers the Sun."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 35,
-            "output_tokens": 97,
-            "total_tokens": 132,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-          "response_id": "resp_0d91e0cef7d35154006ab3969d49f887d080edc22fa299946b",
-          "provider_request_id": "req_a94e49d610da463db7cca7b0f61d612e",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 35,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 97,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 132
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_0d91e0cef7d35154006ab3969dbcfc87d0b1d4abab5c436c46",
-            "response_id": "resp_0d91e0cef7d35154006ab3969d49f887d080edc22fa299946b",
-            "model": "gpt-4o-2024-08-06"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "A solar eclipse occurs when the moon passes between the Earth and the Sun, blocking all or part of the Sun's light. This alignment causes the moon to cast a shadow on the Earth, which can be observed in specific areas. There are different types of solar eclipses: total, partial, and annular, depending on the alignment and distances involved. During a total eclipse, the day briefly becomes night in the path of totality, where the moon completely covers the Sun."
+            }
           }
         }
       ],

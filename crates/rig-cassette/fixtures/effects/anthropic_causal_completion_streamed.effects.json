@@ -155,129 +155,42 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"q\": \"What is the capital of France?\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"q\": \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "What is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " the ca"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "pital o"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "f Franc"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "e?\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01SPgxpjTY3oRQGp8rp3TUkw",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
-              }
-            },
-            "function": {
-              "name": "lookup",
-              "arguments": {
-                "q": "What is the capital of France?"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 624,
-            "output_tokens": 58,
-            "total_tokens": 682,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcVosqqKqEJRDXpbRkx",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcVoQKLKAwBUme7RG5S",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 58,
-              "input_tokens": 624,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01SPgxpjTY3oRQGp8rp3TUkw"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcVosqqKqEJRDXpbRkx",
-            "model": "claude-sonnet-4-6"
+              "function": {
+                "name": "lookup",
+                "arguments": {
+                  "q": "What is the capital of France?"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -530,60 +443,30 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Paris"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Paris"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 695,
-            "output_tokens": 4,
-            "total_tokens": 699,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcWCdKMMoTXzZp2m89E",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 4,
-              "input_tokens": 695,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcWD6M3aaNfbpDzpN8F",
-            "model": "claude-sonnet-4-6"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Paris"
+            }
           }
         }
       ]

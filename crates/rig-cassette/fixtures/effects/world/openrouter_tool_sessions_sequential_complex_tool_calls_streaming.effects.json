@@ -2,433 +2,73 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 15,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 101,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 15,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 16,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 20,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 21,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 19
-        }
-      },
-      {
-        "batch": 26,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 19
-        }
-      },
-      {
-        "batch": 27,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 7
-        }
-      },
-      {
-        "batch": 28,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 33,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 33,
+        "batch": 105,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 35,
+        "batch": 107,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 40,
+        "batch": 145,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 43,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 45,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 47,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 49,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 50,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 52,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 53,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 55,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 56,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 58,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 59,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 60,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 62,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 63,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 64,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 66,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 67,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 69,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 70,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 72,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 73,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 74,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 77,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 77,
+        "batch": 148,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 78,
+        "batch": 149,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 83,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 84,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 85,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 15
-        }
-      },
-      {
-        "batch": 86,
+        "batch": 184,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -436,29 +76,21 @@
         }
       },
       {
-        "batch": 87,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 87,
+        "batch": 187,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 88,
+        "batch": 188,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 92,
+        "batch": 193,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -466,7 +98,7 @@
         }
       },
       {
-        "batch": 93,
+        "batch": 194,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -474,7 +106,7 @@
         }
       },
       {
-        "batch": 94,
+        "batch": 195,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -482,7 +114,7 @@
         }
       },
       {
-        "batch": 95,
+        "batch": 196,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -490,7 +122,7 @@
         }
       },
       {
-        "batch": 96,
+        "batch": 198,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -498,7 +130,7 @@
         }
       },
       {
-        "batch": 97,
+        "batch": 199,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -506,7 +138,7 @@
         }
       },
       {
-        "batch": 98,
+        "batch": 200,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -514,15 +146,7 @@
         }
       },
       {
-        "batch": 99,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 100,
+        "batch": 201,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -530,15 +154,7 @@
         }
       },
       {
-        "batch": 101,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 103,
+        "batch": 202,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -546,7 +162,7 @@
         }
       },
       {
-        "batch": 104,
+        "batch": 203,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -554,7 +170,7 @@
         }
       },
       {
-        "batch": 105,
+        "batch": 204,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -562,15 +178,7 @@
         }
       },
       {
-        "batch": 106,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 107,
+        "batch": 206,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -578,23 +186,7 @@
         }
       },
       {
-        "batch": 108,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 109,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 110,
+        "batch": 207,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -602,23 +194,111 @@
         }
       },
       {
-        "batch": 111,
+        "batch": 208,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 114,
+        "batch": 209,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 114,
+        "batch": 210,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 211,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 213,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 214,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 215,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 216,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 217,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 219,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 220,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 221,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 225,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 225,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -979,89 +659,39 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_LelbWhDCl1GYVoKJNOg6SdRt",
-          "delta": {
-            "delta": "tool_name",
-            "name": "ping_empty"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_LelbWhDCl1GYVoKJNOg6SdRt",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call_LelbWhDCl1GYVoKJNOg6SdRt",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_LelbWhDCl1GYVoKJNOg6SdRt",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_LelbWhDCl1GYVoKJNOg6SdRt"
-              }
-            },
-            "function": {
-              "name": "ping_empty",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 352,
-            "output_tokens": 11,
-            "total_tokens": 363,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
-          "provider": "openrouter",
-          "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 352,
-              "completion_tokens": 11,
-              "total_tokens": 363,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_LelbWhDCl1GYVoKJNOg6SdRt"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "ping_empty",
+                "arguments": {}
               },
-              "cost": 0.00099,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00011,
-                "upstream_inference_cost": 0.00099,
-                "upstream_inference_prompt_cost": 0.00088
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -1353,562 +983,56 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_name",
-            "name": "inspect_manifest"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "project"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "rig"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-open"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "router"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "flags"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "critical"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "true"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "re"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "tries"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "},\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "steps"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":["
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "name"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "plan"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "weight"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "1"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "},{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "name"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "verify"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "weight"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "],\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "note"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "line"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " one"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ";"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " line"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " two"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " says"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " \\\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "hello"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " path"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " C"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ":\\\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "rig"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "open"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "router"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_vP9nx06h1MLfVYTPsCVxxq1g",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_vP9nx06h1MLfVYTPsCVxxq1g",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_vP9nx06h1MLfVYTPsCVxxq1g"
-              }
-            },
-            "function": {
-              "name": "inspect_manifest",
-              "arguments": {
-                "project": "rig-openrouter",
-                "flags": {
-                  "critical": true,
-                  "retries": 2
-                },
-                "steps": [
-                  {
-                    "name": "plan",
-                    "weight": 1
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_vP9nx06h1MLfVYTPsCVxxq1g"
+                }
+              },
+              "function": {
+                "name": "inspect_manifest",
+                "arguments": {
+                  "project": "rig-openrouter",
+                  "flags": {
+                    "critical": true,
+                    "retries": 2
                   },
-                  {
-                    "name": "verify",
-                    "weight": 2
-                  }
-                ],
-                "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 374,
-            "output_tokens": 67,
-            "total_tokens": 441,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
-          "provider": "openrouter",
-          "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 374,
-              "completion_tokens": 67,
-              "total_tokens": 441,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                  "steps": [
+                    {
+                      "name": "plan",
+                      "weight": 1
+                    },
+                    {
+                      "name": "verify",
+                      "weight": 2
+                    }
+                  ],
+                  "note": "line one; line two says \"hello\" and path C:\\rig\\openrouter"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cost": 0.001605,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00067,
-                "upstream_inference_cost": 0.001605,
-                "upstream_inference_prompt_cost": 0.000935
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -2248,265 +1372,47 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_name",
-            "name": "join_labels"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "labels"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":[\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "north"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "beta"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " gamma"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "quote"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ":\\\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "delta"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "slash"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "path"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"],"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "separator"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "|"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_QVr7yt00dAlbex31XdCOqBJD",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_QVr7yt00dAlbex31XdCOqBJD",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_QVr7yt00dAlbex31XdCOqBJD"
-              }
-            },
-            "function": {
-              "name": "join_labels",
-              "arguments": {
-                "labels": [
-                  "north",
-                  "beta gamma",
-                  "quote:\"delta\"",
-                  "slash\\path"
-                ],
-                "separator": "|"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 464,
-            "output_tokens": 31,
-            "total_tokens": 495,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
-          "provider": "openrouter",
-          "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 464,
-              "completion_tokens": 31,
-              "total_tokens": 495,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_QVr7yt00dAlbex31XdCOqBJD"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "join_labels",
+                "arguments": {
+                  "labels": [
+                    "north",
+                    "beta gamma",
+                    "quote:\"delta\"",
+                    "slash\\path"
+                  ],
+                  "separator": "|"
+                }
               },
-              "cost": 0.00147,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00031,
-                "upstream_inference_cost": 0.00147,
-                "upstream_inference_prompt_cost": 0.00116
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -2888,251 +1794,41 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_name",
-            "name": "escape_echo"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "text"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "Line"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "1"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "Line"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " \\\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " with"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " back"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "slash"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " \\\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " unicode"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " snow"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "man"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " ☃"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_UvF9FPzIIy8sXt49XPWAgbW8",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_UvF9FPzIIy8sXt49XPWAgbW8",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_UvF9FPzIIy8sXt49XPWAgbW8"
-              }
-            },
-            "function": {
-              "name": "escape_echo",
-              "arguments": {
-                "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 519,
-            "output_tokens": 31,
-            "total_tokens": 550,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
-          "provider": "openrouter",
-          "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 519,
-              "completion_tokens": 31,
-              "total_tokens": 550,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_UvF9FPzIIy8sXt49XPWAgbW8"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "escape_echo",
+                "arguments": {
+                  "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
+                }
               },
-              "cost": 0.0016075,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00031,
-                "upstream_inference_cost": 0.0016075,
-                "upstream_inference_prompt_cost": 0.0012975
-              },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -3544,268 +2240,221 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "All"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " tools"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " executed"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " successfully"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " EMPTY"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "OK"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " MAN"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "IFEST"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "OK"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " LABEL"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "S"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "OK"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " ESC"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "APE"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "OK"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "All tools executed successfully: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 580,
-            "output_tokens": 26,
-            "total_tokens": 606,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
-          "provider": "openrouter",
-          "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 580,
-              "completion_tokens": 26,
-              "total_tokens": 606,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cost": 0.00171,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00026,
-                "upstream_inference_cost": 0.00171,
-                "upstream_inference_prompt_cost": 0.00145
-              },
-              "is_byok": false
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_38255cd5f6",
-              "service_tier": null
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "All tools executed successfully: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
             }
           }
         }

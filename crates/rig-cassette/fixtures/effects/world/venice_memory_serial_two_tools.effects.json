@@ -9,56 +9,32 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 6
         }
       },
       {
-        "batch": 10,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 10,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 14,
         "id": 3,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 17,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -66,7 +42,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -74,7 +50,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -106,7 +82,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -114,11 +90,11 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 27,
+        "batch": 26,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -129,11 +105,43 @@
         "batch": 27,
         "id": 4,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
         "batch": 28,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 29,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 32,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -343,112 +351,76 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:LNCjx0YGN",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_harbor_label"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:LNCjx0YGN",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:aPOfRAcFN",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_orchard_label"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "LNCjx0YGN"
+                }
+              },
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:aPOfRAcFN",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:LNCjx0YGN",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "LNCjx0YGN",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "LNCjx0YGN"
-              }
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:aPOfRAcFN",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "aPOfRAcFN",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "aPOfRAcFN"
-              }
-            },
-            "function": {
-              "name": "lookup_orchard_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1154,
-            "output_tokens": 16,
-            "total_tokens": 1170
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-Rf92vwJvbZBgSKdTkK9bwNKQ",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1154,
-              "completion_tokens": 16,
-              "total_tokens": 1170
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-Rf92vwJvbZBgSKdTkK9bwNKQ",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001121875
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "aPOfRAcFN"
+                }
+              },
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -668,164 +640,133 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " current"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " signals"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " are"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " cr"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "imson"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-h"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "bor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " silver"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-or"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "chard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The current signals are crimson-harbor and silver-orchard."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1214,
-            "output_tokens": 15,
-            "total_tokens": 1229
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-RTzj6V8Fz1jMhRgWj7l5t2e9",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1214,
-              "completion_tokens": 15,
-              "total_tokens": 1229
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RTzj6V8Fz1jMhRgWj7l5t2e9",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00011756249999999999
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The current signals are crimson-harbor and silver-orchard."
             }
           }
         }

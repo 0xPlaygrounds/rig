@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -110,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -146,99 +146,11 @@
         }
       },
       {
-        "batch": 24,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 28,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 32,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 33,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 34,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 38,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
@@ -268,11 +180,11 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 48,
+        "batch": 47,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -474,366 +386,230 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:reasoning:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "We"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " need"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " answer"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " Need"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " add"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " Must"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " then"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " reply"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " just"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " number"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " Let"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "'s"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": " call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "deepseek",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"x\": 17, \"y\": 25}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
                 }
-              }
-            ]
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "x"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "17"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ", "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "y"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "25"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_00_fkvEZ57qqR4YRa7bRAxj9853",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_00_fkvEZ57qqR4YRa7bRAxj9853"
-              }
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 361,
-            "output_tokens": 73,
-            "total_tokens": 434,
-            "cached_input_tokens": 128,
-            "reasoning_tokens": 20
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "9b1b3e25-a80d-4049-9d24-01904efcd741",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 361,
-              "completion_tokens": 73,
-              "total_tokens": 434,
-              "prompt_tokens_details": {
-                "cached_tokens": 128
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 20
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 233
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "9b1b3e25-a80d-4049-9d24-01904efcd741",
-            "model": "deepseek-flash",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "deepseek",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "We need answer. Need call add tool. Must then reply with just number. Let's call."
+                  }
+                }
+              ]
             }
           }
         }
@@ -1041,102 +817,65 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:reasoning:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:reasoning:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "42"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:reasoning:0",
-          "end": {
-            "close": "reasoning",
-            "wire_sent": false
-          },
-          "block": {
-            "type": "reasoning",
-            "issuer": "deepseek",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "42"
-                }
-              }
-            ]
-          }
-        },
-        {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "42"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "42"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "42"
+            }
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 447,
-            "output_tokens": 3,
-            "total_tokens": 450,
-            "cached_input_tokens": 256,
-            "reasoning_tokens": 1
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "8fd60c41-65c6-42c9-9142-f1fb7e348964",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 447,
-              "completion_tokens": 3,
-              "total_tokens": 450,
-              "prompt_tokens_details": {
-                "cached_tokens": 256
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 1
-              },
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 191
-            },
-            "finish_reason": "stop",
-            "response_id": "8fd60c41-65c6-42c9-9142-f1fb7e348964",
-            "model": "deepseek-flash",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "deepseek",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "42"
+                  }
+                }
+              ]
             }
           }
         }

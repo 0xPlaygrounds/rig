@@ -1418,14 +1418,10 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
                 stream.errors
             );
             assert!(stream.outcome.is_none(), "{:?}", stream.outcome);
+            // A call is visible once it closes: a wire that closes its calls
+            // at the provider's end surfaces none before the cut.
             if fault == Fault::TruncatedAfterText {
                 assert!(!stream.text.is_empty(), "the prefix is kept");
-            } else {
-                assert!(
-                    stream.events.events().any(is_tool_call_progress),
-                    "the call streamed before the cut: {:?}",
-                    stream.events
-                );
             }
             assert_eq!(roles, [Role::User], "the cut turn is not history");
         }

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,15 +32,15 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -213,68 +213,41 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "add",
-            "arguments": {
-              "x": 2,
-              "y": 3
-            },
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "local": "00000000-0000-4000-8000-000000000000"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 2,
-                "y": 3
-              }
-            },
-            "signature": null,
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\":2,\"y\":3}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 72,
-            "output_tokens": 18,
-            "total_tokens": 90
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "qXizapSGDcywqtsP2bT52Ag",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 72,
-              "candidatesTokenCount": 18,
-              "totalTokenCount": 90,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 72
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000000"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 2,
+                  "y": 3
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "qXizapSGDcywqtsP2bT52Ag"
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -444,66 +417,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The sum of "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "2 and 3 is 5."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The sum of 2 and 3 is 5."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 103,
-            "output_tokens": 11,
-            "total_tokens": 114
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "qXizauG5KuujqtsPx4aGuQ8",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 103,
-              "candidatesTokenCount": 11,
-              "totalTokenCount": 114,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 103
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "qXizauG5KuujqtsPx4aGuQ8"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The sum of 2 and 3 is 5."
+            }
           }
         }
       ],

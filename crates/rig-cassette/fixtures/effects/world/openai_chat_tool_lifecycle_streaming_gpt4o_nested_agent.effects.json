@@ -2,119 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -122,46 +10,14 @@
         }
       },
       {
-        "batch": 23,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 27,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -375,250 +231,49 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_name",
-            "name": "record_payload"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "c"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "afé"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " 東京"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "values"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":["
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "3"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "5"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "8"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "],\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "meta"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "active"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "true"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_TECOyioASt9BQxP1WvwgbCYW",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_TECOyioASt9BQxP1WvwgbCYW",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_TECOyioASt9BQxP1WvwgbCYW"
-              }
-            },
-            "function": {
-              "name": "record_payload",
-              "arguments": {
-                "label": "café 東京",
-                "values": [
-                  3,
-                  5,
-                  8
-                ],
-                "meta": {
-                  "active": true
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_TECOyioASt9BQxP1WvwgbCYW"
                 }
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 93,
-            "output_tokens": 30,
-            "total_tokens": 123,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N",
-          "provider_request_id": "req_03654d5d0dab4f9ca2c7f7cee73925e1",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 93,
-              "completion_tokens": 30,
-              "total_tokens": 123,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N",
-            "model": "gpt-4o-mini-2024-07-18",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "HiTMzPUDu",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_1e58d0ce9b"
+              "function": {
+                "name": "record_payload",
+                "arguments": {
+                  "label": "café 東京",
+                  "values": [
+                    3,
+                    5,
+                    8
+                  ],
+                  "meta": {
+                    "active": true
+                  }
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }

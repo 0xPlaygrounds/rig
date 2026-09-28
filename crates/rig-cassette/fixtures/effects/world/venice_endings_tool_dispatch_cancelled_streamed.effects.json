@@ -2,39 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 21,
+        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -204,76 +180,42 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:9AY02yb59",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:9AY02yb59",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 17, \"y\": 25}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\": 17, \"y\": 25}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:9AY02yb59",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "9AY02yb59",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "9AY02yb59"
-              }
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1093,
-            "output_tokens": 18,
-            "total_tokens": 1111
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-RPooLtRUy1TtZrmAa1m0Ai0q",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1093,
-              "completion_tokens": 18,
-              "total_tokens": 1111
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RPooLtRUy1TtZrmAa1m0Ai0q",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00010696875
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "9AY02yb59"
+                }
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }

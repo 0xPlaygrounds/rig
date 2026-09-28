@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 6,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,15 +18,7 @@
         }
       },
       {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -150,81 +142,37 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ced"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ar"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "cedar"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 37,
-            "output_tokens": 3,
-            "total_tokens": 40,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 37,
-              "completion_tokens": 3,
-              "total_tokens": 40,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ",
-            "model": "Qwen/Qwen3.5-9B",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "vllm-0.23.0-ed3ef83f"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "cedar"
             }
           }
         }

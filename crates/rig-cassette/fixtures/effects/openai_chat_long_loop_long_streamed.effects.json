@@ -258,80 +258,39 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_HqyYHpYBJvu5dJhdkCQOP0WA",
-          "delta": {
-            "delta": "tool_name",
-            "name": "list_files"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_HqyYHpYBJvu5dJhdkCQOP0WA",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call_HqyYHpYBJvu5dJhdkCQOP0WA",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_HqyYHpYBJvu5dJhdkCQOP0WA",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_HqyYHpYBJvu5dJhdkCQOP0WA"
-              }
-            },
-            "function": {
-              "name": "list_files",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 395,
-            "output_tokens": 10,
-            "total_tokens": 405,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDIDL3hteZxlmnxBO8wJIGB843C",
-          "provider_request_id": "req_8d54d818deb344a59d43ca99e15e3deb",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 395,
-              "completion_tokens": 10,
-              "total_tokens": 405,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_HqyYHpYBJvu5dJhdkCQOP0WA"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDDIDL3hteZxlmnxBO8wJIGB843C",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "vAt1zGv",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+              "function": {
+                "name": "list_files",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -585,268 +544,119 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_WnWGUvP8eEGwOdbUh8TdCfM8",
-          "delta": {
-            "delta": "tool_name",
-            "name": "read_file"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_WnWGUvP8eEGwOdbUh8TdCfM8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"pa"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"path\": \"README.md\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_WnWGUvP8eEGwOdbUh8TdCfM8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "th\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_WnWGUvP8eEGwOdbUh8TdCfM8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"READM"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_WnWGUvP8eEGwOdbUh8TdCfM8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "E.md"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_WnWGUvP8eEGwOdbUh8TdCfM8",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_VcJLIFiiiCmKYlGbCFzLr6wq",
-          "delta": {
-            "delta": "tool_name",
-            "name": "read_file"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_VcJLIFiiiCmKYlGbCFzLr6wq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"pa"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_VcJLIFiiiCmKYlGbCFzLr6wq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "th\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_VcJLIFiiiCmKYlGbCFzLr6wq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"tests"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_VcJLIFiiiCmKYlGbCFzLr6wq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "/bas"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_VcJLIFiiiCmKYlGbCFzLr6wq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ic.rs"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_VcJLIFiiiCmKYlGbCFzLr6wq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_73vvTGk0DgUi4LXtJY8ek7eV",
-          "delta": {
-            "delta": "tool_name",
-            "name": "read_file"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_73vvTGk0DgUi4LXtJY8ek7eV",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"pa"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_73vvTGk0DgUi4LXtJY8ek7eV",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "th\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_73vvTGk0DgUi4LXtJY8ek7eV",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"src/l"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_73vvTGk0DgUi4LXtJY8ek7eV",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ib.r"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_73vvTGk0DgUi4LXtJY8ek7eV",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "s\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_WnWGUvP8eEGwOdbUh8TdCfM8",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_WnWGUvP8eEGwOdbUh8TdCfM8",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_WnWGUvP8eEGwOdbUh8TdCfM8"
-              }
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "README.md"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_VcJLIFiiiCmKYlGbCFzLr6wq",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_VcJLIFiiiCmKYlGbCFzLr6wq",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_VcJLIFiiiCmKYlGbCFzLr6wq"
-              }
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "tests/basic.rs"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_73vvTGk0DgUi4LXtJY8ek7eV",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_73vvTGk0DgUi4LXtJY8ek7eV",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_73vvTGk0DgUi4LXtJY8ek7eV"
-              }
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "src/lib.rs"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 431,
-            "output_tokens": 63,
-            "total_tokens": 494,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDId5nFjGUwxOn6vxm4KB6dMr8f",
-          "provider_request_id": "req_bb1bcaa208ba4fd4adf2efdd594dc0f0",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 431,
-              "completion_tokens": 63,
-              "total_tokens": 494,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_WnWGUvP8eEGwOdbUh8TdCfM8"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDDId5nFjGUwxOn6vxm4KB6dMr8f",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "kHRwzDy",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "README.md"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"path\": \"tests/basic.rs\"}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_VcJLIFiiiCmKYlGbCFzLr6wq"
+                }
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 2,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 2,
+            "json": "{\"path\": \"src/lib.rs\"}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 2,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_73vvTGk0DgUi4LXtJY8ek7eV"
+                }
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "src/lib.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -1218,80 +1028,39 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_mzxUyi8IgEWXgHuEA1VHZLkN",
-          "delta": {
-            "delta": "tool_name",
-            "name": "run_tests"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_mzxUyi8IgEWXgHuEA1VHZLkN",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call_mzxUyi8IgEWXgHuEA1VHZLkN",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_mzxUyi8IgEWXgHuEA1VHZLkN",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_mzxUyi8IgEWXgHuEA1VHZLkN"
-              }
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 692,
-            "output_tokens": 10,
-            "total_tokens": 702,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDJotB7w47PzypnXifotBqkWRFl",
-          "provider_request_id": "req_87402edf7760482192ee93b19f0448dd",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 692,
-              "completion_tokens": 10,
-              "total_tokens": 702,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_mzxUyi8IgEWXgHuEA1VHZLkN"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDDJotB7w47PzypnXifotBqkWRFl",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "XlSQQJh",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -1658,467 +1427,42 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_name",
-            "name": "write_file"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "path"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "src"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "/lib"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ".rs"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "content"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "pub"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " mod"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " calendar"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ";\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "///"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " The"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " number"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " days"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " a"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " common"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " ("
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "non"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-le"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ap"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ")"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " year"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ".\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "np"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ub"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " fn"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " days"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "_in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "_year"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "()"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " u"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "32"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " {\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "   "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "365"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_HDMDJ6swumpjr6JkpX2vgXEH",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_HDMDJ6swumpjr6JkpX2vgXEH",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_HDMDJ6swumpjr6JkpX2vgXEH"
-              }
-            },
-            "function": {
-              "name": "write_file",
-              "arguments": {
-                "path": "src/lib.rs",
-                "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 841,
-            "output_tokens": 58,
-            "total_tokens": 899,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDKrE69NPwp9lS4WEOs1fjDx2dP",
-          "provider_request_id": "req_2d71c6774f7c40e981fd1f67d1a636b2",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 841,
-              "completion_tokens": 58,
-              "total_tokens": 899,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_HDMDJ6swumpjr6JkpX2vgXEH"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDDKrE69NPwp9lS4WEOs1fjDx2dP",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "D2x9F2t",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -2525,80 +1869,39 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_pogHQJeQD23lp85VRcBbaxg0",
-          "delta": {
-            "delta": "tool_name",
-            "name": "run_tests"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_pogHQJeQD23lp85VRcBbaxg0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call_pogHQJeQD23lp85VRcBbaxg0",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_pogHQJeQD23lp85VRcBbaxg0",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_pogHQJeQD23lp85VRcBbaxg0"
-              }
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 916,
-            "output_tokens": 10,
-            "total_tokens": 926,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDL6C6o2srj9PqXOwfc1PxngS6W",
-          "provider_request_id": "req_5a9b2f3b76d247d5970dec700979b5d8",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 916,
-              "completion_tokens": 10,
-              "total_tokens": 926,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_pogHQJeQD23lp85VRcBbaxg0"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDDL6C6o2srj9PqXOwfc1PxngS6W",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "sPt4pHl",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -3047,130 +2350,41 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "delta": {
-            "delta": "tool_name",
-            "name": "read_file"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"path\":\"src/calendar.rs\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "path"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "src"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "/calendar"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ".rs"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_NpYGXHcB1wK1zzPoIdg37Cz0",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_NpYGXHcB1wK1zzPoIdg37Cz0",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_NpYGXHcB1wK1zzPoIdg37Cz0"
-              }
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "src/calendar.rs"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1073,
-            "output_tokens": 16,
-            "total_tokens": 1089,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDLBgraZ51o3srvxumSaUTNU2lM",
-          "provider_request_id": "req_60bee95c25a74a23b6db3aaa6df6b1fe",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1073,
-              "completion_tokens": 16,
-              "total_tokens": 1089,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_NpYGXHcB1wK1zzPoIdg37Cz0"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDDLBgraZ51o3srvxumSaUTNU2lM",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "U5DVD",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "src/calendar.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -3662,371 +2876,42 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_name",
-            "name": "write_file"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "path"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "src"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "/calendar"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ".rs"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "content"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "///"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " The"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " number"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " days"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " a"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " week"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ".\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "np"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ub"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " fn"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " days"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "_in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "_week"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "()"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " u"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "32"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " {\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "   "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "7"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_8ug0Df0JTVwqSEMqmkJFgtYD",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_8ug0Df0JTVwqSEMqmkJFgtYD",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_8ug0Df0JTVwqSEMqmkJFgtYD"
-              }
-            },
-            "function": {
-              "name": "write_file",
-              "arguments": {
-                "path": "src/calendar.rs",
-                "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1121,
-            "output_tokens": 46,
-            "total_tokens": 1167,
-            "cached_input_tokens": 1024,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDMIEMiJI4AFtxgoXqXG4j2lvSj",
-          "provider_request_id": "req_48ed42bd87b94d0d8c3ab9aeae278dbc",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1121,
-              "completion_tokens": 46,
-              "total_tokens": 1167,
-              "prompt_tokens_details": {
-                "cached_tokens": 1024
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_8ug0Df0JTVwqSEMqmkJFgtYD"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDDMIEMiJI4AFtxgoXqXG4j2lvSj",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "Wi",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/calendar.rs",
+                  "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -4558,80 +3443,39 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_uExW0soWzu6fbDbkuoq5YKfq",
-          "delta": {
-            "delta": "tool_name",
-            "name": "run_tests"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_uExW0soWzu6fbDbkuoq5YKfq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call_uExW0soWzu6fbDbkuoq5YKfq",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_uExW0soWzu6fbDbkuoq5YKfq",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_uExW0soWzu6fbDbkuoq5YKfq"
-              }
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1184,
-            "output_tokens": 10,
-            "total_tokens": 1194,
-            "cached_input_tokens": 1024,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDNGFQg5L5MlzTgysoOoADj0DIt",
-          "provider_request_id": "req_3c16713909474892baccd568b45f8882",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1184,
-              "completion_tokens": 10,
-              "total_tokens": 1194,
-              "prompt_tokens_details": {
-                "cached_tokens": 1024
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_uExW0soWzu6fbDbkuoq5YKfq"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDDNGFQg5L5MlzTgysoOoADj0DIt",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "Pm",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -5193,67 +4037,29 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "done"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "done"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1250,
-            "output_tokens": 2,
-            "total_tokens": 1252,
-            "cached_input_tokens": 1024,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDOwZb0CiYNhjWGZil2ydu1anlS",
-          "provider_request_id": "req_c357d0abc6c84cbd9fd767419eee28f8",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1250,
-              "completion_tokens": 2,
-              "total_tokens": 1252,
-              "prompt_tokens_details": {
-                "cached_tokens": 1024
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDDOwZb0CiYNhjWGZil2ydu1anlS",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "Lfm",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_eb9b0343ec"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "done"
             }
           }
         }

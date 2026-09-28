@@ -2,15 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -116,40 +108,7 @@
           }
         }
       },
-      "events": [
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 18,
-            "output_tokens": 1,
-            "total_tokens": 19,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcgFspXhx5WTCVHCkHS",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcgFKZygsQZacDhZxcy",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 1,
-              "input_tokens": 18,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "stop_sequence",
-            "stop_sequence": "alpha",
-            "message_id": "msg_011CfLcgFspXhx5WTCVHCkHS",
-            "model": "claude-haiku-4-5-20251001"
-          }
-        }
-      ],
+      "events": [],
       "scope": "parity/run#0"
     }
   ]

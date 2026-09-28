@@ -648,7 +648,7 @@ async fn a_stream_that_ends_without_final_is_reported_and_recorded() {
     let last = items.last().expect("the truncation is an item");
     let report = last.as_ref().expect_err("the truncation is an error item");
     assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-    assert!(report.message.contains("before its terminal"), "{report:?}");
+    assert_eq!(report.message, rig_core::serve::stream_truncated().message);
     // Give the driver a moment to observe the dropped sink, then the log
     // holds the same failure the consumer saw.
     within(async {

@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -20,7 +20,7 @@
     "stream_errors": {
       "0": [
         {
-          "item": 3,
+          "item": 2,
           "error": {
             "kind": "provider_response",
             "retryable": true,
@@ -116,28 +116,18 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "pong"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "pong"
           }
         }

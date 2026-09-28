@@ -137,95 +137,54 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ready."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "ready."
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "ready."
+            }
           }
         },
         {
-          "event": "block_start",
-          "id": "minted:text:1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:1",
-          "delta": {
-            "delta": "text_meta",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "Ep4CCpsCAWkUfRN14MCfUtpXP34iisT0GzMHBC0cMm4Nd5jXYsnARsIIpvEfbZ3q/KHrE0IbisBNVEUDcZBTzp/zEUK6Smx5zK1owQW9OlWkHUSQ92JNdEQyr+CkJkFM8FrVxfp13kKmo74+Ljpz1hpNiALifRWHGshGXZNZ2AienBOf7btJLWqJIiVEZriPWYHxG6NH5L2CROK6xFER8tckyHR9ubpv9IjrzrWIawPFERmGzMGm3KkOPS0ZhgJA4Ws+reH2xxSRZ/7lX2Rh+xgMAeN/LmjTMdXtyXrq6ng/SflLTyxGhUqmDNS7vBIO230YO34du0ViB6nzOFgjBgCAOPgrOFvT5XzX1+IklvRDqwZLqNYjXeUIZpQzHgHexg=="
-              }
-            }
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:text:1",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "Ep4CCpsCAWkUfRN14MCfUtpXP34iisT0GzMHBC0cMm4Nd5jXYsnARsIIpvEfbZ3q/KHrE0IbisBNVEUDcZBTzp/zEUK6Smx5zK1owQW9OlWkHUSQ92JNdEQyr+CkJkFM8FrVxfp13kKmo74+Ljpz1hpNiALifRWHGshGXZNZ2AienBOf7btJLWqJIiVEZriPWYHxG6NH5L2CROK6xFER8tckyHR9ubpv9IjrzrWIawPFERmGzMGm3KkOPS0ZhgJA4Ws+reH2xxSRZ/7lX2Rh+xgMAeN/LmjTMdXtyXrq6ng/SflLTyxGhUqmDNS7vBIO230YO34du0ViB6nzOFgjBgCAOPgrOFvT5XzX1+IklvRDqwZLqNYjXeUIZpQzHgHexg=="
-              }
-            }
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 19,
-            "output_tokens": 2,
-            "total_tokens": 58,
-            "reasoning_tokens": 37
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "gq2yasjyDbOLmtkPhf6S6Qg",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 19,
-              "candidatesTokenCount": 2,
-              "totalTokenCount": 58,
-              "thoughtsTokenCount": 37,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 19
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "Ep4CCpsCAWkUfRN14MCfUtpXP34iisT0GzMHBC0cMm4Nd5jXYsnARsIIpvEfbZ3q/KHrE0IbisBNVEUDcZBTzp/zEUK6Smx5zK1owQW9OlWkHUSQ92JNdEQyr+CkJkFM8FrVxfp13kKmo74+Ljpz1hpNiALifRWHGshGXZNZ2AienBOf7btJLWqJIiVEZriPWYHxG6NH5L2CROK6xFER8tckyHR9ubpv9IjrzrWIawPFERmGzMGm3KkOPS0ZhgJA4Ws+reH2xxSRZ/7lX2Rh+xgMAeN/LmjTMdXtyXrq6ng/SflLTyxGhUqmDNS7vBIO230YO34du0ViB6nzOFgjBgCAOPgrOFvT5XzX1+IklvRDqwZLqNYjXeUIZpQzHgHexg=="
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "gq2yasjyDbOLmtkPhf6S6Qg"
+              }
+            }
           }
         }
       ]

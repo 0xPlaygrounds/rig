@@ -2,399 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 21,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 24,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 28,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 32,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 33,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 34,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 35,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 36,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 38,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 39,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 40,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 41,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 42,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 43,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 44,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 45,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 47,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 48,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 49,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 50,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 52,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 54,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 55,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 56,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 58,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 60,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 61,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 62,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 63,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 65,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 66,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 68,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 69,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
         "batch": 70,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 90,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -523,6 +139,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 138,
               "input_tokens_details": {
@@ -534,551 +164,100 @@
               },
               "total_tokens": 204
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
+                "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust.\"}",
+                "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
+                "name": "final_result",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "final_result",
+                "parameters": {
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "category",
+                    "summary"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_name",
-            "name": "final_result"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust.\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "title"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "Seattle"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Meetup"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "category"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "Technology"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "summary"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "Join"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " fellow"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " enthusiasts"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Seattle"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " for"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " an"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " evening"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " networking"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " discussions"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " presentations"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " on"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " programming"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "."
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Whether"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " you're"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " a"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " beginner"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " or"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " an"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " expert"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ","
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " this"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " meetup"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " a"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " great"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " opportunity"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " to"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " learn"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " and"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " share"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " knowledge"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " about"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " Rust"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ".\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71",
-            "name": "final_result",
-            "arguments": {
-              "title": "Seattle Rust Meetup",
-              "category": "Technology",
-              "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
-            },
-            "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "provider": {
-                "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
-                "item_id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71"
-              }
-            },
-            "function": {
-              "name": "final_result",
-              "arguments": {
-                "title": "Seattle Rust Meetup",
-                "category": "Technology",
-                "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 138,
-            "output_tokens": 66,
-            "total_tokens": 204,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
-          "provider_request_id": "req_98db09ef93e9458f9ee1cfe62c0f0e8e",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 138,
-              "input_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_smewKkzEg9vHkYrDlNpbRFlv",
+                  "item_id": "fc_0cb36fe4ea03a21b006ab395f30dbc87d09ae36fa988355e71"
+                }
               },
-              "output_tokens": 66,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "final_result",
+                "arguments": {
+                  "title": "Seattle Rust Meetup",
+                  "category": "Technology",
+                  "summary": "Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust."
+                }
               },
-              "total_tokens": 204
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_0cb36fe4ea03a21b006ab395f1137487d095f4a6ca8f5038ae",
-            "model": "gpt-4o-2024-08-06"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
