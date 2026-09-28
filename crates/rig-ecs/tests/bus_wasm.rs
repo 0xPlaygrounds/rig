@@ -37,8 +37,9 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
+    operation::Finish,
     serve::{Dispatch, Reply, Serve, ServingPolicy},
-    streaming::StreamFinal,
+    streaming::{Item, Relayed},
 };
 use rig_ecs::bus::{BusPlugin, EffectOutcome, Handlers, InFlight, PendingEffect, Streamed};
 use wasm_bindgen_test::wasm_bindgen_test;
@@ -93,13 +94,8 @@ impl Serve for BrowserModel {
                             break;
                         }
                     }
-                    let _ = out
-                        .finish(StreamFinal::new(
-                            "browser",
-                            Usage::default(),
-                            serde_json::json!({ "provider": "browser" }),
-                        ))
-                        .await;
+                    out.raw(serde_json::json!({ "provider": "browser" }));
+                    let _ = out.finish("browser", Finish::new(Usage::default())).await;
                 })
             }
             other => Reply::Outcome(Err(ErrorReport::new(
@@ -113,7 +109,7 @@ impl Serve for BrowserModel {
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("hi")],
+        chat_history: rig_core::NonEmpty::new(Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -349,13 +345,10 @@ fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
         let local = Rc::new(Cell::new(false));
         let finished = local.clone();
         let (release, wait) = futures::channel::oneshot::channel::<()>();
-        let mut stream = Reply::written(move |writer| async move {
+        let mut stream = Reply::written(move |mut writer| async move {
+            writer.raw(serde_json::json!({ "provider": "local" }));
             writer
-                .finish(StreamFinal::new(
-                    "local",
-                    Usage::default(),
-                    serde_json::json!({ "provider": "local" }),
-                ))
+                .finish("local", Finish::new(Usage::default()))
                 .await
                 .unwrap();
             wait.await.unwrap();
@@ -365,7 +358,7 @@ fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
         let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
         assert!(matches!(
             stream.as_mut().poll_next(&mut cx),
-            std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Final(_))))
+            std::task::Poll::Ready(Some(Ok(Relayed::Done(_))))
         ));
         assert!(stream.as_mut().poll_next(&mut cx).is_pending());
         if resume {
@@ -431,9 +424,9 @@ async fn cancellation_reaches_setup_unary_fold_idle_and_full_queue_without_host_
                 entered.set(true);
                 if full {
                     produced.set(produced.get() + 1);
-                    std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Unknown(
+                    std::task::Poll::Ready(Some(Ok(Relayed::Item(Item::Unknown(
                         rig_core::streaming::UnknownPayload::new(serde_json::Value::Null),
-                    ))))
+                    )))))
                 } else {
                     std::task::Poll::Pending
                 }

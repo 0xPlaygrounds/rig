@@ -109,12 +109,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_Ti6INlpy9iTI0KR5QlWEt8mQ"
-              },
-              "provider": {
-                "call_id": "call_Ti6INlpy9iTI0KR5QlWEt8mQ",
-                "item_id": "fc_076b61d5619c3514006ab3969a971087d0a1534cdaa0d354e5"
+                "provider": {
+                  "call_id": "call_Ti6INlpy9iTI0KR5QlWEt8mQ",
+                  "item_id": "fc_076b61d5619c3514006ab3969a971087d0a1534cdaa0d354e5"
+                }
               },
               "function": {
                 "name": "submit",

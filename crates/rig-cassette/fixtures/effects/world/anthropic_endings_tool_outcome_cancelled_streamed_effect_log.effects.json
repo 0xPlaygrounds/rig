@@ -2,23 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,30 +10,14 @@
         }
       },
       {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -172,11 +140,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01Q72PeupP4SCQSVm3FrTujj"
-              },
-              "provider": {
-                "call_id": "toolu_01Q72PeupP4SCQSVm3FrTujj"
+                "provider": {
+                  "call_id": "toolu_01Q72PeupP4SCQSVm3FrTujj"
+                }
               },
               "function": {
                 "name": "add",
@@ -221,116 +187,43 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:toolu_01Q72PeupP4SCQSVm3FrTujj",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01Q72PeupP4SCQSVm3FrTujj",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\": 17, \"y\": 25}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01Q72PeupP4SCQSVm3FrTujj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01Q72PeupP4SCQSVm3FrTujj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 1"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01Q72PeupP4SCQSVm3FrTujj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "7"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01Q72PeupP4SCQSVm3FrTujj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ", \"y\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01Q72PeupP4SCQSVm3FrTujj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "25}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01Q72PeupP4SCQSVm3FrTujj",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01Q72PeupP4SCQSVm3FrTujj"
-            },
-            "provider": {
-              "call_id": "toolu_01Q72PeupP4SCQSVm3FrTujj"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 633,
-            "output_tokens": 69,
-            "total_tokens": 702,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcX1oVBBc9kxX3z52Z7",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcX1MSFrLYsDzbJ7R8U",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 69,
-              "input_tokens": 633,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01Q72PeupP4SCQSVm3FrTujj"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcX1oVBBc9kxX3z52Z7",
-            "model": "claude-sonnet-4-6"
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],

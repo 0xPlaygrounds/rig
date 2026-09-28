@@ -5,7 +5,7 @@ use futures::StreamExt;
 use rig::candle::CandleCompletionResponse;
 use rig::candle::{CandleModel, ModelData};
 use rig::completion::CompletionRequest;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::{Item, StreamEvent};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,31 +33,21 @@ async fn main() -> anyhow::Result<()> {
         .max_tokens(64);
 
     // The local generation metrics printed below (throughput, prefill time,
-    // time-to-first-token) are Candle's own — Rig's normalized `StreamFinal`
-    // carries usage and a finish reason, not these. The provider's terminal
-    // record rides along serialized on `StreamFinal::raw`, so they stay
-    // reachable by deserializing it back into Candle's own type.
+    // time-to-first-token) are Candle's own; Rig's normalized response carries
+    // usage and a finish reason, not these. Candle's terminal record rides
+    // along as the response's `raw` document, so they stay reachable by
+    // deserializing it back into Candle's own type.
     let mut stream = model.stream(request)?;
-    let mut final_response = None;
     while let Some(item) = stream.next().await {
-        match item? {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => {
-                print!("{text}");
-                std::io::stdout().flush()?;
-            }
-            StreamEvent::Final(final_record) => final_response = Some(final_record),
-            _ => {}
+        if let Item::Event(StreamEvent::Text { text, .. }) = item? {
+            print!("{text}");
+            std::io::stdout().flush()?;
         }
     }
+    let response = stream.finish().await?;
     println!();
-    let raw: CandleCompletionResponse = serde_json::from_value(
-        final_response
-            .context("Candle stream ended without final metadata")?
-            .raw,
-    )?;
+    let raw: CandleCompletionResponse = serde_json::from_value(response.raw)
+        .context("Candle's terminal record did not deserialize")?;
     println!(
         "tokens: prompt={}, generated={}, total={}",
         raw.prompt_tokens,

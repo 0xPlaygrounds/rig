@@ -7,11 +7,9 @@
 //! failure names the decoder rather than the harness.
 
 use super::*;
-use crate::driver::WireDriver;
 use crate::message::AssistantContent;
-use crate::streaming::StreamEvent;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
-use crate::wire::{Fold, Framing, Mode, Wire};
+use crate::wire::{Framing, Mode, Wire};
 
 /// `text_turn_parity.yaml`'s reply body, verbatim.
 const UNARY: &str = r#"{"content":[{"text":"parity probe","type":"text"}],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":14,"output_tokens":6,"service_tier":"standard"}}"#;
@@ -41,9 +39,9 @@ fn wire() -> Messages {
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user(
+        chat_history: crate::NonEmpty::new(crate::message::Message::user(
             "Reply with exactly: parity probe",
-        )],
+        )),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -59,34 +57,24 @@ fn request() -> CompletionRequest {
 /// mode the driver would have read it in — which is also what decides the
 /// framing, exactly as `encode` decides it.
 fn fold(body: &str, mode: Mode) -> crate::completion::CompletionResponse {
-    let wire = wire();
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(mode));
-    match mode {
-        Mode::Streaming => {
-            let mut framer = crate::http_client::framing::SseFramer::new();
-            for event in framer.push(body.as_bytes()) {
-                if !event.data.trim().is_empty() {
-                    driver.push(WireFrame::Text(event.data));
-                }
-            }
-        }
-        Mode::Unary => driver.push(WireFrame::Text(body.to_owned())),
-    }
-    driver.finish();
-    let mut fold = crate::test_utils::fold_for(&request(), &wire, mode);
-    for item in driver.drain() {
-        let event = item.expect("the recorded reply decodes without an in-band error");
-        fold.absorb(&event).expect("the fold accepts every event");
-    }
-    Fold::<Completion>::finish(
-        fold,
-        crate::wire::Reply {
-            provider: "anthropic".to_owned(),
-            raw: serde_json::from_str(body).unwrap_or(serde_json::Value::Null),
-            provider_request_id: Some("req_REDACTED_1".to_owned()),
-        },
+    let frames: Vec<WireFrame> = match mode {
+        Mode::Streaming => crate::http_client::framing::SseFramer::new()
+            .push(body.as_bytes())
+            .filter(|event| !event.data.trim().is_empty())
+            .map(|event| WireFrame::Text(event.data))
+            .collect(),
+        Mode::Unary => vec![WireFrame::Text(body.to_owned())],
+    };
+    let mut response = crate::test_utils::decode_reply(
+        &wire(),
+        &request(),
+        mode,
+        frames,
+        serde_json::from_str(body).unwrap_or(serde_json::Value::Null),
     )
-    .expect("the fold produces a response")
+    .expect("the recorded reply folds");
+    response.provider_request_id = Some("req_REDACTED_1".to_owned());
+    response
 }
 
 #[test]
@@ -106,21 +94,6 @@ fn the_same_turn_folds_identically_whether_it_was_buffered_or_streamed() {
     );
     assert_eq!(buffered.usage.output_tokens, Some(6));
     assert_eq!(buffered.usage.input_tokens, Some(14));
-}
-
-#[test]
-fn the_buffered_reply_is_one_frame_whose_terminal_is_unconditional() {
-    let wire = wire();
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(Mode::Unary));
-    driver.push(WireFrame::Text(UNARY.to_owned()));
-    let items: Vec<_> = driver.drain().collect();
-    assert!(
-        items
-            .iter()
-            .any(|item| matches!(item, Ok(StreamEvent::Final(_)))),
-        "a whole message is a complete turn, so it always ends in a terminal"
-    );
-    assert!(driver.done(), "the terminal stops the driver");
 }
 
 #[test]
@@ -147,7 +120,7 @@ fn the_request_carries_the_key_version_and_endpoint() {
     let encoded = wire()
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.first().expect("one request");
+    let request = &encoded.request;
     assert_eq!(request.uri().path(), "/v1/messages");
     assert_eq!(
         request
@@ -167,7 +140,7 @@ fn the_request_carries_the_key_version_and_endpoint() {
 }
 
 fn body_of(encoded: &Encoded) -> serde_json::Value {
-    let request = encoded.requests.first().expect("one request");
+    let request = &encoded.request;
     match request.body() {
         Body::Bytes(bytes) => {
             serde_json::from_slice(bytes).expect("the body is the JSON the wire built")

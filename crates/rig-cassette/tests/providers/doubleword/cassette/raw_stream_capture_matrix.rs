@@ -2,8 +2,8 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
-//! record behind the stream's `StreamEvent::Final` — for Doubleword the
+//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own terminal
+//! record behind the stream's finished response — for Doubleword the
 //! shared chat-completions [`StreamingCompletionResponse`] over
 //! [`ChatUsage`] — serialized. Capture is always on: there is no flag to
 //! request it, nothing about it reaches the wire, and a `Value::Null` only
@@ -41,9 +41,10 @@ use super::super::DEFAULT_MODEL;
 use super::super::support::with_doubleword_cassette_result;
 use crate::raw_capture::{
     assert_no_request_id, assert_normalized_lacks, capture_terminal, capture_text_and_terminal,
-    chat, stream_normalized_without_raw,
+    chat,
 };
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -127,7 +128,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     // Doubleword's backend usage extras — which is why the terminal record
     // keeps them: `ChatUsage` holds whatever the dialect sent beside the
     // OpenAI-compatible counters.
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert_normalized_lacks(&normalized, &["object", "additional_params"]);
     for field in UNMODELLED_USAGE {
         assert!(

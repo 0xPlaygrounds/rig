@@ -119,6 +119,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "venice",
               "id": null,
               "content": [
                 {
@@ -127,17 +128,14 @@
                     "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result.\n\nLet's do it.\n"
                   }
                 }
-              ],
-              "provider": "venice"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "chatcmpl-tool-b08eb180bbf6f33b"
-              },
-              "provider": {
-                "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
+                "provider": {
+                  "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
+                }
               },
               "function": {
                 "name": "add",
@@ -267,6 +265,7 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "venice",
                   "id": null,
                   "content": [
                     {
@@ -275,17 +274,14 @@
                         "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result.\n\nLet's do it.\n"
                       }
                     }
-                  ],
-                  "provider": "venice"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "chatcmpl-tool-b08eb180bbf6f33b"
-                  },
-                  "provider": {
-                    "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
+                    "provider": {
+                      "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -305,11 +301,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "chatcmpl-tool-b08eb180bbf6f33b"
-                  },
-                  "provider": {
-                    "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
+                    "provider": {
+                      "call_id": "chatcmpl-tool-b08eb180bbf6f33b"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -364,6 +358,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "venice",
               "id": null,
               "content": [
                 {
@@ -372,8 +367,7 @@
                     "text": "The tool returned 42. The user requested \"just the number\". I will output \"42\".\n"
                   }
                 }
-              ],
-              "provider": "venice"
+              ]
             },
             {
               "type": "text",

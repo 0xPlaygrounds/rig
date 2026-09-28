@@ -14,17 +14,17 @@ use bytes::Bytes;
 use futures::StreamExt;
 use rig_core::DynModel;
 use rig_core::completion::{CompletionRequest, ToolDefinition};
-use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::http_client::HttpClientExt;
-use rig_core::message::AssistantContent;
+use rig_core::message::{AssistantContent, ToolName};
 use rig_core::providers::anthropic::AnthropicConfig;
 use rig_core::providers::openai::wire::{Dialect, OpenAIConfig};
-use rig_core::streaming::{StreamEvent, Update};
+use rig_core::streaming::{Item, StreamEvent};
 use rig_core::test_utils::{MockHttpResponse, MockStreamingClient, SequencedHttpClient};
 use rig_core::wire::{
-    Body, Call, Decoder, Descriptor, Encoded, Fold, Framing, Mode, Operation, Out, Reply, Wire,
-    WireEvent, WireFrame,
+    Body, Call, Decoder, Descriptor, Encoded, Flow, Fold, Framing, Free, Mode, Operation, Out,
+    Reply, Wire, WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -46,29 +46,28 @@ const CLAUDE_STREAM: &str = concat!(
 );
 
 fn add_tool() -> ToolDefinition {
-    ToolDefinition {
-        name: "add".to_owned(),
-        description: "Add two numbers".to_owned(),
-        parameters: serde_json::json!({
+    ToolDefinition::new(
+        ToolName::new("add").expect("a tool name"),
+        "Add two numbers",
+        serde_json::json!({
             "type": "object",
             "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
         }),
-    }
+    )
 }
 
 fn add_one_and_two() -> CompletionRequest {
-    let mut request = CompletionRequest::new("Add 1 and 2.");
-    request.tools.push(add_tool());
-    request
+    CompletionRequest::new("Add 1 and 2.").tool(add_tool())
 }
 
 fn tool_calls(choice: &[AssistantContent]) -> Vec<(String, serde_json::Value)> {
     choice
         .iter()
         .filter_map(|part| match part {
-            AssistantContent::ToolCall(call) => {
-                Some((call.function.name.clone(), call.function.arguments.clone()))
-            }
+            AssistantContent::ToolCall(call) => Some((
+                call.function.name.to_string(),
+                call.function.arguments.clone(),
+            )),
             _ => None,
         })
         .collect()
@@ -102,16 +101,14 @@ async fn program_1_a_chat_model_calls_unary_then_streams_with_tools() {
         .stream(add_one_and_two())
         .expect("the stream opens");
     let mut text = String::new();
-    let mut updates = stream.updates();
-    while let Some(update) = updates.next().await {
-        if let Update::Delta { text: delta, .. } = update.expect("an update") {
+    while let Some(item) = stream.next().await {
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) = item.expect("an item") {
             text.push_str(&delta);
         }
     }
-    drop(updates);
-    let streamed = stream.finish().expect("the stream reached its terminal");
+    let streamed = stream.finish().await.expect("the stream reached its end");
     assert!(text.contains("Adding."), "{text}");
-    assert_eq!(tool_calls(&streamed.choice), tool_calls(&turn.choice));
+    assert_eq!(streamed.choice, turn.choice);
     assert_eq!(streamed.usage.output_tokens, turn.usage.output_tokens);
 }
 
@@ -163,12 +160,11 @@ struct Track(Vec<Pose>);
 impl Operation for PoseEstimation {
     type Request = Frames;
     type Event = Pose;
+    // The runtime ends the reply once every frame was answered.
+    type End = ();
     type Response = Track;
     type Fold = Track;
-
-    fn is_terminal(pose: &Pose) -> bool {
-        pose.last
-    }
+    type Emit = Free;
 
     fn fold(_: &Frames, _: &mut Call<'_>) -> Track {
         Track::default()
@@ -181,7 +177,7 @@ impl Fold<PoseEstimation> for Track {
         Ok(())
     }
 
-    fn finish(self, _: Reply) -> Result<Track, ProviderError> {
+    fn finish(self, _: (), _: Reply) -> Result<Track, ProviderError> {
         Ok(self)
     }
 }
@@ -198,7 +194,7 @@ impl Wire for PoseCloud {
     type Op = PoseEstimation;
     type Payload = Encoded;
     type Frame = WireFrame;
-    type Decoder = PoseDecoder;
+    type Decoder<'id> = PoseDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("pose-cloud")
@@ -210,7 +206,7 @@ impl Wire for PoseCloud {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _: Mode) -> PoseDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         PoseDecoder
     }
 }
@@ -222,7 +218,7 @@ struct PoseReply {
     poses: Vec<Pose>,
 }
 
-impl Decoder<PoseEstimation> for PoseDecoder {
+impl<'id> Decoder<'id, PoseEstimation> for PoseDecoder {
     type Event = PoseReply;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<PoseReply> {
@@ -232,10 +228,16 @@ impl Decoder<PoseEstimation> for PoseDecoder {
         )
     }
 
-    fn interpret(&mut self, reply: PoseReply, out: &mut Out<'_, PoseEstimation>) {
+    /// One reply carries every pose, so it is the whole reply.
+    fn decode(
+        &mut self,
+        reply: PoseReply,
+        mut out: Out<'id, PoseEstimation>,
+    ) -> Result<Flow, ProviderError> {
         for pose in reply.poses {
-            out.push(Ok(pose));
+            out.event(pose);
         }
+        Ok(out.end(()))
     }
 }
 
@@ -267,24 +269,21 @@ async fn program_3_a_remote_pose_model_serves_the_operation_over_http() {
 struct OnnxRuntime;
 
 impl Transport<Local<PoseEstimation>> for OnnxRuntime {
-    fn send(
-        &self,
-        frames: Frames,
-        _: Exchange,
-    ) -> Result<Sending<Result<Pose, ProviderError>>, ProviderError> {
+    fn send(&self, frames: Frames, _: Exchange) -> Opening<Step<PoseEstimation>> {
         let count = frames.0.len();
         let poses = futures::stream::iter(frames.0.into_iter().enumerate()).then(
             move |(frame, image)| async move {
                 // One inference per frame.
                 let x = image.len() as f32 / 10.0;
-                Ok(Ok(Pose {
+                Ok(Step::Event(Pose {
                     frame,
                     keypoints: vec![(x, x)],
                     last: frame + 1 == count,
                 }))
             },
         );
-        Ok(Sending::opened(Opened::new(poses)))
+        let end = futures::stream::once(async { Ok(Step::End(())) });
+        Opening::ready(Opened::new(poses.chain(end)))
     }
 }
 
@@ -295,11 +294,13 @@ async fn program_4_a_local_pose_model_streams_one_event_per_frame() {
 
     let mut stream = model.stream(video.clone()).expect("the stream opens");
     let mut frames = Vec::new();
-    while let Some(pose) = stream.next().await {
-        frames.push(pose.expect("a pose").frame);
+    while let Some(item) = stream.next().await {
+        if let Item::Event(pose) = item.expect("a pose") {
+            frames.push(pose.frame);
+        }
     }
     assert_eq!(frames, [0, 1, 2]);
-    assert_eq!(stream.finish().expect("the track folds").0.len(), 3);
+    assert_eq!(stream.finish().await.expect("the track folds").0.len(), 3);
 
     // Providers of one operation are interchangeable once erased.
     let erased: Vec<DynModel<PoseEstimation>> = vec![
@@ -335,16 +336,13 @@ where
     W: Wire<Payload = Encoded, Frame = WireFrame>,
     H: HttpClientExt + Clone + 'static,
 {
-    fn send(
-        &self,
-        mut payload: Encoded,
-        exchange: Exchange,
-    ) -> Result<Sending<WireFrame>, ProviderError> {
-        for request in &mut payload.requests {
-            let uri = format!("https://gateway.test{}", request.uri().path());
-            *request.uri_mut() = uri
-                .parse()
-                .map_err(|_| ProviderError::Request("the gateway path is not a URI".into()))?;
+    fn send(&self, mut payload: Encoded, exchange: Exchange) -> Opening<WireFrame> {
+        let uri = format!("https://gateway.test{}", payload.request.uri().path());
+        match uri.parse() {
+            Ok(uri) => *payload.request.uri_mut() = uri,
+            Err(_) => {
+                return Opening::failed(ProviderError::request("the gateway path is not a URI"));
+            }
         }
         Transport::<W>::send(&self.inner, payload, exchange)
     }
@@ -389,22 +387,17 @@ async fn program_6_a_custom_transport_carries_any_wire_unchanged() {
     );
 }
 
-/// A streamed chat ends at the provider's terminal record, which carries the
-/// turn's usage.
+/// A streamed chat ends at the provider's end, which carries the turn's
+/// usage.
 #[tokio::test]
-async fn a_streamed_turn_ends_at_its_terminal_record() {
+async fn a_streamed_turn_ends_at_the_providers_end() {
     let model = AnthropicConfig::new("key")
         .connect(MockStreamingClient {
             sse_bytes: Bytes::from_static(CLAUDE_STREAM.as_bytes()),
         })
         .completion("claude-sonnet-4-6");
-    let events: Vec<_> = model
-        .stream("hi")
-        .expect("the stream opens")
-        .collect()
-        .await;
-    assert!(matches!(
-        events.last(),
-        Some(Ok(StreamEvent::Final(terminal))) if terminal.usage.output_tokens == Some(7)
-    ));
+    let mut stream = model.stream("hi").expect("the stream opens");
+    while stream.next().await.is_some() {}
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.usage.output_tokens, Some(7));
 }

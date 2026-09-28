@@ -51,8 +51,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::message::{
-    AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, ToolResult,
-    ToolResultContent, UserContent,
+    AssistantContent, CallId, Message, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
 use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig};
 use rig::tool::Tool;
@@ -71,7 +70,11 @@ const NO_THINK: &str = "/no_think ";
 fn lookup_call_turn(id: &str) -> Message {
     Message::Assistant {
         id: None,
-        content: vec![AssistantContent::tool_call(id, "lookup", json!({}))],
+        content: rig_core::NonEmpty::new(AssistantContent::tool_call(
+            id,
+            rig_core::message::ToolName::new("lookup").expect("tool name"),
+            json!({}),
+        )),
     }
 }
 
@@ -684,12 +687,14 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
         let response = model
             .call(
                 CompletionRequest::new(Message::User {
-                    content: vec![UserContent::ToolResult(ToolResult {
-                        call: ToolCallId::new_or_minted("call_text", 0),
-                        provider: ProviderCallId::new("call_text"),
-                        name: "lookup".to_string(),
-                        content: vec![ToolResultContent::text("the codeword is heliotrope")],
-                    })],
+                    content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+                        call: CallId::from_wire("call_text"),
+                        name: rig_core::message::ToolName::new("lookup".to_string())
+                            .expect("tool name"),
+                        content: rig_core::NonEmpty::new(ToolResultContent::text(
+                            "the codeword is heliotrope",
+                        )),
+                    })),
                 })
                 .preamble(
                     "Answer using only the tool result you were given. \
@@ -702,7 +707,9 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                 // has nothing to answer.
                 .messages(vec![
                     Message::User {
-                        content: vec![UserContent::text("What is the codeword?")],
+                        content: rig_core::NonEmpty::new(UserContent::text(
+                            "What is the codeword?",
+                        )),
                     },
                     lookup_call_turn("call_text"),
                 ])
@@ -744,14 +751,14 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
         let response = model
             .call(
                 CompletionRequest::new(Message::User {
-                    content: vec![UserContent::ToolResult(ToolResult {
-                        call: ToolCallId::new_or_minted("call_json", 0),
-                        provider: ProviderCallId::new("call_json"),
-                        name: "lookup".to_string(),
-                        content: vec![ToolResultContent::text(
+                    content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+                        call: CallId::from_wire("call_json"),
+                        name: rig_core::message::ToolName::new("lookup".to_string())
+                            .expect("tool name"),
+                        content: rig_core::NonEmpty::new(ToolResultContent::text(
                             json!({ "codeword": "heliotrope", "confidence": 0.99 }).to_string(),
-                        )],
-                    })],
+                        )),
+                    })),
                 })
                 .preamble(
                     "Answer using only the JSON tool result you were given. \
@@ -760,7 +767,9 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                 )
                 .messages(vec![
                     Message::User {
-                        content: vec![UserContent::text("What is the codeword?")],
+                        content: rig_core::NonEmpty::new(UserContent::text(
+                            "What is the codeword?",
+                        )),
                     },
                     lookup_call_turn("call_json"),
                 ])

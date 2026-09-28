@@ -2,157 +2,29 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 19,
+        "batch": 24,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 25,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 26,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 28,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 30,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -192,7 +64,7 @@
         }
       },
       {
-        "batch": 36,
+        "batch": 37,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -204,7 +76,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -216,15 +88,87 @@
         }
       },
       {
-        "batch": 43,
+        "batch": 41,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
         "batch": 43,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 44,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 46,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 50,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -347,11 +291,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-              },
-              "provider": {
-                "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
+                "provider": {
+                  "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
+                }
               },
               "function": {
                 "name": "add",
@@ -404,149 +346,42 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\":2,\"y\":3}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "x"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "y"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "3"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-            },
-            "provider": {
-              "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 2,
-                "y": 3
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 75,
-            "output_tokens": 17,
-            "total_tokens": 92,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE4UiOFBwfq8ZnvADSRXBpmUyZX",
-          "provider_request_id": "req_ecea63c8c1dc428a8848eb57ce698a0c",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 75,
-              "completion_tokens": 17,
-              "total_tokens": 92,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDE4UiOFBwfq8ZnvADSRXBpmUyZX",
-            "model": "gpt-4o-mini-2024-07-18",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "dNpkVRMj5H",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_6a65994342"
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 2,
+                  "y": 3
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -607,11 +442,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-                  },
-                  "provider": {
-                    "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
+                    "provider": {
+                      "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -631,11 +464,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
-                  },
-                  "provider": {
-                    "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
+                    "provider": {
+                      "call_id": "call_4Z8F3Ncc6ODFUp1CqlEQYVwQ"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -729,195 +560,157 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " result"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \\("
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " +"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "3"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \\"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ")"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \\("
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \\"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ")."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The result of \\( 2 + 3 \\) is \\( 5 \\)."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 100,
-            "output_tokens": 18,
-            "total_tokens": 118,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE4JrGLkWJLQGMdY2iABNNkzIDy",
-          "provider_request_id": "req_f4156f81536c4dfd832a57a8eb430de7",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 100,
-              "completion_tokens": 18,
-              "total_tokens": 118,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDE4JrGLkWJLQGMdY2iABNNkzIDy",
-            "model": "gpt-4o-mini-2024-07-18",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "iJkF5FLJ",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_6a65994342"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The result of \\( 2 + 3 \\) is \\( 5 \\)."
             }
           }
         }

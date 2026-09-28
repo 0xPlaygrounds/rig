@@ -5,6 +5,7 @@
 //! owned history, JSON response formats, explicit tool choice, usage accounting,
 //! and provider metadata preservation.
 
+use rig::streaming::Item;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -12,7 +13,7 @@ use futures::StreamExt;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -404,7 +405,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<HistoryToolCall> {
                 .filter_map(move |content| match content {
                     AssistantContent::ToolCall(tool_call) => Some(HistoryToolCall {
                         message_index,
-                        name: tool_call.function.name.clone(),
+                        name: tool_call.function.name.clone().into(),
                     }),
                     _ => None,
                 })
@@ -776,24 +777,17 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
                 ?;
 
             let mut text_chunks = 0usize;
-            let mut final_usage = None;
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } if !text.is_empty() => {
+                    Item::Event(StreamEvent::Text { text, .. }) if !text.is_empty() => {
                         text_chunks += 1;
-                    }
-                    StreamEvent::Final(response) => {
-                        final_usage = Some(response.usage);
                     }
                     _ => {}
                 }
             }
+            let usage = stream.finish().await?.usage;
 
             anyhow::ensure!(text_chunks > 0, "stream should emit text deltas");
-            let usage = final_usage.ok_or_else(|| anyhow::anyhow!("stream should emit final usage"))?;
             let input_tokens = usage.input_tokens.unwrap_or(0);
             let output_tokens = usage.output_tokens.unwrap_or(0);
             anyhow::ensure!(input_tokens > 0, "stream usage should include input tokens");

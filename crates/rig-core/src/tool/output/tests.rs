@@ -31,7 +31,7 @@ fn json_shaped_strings_remain_literal_text() {
 
     assert_eq!(output, ToolOutput::text(text.clone()));
     let content = output.into_content();
-    assert!(matches!(content.first(), Some(ToolResultContent::Text(value)) if value.text == text));
+    assert!(matches!(content.first(), ToolResultContent::Text(value) if value.text == text));
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn structured_values_remain_json_until_terminal_rendering() {
     let content = output.into_content();
     assert!(matches!(
         content.first(),
-        Some(ToolResultContent::Json { value: content_value }) if *content_value == value
+        ToolResultContent::Json { value: content_value } if *content_value == value
     ));
 }
 
@@ -70,7 +70,7 @@ fn explicit_image_content_preserves_its_type() {
     let content = output.into_content();
     assert!(matches!(
         content.first(),
-        Some(ToolResultContent::Image(image))
+        ToolResultContent::Image(image)
             if image.media_type == Some(ImageMediaType::JPEG)
                 && matches!(&image.data, DocumentSourceKind::Base64(data) if data == "base64data==")
     ));

@@ -129,6 +129,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 74,
               "input_tokens_details": {
@@ -140,264 +154,240 @@
               },
               "total_tokens": 98
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-            "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "A"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " gl"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "arb"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-g"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "lar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "b"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " an"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " ancient"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " farming"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " used"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " by"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " ancestors"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " inhabitants"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " planet"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " J"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "iro"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 74,
-            "output_tokens": 24,
-            "total_tokens": 98,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
-          "provider_request_id": "req_72f1ca77a7c54f3f90f70e4c0bdebd2d",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 74,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 24,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 98
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-            "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
-            "model": "gpt-4o-2024-08-06"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro."
+            }
           }
         }
       ]

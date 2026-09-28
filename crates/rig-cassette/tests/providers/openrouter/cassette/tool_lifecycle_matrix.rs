@@ -32,6 +32,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
 
+use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
 
@@ -180,6 +181,7 @@ fn normalized_calls(choice: &[AssistantContent]) -> (Vec<String>, Vec<String>, V
         calls
             .iter()
             .map(|call| call.function.name.clone())
+            .map(String::from)
             .collect(),
         calls.iter().map(|call| call.id.to_string()).collect(),
         calls
@@ -291,20 +293,20 @@ async fn run_model(client: OpenAiModels, cell: Cell) -> Observation {
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::ToolCall(tool_call)),
+                    Ok(Item::Event(StreamEvent::End {
+                        content: AssistantContent::ToolCall(tool_call),
                         ..
-                    }) => {
-                        observation.names.push(tool_call.function.name);
+                    })) => {
+                        observation.names.push(tool_call.function.name.into());
                         observation.ids.push(tool_call.id.to_string());
                         observation.arguments.push(tool_call.function.arguments);
-                    }
-                    Ok(StreamEvent::Final(terminal)) => {
-                        observation.finish_reason = terminal.finish_reason;
                     }
                     Ok(_) => {}
                     Err(error) => observation.errors.push(error.to_string()),
                 }
+            }
+            if let Ok(terminal) = stream.finish().await {
+                observation.finish_reason = terminal.finish_reason();
             }
             observation
         }

@@ -143,6 +143,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "anthropic",
               "id": null,
               "content": [
                 {
@@ -152,17 +153,14 @@
                     "signature": "EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB"
                   }
                 }
-              ],
-              "provider": "anthropic"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
-              },
-              "provider": {
-                "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                "provider": {
+                  "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                }
               },
               "function": {
                 "name": "add",
@@ -290,6 +288,7 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "anthropic",
                   "id": null,
                   "content": [
                     {
@@ -299,17 +298,14 @@
                         "signature": "EpkDCpoBCBIYAipAzD+NXaWQzhxMNb7u0scOfIFvGs5BcqRbo1P71OZOob1SbKkXA7qEOVQKhQMCLvHdzbsBjw2NZAootMSx+TNsuzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okNzI4ZGNhYTktOGFmNi00M2EyLTkzOTctMjVkYTM3YjljMzlkqAHfmczVBhIMiZhqAYX6E18eobf2GgxF04zHjyunAlm1IyAiMAdZWDOLKZBsteP/2tzxILZtMPDTBfC9kED+s+p09ge6VVi1YP2TMZvii/AH9Q8xPSqrAR8haRjb1El33GwrPU0eIcDf2G8Zq5zV6thaOyziFSA/fCCraC4Onqw9aaXOTFonUa3bwp5ftbcaXYqSAtdcHSMTeAlYKbXDtulP3nopxBP1XKk84XJmc26F4PN6QmZOD7Q8CKFIFxpA0C8623Pc+fYmNii9J4pU5hH1jeadZNjDPRLDQKOckA8nth19FuQHff5b2C1JyNG0D6jMtbVxyeJNrY4CcyKAUU7K4hgB"
                       }
                     }
-                  ],
-                  "provider": "anthropic"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
-                  },
-                  "provider": {
-                    "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                    "provider": {
+                      "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -329,11 +325,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
-                  },
-                  "provider": {
-                    "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                    "provider": {
+                      "call_id": "toolu_013oMgsNijtJH7Mpf3FY4pZ6"
+                    }
                   },
                   "name": "add",
                   "content": [

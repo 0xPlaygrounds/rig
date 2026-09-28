@@ -33,13 +33,13 @@ const STREAM_BODY: &str = concat!(
 fn recorded_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             crate::message::Message::system("You are a concise assistant. Answer directly."),
-            crate::message::Message::user(
+            [crate::message::Message::user(
                 "In one or two sentences, explain what Rust programming language is and why \
                  memory safety matters.",
-            ),
-        ],
+            )],
+        ),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -52,12 +52,7 @@ fn recorded_request() -> CompletionRequest {
 }
 
 fn body_of(encoded: &Encoded) -> serde_json::Value {
-    let [request] = encoded.requests.as_slice() else {
-        panic!(
-            "expected exactly one request, got {}",
-            encoded.requests.len()
-        );
-    };
+    let request = &encoded.request;
     match request.body() {
         Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
         Body::Multipart(_) => panic!("the chat wire sends no multipart body"),
@@ -96,6 +91,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
     while response.next().await.is_some() {}
     let streamed = response
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     assert_eq!(buffered.choice, streamed.choice);
@@ -163,7 +159,7 @@ async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
         response.choice.iter().any(|block| matches!(
             block,
             AssistantContent::Reasoning(reasoning)
-                if reasoning.display_text() == "weighing it up"
+                if reasoning.value().display_text() == "weighing it up"
         )),
         "the reasoning must survive into history: {:?}",
         response.choice
@@ -192,6 +188,7 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
     while response.next().await.is_some() {}
     let streamed = response
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     assert_eq!(
@@ -229,9 +226,7 @@ fn a_local_daemon_sends_no_authorization_header() {
         .completion("qwen3:4b")
         .encode(recorded_request(), Mode::Unary)
         .expect("the request encodes");
-    let [request] = encoded.requests.as_slice() else {
-        panic!("one request");
-    };
+    let request = &encoded.request;
     assert_eq!(request.uri(), "http://localhost:11434/api/chat");
     assert!(!request.headers().contains_key(http::header::AUTHORIZATION));
 
@@ -240,9 +235,7 @@ fn a_local_daemon_sends_no_authorization_header() {
         .completion("qwen3:4b")
         .encode(recorded_request(), Mode::Unary)
         .expect("the request encodes");
-    let [request] = encoded.requests.as_slice() else {
-        panic!("one request");
-    };
+    let request = &encoded.request;
     assert_eq!(
         request
             .headers()

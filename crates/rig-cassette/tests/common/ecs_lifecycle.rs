@@ -1,10 +1,8 @@
 //! Native run-owned entry storage and lifecycle observers for provider parity.
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
-use rig::{
-    effect::EffectKind,
-    streaming::{StreamEvent, StreamFinal},
-};
+use rig::completion::CompletionResponse;
+use rig::effect::EffectKind;
 use rig_ecs::{
     agent::{Cursor, MessageParts, Run, RunResult, Settled, Turn},
     bus::{PendingEffect, RigSchedule, Seq, Streamed},
@@ -171,21 +169,16 @@ pub(crate) fn install(ecs: &mut EcsAgent, probe: LifecycleProbe) {
         ),
     );
 }
-pub(crate) fn provider_final(ecs: &mut EcsAgent) -> StreamFinal {
+pub(crate) fn provider_final(ecs: &mut EcsAgent) -> CompletionResponse {
     let mut streams = ecs.app.world_mut().query::<(&Seq, &Streamed)>();
     streams
         .iter(ecs.app.world())
-        .filter_map(|(seq, stream)| {
-            stream.events.iter().rev().find_map(|event| {
-                if let StreamEvent::Final(value) = event {
-                    Some((seq.0, value.clone()))
-                } else {
-                    None
-                }
-            })
+        .filter_map(|(seq, stream)| match &stream.outcome {
+            Some(Ok(rig::effect::Outcome::Completion(response))) => Some((seq.0, response.clone())),
+            _ => None,
         })
         .max_by_key(|(seq, _)| *seq)
-        .expect("stream yields a typed provider final")
+        .expect("a stream finished with the provider's response")
         .1
 }
 

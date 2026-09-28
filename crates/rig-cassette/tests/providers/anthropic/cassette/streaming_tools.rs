@@ -1,13 +1,14 @@
 //! Anthropic streaming tools smoke test.
 
 use rig::message::AssistantContent;
+use rig::streaming::Item;
 use rig_cassette::agent::AgentReplayExt;
 
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
-use rig::message::{Message, ToolCallId, UserContent};
+use rig::message::{CallId, Message, UserContent};
 use rig::providers::anthropic;
-use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
+use rig::streaming::{StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -320,8 +321,8 @@ async fn collect_concurrent_tool_observation(
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
-                tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.clone());
-                observation.tool_calls.push(tool_call.function.name);
+                tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.to_string());
+                observation.tool_calls.push(tool_call.function.name.into());
                 observation.events.push("tool_call");
             }
             Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
@@ -347,34 +348,29 @@ async fn collect_concurrent_tool_observation(
                 }
                 observation.events.push("final_response");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text: _ },
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text: _,
                 ..
-            })) => {
+            }))) => {
                 observation.events.push("text");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
                 ..
-            })) => {
+            }))) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(_)),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(_),
                 ..
-            })) => {
+            }))) => {
                 observation.events.push("reasoning");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { .. },
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
                 ..
-            })) => {
+            }))) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
-                observation.events.push("stream_final");
-            }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Unknown(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Unknown(_))) => {
                 observation.events.push("unknown");
             }
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {}
@@ -395,7 +391,7 @@ fn streaming_error_to_string(error: StreamingError) -> String {
 
 fn tool_result_names_in_history(
     history: &[Message],
-    tool_names_by_id: &HashMap<ToolCallId, String>,
+    tool_names_by_id: &HashMap<CallId, String>,
 ) -> Vec<String> {
     history
         .iter()
@@ -416,7 +412,7 @@ fn tool_result_names_in_history(
 
 fn last_tool_result_message_names(
     history: &[Message],
-    tool_names_by_id: &HashMap<ToolCallId, String>,
+    tool_names_by_id: &HashMap<CallId, String>,
 ) -> Vec<String> {
     history
         .iter()
@@ -444,10 +440,7 @@ fn last_tool_result_message_names(
         .unwrap_or_default()
 }
 
-fn tool_name_for_result(
-    tool_names_by_id: &HashMap<ToolCallId, String>,
-    call: &ToolCallId,
-) -> String {
+fn tool_name_for_result(tool_names_by_id: &HashMap<CallId, String>, call: &CallId) -> String {
     tool_names_by_id
         .get(call)
         .cloned()

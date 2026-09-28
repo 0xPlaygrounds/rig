@@ -210,7 +210,7 @@ struct CompletedTurn {
     request: rig::completion::CompletionRequest,
     usage: rig::completion::Usage,
     text: String,
-    events: Vec<rig::streaming::StreamEvent>,
+    events: rig::streaming::Transcript,
 }
 
 fn completed_turns(ecs: &mut EcsAgent, run: Entity) -> Vec<CompletedTurn> {
@@ -306,7 +306,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                         assert!(is_tool_result_user_message(prompt));
                     }
                     let retry = &turns[1].request.chat_history;
-                    let Message::User { content } = retry.last().expect("retry prompt") else {
+                    let Message::User { content } = retry.last() else {
                         panic!("tool results are a user message")
                     };
                     let result = content
@@ -316,8 +316,8 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                             _ => None,
                         })
                         .expect("synthetic skip result");
-                    assert!(result.call.is_generated());
-                    assert!(result.provider.is_none());
+                    assert!(result.call.is_local());
+                    assert!(result.call.provider().is_none());
                     let texts = super::super::agent_run_support::user_content_tool_result_texts(
                         &UserContent::ToolResult(result.clone()),
                     );
@@ -355,10 +355,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
 
     use super::super::agent_run_support::{Subtract, assert_canonical_assistant_order};
     use crate::support::assert_mentions_expected_number;
-    use rig::{
-        message::AssistantContent,
-        streaming::{BlockId, StreamEvent},
-    };
+    use rig::{message::AssistantContent, streaming::StreamEvent};
     with_gemini_cassette("agent_run_streamed/streamed_hand_driven_multi_turn_run_completes", |client| async move {
         let mut ecs = setup(&client);
         ecs.app.world_mut().entity_mut(ecs.agent).insert(ToolChoiceSpec(None));
@@ -379,12 +376,25 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         let total = turns.iter().fold(rig::completion::Usage::default(), |total, turn| total + turn.usage);
         assert_eq!(ecs.app.world().get::<rig_ecs::agent::Usage>(run).expect("usage").0, total);
         assert!(total.total_tokens.is_some_and(|n| n > 0));
-        for event in turns.iter().flat_map(|turn| &turn.events) {
-            if let StreamEvent::BlockEnd { id: BlockId::Wire(id), block: Some(AssistantContent::ToolCall(call)), .. } = event {
-                assert_eq!(call.provider.as_ref().map(|provider| provider.call_id.as_str()), Some(id.as_str()), "{call:?}");
+        let messages = history(&mut ecs, run);
+        // Every call the stream ended is the call history keeps, id and all.
+        let kept: Vec<&rig::message::ToolCall> = messages
+            .iter()
+            .filter_map(|message| match message {
+                rig::message::Message::Assistant { content, .. } => Some(content.iter()),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        for event in turns.iter().flat_map(|turn| turn.events.events()) {
+            if let StreamEvent::End { content: AssistantContent::ToolCall(call), .. } = event {
+                assert!(kept.iter().any(|kept| kept.id == call.id), "{call:?}");
             }
         }
-        let messages = history(&mut ecs, run);
         assert!(history_has_assistant_tool_call(&messages, "add"));
         assert!(history_has_assistant_tool_call(&messages, "subtract"));
         assert_canonical_assistant_order(&messages);

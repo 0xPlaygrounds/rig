@@ -20,6 +20,7 @@ use crate::image_generation;
 use crate::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
 use crate::operation::ImageGeneration;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
+use crate::wire::Flow;
 use crate::wire::{
     Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame,
 };
@@ -173,7 +174,7 @@ impl Wire for Images {
     type Op = ImageGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ImagesDecoder;
+    type Decoder<'id> = ImagesDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME).model(self.model.as_str())
@@ -193,7 +194,7 @@ impl Wire for Images {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ImagesDecoder
     }
 }
@@ -203,7 +204,7 @@ impl Wire for Images {
 #[derive(Default)]
 pub struct ImagesDecoder;
 
-impl Decoder<ImageGeneration> for ImagesDecoder {
+impl<'id> Decoder<'id, ImageGeneration> for ImagesDecoder {
     type Event = GenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -213,8 +214,12 @@ impl Decoder<ImageGeneration> for ImagesDecoder {
         )
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, ImageGeneration>) {
-        out.push(event.normalize(super::PROVIDER_NAME));
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, ImageGeneration>,
+    ) -> Result<Flow, ProviderError> {
+        Ok(out.end(event.normalize(super::PROVIDER_NAME)?))
     }
 }
 

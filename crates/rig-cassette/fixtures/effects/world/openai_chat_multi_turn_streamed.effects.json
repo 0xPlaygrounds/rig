@@ -2,105 +2,25 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
         "batch": 12,
         "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
         "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 15,
         "id": 1,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 20,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 21,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -108,85 +28,21 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
+        }
+      },
+      {
+        "batch": 24,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
         }
       },
       {
         "batch": 25,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 32,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 32,
-        "id": 2,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 34,
         "id": 3,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 40,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -194,125 +50,21 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 42,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 43,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
         "batch": 44,
         "id": 4,
         "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
         "batch": 45,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 47,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 48,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 49,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
-        "id": 4,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 52,
         "id": 5,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 57,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 59,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 60,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 61,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -320,105 +72,33 @@
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 63,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 64,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 66,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 67,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 68,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 69,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 69,
+        "batch": 62,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 71,
+        "batch": 64,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 77,
+        "batch": 68,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 5
         }
       },
       {
-        "batch": 78,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 79,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 81,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 81,
+        "batch": 68,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -531,11 +211,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-              },
-              "provider": {
-                "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                "provider": {
+                  "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -587,116 +265,41 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_8ezvEW4nN7OUhbgy3IHfECOw",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_8ezvEW4nN7OUhbgy3IHfECOw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"token\":\"start\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_8ezvEW4nN7OUhbgy3IHfECOw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ezvEW4nN7OUhbgy3IHfECOw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ezvEW4nN7OUhbgy3IHfECOw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "start"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_8ezvEW4nN7OUhbgy3IHfECOw",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_8ezvEW4nN7OUhbgy3IHfECOw",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_8ezvEW4nN7OUhbgy3IHfECOw",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-            },
-            "provider": {
-              "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "start"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 138,
-            "output_tokens": 15,
-            "total_tokens": 153,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD2DbLpYuO1qyY7hMG8V22BXFQL",
-          "provider_request_id": "req_2eb844438fae4a4b9274b34a655478a3",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 138,
-              "completion_tokens": 15,
-              "total_tokens": 153,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDD2DbLpYuO1qyY7hMG8V22BXFQL",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "Pxp129F",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d61fb25583"
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "start"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -761,11 +364,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-                  },
-                  "provider": {
-                    "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    "provider": {
+                      "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -784,11 +385,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-                  },
-                  "provider": {
-                    "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    "provider": {
+                      "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -839,11 +438,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-              },
-              "provider": {
-                "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                "provider": {
+                  "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -895,140 +492,41 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"token\":\"cobalt-17\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "c"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "obalt"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "17"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-            },
-            "provider": {
-              "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "cobalt-17"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 178,
-            "output_tokens": 18,
-            "total_tokens": 196,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD3NlMZrcymDnmAPgvCQeqL3Rmg",
-          "provider_request_id": "req_cfb489cdcd1349c3b99e8bf3d0d29e1b",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 178,
-              "completion_tokens": 18,
-              "total_tokens": 196,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDD3NlMZrcymDnmAPgvCQeqL3Rmg",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "yI5dqWb",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d61fb25583"
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "cobalt-17"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -1093,11 +591,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-                  },
-                  "provider": {
-                    "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    "provider": {
+                      "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1116,11 +612,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-                  },
-                  "provider": {
-                    "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    "provider": {
+                      "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1143,11 +637,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-                  },
-                  "provider": {
-                    "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    "provider": {
+                      "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1166,11 +658,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-                  },
-                  "provider": {
-                    "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    "provider": {
+                      "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1221,11 +711,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
-              },
-              "provider": {
-                "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                "provider": {
+                  "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1277,140 +765,41 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"token\":\"orchard-29\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "orch"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ard"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "29"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_gvGETKoiMpNTWBhHyDCPeCjB",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_gvGETKoiMpNTWBhHyDCPeCjB",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
-            },
-            "provider": {
-              "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "orchard-29"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 221,
-            "output_tokens": 18,
-            "total_tokens": 239,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD4Z2fzRjtkwFbUY2zehHCf2dHQ",
-          "provider_request_id": "req_0ad019a8d23c4653852c7788398b232d",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 221,
-              "completion_tokens": 18,
-              "total_tokens": 239,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDD4Z2fzRjtkwFbUY2zehHCf2dHQ",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "WVXAd77",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d61fb25583"
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "orchard-29"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -1475,11 +864,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-                  },
-                  "provider": {
-                    "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    "provider": {
+                      "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1498,11 +885,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-                  },
-                  "provider": {
-                    "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    "provider": {
+                      "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1525,11 +910,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-                  },
-                  "provider": {
-                    "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    "provider": {
+                      "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1548,11 +931,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-                  },
-                  "provider": {
-                    "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    "provider": {
+                      "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1575,11 +956,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
-                  },
-                  "provider": {
-                    "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                    "provider": {
+                      "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1598,11 +977,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
-                  },
-                  "provider": {
-                    "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                    "provider": {
+                      "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1653,11 +1030,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
-              },
-              "provider": {
-                "call_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
+                "provider": {
+                  "call_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1709,140 +1084,41 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"token\":\"harbor-43\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "har"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "bor"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "-"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "43"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
-            },
-            "provider": {
-              "call_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "harbor-43"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 264,
-            "output_tokens": 18,
-            "total_tokens": 282,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD57n4lD08eEK3lOhM1jmMJmVuv",
-          "provider_request_id": "req_7918c9b2ca004441ad55ae4104b102ca",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 264,
-              "completion_tokens": 18,
-              "total_tokens": 282,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDD57n4lD08eEK3lOhM1jmMJmVuv",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "q8P1lgJ",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d61fb25583"
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "harbor-43"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -1907,11 +1183,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-                  },
-                  "provider": {
-                    "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    "provider": {
+                      "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1930,11 +1204,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
-                  },
-                  "provider": {
-                    "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    "provider": {
+                      "call_id": "call_8ezvEW4nN7OUhbgy3IHfECOw"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1957,11 +1229,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-                  },
-                  "provider": {
-                    "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    "provider": {
+                      "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1980,11 +1250,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
-                  },
-                  "provider": {
-                    "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    "provider": {
+                      "call_id": "call_Mw0ZA8vvNmmpyUUKZWqWnwNq"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -2007,11 +1275,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
-                  },
-                  "provider": {
-                    "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                    "provider": {
+                      "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -2030,11 +1296,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
-                  },
-                  "provider": {
-                    "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                    "provider": {
+                      "call_id": "call_gvGETKoiMpNTWBhHyDCPeCjB"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -2057,11 +1321,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
-                  },
-                  "provider": {
-                    "call_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
+                    "provider": {
+                      "call_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -2080,11 +1342,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
-                  },
-                  "provider": {
-                    "call_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
+                    "provider": {
+                      "call_id": "call_aaWEMzqW89e7n2AjEuKuQ0Qz"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -2177,83 +1437,45 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "checkpoint"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-com"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "plete"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "checkpoint-complete"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 304,
-            "output_tokens": 4,
-            "total_tokens": 308,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD6e0tJS7lPmmCYOLnJfzu8C7y0",
-          "provider_request_id": "req_0c95b99d1b2b459788297ff081ae3ea8",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 304,
-              "completion_tokens": 4,
-              "total_tokens": 308,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDD6e0tJS7lPmmCYOLnJfzu8C7y0",
-            "model": "gpt-4.1-mini-2025-04-14",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "hNuuKVop",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_d61fb25583"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "checkpoint-complete"
             }
           }
         }

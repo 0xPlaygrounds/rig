@@ -7,7 +7,8 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::effect::EffectFamily;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_cassette;
@@ -70,10 +71,9 @@ async fn cancelled_stream_effect_log_is_the_golden_fixture() {
                 .prompt("Write a 600-word essay on the history of the Rust programming language.")
                 .stream();
             while let Some(item) = stream.next().await {
-                if let Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                    delta: Delta::Text { .. },
-                    ..
-                })) = item
+                if let Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                    StreamEvent::Text { .. },
+                ))) = item
                 {
                     break;
                 }

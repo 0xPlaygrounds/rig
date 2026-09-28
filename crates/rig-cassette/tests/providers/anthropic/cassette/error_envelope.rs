@@ -70,7 +70,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
             let error = match model.stream(request) {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
-                    Some(Err(error)) => error,
+                    Some(Err(error)) => rig::ErrorReport::from(&error),
                     Some(Ok(item)) => {
                         panic!("expected a provider error, got stream item: {item:?}")
                     }
@@ -161,7 +161,7 @@ async fn nonexistent_model_streaming_error_preserves_response_headers() {
             let error = match model.stream(request) {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
-                    Some(Err(error)) => error,
+                    Some(Err(error)) => rig::ErrorReport::from(&error),
                     Some(Ok(item)) => {
                         panic!("expected a provider error, got stream item: {item:?}")
                     }

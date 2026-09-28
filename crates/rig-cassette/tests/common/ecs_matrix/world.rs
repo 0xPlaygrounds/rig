@@ -46,9 +46,7 @@ use rig_core::serve::adapters::MemoryAdapter;
 
 use rig_core::serve::adapters::ToolAdapter;
 
-use rig_core::streaming::Delta;
-
-use rig_core::streaming::StreamEvent;
+use rig_core::streaming::{Item, Relayed, StreamEvent};
 
 use rig_core::streaming::StreamEvents;
 
@@ -151,12 +149,12 @@ fn gate_events(mut events: StreamEvents, tool: bool, release: Arc<Semaphore>) ->
         let mut crossed = false;
         while let Some(item) = events.next().await {
             let boundary = !crossed
-                && item.as_ref().is_ok_and(|event| match event {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => !tool && !text.is_empty(),
-                    event => tool && is_tool_call_progress(event),
+                && item.as_ref().is_ok_and(|relayed| match relayed {
+                    Relayed::Item(Item::Event(StreamEvent::Text { text, .. })) => {
+                        !tool && !text.is_empty()
+                    }
+                    Relayed::Item(Item::Event(event)) => tool && is_tool_call_progress(event),
+                    _ => false,
                 });
             yield item;
             if boundary {
@@ -170,21 +168,10 @@ fn gate_events(mut events: StreamEvents, tool: bool, release: Arc<Semaphore>) ->
     })
 }
 
-/// Whether a stream event is a tool call arriving: a name or arguments
-/// delta on the wires that stream calls piecewise (the first of them is the
-/// delta the hooks stop on), the call's close on a wire that streams it
-/// whole (Gemini: a block start, then its end, no delta between).
+/// Whether a stream event is a tool call arriving: its arguments, which
+/// every call streams when it closes, before its end.
 pub(crate) fn is_tool_call_progress(event: &StreamEvent) -> bool {
-    matches!(
-        event,
-        StreamEvent::BlockDelta {
-            delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-            ..
-        } | StreamEvent::BlockEnd {
-            end: rig_core::streaming::BlockClose::ToolCall(_),
-            ..
-        }
-    )
+    matches!(event, StreamEvent::Arguments { .. })
 }
 
 /// A tool that answers only once the driver's gate has a permit: the
@@ -225,7 +212,7 @@ fn stop_stream(world: &mut World, reason: &str, predicate: impl Fn(&StreamEvent)
     let mut query = world.query_filtered::<(Entity, &ChildOf, &Streamed), Without<EffectOutcome>>();
     let stops: Vec<_> = query
         .iter(world)
-        .filter(|(_, _, stream)| stream.events.iter().any(&predicate))
+        .filter(|(_, _, stream)| stream.events.events().any(&predicate))
         .map(|(entity, parent, _)| (entity, parent.parent()))
         .collect();
     for (effect, turn) in stops {
@@ -246,23 +233,14 @@ fn stop_text_delta(world: &mut World) {
     stop_stream(world, corpus::STOP_ON_TEXT_DELTA, |event| {
         matches!(
             event,
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } if !text.is_empty()
+            StreamEvent::Text { text, .. } if !text.is_empty()
         )
     });
 }
 
 fn stop_tool_delta(world: &mut World) {
     stop_stream(world, corpus::STOP_ON_TOOL_CALL_DELTA, |event| {
-        matches!(
-            event,
-            StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            }
-        )
+        matches!(event, StreamEvent::Arguments { .. })
     });
 }
 
@@ -1245,6 +1223,7 @@ fn result_names(parts: &MessageParts, slots: &[rig_ecs::agent::ToolCallSlot]) ->
             ),
             _ => None,
         })
+        .map(String::from)
         .collect()
 }
 
@@ -1435,14 +1414,10 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
                 stream.errors
             );
             assert!(stream.outcome.is_none(), "{:?}", stream.outcome);
+            // A call is visible once it closes: a wire that closes its calls
+            // at the provider's end surfaces none before the cut.
             if fault == Fault::TruncatedAfterText {
                 assert!(!stream.text.is_empty(), "the prefix is kept");
-            } else {
-                assert!(
-                    stream.events.iter().any(is_tool_call_progress),
-                    "the call streamed before the cut: {:?}",
-                    stream.events
-                );
             }
             assert_eq!(roles, [Role::User], "the cut turn is not history");
         }

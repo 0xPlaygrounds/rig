@@ -65,7 +65,8 @@ fn validate_tool_correlation(
                         AssistantContent::ToolCall(call) => Some((
                             turn,
                             &call.id,
-                            call.provider
+                            call.id
+                                .provider()
                                 .as_ref()
                                 .map(|provider| provider.call_id.as_str()),
                         )),
@@ -80,7 +81,8 @@ fn validate_tool_correlation(
                             turn,
                             &result.call,
                             result
-                                .provider
+                                .call
+                                .provider()
                                 .as_ref()
                                 .map(|provider| provider.call_id.as_str()),
                         )),

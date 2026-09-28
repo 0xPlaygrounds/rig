@@ -4,7 +4,8 @@
 //! use rig_ecs::agent::{MessageParts, Utterance, content::parts::{read_message, write_message}};
 //! let mut world = bevy_ecs::world::World::new();
 //! let utterance = world.spawn(Utterance).id();
-//! write_message(&mut world, utterance, MessageParts::User { content: vec![] })?;
+//! let hello = rig_core::message::UserContent::text("hello");
+//! write_message(&mut world, utterance, MessageParts::user(vec![hello])?)?;
 //! let message = read_message(&world, utterance)?;
 //! # Ok::<(), rig_ecs::agent::content::parts::ContentError>(())
 //! ```
@@ -36,17 +37,18 @@ pub enum ContentPart {
     /// A tool call with correlation IDs, arguments, signature and metadata.
     ToolCall(#[reflect(remote = super::reflect::ToolCallPartReflect)] message::ToolCall),
     /// Ordered reasoning with IDs, signatures and opaque provider data.
-    Reasoning(#[reflect(remote = super::reflect::ReasoningPartReflect)] message::Reasoning),
+    Reasoning(
+        #[reflect(remote = super::reflect::ReasoningPartReflect)]
+        message::Sealed<message::Reasoning>,
+    ),
     /// A tool result whose children must be Text, Image or Json parts.
     ToolResult {
         /// The call answered by this result.
         #[reflect(remote = crate::agent::reflect::ToolCallIdReflect)]
-        call: message::ToolCallId,
-        /// Original provider call identifiers.
-        #[reflect(remote = crate::agent::reflect::ProviderCallIdReflect)]
-        provider: Option<message::ProviderCallId>,
+        call: message::CallId,
         /// Executed tool name, including hook repairs.
-        name: String,
+        #[reflect(remote = crate::agent::reflect::ToolNameReflect)]
+        name: message::ToolName,
     },
     /// Structured JSON under a tool result; never implicitly parsed from text.
     Json(#[reflect(remote = super::reflect::JsonPartReflect)] serde_json::Value),
@@ -253,7 +255,6 @@ fn user(
                 .collect::<Result<_, ContentError>>()?;
             ContentPart::ToolResult {
                 call: value.call,
-                provider: value.provider,
                 name: value.name,
             }
         }
@@ -428,13 +429,8 @@ fn to_user<'a>(
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
-        ContentPart::ToolResult {
+        ContentPart::ToolResult { call, name } => UserContent::ToolResult(message::ToolResult {
             call,
-            provider,
-            name,
-        } => UserContent::ToolResult(message::ToolResult {
-            call,
-            provider,
             name,
             content: ordered(get, entity)?
                 .into_iter()
@@ -452,7 +448,8 @@ fn to_user<'a>(
                         _ => return Err(ContentError::Shape),
                     })
                 })
-                .collect::<Result<_, ContentError>>()?,
+                .collect::<Result<Vec<_>, ContentError>>()
+                .and_then(non_empty)?,
         }),
         _ => return Err(ContentError::Shape),
     })
@@ -579,20 +576,20 @@ fn read_message_from<'a>(
             if entity.get::<MessageId>().is_some() {
                 return Err(ContentError::Shape);
             }
-            Ok(MessageParts::User {
-                content: values
+            MessageParts::user(
+                values
                     .into_iter()
                     .map(|(entity, value)| to_user(get, assets, entity, value, edits))
                     .collect::<Result<_, _>>()?,
-            })
+            )
         }
-        Role::Assistant => Ok(MessageParts::Assistant {
-            id: entity
+        Role::Assistant => MessageParts::assistant(
+            entity
                 .get::<MessageId>()
                 .ok_or(ContentError::Missing)?
                 .0
                 .clone(),
-            content: values
+            values
                 .into_iter()
                 .map(|(_, value)| {
                     Ok(match value {
@@ -606,8 +603,13 @@ fn read_message_from<'a>(
                     })
                 })
                 .collect::<Result<_, ContentError>>()?,
-        }),
+        ),
     }
+}
+
+/// `items`, or [`ContentError::Shape`] when there are none.
+fn non_empty<T>(items: Vec<T>) -> Result<rig_core::NonEmpty<T>, ContentError> {
+    rig_core::NonEmpty::from_vec(items).map_err(|_| ContentError::Shape)
 }
 
 /// Collect payloads unreachable from every content entity in the world and the

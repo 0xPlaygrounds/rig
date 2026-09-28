@@ -2,51 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 6
         }
       },
       {
@@ -64,7 +24,7 @@
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -135,14 +95,6 @@
         }
       },
       {
-        "batch": 33,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 34,
         "id": 3,
         "kind": {
@@ -175,7 +127,7 @@
         }
       },
       {
-        "batch": 39,
+        "batch": 38,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -183,7 +135,7 @@
         }
       },
       {
-        "batch": 40,
+        "batch": 39,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -239,14 +191,6 @@
         }
       },
       {
-        "batch": 47,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 48,
         "id": 3,
         "kind": {
@@ -263,15 +207,31 @@
         }
       },
       {
-        "batch": 53,
+        "batch": 50,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 53,
+        "batch": 51,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -394,11 +354,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_qLnQZaV28OybPchbkDObSxKX"
-              },
-              "provider": {
-                "call_id": "call_qLnQZaV28OybPchbkDObSxKX"
+                "provider": {
+                  "call_id": "call_qLnQZaV28OybPchbkDObSxKX"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -410,11 +368,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
-              },
-              "provider": {
-                "call_id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
+                "provider": {
+                  "call_id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -472,132 +428,76 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_qLnQZaV28OybPchbkDObSxKX",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_harbor_label"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_qLnQZaV28OybPchbkDObSxKX",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_v4VxFsSy28YeXcqmTMxTmSw6",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_orchard_label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_v4VxFsSy28YeXcqmTMxTmSw6",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_qLnQZaV28OybPchbkDObSxKX",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_qLnQZaV28OybPchbkDObSxKX",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_qLnQZaV28OybPchbkDObSxKX"
-            },
-            "provider": {
-              "call_id": "call_qLnQZaV28OybPchbkDObSxKX"
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_v4VxFsSy28YeXcqmTMxTmSw6",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_v4VxFsSy28YeXcqmTMxTmSw6",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
-            },
-            "provider": {
-              "call_id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
-            },
-            "function": {
-              "name": "lookup_orchard_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 157,
-            "output_tokens": 45,
-            "total_tokens": 202,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "gen-1790152481-rTNjPpvNemC9JsYzoYcw",
-          "provider": "openrouter",
-          "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 157,
-              "completion_tokens": 45,
-              "total_tokens": 202,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_qLnQZaV28OybPchbkDObSxKX"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
               },
-              "cost": 0.0008425,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00045,
-                "upstream_inference_cost": 0.0008425,
-                "upstream_inference_prompt_cost": 0.0003925
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
+                }
               },
-              "is_byok": false
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790152481-rTNjPpvNemC9JsYzoYcw",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_24e955c341",
-              "service_tier": null
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -683,11 +583,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_qLnQZaV28OybPchbkDObSxKX"
-                  },
-                  "provider": {
-                    "call_id": "call_qLnQZaV28OybPchbkDObSxKX"
+                    "provider": {
+                      "call_id": "call_qLnQZaV28OybPchbkDObSxKX"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -699,11 +597,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
-                  },
-                  "provider": {
-                    "call_id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
+                    "provider": {
+                      "call_id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -720,11 +616,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_qLnQZaV28OybPchbkDObSxKX"
-                  },
-                  "provider": {
-                    "call_id": "call_qLnQZaV28OybPchbkDObSxKX"
+                    "provider": {
+                      "call_id": "call_qLnQZaV28OybPchbkDObSxKX"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -737,11 +631,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
-                  },
-                  "provider": {
-                    "call_id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
+                    "provider": {
+                      "call_id": "call_v4VxFsSy28YeXcqmTMxTmSw6"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -840,260 +732,213 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " alpha"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " signal"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " marker"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "cr"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "imson"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-h"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "bor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "\""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " beta"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " signal"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " marker"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "silver"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-or"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ch"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "\"."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 225,
-            "output_tokens": 25,
-            "total_tokens": 250,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "gen-1790152482-awZO13jk2nk9ekd6JbnS",
-          "provider": "openrouter",
-          "reasoning_issuer": "openrouter/openai",
-          "model": "openai/gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 225,
-              "completion_tokens": 25,
-              "total_tokens": 250,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cost": 0.0008125,
-              "cost_details": {
-                "upstream_inference_completions_cost": 0.00025,
-                "upstream_inference_cost": 0.0008125,
-                "upstream_inference_prompt_cost": 0.0005625
-              },
-              "is_byok": false
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790152482-awZO13jk2nk9ekd6JbnS",
-            "model": "openai/gpt-4o",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "provider": "OpenAI",
-              "system_fingerprint": "fp_24e955c341",
-              "service_tier": null
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
             }
           }
         }

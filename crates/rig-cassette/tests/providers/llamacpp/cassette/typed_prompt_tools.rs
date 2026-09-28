@@ -81,7 +81,7 @@ impl AgentHook for StepLogger {
         let tool_no = self.next_tool_call();
         println!("\n=== tool call #{tool_no}: model requested tool ===");
         println!("tool_name: {tool_name}");
-        println!("block_id: {:?}", event.block_id);
+        println!("call_id: {:?}", event.call_id);
         println!("args: {}", event.tool_args().unwrap_or_default());
         DispatchAction::proceed()
     }
@@ -104,7 +104,7 @@ impl AgentHook for StepLogger {
         };
         println!("\n=== tool result: tool returned ===");
         println!("tool_name: {tool_name}");
-        println!("block_id: {:?}", event.block_id);
+        println!("call_id: {:?}", event.call_id);
         println!("args: {}", event.tool_args().unwrap_or_default());
         println!("result: {}", result.output().render());
         OutcomeAction::proceed()

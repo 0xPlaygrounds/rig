@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 5,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 6,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,21 +32,21 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 19,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 26,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,65 +54,65 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 26,
         "id": 4,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 17,
-        "id": 5,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 21,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 21,
-        "id": 6,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 22,
-        "id": 7,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 26,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 26,
-        "id": 8,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 28,
+        "id": 5,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 34,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 34,
+        "id": 6,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 35,
+        "id": 7,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 41,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 41,
+        "id": 8,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 43,
         "id": 9,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 35,
+        "batch": 51,
         "id": 10,
         "kind": {
           "delivery": "stream",
@@ -120,21 +120,21 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 51,
         "id": 10,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 36,
+        "batch": 52,
         "id": 11,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 41,
+        "batch": 58,
         "id": 12,
         "kind": {
           "delivery": "stream",
@@ -142,21 +142,21 @@
         }
       },
       {
-        "batch": 41,
+        "batch": 58,
         "id": 12,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 42,
+        "batch": 59,
         "id": 13,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 48,
+        "batch": 67,
         "id": 14,
         "kind": {
           "delivery": "stream",
@@ -164,21 +164,21 @@
         }
       },
       {
-        "batch": 48,
+        "batch": 68,
         "id": 14,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 49,
+        "batch": 69,
         "id": 15,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 53,
+        "batch": 76,
         "id": 16,
         "kind": {
           "delivery": "stream",
@@ -186,21 +186,21 @@
         }
       },
       {
-        "batch": 53,
+        "batch": 76,
         "id": 16,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 54,
+        "batch": 77,
         "id": 17,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 59,
+        "batch": 83,
         "id": 18,
         "kind": {
           "delivery": "stream",
@@ -208,29 +208,29 @@
         }
       },
       {
-        "batch": 59,
+        "batch": 84,
         "id": 18,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 60,
+        "batch": 85,
         "id": 19,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 65,
+        "batch": 91,
         "id": 20,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
-        "batch": 65,
+        "batch": 91,
         "id": 20,
         "kind": {
           "delivery": "outcome"
@@ -443,8 +443,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000000"
               },
               "function": {
                 "name": "list_files",
@@ -487,66 +486,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "list_files",
-            "arguments": {},
-            "signature": "CiQBaRR9E6yPj/nYCdlwDRdryPrOpWsWIvkCLPS9JTCLeem4njYKcgFpFH0T6WIl4OWFZEDtmebzo4MDjDUB796hKT4UpS7IX40kQ5ECeaQ5OdTnMLM0z1EIx2zn/1eTcxBEu6MWQavDiJq3UnHPXnZrV8eGkFYD0h/VOtY66pB5gSTM5N3cCEFDN3oZE6Oeykpb7pdrVOszBQqiAQFpFH0Tt3O/b0XvW8Y/CXHJ8gvOEeKqLn/9G/IxNXOO8+pc6dOEWjuV7+YCen7Q3C7hAgEMqSCHOxeZB4PS0wxpI4TU5g2h6d9uX1eY359X8Kb9hsZX9m0ABlka6jiK9NZ3VHEQ+suwTbXyn1nIFAiw02LN5DIW23TwbP4+kG/FBozFss/Oz+kSLirn0DwnBKLxv7pShsEAxqn43bKnGoeZogrSAQFpFH0TFjdrB62TUKjrKU1ZS/pw+Bfgww0bGq8IHriEJpqviJbO2mssTZjGp1pPIMVXiDp0Ngq1HNiLZDxe+LLq4tfVL6igfrAAbv+yUoJnsXEHaCrom7kVJu6itfNq84h4LpvJulL/qHGk0AFCAQX9w/j+qya4x94q3ghDdRHXb1jmqUPEwVdAmAg8i0JMU/d1bKi0SgPL/xQxzVExTW89yGG9Wbgsyrp9YNWpcsCkeuPUgXZSRXXdfHw49r9gtVRxQxEFe5RVETy07RUJS7U1ogowAWkUfRMOHD6DAkts2rlH8OVV9+i0LBuPWdyQY9f0nX2GV8LMLzWrUU7BKG2kFWvS",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "list_files",
-              "arguments": {}
-            },
-            "signature": "CiQBaRR9E6yPj/nYCdlwDRdryPrOpWsWIvkCLPS9JTCLeem4njYKcgFpFH0T6WIl4OWFZEDtmebzo4MDjDUB796hKT4UpS7IX40kQ5ECeaQ5OdTnMLM0z1EIx2zn/1eTcxBEu6MWQavDiJq3UnHPXnZrV8eGkFYD0h/VOtY66pB5gSTM5N3cCEFDN3oZE6Oeykpb7pdrVOszBQqiAQFpFH0Tt3O/b0XvW8Y/CXHJ8gvOEeKqLn/9G/IxNXOO8+pc6dOEWjuV7+YCen7Q3C7hAgEMqSCHOxeZB4PS0wxpI4TU5g2h6d9uX1eY359X8Kb9hsZX9m0ABlka6jiK9NZ3VHEQ+suwTbXyn1nIFAiw02LN5DIW23TwbP4+kG/FBozFss/Oz+kSLirn0DwnBKLxv7pShsEAxqn43bKnGoeZogrSAQFpFH0TFjdrB62TUKjrKU1ZS/pw+Bfgww0bGq8IHriEJpqviJbO2mssTZjGp1pPIMVXiDp0Ngq1HNiLZDxe+LLq4tfVL6igfrAAbv+yUoJnsXEHaCrom7kVJu6itfNq84h4LpvJulL/qHGk0AFCAQX9w/j+qya4x94q3ghDdRHXb1jmqUPEwVdAmAg8i0JMU/d1bKi0SgPL/xQxzVExTW89yGG9Wbgsyrp9YNWpcsCkeuPUgXZSRXXdfHw49r9gtVRxQxEFe5RVETy07RUJS7U1ogowAWkUfRMOHD6DAkts2rlH8OVV9+i0LBuPWdyQY9f0nX2GV8LMLzWrUU7BKG2kFWvS",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 465,
-            "output_tokens": 10,
-            "total_tokens": 601,
-            "reasoning_tokens": 126
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "6q6yasHDC9XQz7IP5d3X0AQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 465,
-              "candidatesTokenCount": 10,
-              "totalTokenCount": 601,
-              "thoughtsTokenCount": 126,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 465
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "6q6yasHDC9XQz7IP5d3X0AQ"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000000"
+              },
+              "function": {
+                "name": "list_files",
+                "arguments": {}
+              },
+              "signature": "CiQBaRR9E6yPj/nYCdlwDRdryPrOpWsWIvkCLPS9JTCLeem4njYKcgFpFH0T6WIl4OWFZEDtmebzo4MDjDUB796hKT4UpS7IX40kQ5ECeaQ5OdTnMLM0z1EIx2zn/1eTcxBEu6MWQavDiJq3UnHPXnZrV8eGkFYD0h/VOtY66pB5gSTM5N3cCEFDN3oZE6Oeykpb7pdrVOszBQqiAQFpFH0Tt3O/b0XvW8Y/CXHJ8gvOEeKqLn/9G/IxNXOO8+pc6dOEWjuV7+YCen7Q3C7hAgEMqSCHOxeZB4PS0wxpI4TU5g2h6d9uX1eY359X8Kb9hsZX9m0ABlka6jiK9NZ3VHEQ+suwTbXyn1nIFAiw02LN5DIW23TwbP4+kG/FBozFss/Oz+kSLirn0DwnBKLxv7pShsEAxqn43bKnGoeZogrSAQFpFH0TFjdrB62TUKjrKU1ZS/pw+Bfgww0bGq8IHriEJpqviJbO2mssTZjGp1pPIMVXiDp0Ngq1HNiLZDxe+LLq4tfVL6igfrAAbv+yUoJnsXEHaCrom7kVJu6itfNq84h4LpvJulL/qHGk0AFCAQX9w/j+qya4x94q3ghDdRHXb1jmqUPEwVdAmAg8i0JMU/d1bKi0SgPL/xQxzVExTW89yGG9Wbgsyrp9YNWpcsCkeuPUgXZSRXXdfHw49r9gtVRxQxEFe5RVETy07RUJS7U1ogowAWkUfRMOHD6DAkts2rlH8OVV9+i0LBuPWdyQY9f0nX2GV8LMLzWrUU7BKG2kFWvS",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -606,8 +577,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -624,8 +594,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -713,8 +682,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000001"
               },
               "function": {
                 "name": "read_file",
@@ -759,70 +727,40 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "read_file",
-            "arguments": {
-              "path": "README.md"
-            },
-            "signature": "CiQBaRR9E/cwuGtpqnyKXijD8BHyfTxJwP19KgV78+AX18FCv3UKUgFpFH0TMsyImcj/M+/+W5IPXKZpwCu3W1/y8diLv/2+EZJVl3TG8ZSRIc+gjoSjtrDprQBBfwAgeIYV1uFgFn7PwZDTV/FlX2awaXieQolTwzYKJQFpFH0TwoB+OVoBNFFH2a+MBqs1xpDcEgRc4gfYBbpRICVgxOc=",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "README.md"
-              }
-            },
-            "signature": "CiQBaRR9E/cwuGtpqnyKXijD8BHyfTxJwP19KgV78+AX18FCv3UKUgFpFH0TMsyImcj/M+/+W5IPXKZpwCu3W1/y8diLv/2+EZJVl3TG8ZSRIc+gjoSjtrDprQBBfwAgeIYV1uFgFn7PwZDTV/FlX2awaXieQolTwzYKJQFpFH0TwoB+OVoBNFFH2a+MBqs1xpDcEgRc4gfYBbpRICVgxOc=",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"path\":\"README.md\"}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 644,
-            "output_tokens": 17,
-            "total_tokens": 681,
-            "reasoning_tokens": 20
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "666yaqT7EuLUz7IPwujK8QE",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 644,
-              "candidatesTokenCount": 17,
-              "totalTokenCount": 681,
-              "thoughtsTokenCount": 20,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 644
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000001"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "README.md"
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "666yaqT7EuLUz7IPwujK8QE"
+              },
+              "signature": "CiQBaRR9E/cwuGtpqnyKXijD8BHyfTxJwP19KgV78+AX18FCv3UKUgFpFH0TMsyImcj/M+/+W5IPXKZpwCu3W1/y8diLv/2+EZJVl3TG8ZSRIc+gjoSjtrDprQBBfwAgeIYV1uFgFn7PwZDTV/FlX2awaXieQolTwzYKJQFpFH0TwoB+OVoBNFFH2a+MBqs1xpDcEgRc4gfYBbpRICVgxOc=",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -882,8 +820,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -900,8 +837,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -920,8 +856,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -940,8 +875,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -1029,8 +963,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000002"
               },
               "function": {
                 "name": "read_file",
@@ -1075,70 +1008,40 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "read_file",
-            "arguments": {
-              "path": "tests/basic.rs"
-            },
-            "signature": "CiUBaRR9E6STz3YK11OkhfCsVmxphJpJBumY/i93R38xxKj3qgNqCkcBaRR9E6qvGpIEIGuy93TSccInH1uvbLJFv7SiJZlBC/8JGkHV1dLb74gnTbyF9AUCz4qL6WsrywpBc1an/BUnEmyfhs67IQolAWkUfRPXtx9RkRCRu/7BEfkmwVLXsPBZNIsOr+n6LeupWnalNw==",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "tests/basic.rs"
-              }
-            },
-            "signature": "CiUBaRR9E6STz3YK11OkhfCsVmxphJpJBumY/i93R38xxKj3qgNqCkcBaRR9E6qvGpIEIGuy93TSccInH1uvbLJFv7SiJZlBC/8JGkHV1dLb74gnTbyF9AUCz4qL6WsrywpBc1an/BUnEmyfhs67IQolAWkUfRPXtx9RkRCRu/7BEfkmwVLXsPBZNIsOr+n6LeupWnalNw==",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"path\":\"tests/basic.rs\"}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 770,
-            "output_tokens": 19,
-            "total_tokens": 808,
-            "reasoning_tokens": 19
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "666yavOLN7bXz7IPtau9aA",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 770,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 808,
-              "thoughtsTokenCount": 19,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 770
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000002"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "666yavOLN7bXz7IPtau9aA"
+              },
+              "signature": "CiUBaRR9E6STz3YK11OkhfCsVmxphJpJBumY/i93R38xxKj3qgNqCkcBaRR9E6qvGpIEIGuy93TSccInH1uvbLJFv7SiJZlBC/8JGkHV1dLb74gnTbyF9AUCz4qL6WsrywpBc1an/BUnEmyfhs67IQolAWkUfRPXtx9RkRCRu/7BEfkmwVLXsPBZNIsOr+n6LeupWnalNw==",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -1198,8 +1101,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -1216,8 +1118,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -1236,8 +1137,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -1256,8 +1156,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -1276,8 +1175,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "read_file",
@@ -1296,8 +1194,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "read_file",
                   "content": [
@@ -1385,8 +1282,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000003"
               },
               "function": {
                 "name": "read_file",
@@ -1431,70 +1327,40 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "read_file",
-            "arguments": {
-              "path": "src/lib.rs"
-            },
-            "signature": "CiQBaRR9EzZWByAF5evq6Pra6etPC3quZ9DrGvX6dW7Sz70zlhYKQwFpFH0T8Umiqgxtdd2hM1kZOML0sIyg2HyRPi8BbF1imvjGj7pGoSOliPG9EfvgA8zphzR9TenOD/7DW2Jbeu2rbWkKJQFpFH0T5oJucEyqxqwtSC8Sb6N2WMb3rzLVi9QLaQvOZZAzhQg=",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "src/lib.rs"
-              }
-            },
-            "signature": "CiQBaRR9EzZWByAF5evq6Pra6etPC3quZ9DrGvX6dW7Sz70zlhYKQwFpFH0T8Umiqgxtdd2hM1kZOML0sIyg2HyRPi8BbF1imvjGj7pGoSOliPG9EfvgA8zphzR9TenOD/7DW2Jbeu2rbWkKJQFpFH0T5oJucEyqxqwtSC8Sb6N2WMb3rzLVi9QLaQvOZZAzhQg=",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"path\":\"src/lib.rs\"}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 926,
-            "output_tokens": 19,
-            "total_tokens": 964,
-            "reasoning_tokens": 19
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "7K6yaoWkJbmtz7IPsJv9EA",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 926,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 964,
-              "thoughtsTokenCount": 19,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 926
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000003"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "src/lib.rs"
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "7K6yaoWkJbmtz7IPsJv9EA"
+              },
+              "signature": "CiQBaRR9EzZWByAF5evq6Pra6etPC3quZ9DrGvX6dW7Sz70zlhYKQwFpFH0T8Umiqgxtdd2hM1kZOML0sIyg2HyRPi8BbF1imvjGj7pGoSOliPG9EfvgA8zphzR9TenOD/7DW2Jbeu2rbWkKJQFpFH0T5oJucEyqxqwtSC8Sb6N2WMb3rzLVi9QLaQvOZZAzhQg=",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -1554,8 +1420,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -1572,8 +1437,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -1592,8 +1456,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -1612,8 +1475,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -1632,8 +1494,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "read_file",
@@ -1652,8 +1513,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "read_file",
                   "content": [
@@ -1672,8 +1532,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "function": {
                     "name": "read_file",
@@ -1692,8 +1551,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "name": "read_file",
                   "content": [
@@ -1781,8 +1639,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000004"
               },
               "function": {
                 "name": "run_tests",
@@ -1825,66 +1682,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "run_tests",
-            "arguments": {},
-            "signature": "CiQBaRR9EybwQh01OQtJ9xEQHixKBnx652LzTeq3zM9hpDmKvXMKVAFpFH0ThmMdFL7eS+SYfNRM41KVljzfsevJV/9WHRcpoHU1iMhPkUxa9OQwtfOXvp1cbu+cVfl3Cbh52t00l1hSusbibOjE2b9tab8pugYXR9Z4jQ==",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": "CiQBaRR9EybwQh01OQtJ9xEQHixKBnx652LzTeq3zM9hpDmKvXMKVAFpFH0ThmMdFL7eS+SYfNRM41KVljzfsevJV/9WHRcpoHU1iMhPkUxa9OQwtfOXvp1cbu+cVfl3Cbh52t00l1hSusbibOjE2b9tab8pugYXR9Z4jQ==",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1023,
-            "output_tokens": 10,
-            "total_tokens": 1050,
-            "reasoning_tokens": 17
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "7a6yaunFDqmez7IPto_uCA",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 1023,
-              "candidatesTokenCount": 10,
-              "totalTokenCount": 1050,
-              "thoughtsTokenCount": 17,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1023
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "7a6yaunFDqmez7IPto_uCA"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000004"
+              },
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": "CiQBaRR9EybwQh01OQtJ9xEQHixKBnx652LzTeq3zM9hpDmKvXMKVAFpFH0ThmMdFL7eS+SYfNRM41KVljzfsevJV/9WHRcpoHU1iMhPkUxa9OQwtfOXvp1cbu+cVfl3Cbh52t00l1hSusbibOjE2b9tab8pugYXR9Z4jQ==",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -1944,8 +1773,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -1962,8 +1790,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -1982,8 +1809,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -2002,8 +1828,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -2022,8 +1847,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "read_file",
@@ -2042,8 +1866,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "read_file",
                   "content": [
@@ -2062,8 +1885,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "function": {
                     "name": "read_file",
@@ -2082,8 +1904,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "name": "read_file",
                   "content": [
@@ -2102,8 +1923,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2120,8 +1940,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2209,8 +2028,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000005"
               },
               "function": {
                 "name": "write_file",
@@ -2256,72 +2074,41 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "write_file",
-            "arguments": {
-              "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
-              "path": "src/lib.rs"
-            },
-            "signature": "CiQBaRR9E8wyv3Rd2U2x+wokIZPsOgU53RqBRYJJ89n5jBwd+/cKQgFpFH0Tb8NNPj5c0LSs+J01lUqk8Sz+2NKR8AbjIrMNK07wHunYrdNXw/B7scvOjiPnUnxmhIDP9kaCXo9ZvWsR9gqoAQFpFH0TttW65+V8bodYuuFg1E5eY0nMcNpOxEFX5rqI0knT2JTdyG1uAqcQbgVSORzmmWfaXSknGZ7pmfijq6/uGfSsZ/Bu92aO4PgVhY1WZ+cD/KubdwWe0wZ7sT6nq/3dvZIOTLMiQd6PqHzDYYp+YE+F4vLxl3HyQ1aebE2lmLyDkXye83ID0FLYSfCSgTNx/81R0PZAq2NeCKoGVlPvCFQ97fgwmQqfAQFpFH0T0LiUOsSTtxVnDK5O03uqRhfxIV4cZHuiZbkWBP2Epr2FnrSQgJkZ0DyWhDgbtVi09fdeB7XQxciDrWDVbb84qnS1UGhWb2BFQi2MGPfgPNERIoqHpZi2Pb8Xq4U9rM1X0p20vZdaks0cUkvh6wXqFzOiHNKpYwSe3GP2wDl8mD3Hwpij+MTuN69roRXdsh48SOXjGw/wUolRnwo9AWkUfRNENYAWy9u74zJ0WpJU3tM0NeTmQKTTgKOnC3zF88sgB3Snits1GTvX3/HSWTZp4A226vEWAdpjkw==",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "write_file",
-              "arguments": {
-                "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
-                "path": "src/lib.rs"
-              }
-            },
-            "signature": "CiQBaRR9E8wyv3Rd2U2x+wokIZPsOgU53RqBRYJJ89n5jBwd+/cKQgFpFH0Tb8NNPj5c0LSs+J01lUqk8Sz+2NKR8AbjIrMNK07wHunYrdNXw/B7scvOjiPnUnxmhIDP9kaCXo9ZvWsR9gqoAQFpFH0TttW65+V8bodYuuFg1E5eY0nMcNpOxEFX5rqI0knT2JTdyG1uAqcQbgVSORzmmWfaXSknGZ7pmfijq6/uGfSsZ/Bu92aO4PgVhY1WZ+cD/KubdwWe0wZ7sT6nq/3dvZIOTLMiQd6PqHzDYYp+YE+F4vLxl3HyQ1aebE2lmLyDkXye83ID0FLYSfCSgTNx/81R0PZAq2NeCKoGVlPvCFQ97fgwmQqfAQFpFH0T0LiUOsSTtxVnDK5O03uqRhfxIV4cZHuiZbkWBP2Epr2FnrSQgJkZ0DyWhDgbtVi09fdeB7XQxciDrWDVbb84qnS1UGhWb2BFQi2MGPfgPNERIoqHpZi2Pb8Xq4U9rM1X0p20vZdaks0cUkvh6wXqFzOiHNKpYwSe3GP2wDl8mD3Hwpij+MTuN69roRXdsh48SOXjGw/wUolRnwo9AWkUfRNENYAWy9u74zJ0WpJU3tM0NeTmQKTTgKOnC3zF88sgB3Snits1GTvX3/HSWTZp4A226vEWAdpjkw==",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\",\"path\":\"src/lib.rs\"}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1243,
-            "output_tokens": 68,
-            "total_tokens": 1438,
-            "reasoning_tokens": 127
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "7a6yaoy8K7Tmz7IPoPPU2QQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 1243,
-              "candidatesTokenCount": 68,
-              "totalTokenCount": 1438,
-              "thoughtsTokenCount": 127,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1243
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000005"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
+                  "path": "src/lib.rs"
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "7a6yaoy8K7Tmz7IPoPPU2QQ"
+              },
+              "signature": "CiQBaRR9E8wyv3Rd2U2x+wokIZPsOgU53RqBRYJJ89n5jBwd+/cKQgFpFH0Tb8NNPj5c0LSs+J01lUqk8Sz+2NKR8AbjIrMNK07wHunYrdNXw/B7scvOjiPnUnxmhIDP9kaCXo9ZvWsR9gqoAQFpFH0TttW65+V8bodYuuFg1E5eY0nMcNpOxEFX5rqI0knT2JTdyG1uAqcQbgVSORzmmWfaXSknGZ7pmfijq6/uGfSsZ/Bu92aO4PgVhY1WZ+cD/KubdwWe0wZ7sT6nq/3dvZIOTLMiQd6PqHzDYYp+YE+F4vLxl3HyQ1aebE2lmLyDkXye83ID0FLYSfCSgTNx/81R0PZAq2NeCKoGVlPvCFQ97fgwmQqfAQFpFH0T0LiUOsSTtxVnDK5O03uqRhfxIV4cZHuiZbkWBP2Epr2FnrSQgJkZ0DyWhDgbtVi09fdeB7XQxciDrWDVbb84qnS1UGhWb2BFQi2MGPfgPNERIoqHpZi2Pb8Xq4U9rM1X0p20vZdaks0cUkvh6wXqFzOiHNKpYwSe3GP2wDl8mD3Hwpij+MTuN69roRXdsh48SOXjGw/wUolRnwo9AWkUfRNENYAWy9u74zJ0WpJU3tM0NeTmQKTTgKOnC3zF88sgB3Snits1GTvX3/HSWTZp4A226vEWAdpjkw==",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -2381,8 +2168,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -2399,8 +2185,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -2419,8 +2204,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -2439,8 +2223,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -2459,8 +2242,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "read_file",
@@ -2479,8 +2261,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "read_file",
                   "content": [
@@ -2499,8 +2280,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "function": {
                     "name": "read_file",
@@ -2519,8 +2299,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "name": "read_file",
                   "content": [
@@ -2539,8 +2318,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2557,8 +2335,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2577,8 +2354,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "function": {
                     "name": "write_file",
@@ -2598,8 +2374,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "name": "write_file",
                   "content": [
@@ -2687,8 +2462,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000006"
               },
               "function": {
                 "name": "run_tests",
@@ -2731,66 +2505,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "run_tests",
-            "arguments": {},
-            "signature": "CiQBaRR9E/Mb3hIBSjY924V2Kpjq8DL3fUCKDLhD0tsMjQF3k6AKVwFpFH0TduyCaepqRs3gKrM4s9ZmgOLu5n9gTPZmNqCEi7gxte3siFpG7KHdiRjJj1OLkCEeE6UHidLAtMRlN2k6mHdn2ZqFtGWybXJ7hLwHSeHJLOANQgoxAWkUfRNYHHuhN2SIRTSIhlFNKZQ6r8elFlJbagJJjC3cU9uwdGlzQRIdgZUq7tUehg==",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": "CiQBaRR9E/Mb3hIBSjY924V2Kpjq8DL3fUCKDLhD0tsMjQF3k6AKVwFpFH0TduyCaepqRs3gKrM4s9ZmgOLu5n9gTPZmNqCEi7gxte3siFpG7KHdiRjJj1OLkCEeE6UHidLAtMRlN2k6mHdn2ZqFtGWybXJ7hLwHSeHJLOANQgoxAWkUfRNYHHuhN2SIRTSIhlFNKZQ6r8elFlJbagJJjC3cU9uwdGlzQRIdgZUq7tUehg==",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1464,
-            "output_tokens": 10,
-            "total_tokens": 1499,
-            "reasoning_tokens": 25
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "7q6yavXaN8ifz7IP1MroGQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 1464,
-              "candidatesTokenCount": 10,
-              "totalTokenCount": 1499,
-              "thoughtsTokenCount": 25,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1464
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "7q6yavXaN8ifz7IP1MroGQ"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000006"
+              },
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": "CiQBaRR9E/Mb3hIBSjY924V2Kpjq8DL3fUCKDLhD0tsMjQF3k6AKVwFpFH0TduyCaepqRs3gKrM4s9ZmgOLu5n9gTPZmNqCEi7gxte3siFpG7KHdiRjJj1OLkCEeE6UHidLAtMRlN2k6mHdn2ZqFtGWybXJ7hLwHSeHJLOANQgoxAWkUfRNYHHuhN2SIRTSIhlFNKZQ6r8elFlJbagJJjC3cU9uwdGlzQRIdgZUq7tUehg==",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -2850,8 +2596,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -2868,8 +2613,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -2888,8 +2632,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -2908,8 +2651,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -2928,8 +2670,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "read_file",
@@ -2948,8 +2689,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "read_file",
                   "content": [
@@ -2968,8 +2708,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "function": {
                     "name": "read_file",
@@ -2988,8 +2727,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "name": "read_file",
                   "content": [
@@ -3008,8 +2746,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3026,8 +2763,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3046,8 +2782,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "function": {
                     "name": "write_file",
@@ -3067,8 +2802,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "name": "write_file",
                   "content": [
@@ -3087,8 +2821,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000006"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3105,8 +2838,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000006"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3194,8 +2926,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000007"
               },
               "function": {
                 "name": "read_file",
@@ -3240,70 +2971,40 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "read_file",
-            "arguments": {
-              "path": "src/calendar.rs"
-            },
-            "signature": "CiQBaRR9E5zNI4skrTOqO7WqakkpSuPhjJZGO1oOP8RsZ0POC3sKQgFpFH0TtQ5wQ9NzHRDST+P1hOr9Cej2ipJNn7mIILPGj1eWn3FyVnmWyP6IwRl3PJn7P48x3FG3CLsc+NYTlPRwEwqsAQFpFH0TFulsbINyXUEm6JCSzo9pHo6xfVtRsgnEfPg5jmZ0oma+y90DPTZSnluWP6mBm+f7BHx2d/meosraP3Pd7QU5RNJGCXDeYp6MNbOyC6qGQWKNrWMt07JxDv76flSJT6I0odxOXPvfkEYbQj8nTiyaa19EN0gwEyl4OvK7lUxJMyJ6TVLKojCUeTcoWGgod026KatdQfk2am9AErcuRSFEAq9V/nTrtzoKrQEBaRR9E+e1PBWfAUJi2eTOJoP7hUG4JHpC9SxKAXvhl1L9+h5ZTW4HZet9FCNgsGcj8cYzCf/553lU1tqJS8398cHqrfPlpQR/qSdCH86MA3tBMkDnto2gUMjxycU292KI7YvugjuabOX6qlcUv5IKmXWl242Ix3FGstmXM/kH8sPsJbhNp/X7HR1ZvM1SJb7bRQQ7EpM9Q/0alWy0dZvmnbJ40j5Hu+MqjRugtgqIAQFpFH0TYcgzOOW83mWaYKKZUJMrwZrXExcBczCxmV4zu7ZAkEbqlX7iF2jHYxxIhSMB8EXyegcevJ1rtHlla/ykmfK6HrlT7GQCiDJSDk18HIfrrFi2fduKNNrG+aUzP/WvAE5yE0dVX0CWT85zVkWiG0bOO5O0hAwzRjGSlTpthYZI33saKsA=",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "src/calendar.rs"
-              }
-            },
-            "signature": "CiQBaRR9E5zNI4skrTOqO7WqakkpSuPhjJZGO1oOP8RsZ0POC3sKQgFpFH0TtQ5wQ9NzHRDST+P1hOr9Cej2ipJNn7mIILPGj1eWn3FyVnmWyP6IwRl3PJn7P48x3FG3CLsc+NYTlPRwEwqsAQFpFH0TFulsbINyXUEm6JCSzo9pHo6xfVtRsgnEfPg5jmZ0oma+y90DPTZSnluWP6mBm+f7BHx2d/meosraP3Pd7QU5RNJGCXDeYp6MNbOyC6qGQWKNrWMt07JxDv76flSJT6I0odxOXPvfkEYbQj8nTiyaa19EN0gwEyl4OvK7lUxJMyJ6TVLKojCUeTcoWGgod026KatdQfk2am9AErcuRSFEAq9V/nTrtzoKrQEBaRR9E+e1PBWfAUJi2eTOJoP7hUG4JHpC9SxKAXvhl1L9+h5ZTW4HZet9FCNgsGcj8cYzCf/553lU1tqJS8398cHqrfPlpQR/qSdCH86MA3tBMkDnto2gUMjxycU292KI7YvugjuabOX6qlcUv5IKmXWl242Ix3FGstmXM/kH8sPsJbhNp/X7HR1ZvM1SJb7bRQQ7EpM9Q/0alWy0dZvmnbJ40j5Hu+MqjRugtgqIAQFpFH0TYcgzOOW83mWaYKKZUJMrwZrXExcBczCxmV4zu7ZAkEbqlX7iF2jHYxxIhSMB8EXyegcevJ1rtHlla/ykmfK6HrlT7GQCiDJSDk18HIfrrFi2fduKNNrG+aUzP/WvAE5yE0dVX0CWT85zVkWiG0bOO5O0hAwzRjGSlTpthYZI33saKsA=",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"path\":\"src/calendar.rs\"}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1695,
-            "output_tokens": 19,
-            "total_tokens": 1862,
-            "reasoning_tokens": 148
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "766yapmTIpnUz7IPnMSvGA",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 1695,
-              "candidatesTokenCount": 19,
-              "totalTokenCount": 1862,
-              "thoughtsTokenCount": 148,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1695
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000007"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "src/calendar.rs"
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "766yapmTIpnUz7IPnMSvGA"
+              },
+              "signature": "CiQBaRR9E5zNI4skrTOqO7WqakkpSuPhjJZGO1oOP8RsZ0POC3sKQgFpFH0TtQ5wQ9NzHRDST+P1hOr9Cej2ipJNn7mIILPGj1eWn3FyVnmWyP6IwRl3PJn7P48x3FG3CLsc+NYTlPRwEwqsAQFpFH0TFulsbINyXUEm6JCSzo9pHo6xfVtRsgnEfPg5jmZ0oma+y90DPTZSnluWP6mBm+f7BHx2d/meosraP3Pd7QU5RNJGCXDeYp6MNbOyC6qGQWKNrWMt07JxDv76flSJT6I0odxOXPvfkEYbQj8nTiyaa19EN0gwEyl4OvK7lUxJMyJ6TVLKojCUeTcoWGgod026KatdQfk2am9AErcuRSFEAq9V/nTrtzoKrQEBaRR9E+e1PBWfAUJi2eTOJoP7hUG4JHpC9SxKAXvhl1L9+h5ZTW4HZet9FCNgsGcj8cYzCf/553lU1tqJS8398cHqrfPlpQR/qSdCH86MA3tBMkDnto2gUMjxycU292KI7YvugjuabOX6qlcUv5IKmXWl242Ix3FGstmXM/kH8sPsJbhNp/X7HR1ZvM1SJb7bRQQ7EpM9Q/0alWy0dZvmnbJ40j5Hu+MqjRugtgqIAQFpFH0TYcgzOOW83mWaYKKZUJMrwZrXExcBczCxmV4zu7ZAkEbqlX7iF2jHYxxIhSMB8EXyegcevJ1rtHlla/ykmfK6HrlT7GQCiDJSDk18HIfrrFi2fduKNNrG+aUzP/WvAE5yE0dVX0CWT85zVkWiG0bOO5O0hAwzRjGSlTpthYZI33saKsA=",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -3363,8 +3064,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -3381,8 +3081,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -3401,8 +3100,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -3421,8 +3119,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -3441,8 +3138,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "read_file",
@@ -3461,8 +3157,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "read_file",
                   "content": [
@@ -3481,8 +3176,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "function": {
                     "name": "read_file",
@@ -3501,8 +3195,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "name": "read_file",
                   "content": [
@@ -3521,8 +3214,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3539,8 +3231,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3559,8 +3250,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "function": {
                     "name": "write_file",
@@ -3580,8 +3270,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "name": "write_file",
                   "content": [
@@ -3600,8 +3289,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000006"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3618,8 +3306,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000006"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3638,8 +3325,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000007"
                   },
                   "function": {
                     "name": "read_file",
@@ -3658,8 +3344,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000007"
                   },
                   "name": "read_file",
                   "content": [
@@ -3747,8 +3432,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000008"
               },
               "function": {
                 "name": "write_file",
@@ -3802,80 +3486,41 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "write_file",
-            "arguments": {
-              "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
-              "path": "src/calendar.rs"
-            },
-            "signature": "CiQBaRR9E9N9NCW5SF7lKKSHq5IMo3MiIoZ49QMGxOzvUR7jNGgKXAFpFH0T9HXqGRlczx8UgpCJylVZ3pqi+VbJ3ymbJ+vV37vaxR/W5BTBQUL+rgcZEeHWtiPTggR/OBSjqB+JEjS8RY+bUHgDeuwQsWdeZou3Xl43pKiHrdwhE7gqClMBaRR9E+VSHZICcaYSuEa52gb2HgxgY65pqL0rGIQtYDvqSU/cyZn/GAcU6SnmHtNKpcmUhzQTpCfxJ2XMgM8UgzINZu5n/f27bUrpwZKv6FN0Ig==",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "write_file",
-              "arguments": {
-                "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
-                "path": "src/calendar.rs"
-              }
-            },
-            "signature": "CiQBaRR9E9N9NCW5SF7lKKSHq5IMo3MiIoZ49QMGxOzvUR7jNGgKXAFpFH0T9HXqGRlczx8UgpCJylVZ3pqi+VbJ3ymbJ+vV37vaxR/W5BTBQUL+rgcZEeHWtiPTggR/OBSjqB+JEjS8RY+bUHgDeuwQsWdeZou3Xl43pKiHrdwhE7gqClMBaRR9E+VSHZICcaYSuEa52gb2HgxgY65pqL0rGIQtYDvqSU/cyZn/GAcU6SnmHtNKpcmUhzQTpCfxJ2XMgM8UgzINZu5n/f27bUrpwZKv6FN0Ig==",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\",\"path\":\"src/calendar.rs\"}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1906,
-            "output_tokens": 53,
-            "total_tokens": 1996,
-            "cached_input_tokens": 1593,
-            "reasoning_tokens": 37
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "8a6yapGHAv-hz7IPl87CmQQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 1906,
-              "cachedContentTokenCount": 1593,
-              "candidatesTokenCount": 53,
-              "totalTokenCount": 1996,
-              "thoughtsTokenCount": 37,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1906
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000008"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
+                  "path": "src/calendar.rs"
                 }
-              ],
-              "cacheTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1593
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "8a6yapGHAv-hz7IPl87CmQQ"
+              },
+              "signature": "CiQBaRR9E9N9NCW5SF7lKKSHq5IMo3MiIoZ49QMGxOzvUR7jNGgKXAFpFH0T9HXqGRlczx8UgpCJylVZ3pqi+VbJ3ymbJ+vV37vaxR/W5BTBQUL+rgcZEeHWtiPTggR/OBSjqB+JEjS8RY+bUHgDeuwQsWdeZou3Xl43pKiHrdwhE7gqClMBaRR9E+VSHZICcaYSuEa52gb2HgxgY65pqL0rGIQtYDvqSU/cyZn/GAcU6SnmHtNKpcmUhzQTpCfxJ2XMgM8UgzINZu5n/f27bUrpwZKv6FN0Ig==",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -3935,8 +3580,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -3953,8 +3597,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -3973,8 +3616,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -3993,8 +3635,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -4013,8 +3654,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "read_file",
@@ -4033,8 +3673,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "read_file",
                   "content": [
@@ -4053,8 +3692,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "function": {
                     "name": "read_file",
@@ -4073,8 +3711,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "name": "read_file",
                   "content": [
@@ -4093,8 +3730,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4111,8 +3747,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4131,8 +3766,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "function": {
                     "name": "write_file",
@@ -4152,8 +3786,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "name": "write_file",
                   "content": [
@@ -4172,8 +3805,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000006"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4190,8 +3822,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000006"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4210,8 +3841,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000007"
                   },
                   "function": {
                     "name": "read_file",
@@ -4230,8 +3860,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000007"
                   },
                   "name": "read_file",
                   "content": [
@@ -4250,8 +3879,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000008"
                   },
                   "function": {
                     "name": "write_file",
@@ -4271,8 +3899,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000008"
                   },
                   "name": "write_file",
                   "content": [
@@ -4360,8 +3987,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000009"
               },
               "function": {
                 "name": "run_tests",
@@ -4412,74 +4038,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "run_tests",
-            "arguments": {},
-            "signature": "CiQBaRR9E/oy/XpjdrISaCZ+XlcySOXovV6vjSgPMjIsPHByh7wKUgFpFH0TAOmHeQ7DWYIkLXh+YAtUOtCB3XZpbmI/SUuZJJ2sVsIWZjrxYaQvAqtfqI0teVRb0e732n2++AVbZxMj1bLB3vzmz1rAu60Xl/K844wKOwFpFH0TB8IoHKTQlYm2sJh6D3EXuvETRjh9xn+aQPuUqCj7d5pAjRKVNmoQd4Swsav6M7jkgHvlYDNh",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": "CiQBaRR9E/oy/XpjdrISaCZ+XlcySOXovV6vjSgPMjIsPHByh7wKUgFpFH0TAOmHeQ7DWYIkLXh+YAtUOtCB3XZpbmI/SUuZJJ2sVsIWZjrxYaQvAqtfqI0teVRb0e732n2++AVbZxMj1bLB3vzmz1rAu60Xl/K844wKOwFpFH0TB8IoHKTQlYm2sJh6D3EXuvETRjh9xn+aQPuUqCj7d5pAjRKVNmoQd4Swsav6M7jkgHvlYDNh",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 2021,
-            "output_tokens": 10,
-            "total_tokens": 2056,
-            "cached_input_tokens": 1604,
-            "reasoning_tokens": 25
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "8a6yau7MOcGez7IPzpmy8QE",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 2021,
-              "cachedContentTokenCount": 1604,
-              "candidatesTokenCount": 10,
-              "totalTokenCount": 2056,
-              "thoughtsTokenCount": 25,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 2021
-                }
-              ],
-              "cacheTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1604
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "8a6yau7MOcGez7IPzpmy8QE"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000009"
+              },
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": "CiQBaRR9E/oy/XpjdrISaCZ+XlcySOXovV6vjSgPMjIsPHByh7wKUgFpFH0TAOmHeQ7DWYIkLXh+YAtUOtCB3XZpbmI/SUuZJJ2sVsIWZjrxYaQvAqtfqI0teVRb0e732n2++AVbZxMj1bLB3vzmz1rAu60Xl/K844wKOwFpFH0TB8IoHKTQlYm2sJh6D3EXuvETRjh9xn+aQPuUqCj7d5pAjRKVNmoQd4Swsav6M7jkgHvlYDNh",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -4539,8 +4129,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "list_files",
@@ -4557,8 +4146,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "list_files",
                   "content": [
@@ -4577,8 +4165,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "function": {
                     "name": "read_file",
@@ -4597,8 +4184,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000001"
                   },
                   "name": "read_file",
                   "content": [
@@ -4617,8 +4203,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "function": {
                     "name": "read_file",
@@ -4637,8 +4222,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000002"
                   },
                   "name": "read_file",
                   "content": [
@@ -4657,8 +4241,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "function": {
                     "name": "read_file",
@@ -4677,8 +4260,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000003"
                   },
                   "name": "read_file",
                   "content": [
@@ -4697,8 +4279,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4715,8 +4296,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000004"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4735,8 +4315,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "function": {
                     "name": "write_file",
@@ -4756,8 +4335,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000005"
                   },
                   "name": "write_file",
                   "content": [
@@ -4776,8 +4354,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000006"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4794,8 +4371,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000006"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4814,8 +4390,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000007"
                   },
                   "function": {
                     "name": "read_file",
@@ -4834,8 +4409,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000007"
                   },
                   "name": "read_file",
                   "content": [
@@ -4854,8 +4428,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000008"
                   },
                   "function": {
                     "name": "write_file",
@@ -4875,8 +4448,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000008"
                   },
                   "name": "write_file",
                   "content": [
@@ -4895,8 +4467,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000009"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4913,8 +4484,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000009"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5049,85 +4619,35 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "done"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text_meta",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "CiQBaRR9E7SH8SqKVaO0m7ipRLYIg/6PUOuHi+EHxzJ5dKe1OfEKTgFpFH0TQuiq616yUScFaWOCs76hmzSazOecPDHQJAF4GQ5XdzOyPS3F1hBrmcaRVIuU/oz99LsqWVFSEd4UZRBHtuilUpcivd0C0mibpA=="
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "done",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CiQBaRR9E7SH8SqKVaO0m7ipRLYIg/6PUOuHi+EHxzJ5dKe1OfEKTgFpFH0TQuiq616yUScFaWOCs76hmzSazOecPDHQJAF4GQ5XdzOyPS3F1hBrmcaRVIuU/oz99LsqWVFSEd4UZRBHtuilUpcivd0C0mibpA=="
+                }
               }
             }
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "done",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "CiQBaRR9E7SH8SqKVaO0m7ipRLYIg/6PUOuHi+EHxzJ5dKe1OfEKTgFpFH0TQuiq616yUScFaWOCs76hmzSazOecPDHQJAF4GQ5XdzOyPS3F1hBrmcaRVIuU/oz99LsqWVFSEd4UZRBHtuilUpcivd0C0mibpA=="
-              }
-            }
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 2135,
-            "output_tokens": 1,
-            "total_tokens": 2148,
-            "cached_input_tokens": 1613,
-            "reasoning_tokens": 12
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "8q6yapKbKbqez7IPhYGgwQQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 2135,
-              "cachedContentTokenCount": 1613,
-              "candidatesTokenCount": 1,
-              "totalTokenCount": 2148,
-              "thoughtsTokenCount": 12,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 2135
-                }
-              ],
-              "cacheTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1613
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "8q6yapKbKbqez7IPhYGgwQQ"
           }
         }
       ],

@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
@@ -147,99 +147,54 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The dominant non-background color is red."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The dominant non-background color is red."
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The dominant non-background color is red."
+            }
           }
         },
         {
-          "event": "block_start",
-          "id": "minted:text:1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:1",
-          "delta": {
-            "delta": "text_meta",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
-              }
-            }
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:text:1",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
-              }
-            }
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1115,
-            "output_tokens": 9,
-            "total_tokens": 1177,
-            "reasoning_tokens": 53
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 1115,
-              "candidatesTokenCount": 9,
-              "totalTokenCount": 1177,
-              "thoughtsTokenCount": 53,
-              "promptTokensDetails": [
-                {
-                  "modality": "IMAGE",
-                  "tokenCount": 1089
-                },
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 26
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ"
+              }
+            }
           }
         }
       ],

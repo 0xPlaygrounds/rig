@@ -107,7 +107,7 @@ async fn streaming_reason(
     let (_, terminal) = collect_text_and_terminal(stream).await;
     terminal
         .expect("stream should carry a terminal record")
-        .finish_reason
+        .finish_reason()
         .expect("stream should normalize its finish reason")
 }
 
@@ -185,7 +185,7 @@ async fn streaming_tool_calls() {
                 .expect("tool stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             assert_eq!(
-                terminal.expect("terminal record").finish_reason,
+                terminal.expect("terminal record").finish_reason(),
                 Some(FinishReason::ToolCalls)
             );
         },

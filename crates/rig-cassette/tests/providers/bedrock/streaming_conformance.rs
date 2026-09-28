@@ -10,7 +10,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig_core::completion::{CompletionRequest, FinishReason};
-use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, WireInput, event_frame, fixtures::drain,
@@ -23,30 +23,24 @@ type Events = Vec<Result<aws_bedrock::ConverseStreamOutput, ProviderError>>;
 struct Scripted(std::sync::Arc<std::sync::Mutex<Events>>);
 
 impl Transport<Converse> for Scripted {
-    fn send(
-        &self,
-        payload: ConverseRequest,
-        _exchange: Exchange,
-    ) -> Result<Sending<ConverseFrame>, ProviderError> {
-        let events = std::mem::take(
-            &mut *self
-                .0
-                .lock()
-                .map_err(|_| ProviderError::Provider("script lock poisoned".to_owned()))?,
-        );
+    fn send(&self, payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
+        let events = match self.0.lock() {
+            Ok(mut events) => std::mem::take(&mut *events),
+            Err(_) => {
+                return Opening::failed(ProviderError::Provider("script lock poisoned".to_owned()));
+            }
+        };
         let opened = ConverseFrame::Opened {
             model: payload.model,
             request_id: None,
         };
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter(
-                std::iter::once(Ok(opened)).chain(
-                    events
-                        .into_iter()
-                        .map(|event| event.map(ConverseFrame::Event)),
-                ),
-            ))
-        }))
+        Opening::ready(Opened::new(futures::stream::iter(
+            std::iter::once(Ok(opened)).chain(
+                events
+                    .into_iter()
+                    .map(|event| event.map(ConverseFrame::Event)),
+            ),
+        )))
     }
 }
 
@@ -64,7 +58,7 @@ fn driver() -> WireDriver {
                                 "bedrock conformance frames must be Converse events".to_string(),
                             )
                         }),
-                    Err(error) => Err(ProviderError::Http(error)),
+                    Err(error) => Err(ProviderError::Http(error.into())),
                 })
                 .collect();
             let model = Model::new(

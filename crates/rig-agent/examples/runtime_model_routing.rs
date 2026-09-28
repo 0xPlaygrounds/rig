@@ -13,14 +13,13 @@ use futures::stream;
 use rig_agent::{
     AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
-    completion::{CompletionRequest, Usage},
-    streaming::{StreamEvent, StreamFinal},
+    completion::{CompletionRequest, CompletionResponse, Usage},
     tool::{Tool, ToolContext},
 };
-use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
-use rig_core::operation::{AdapterOutput, Completion, ImagePart};
+use rig_core::test_utils::{MockFrame, MockScript};
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
@@ -31,42 +30,41 @@ fn usage(total_tokens: u64) -> Usage {
 }
 
 /// A local model: `answer` decides its reply from the request. It is the
-/// runtime behind a [`Local`] completion wire, answering with stream events,
-/// so the blocking and streaming surfaces reply alike.
+/// runtime behind a scripted completion wire, answering with one whole
+/// response, so the blocking and streaming surfaces reply alike.
 #[derive(Clone)]
 struct Scripted {
     provider: &'static str,
     total_tokens: u64,
-    answer: fn(&CompletionRequest) -> AssistantContent,
+    answer: fn(&CompletionRequest) -> Result<AssistantContent, ProviderError>,
 }
 
-impl Transport<Local<Completion>> for Scripted {
-    fn send(
-        &self,
-        request: CompletionRequest,
-        _exchange: Exchange,
-    ) -> Result<Sending<Result<StreamEvent, ProviderError>>, ProviderError> {
-        let mut out = AdapterOutput::new();
-        out.message_id(format!("{}-message", self.provider));
-        out.content(&[(self.answer)(&request)], ImagePart::Block);
-        out.final_record(StreamFinal::new(
-            self.provider,
+impl Transport<MockScript> for Scripted {
+    fn send(&self, request: CompletionRequest, _exchange: Exchange) -> Opening<MockFrame> {
+        let answer = match (self.answer)(&request) {
+            Ok(answer) => answer,
+            Err(error) => return Opening::failed(error),
+        };
+        let response = CompletionResponse::new(
+            vec![answer],
             usage(self.total_tokens),
+            self.provider,
             serde_json::Value::Null,
-        ));
-        Ok(Sending::opened(Opened::new(stream::iter(
-            out.into_items().into_iter().map(Ok),
-        ))))
+        )
+        .with_message_id(format!("{}-message", self.provider));
+        Opening::ready(Opened::new(stream::iter([Ok(MockFrame::Response(
+            Box::new(response),
+        ))])))
     }
 }
 
 fn local(
     provider: &'static str,
     total_tokens: u64,
-    answer: fn(&CompletionRequest) -> AssistantContent,
-) -> Model<Local<Completion>, Scripted> {
+    answer: fn(&CompletionRequest) -> Result<AssistantContent, ProviderError>,
+) -> Model<MockScript, Scripted> {
     Model::new(
-        Local::new(provider),
+        MockScript::new(provider),
         Scripted {
             provider,
             total_tokens,
@@ -76,27 +74,29 @@ fn local(
 }
 
 /// Calls the search tool.
-fn fast_research(_request: &CompletionRequest) -> AssistantContent {
-    AssistantContent::ToolCall(ToolCall::from_wire(
+fn fast_research(_request: &CompletionRequest) -> Result<AssistantContent, ProviderError> {
+    let search = rig_core::message::ToolName::new("search")
+        .map_err(|error| ProviderError::Provider(error.to_string()))?;
+    Ok(AssistantContent::ToolCall(ToolCall::from_wire(
         "search-1",
         ToolFunction::new(
-            "search".to_owned(),
+            search,
             serde_json::json!({"query": "runtime model routing"}),
         ),
-    ))
+    )))
 }
 
 /// Answers from the committed search result.
-fn strong_synthesis(request: &CompletionRequest) -> AssistantContent {
+fn strong_synthesis(request: &CompletionRequest) -> Result<AssistantContent, ProviderError> {
     let saw_tool_result = request.chat_history.iter().any(|message| {
         matches!(message, rig_core::message::Message::User { content }
             if content.iter().any(|item| matches!(item, rig_core::message::UserContent::ToolResult(_))))
     });
-    AssistantContent::text(if saw_tool_result {
+    Ok(AssistantContent::text(if saw_tool_result {
         "The strong model synthesized the committed search result."
     } else {
         "The tool result was missing."
-    })
+    }))
 }
 
 #[derive(Deserialize)]

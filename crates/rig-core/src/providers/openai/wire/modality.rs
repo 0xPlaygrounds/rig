@@ -6,6 +6,7 @@
 //! let wire = OpenAI::new("key").embedding(TEXT_EMBEDDING_3_SMALL, None);
 //! ```
 
+use crate::wire::Flow;
 use serde::{Deserialize, Serialize};
 
 use crate::embeddings;
@@ -230,20 +231,23 @@ pub struct EmbeddingsDecoder {
     model: String,
 }
 
-impl Decoder<Embedding> for EmbeddingsDecoder {
+impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
     type Event = CompatibleEmbeddingResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Embedding>) {
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, Embedding>,
+    ) -> Result<Flow, ProviderError> {
         if event.usage.is_none() && self.requires_usage {
-            out.push(Err(ProviderError::Response(format!(
+            return Err(ProviderError::Response(format!(
                 "{} embedding response omitted required usage",
                 self.provider
-            ))));
-            return;
+            )));
         }
         let usage = event
             .usage
@@ -269,12 +273,11 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
         } else {
             event.model
         };
-        out.push(Ok(embeddings::EmbeddingResponse::new(
-            embeddings,
-            self.provider,
-        )
-        .with_model(model)
-        .with_usage(usage)));
+        Ok(out.end(
+            embeddings::EmbeddingResponse::new(embeddings, self.provider)
+                .with_model(model)
+                .with_usage(usage),
+        ))
     }
 }
 
@@ -282,7 +285,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = EmbeddingsDecoder;
+    type Decoder<'id> = EmbeddingsDecoder;
 
     /// Only an explicit nonzero declaration permits reply-width mismatch checks.
     fn describe(&self) -> Descriptor<'_> {
@@ -348,7 +351,7 @@ impl Wire for Embeddings {
         )
     }
 
-    fn decoder(&self, _mode: Mode) -> EmbeddingsDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         EmbeddingsDecoder {
             requires_usage: self.provider.dialect.quirks.embedding.requires_usage,
             provider: self.provider.dialect.name,
@@ -485,23 +488,23 @@ pub struct TranscriptionsDecoder {
     provider: &'static str,
 }
 
-impl Decoder<Transcription> for TranscriptionsDecoder {
+impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
     type Event = crate::providers::openai::transcription::TranscriptionResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Transcription>) {
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, Transcription>,
+    ) -> Result<Flow, ProviderError> {
         use crate::transcription::NormalizeTranscriptionResponse;
 
-        match serde_json::to_value(&event) {
-            Ok(raw) => match event.normalize(self.provider) {
-                Ok(response) => out.push(Ok(response.with_raw(raw))),
-                Err(error) => out.push(Err(error)),
-            },
-            Err(error) => out.push(Err(ProviderError::from(error))),
-        }
+        let raw = serde_json::to_value(&event)?;
+        let response = event.normalize(self.provider)?;
+        Ok(out.end(response.with_raw(raw)))
     }
 }
 
@@ -509,7 +512,7 @@ impl Wire for Transcriptions {
     type Op = Transcription;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = TranscriptionsDecoder;
+    type Decoder<'id> = TranscriptionsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
@@ -535,7 +538,7 @@ impl Wire for Transcriptions {
         encoded(&self.provider, builder, body)
     }
 
-    fn decoder(&self, _mode: Mode) -> TranscriptionsDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         TranscriptionsDecoder {
             provider: self.provider.dialect.name,
         }
@@ -649,7 +652,7 @@ pub enum ImagesEvent {
 }
 
 #[cfg(feature = "image")]
-impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
+impl<'id> Decoder<'id, crate::operation::ImageGeneration> for ImagesDecoder {
     type Event = ImagesEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -665,11 +668,11 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
         }
     }
 
-    fn interpret(
+    fn decode(
         &mut self,
         event: Self::Event,
-        out: &mut Out<'_, crate::operation::ImageGeneration>,
-    ) {
+        out: Out<'id, crate::operation::ImageGeneration>,
+    ) -> Result<Flow, ProviderError> {
         use crate::image_generation::ImageGenerationResponse;
         use base64::Engine;
 
@@ -677,28 +680,21 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
             // The image is already the payload, and the reply is not a
             // document, so `raw` stays null rather than restating the bytes.
             ImagesEvent::Raw(image) => {
-                out.push(Ok(ImageGenerationResponse::new(image, self.provider)));
-                return;
+                return Ok(out.end(ImageGenerationResponse::new(image, self.provider)));
             }
             ImagesEvent::Json(reply) => reply,
         };
         let Some(encoded) = reply.first_base64() else {
-            out.push(Err(ProviderError::Response(
-                "missing image data".to_owned(),
-            )));
-            return;
+            return Err(ProviderError::Response("missing image data".to_owned()));
         };
         let image = match base64::prelude::BASE64_STANDARD.decode(encoded) {
             Ok(image) => image,
             Err(error) => {
-                out.push(Err(ProviderError::Response(error.to_string())));
-                return;
+                return Err(ProviderError::Response(error.to_string()));
             }
         };
         let raw = serde_json::to_value(&reply).unwrap_or(serde_json::Value::Null);
-        out.push(Ok(
-            ImageGenerationResponse::new(image, self.provider).with_raw(raw)
-        ));
+        Ok(out.end(ImageGenerationResponse::new(image, self.provider).with_raw(raw)))
     }
 }
 
@@ -707,7 +703,7 @@ impl Wire for Images {
     type Op = crate::operation::ImageGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ImagesDecoder;
+    type Decoder<'id> = ImagesDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
@@ -774,7 +770,7 @@ impl Wire for Images {
         json_post_to(&self.provider, uri, &body)
     }
 
-    fn decoder(&self, _mode: Mode) -> ImagesDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ImagesDecoder {
             provider: self.provider.dialect.name,
             body: self.provider.dialect.quirks.image_body,
@@ -822,7 +818,7 @@ pub struct SpeechReply {
 }
 
 #[cfg(feature = "audio")]
-impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
+impl<'id> Decoder<'id, crate::operation::AudioGeneration> for SpeechDecoder {
     type Event = Vec<u8>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -833,11 +829,11 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
         })
     }
 
-    fn interpret(
+    fn decode(
         &mut self,
         event: Self::Event,
-        out: &mut Out<'_, crate::operation::AudioGeneration>,
-    ) {
+        out: Out<'id, crate::operation::AudioGeneration>,
+    ) -> Result<Flow, ProviderError> {
         use base64::Engine;
 
         let audio = match self.body {
@@ -848,23 +844,23 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
                 let reply = match serde_json::from_slice::<SpeechReply>(&event) {
                     Ok(reply) => reply,
                     Err(error) => {
-                        out.push(Err(ProviderError::Response(error.to_string())));
-                        return;
+                        return Err(ProviderError::Response(error.to_string()));
                     }
                 };
                 match base64::prelude::BASE64_STANDARD.decode(&reply.audio) {
                     Ok(audio) => audio,
                     Err(error) => {
-                        out.push(Err(ProviderError::Response(error.to_string())));
-                        return;
+                        return Err(ProviderError::Response(error.to_string()));
                     }
                 }
             }
         };
-        out.push(Ok(crate::audio_generation::AudioGenerationResponse::new(
-            audio,
-            self.provider,
-        )));
+        Ok(
+            out.end(crate::audio_generation::AudioGenerationResponse::new(
+                audio,
+                self.provider,
+            )),
+        )
     }
 }
 
@@ -873,7 +869,7 @@ impl Wire for Speech {
     type Op = crate::operation::AudioGeneration;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = SpeechDecoder;
+    type Decoder<'id> = SpeechDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
@@ -921,7 +917,7 @@ impl Wire for Speech {
         json_post_to(&self.provider, uri, &body)
     }
 
-    fn decoder(&self, _mode: Mode) -> SpeechDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         SpeechDecoder {
             provider: self.provider.dialect.name,
             body: self.provider.dialect.quirks.speech_body,
@@ -1012,19 +1008,23 @@ pub struct ModelsReply {
 #[derive(Default)]
 pub struct ModelsDecoder;
 
-impl Decoder<ModelListing> for ModelsDecoder {
+impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
     type Event = ModelsReply;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, ModelListing>) {
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, ModelListing>,
+    ) -> Result<Flow, ProviderError> {
         let models = event.data.into_iter().map(ModelInfo::from).collect();
-        out.push(Ok(ModelPage {
+        Ok(out.end(ModelPage {
             models: ModelList::new(models),
             next: None,
-        }));
+        }))
     }
 }
 
@@ -1032,7 +1032,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ModelsDecoder;
+    type Decoder<'id> = ModelsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
@@ -1043,7 +1043,7 @@ impl Wire for Models {
         get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
-    fn decoder(&self, _mode: Mode) -> ModelsDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ModelsDecoder
     }
 }
@@ -1122,14 +1122,18 @@ pub struct RerankDecoder {
     provider: &'static str,
 }
 
-impl Decoder<RerankOp> for RerankDecoder {
+impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
     type Event = RerankReply;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, RerankOp>) {
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, RerankOp>,
+    ) -> Result<Flow, ProviderError> {
         let raw = serde_json::to_value(&event).unwrap_or(serde_json::Value::Null);
         let usage = event
             .usage
@@ -1148,13 +1152,12 @@ impl Decoder<RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        out.push(Ok(crate::rerank::RerankResponse::new(
-            results,
-            self.provider,
-        )
-        .with_optional_model(event.model)
-        .with_usage(usage)
-        .with_raw(raw)));
+        Ok(out.end(
+            crate::rerank::RerankResponse::new(results, self.provider)
+                .with_optional_model(event.model)
+                .with_usage(usage)
+                .with_raw(raw),
+        ))
     }
 }
 
@@ -1162,7 +1165,7 @@ impl Wire for Rerank {
     type Op = RerankOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = RerankDecoder;
+    type Decoder<'id> = RerankDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
@@ -1209,7 +1212,7 @@ impl Wire for Rerank {
         )
     }
 
-    fn decoder(&self, _mode: Mode) -> RerankDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         RerankDecoder {
             provider: self.provider.dialect.name,
         }
@@ -1236,7 +1239,7 @@ impl Wire for Verify {
     type Op = VerifyOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = VerifyDecoder;
+    type Decoder<'id> = VerifyDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
@@ -1253,7 +1256,7 @@ impl Wire for Verify {
         get(&self.provider, path)
     }
 
-    fn decoder(&self, _mode: Mode) -> VerifyDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         VerifyDecoder
     }
 }

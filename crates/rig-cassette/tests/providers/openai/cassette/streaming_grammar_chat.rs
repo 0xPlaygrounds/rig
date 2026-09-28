@@ -1,7 +1,7 @@
 //! Canonical streaming-grammar coverage for the OpenAI **chat-completions**
 //! wire (the compat family's canonical wire), asserted through the
 //! *normalized* path: the aggregated [`StreamingCompletionResponse::choice`],
-//! the terminal [`StreamFinal`] record, usage, IDs, and finish reason — real
+//! the terminal `CompletionResponse` record, usage, IDs, and finish reason — real
 //! recorded wire traffic, not synthetic chunks.
 //!
 //! Re-record with:
@@ -12,10 +12,12 @@
 //! mint literal IDs.
 
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall};
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::with_openai_completions_cassette;
@@ -28,9 +30,8 @@ struct StreamRun {
     text: String,
     text_chunks: usize,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionResponse>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
@@ -38,7 +39,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         text: String::new(),
         text_chunks: 0,
         tool_calls: Vec::new(),
-        finals: Vec::new(),
         choice: vec![AssistantContent::text("")],
         response: None,
     };
@@ -48,43 +48,35 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         let item = item.expect("stream item should be ok");
         raw_items.push(Ok(item.clone()));
         match item {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => {
+            Item::Event(StreamEvent::Text { text, .. }) => {
                 run.text.push_str(&text);
                 run.text_chunks += 1;
             }
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
                 ..
-            } => run.tool_calls.push(tool_call),
-            StreamEvent::Final(response) => run.finals.push(response),
+            }) => run.tool_calls.push(tool_call),
             _ => {}
         }
     }
+    let response = stream.finish().await.expect("the stream ends");
 
-    run.choice = stream.folded().snapshot();
+    run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.folded().terminal().cloned();
+    run.response = Some(response.clone());
     run
 }
 
 fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
-    assert_eq!(
-        run.finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
     let terminal = run
         .response
         .as_ref()
         .expect("aggregated stream should retain the terminal record");
     assert_eq!(
-        terminal.finish_reason.as_ref(),
-        Some(&expected_finish),
+        terminal.finish_reason(),
+        Some(expected_finish),
         "unexpected finish reason"
     );
     assert!(
@@ -149,7 +141,7 @@ async fn parallel_tool_calls_stay_distinct() {
                     "{name} id should aggregate"
                 );
                 assert!(
-                    streamed.provider.is_some(),
+                    streamed.id.provider().is_some(),
                     "{name} should carry the wire-issued call id"
                 );
                 assert!(

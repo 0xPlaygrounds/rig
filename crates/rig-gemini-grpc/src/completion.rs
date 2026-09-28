@@ -21,17 +21,15 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use base64::Engine as _;
 use futures::StreamExt;
 use rig_core::completion::{self, CompletionRequest};
-use rig_core::driver::{Exchange, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
-use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::message::{self, MimeType};
 use rig_core::operation::Completion;
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
 };
-use rig_core::providers::gemini::{
-    GEMINI_TEXT_EXTRAS_KEY, text_signature_extras, text_thought_signature,
-};
+use rig_core::providers::gemini::text_thought_signature;
 use rig_core::wire::{Descriptor, Mode, Wire};
 use std::convert::TryFrom;
 
@@ -54,19 +52,11 @@ impl GenerateContent {
     }
 }
 
-/// One unit of a `GenerateContent` reply.
-pub enum GrpcFrame {
-    /// The whole unary reply.
-    Whole(Box<GenerateContentResponse>),
-    /// One streamed chunk.
-    Chunk(GenerateContentResponse),
-}
-
 impl Wire for GenerateContent {
     type Op = Completion;
     type Payload = GenerateContentRequest;
-    type Frame = GrpcFrame;
-    type Decoder = GrpcAdapter;
+    type Frame = GenerateContentResponse;
+    type Decoder<'id> = GrpcAdapter<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
@@ -76,17 +66,13 @@ impl Wire for GenerateContent {
     /// so that is the reasoning a request may replay.
     fn encode(
         &self,
-        mut request: CompletionRequest,
+        request: CompletionRequest,
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
-        rig_core::message::retain_replayable_reasoning(
-            &mut request.chat_history,
-            &[REASONING_ISSUER],
-        );
-        create_grpc_request(&self.model, request)
+        create_grpc_request(&self.model, request.replayable_to(&[ISSUER])?)
     }
 
-    fn decoder(&self, _mode: Mode) -> GrpcAdapter {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         GrpcAdapter::default()
     }
 }
@@ -96,17 +82,16 @@ impl Transport<GenerateContent> for GeminiGrpc {
         &self,
         request: GenerateContentRequest,
         exchange: Exchange,
-    ) -> Result<Sending<GrpcFrame>, ProviderError> {
+    ) -> Opening<GenerateContentResponse> {
         let mode = exchange.mode;
-        let mut client = self
-            .grpc_client()
-            .map_err(|error| ProviderError::Provider(error.to_string()))?;
-        Ok(Sending::later(async move {
-            match mode {
+        let mut client = match self.grpc_client() {
+            Ok(client) => client,
+            Err(error) => return Opening::failed(ProviderError::Provider(error.to_string())),
+        };
+        Opening::new(async move {
+            Ok(match mode {
                 Mode::Unary => match client.generate_content(request).await {
-                    Ok(response) => Opened::new(futures::stream::iter([Ok(GrpcFrame::Whole(
-                        Box::new(response.into_inner()),
-                    ))])),
+                    Ok(response) => Opened::new(futures::stream::iter([Ok(response.into_inner())])),
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
                 Mode::Streaming => match client.stream_generate_content(request).await {
@@ -116,7 +101,7 @@ impl Transport<GenerateContent> for GeminiGrpc {
                         Opened::new(async_stream::stream! {
                             while let Some(item) = chunks.next().await {
                                 match item {
-                                    Ok(chunk) => yield Ok(GrpcFrame::Chunk(chunk)),
+                                    Ok(chunk) => yield Ok(chunk),
                                     Err(status) => {
                                         yield Err(rpc_error(&status));
                                         break;
@@ -127,8 +112,8 @@ impl Transport<GenerateContent> for GeminiGrpc {
                     }
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
-            }
-        }))
+            })
+        })
     }
 }
 
@@ -139,6 +124,9 @@ pub const PROVIDER_NAME: &str = "gemini-grpc";
 /// which also serves the REST transport, so thought signatures move between
 /// the two.
 pub const REASONING_ISSUER: &str = rig_core::providers::gemini::completion::PROVIDER_NAME;
+
+/// [`REASONING_ISSUER`], the only issuer whose reasoning this wire replays.
+const ISSUER: message::Issuer = message::Issuer::from_static(REASONING_ISSUER);
 
 /// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
 ///
@@ -246,12 +234,8 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
-    let mut chat_history = chat_history;
-    rig_core::message::retain_replayable_reasoning(&mut chat_history, &[REASONING_ISSUER]);
-    let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
-    // functionResponse.name keys the replay: cross-provider ingested
-    // results arrive with an empty name and their call carries it.
-    rig_core::providers::internal::resolve_empty_tool_result_names(&mut chat_history);
+    let (history_system, chat_history) =
+        split_system_messages_from_history(chat_history.into_vec());
     let mut contents = Vec::new();
 
     for msg in chat_history {
@@ -335,6 +319,13 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
         message::Message::Assistant { content, .. } => {
             let parts = content
                 .into_iter()
+                // Reasoning another service issued is not replayed.
+                .filter(|part| match part {
+                    message::AssistantContent::Reasoning(reasoning) => {
+                        reasoning.open(&ISSUER).is_some()
+                    }
+                    _ => true,
+                })
                 .map(rig_assistant_content_to_grpc_part)
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -378,11 +369,12 @@ fn rig_user_content_to_grpc_part(
             // correlation handles must not reach the wire.
             Ok(data_part(proto::part::Data::FunctionResponse(
                 proto::FunctionResponse {
-                    name: result.name,
+                    name: result.name.into(),
                     response: Some(response_struct),
                     id: result
-                        .provider
-                        .map(|provider| provider.call_id)
+                        .call
+                        .provider()
+                        .map(|provider| provider.call_id.clone())
                         .unwrap_or_default(),
                 },
             )))
@@ -452,131 +444,35 @@ fn rig_assistant_content_to_grpc_part(
             Ok(proto::Part {
                 thought_signature: decode_optional_base64(tool_call.signature)?,
                 ..data_part(proto::part::Data::FunctionCall(proto::FunctionCall {
-                    name: tool_call.function.name,
+                    name: tool_call.function.name.into(),
                     args: Some(args),
                     // Only a provider-issued id may travel back on the
-                    // wire; minted correlation handles stay internal.
+                    // wire; rig-issued ids stay internal.
                     id: tool_call
-                        .provider
-                        .map(|provider| provider.call_id)
+                        .id
+                        .provider()
+                        .map(|provider| provider.call_id.clone())
                         .unwrap_or_default(),
                 }))
             })
         }
-        message::AssistantContent::Reasoning(reasoning) => Ok(proto::Part {
-            data: Some(proto::part::Data::Text(reasoning.display_text())),
-            thought: true,
-            thought_signature: decode_optional_base64(
-                reasoning
-                    .first_signature()
-                    .map(std::string::ToString::to_string),
-            )?,
-            part_metadata: None,
-        }),
+        message::AssistantContent::Reasoning(reasoning) => {
+            let reasoning = reasoning.open(&ISSUER).ok_or_else(|| {
+                EncodeError::request("Gemini cannot replay reasoning another service issued")
+            })?;
+            Ok(proto::Part {
+                data: Some(proto::part::Data::Text(reasoning.display_text())),
+                thought: true,
+                thought_signature: decode_optional_base64(
+                    reasoning
+                        .first_signature()
+                        .map(std::string::ToString::to_string),
+                )?,
+                part_metadata: None,
+            })
+        }
         _ => Err(EncodeError::request("Unsupported assistant content type")),
     }
-}
-
-/// The assistant content of a whole `GenerateContent` reply. A
-/// tool-protocol abort fails it with the same error the stream reports.
-pub(crate) fn assistant_content(
-    response: &GenerateContentResponse,
-) -> Result<Vec<completion::AssistantContent>, ProviderError> {
-    let candidate = response
-        .candidates
-        .first()
-        .ok_or_else(|| ProviderError::Response("No response candidates in response".into()))?;
-
-    // Same helper (and therefore the same message) as the streaming path,
-    // so a tool-protocol abort reads identically on both surfaces.
-    if let Some(err) = tool_protocol_finish_reason_error(
-        candidate.finish_reason,
-        candidate.finish_message.as_deref(),
-    ) {
-        return Err(err);
-    }
-
-    let content_ref = candidate.content.as_ref().ok_or_else(|| {
-        ProviderError::Response(format!(
-            "Gemini candidate missing content (finish_reason={})",
-            candidate.finish_reason
-        ))
-    })?;
-
-    let mut assistant_contents = Vec::new();
-
-    let mut tool_index = 0u64;
-    for part in &content_ref.parts {
-        let assistant_content = match &part.data {
-            Some(proto::part::Data::Text(text)) => {
-                if part.thought {
-                    completion::AssistantContent::Reasoning(
-                        Reasoning::new_with_signature(
-                            text,
-                            encode_optional_base64(&part.thought_signature),
-                        )
-                        .with_provider(REASONING_ISSUER),
-                    )
-                } else {
-                    // A signature on answer text returns on that text part.
-                    completion::AssistantContent::Text(message::Text {
-                        text: text.clone(),
-                        additional_params: encode_optional_base64(&part.thought_signature)
-                            .and_then(|signature| {
-                                text_signature_extras(GEMINI_TEXT_EXTRAS_KEY, signature)
-                            }),
-                    })
-                }
-            }
-            Some(proto::part::Data::InlineData(inline_data)) => {
-                let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
-                match mime_type {
-                    Some(message::MediaType::Image(media_type)) => {
-                        let b64 =
-                            base64::engine::general_purpose::STANDARD.encode(&inline_data.data);
-                        completion::AssistantContent::image_base64(
-                            b64,
-                            Some(media_type),
-                            Some(message::ImageDetail::default()),
-                        )
-                    }
-                    _ => {
-                        return Err(ProviderError::Response(format!(
-                            "Unsupported media type {mime_type:?}"
-                        )));
-                    }
-                }
-            }
-            Some(proto::part::Data::FunctionCall(function_call)) => {
-                let args = function_call.args.as_ref().map_or(
-                    serde_json::Value::Object(serde_json::Map::new()),
-                    prost_struct_to_json,
-                );
-
-                // Index-based handles distinguish repeated calls to one tool.
-                let index = tool_index;
-                tool_index += 1;
-                let tool_call = message::ToolCall::from_wire_indexed(
-                    function_call.id.clone(),
-                    index,
-                    message::ToolFunction::new(function_call.name.clone(), args),
-                )
-                .with_signature(encode_optional_base64(&part.thought_signature));
-
-                completion::AssistantContent::ToolCall(tool_call)
-            }
-            _ => {
-                return Err(ProviderError::Response(
-                    "Response did not contain a message or tool call".into(),
-                ));
-            }
-        };
-
-        assistant_contents.push(assistant_content);
-    }
-
-    rig_core::message::normalize_missing_tool_call_ids(&mut assistant_contents);
-    rig_core::message::require_non_empty_response(assistant_contents)
 }
 
 fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, EncodeError> {

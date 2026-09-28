@@ -6,9 +6,9 @@ use rig_core::message::{Message, Text, ToolChoice, UserContent};
 fn minimal_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::User {
-            content: vec![UserContent::Text(Text::new("test".to_string()))],
-        }],
+        chat_history: rig_core::NonEmpty::new(Message::User {
+            content: rig_core::NonEmpty::new(UserContent::Text(Text::new("test".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -23,6 +23,7 @@ fn minimal_request() -> CompletionRequest {
 fn aws_request(request: CompletionRequest, prompt_caching: bool) -> AwsCompletionRequest {
     AwsCompletionRequest {
         inner: request,
+        issuer: "test".into(),
         prompt_caching,
     }
 }
@@ -30,39 +31,40 @@ fn aws_request(request: CompletionRequest, prompt_caching: bool) -> AwsCompletio
 /// Synthetic transcript checks wire correlation without a live Bedrock call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use rig_core::message::{AssistantContent, ToolCall, ToolCallId, ToolFunction};
+    use rig_core::message::{AssistantContent, CallId, ToolCall, ToolFunction};
     let generated = ToolCall::new(
-        ToolCallId::minted(0),
+        CallId::from_wire(""),
         ToolFunction {
-            name: "test".into(),
+            name: rig_core::message::ToolName::new("test").expect("tool name"),
             arguments: serde_json::json!({}),
         },
     );
-    let hint = generated.id.wire_hint().into_owned();
+    let hint = generated.id.wire().into_owned();
     let real = ToolCall::from_wire(&hint, generated.function.clone());
     let call = |call: &ToolCall| Message::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(call.clone())],
+        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(call.clone())),
     };
     let result = |call: &ToolCall| Message::User {
-        content: vec![UserContent::tool_result_for(
+        content: rig_core::NonEmpty::new(UserContent::tool_result(
             call.id.clone(),
-            call.provider.clone(),
-            "test",
-            vec![rig_core::message::ToolResultContent::text("done")],
-        )],
+            rig_core::message::ToolName::new("test").expect("tool name"),
+            rig_core::NonEmpty::new(rig_core::message::ToolResultContent::text("done")),
+        )),
     };
     let mut request = minimal_request();
-    request.chat_history = vec![
+    request.chat_history = rig_core::NonEmpty::with_rest(
         Message::system("system"),
-        call(&generated),
-        call(&real),
-        result(&real),
-        Message::assistant("intervening text"),
-        result(&generated),
-        call(&generated),
-        result(&generated),
-    ];
+        [
+            call(&generated),
+            call(&real),
+            result(&real),
+            Message::assistant("intervening text"),
+            result(&generated),
+            call(&generated),
+            result(&generated),
+        ],
+    );
     let messages = aws_request(request, false).messages().unwrap();
     let mut calls = Vec::new();
     let mut results = Vec::new();
@@ -80,11 +82,11 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         results,
         [calls[1].clone(), calls[0].clone(), calls[2].clone()]
     );
+    // The provider's id is sent as it is, and the rig-issued id is one alias
+    // wherever its call appears, distinct from it.
     assert_eq!(calls[1], hint);
-    assert_eq!(
-        calls.iter().collect::<std::collections::HashSet<_>>().len(),
-        3
-    );
+    assert_eq!(calls[0], calls[2]);
+    assert_ne!(calls[0], calls[1]);
 }
 
 #[test]
@@ -324,12 +326,12 @@ fn test_tool_with_parameters() {
 fn test_system_prompt_includes_system_history() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: rig_core::NonEmpty::with_rest(
             Message::system("History system instruction"),
-            Message::User {
-                content: vec![UserContent::Text(Text::new("test".to_string()))],
-            },
-        ],
+            [Message::User {
+                content: rig_core::NonEmpty::new(UserContent::Text(Text::new("test".to_string()))),
+            }],
+        ),
         ..minimal_request()
     };
 
@@ -378,12 +380,12 @@ fn test_system_prompt_appends_cache_point_when_prompt_caching_enabled() {
 fn test_messages_exclude_system_history() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: rig_core::NonEmpty::with_rest(
             Message::system("History system instruction"),
-            Message::User {
-                content: vec![UserContent::Text(Text::new("test".to_string()))],
-            },
-        ],
+            [Message::User {
+                content: rig_core::NonEmpty::new(UserContent::Text(Text::new("test".to_string()))),
+            }],
+        ),
         ..minimal_request()
     };
 
@@ -417,18 +419,26 @@ fn test_messages_skip_cache_point_when_history_contains_reasoning() {
     let reasoning =
         rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
     let request = CompletionRequest {
-        chat_history: vec![
+        chat_history: rig_core::NonEmpty::with_rest(
             Message::User {
-                content: vec![UserContent::Text(Text::new("user prompt".to_string()))],
+                content: rig_core::NonEmpty::new(UserContent::Text(Text::new(
+                    "user prompt".to_string(),
+                ))),
             },
-            Message::Assistant {
-                id: None,
-                content: vec![rig_core::completion::AssistantContent::Reasoning(reasoning)],
-            },
-            Message::User {
-                content: vec![UserContent::Text(Text::new("follow up".to_string()))],
-            },
-        ],
+            [
+                Message::Assistant {
+                    id: None,
+                    content: rig_core::NonEmpty::new(
+                        rig_core::completion::AssistantContent::Reasoning(reasoning.sealed("test")),
+                    ),
+                },
+                Message::User {
+                    content: rig_core::NonEmpty::new(UserContent::Text(Text::new(
+                        "follow up".to_string(),
+                    ))),
+                },
+            ],
+        ),
         ..minimal_request()
     };
 
@@ -536,17 +546,19 @@ fn document_request(prompt_document: bool) -> CompletionRequest {
     use rig_core::completion::Document;
     use rig_core::message::DocumentMediaType;
     let mut request = minimal_request();
-    request.chat_history = vec![
+    request.chat_history = rig_core::NonEmpty::with_rest(
         Message::system("Answer with the exact token from the document only."),
-        Message::assistant("Acknowledged."),
-    ];
+        [Message::assistant("Acknowledged.")],
+    );
     if prompt_document {
         request.chat_history.push(Message::User {
-            content: vec![
+            content: rig_core::NonEmpty::with_rest(
                 UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
-                UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
-                UserContent::text("According to the document, what is the ordering token?"),
-            ],
+                [
+                    UserContent::document("A repeated attachment.", Some(DocumentMediaType::TXT)),
+                    UserContent::text("According to the document, what is the ordering token?"),
+                ],
+            ),
         });
     } else {
         request.chat_history.push(Message::user(

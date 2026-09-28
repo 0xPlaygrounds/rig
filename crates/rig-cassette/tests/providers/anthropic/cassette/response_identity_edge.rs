@@ -17,7 +17,6 @@ use rig::providers::anthropic::completion::{
     CLAUDE_SONNET_4_6, CacheTtl, CompletionResponse as AnthropicResponse, Usage,
 };
 use rig::providers::anthropic::wire::Messages;
-use rig::streaming::StreamEvent;
 use rig::tool::{Tool, ToolContext, ToolExecutionError};
 use serde::Deserialize;
 
@@ -120,13 +119,10 @@ async fn caching_and_identity_share_the_wire_streaming() {
                             .max_tokens(16),
                     )
                     .expect("stream should open");
-                let mut terminal = None;
                 while let Some(item) = stream.next().await {
-                    if let StreamEvent::Final(final_record) = item.expect("stream item") {
-                        terminal = Some(final_record);
-                    }
+                    item.expect("stream item");
                 }
-                terminal.expect("terminal record")
+                stream.finish().await.expect("terminal record")
             };
 
             let first = send(model.clone()).await;
@@ -658,21 +654,11 @@ async fn stream_conversion_carries_live_identity() {
                     CompletionRequest::new("Reply with exactly: conversion probe").max_tokens(32),
                 )
                 .expect("stream should open");
-            let mut terminal_id = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item") {
-                    terminal_id = final_record.provider_request_id.clone();
-                }
+                item.expect("stream item");
             }
-            assert_transport_request_id(terminal_id.as_deref(), "live terminal");
-
-            let response: rig::completion::CompletionResponse = stream
-                .finish()
-                .expect("the stream produced a terminal record");
-            assert_eq!(
-                response.provider_request_id, terminal_id,
-                "conversion carries the live terminal's id"
-            );
+            let response = stream.finish().await.expect("the stream ends");
+            assert_transport_request_id(response.provider_request_id.as_deref(), "live terminal");
         },
     )
     .await;

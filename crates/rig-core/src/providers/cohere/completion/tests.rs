@@ -161,7 +161,10 @@ async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
     let Some(completion::AssistantContent::ToolCall(call)) = normalized.choice.first() else {
         panic!("expected a tool call, got {:?}", normalized.choice);
     };
-    assert_eq!(call.id.explicit(), Some("subtract_1"));
+    assert_eq!(
+        call.id.provider().map(|provider| provider.call_id.as_str()),
+        Some("subtract_1")
+    );
     assert_eq!(call.function.name, "subtract");
     assert_eq!(call.function.arguments, serde_json::json!({"x": 5, "y": 2}));
 }
@@ -448,9 +451,7 @@ async fn completion_non_success_preserves_status_and_body() {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{
-        adapter_requests, assert_adapter_pairs,
-    };
+    use crate::providers::internal::wire_ids::tests::{adapter_requests, assert_adapter_pairs};
     for request in adapter_requests() {
         let wire =
             CohereCompletionRequest::try_from(("command-a-03-2025", request.clone())).unwrap();

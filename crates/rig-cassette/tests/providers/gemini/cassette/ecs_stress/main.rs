@@ -8,7 +8,7 @@ use bevy_ecs::prelude::*;
 use rig::{
     effect::{EffectKind, Outcome},
     message::UserContent,
-    streaming::{Delta, StreamEvent},
+    streaming::StreamEvent,
     tool::ToolOutput,
 };
 use rig_ecs::{
@@ -75,7 +75,7 @@ fn published(world: &mut World) {
                 entity,
                 stream
                     .events
-                    .iter()
+                    .events()
                     .skip(read.map_or(0, |r| r.0))
                     .cloned()
                     .collect::<Vec<_>>(),
@@ -87,14 +87,8 @@ fn published(world: &mut World) {
         let run = run_for(world, effect);
         for event in events {
             let tag = match event {
-                StreamEvent::BlockDelta {
-                    delta: Delta::Text { .. },
-                    ..
-                } => Some("text"),
-                StreamEvent::BlockDelta {
-                    delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                    ..
-                } => Some("tool_call_delta"),
+                StreamEvent::Text { .. } => Some("text"),
+                StreamEvent::Arguments { .. } => Some("tool_call_delta"),
                 _ => None,
             };
             if let Some(tag) = tag {

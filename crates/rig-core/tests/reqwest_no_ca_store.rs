@@ -60,10 +60,9 @@ async fn the_shared_transport_reports_a_missing_ca_store_on_send() {
         .await
         .expect("the build failure is the first item");
     let report = first.expect_err("the first item is the failure");
-    assert_eq!(report.kind, ErrorKind::Http, "{report:?}");
+    assert_eq!(report.kind(), ErrorKind::Http, "{report:?}");
     assert!(
-        report.message.contains("CA certificates"),
-        "expected the report to name the CA store, got: {}",
-        report.message
+        report.to_string().contains("CA certificates"),
+        "expected the report to name the CA store, got: {report}"
     );
 }

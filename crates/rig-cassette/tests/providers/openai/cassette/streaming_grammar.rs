@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the OpenAI Responses API,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
+//! [`StreamingCompletionResponse::choice`], the terminal `CompletionResponse`
 //! record, usage, IDs, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -12,13 +12,15 @@
 //! mint literal IDs.
 
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolResultContent,
     UserContent,
 };
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::with_openai_cassette;
@@ -40,11 +42,10 @@ struct StreamRun {
     /// Complete tool calls yielded as stream events, in order.
     tool_calls: Vec<ToolCall>,
     /// Terminal records yielded by the stream.
-    finals: Vec<StreamFinal>,
     /// The aggregated choice built by the normalized stream.
     choice: Vec<AssistantContent>,
     /// The normalized terminal record retained on the stream.
-    response: Option<StreamFinal>,
+    response: Option<CompletionResponse>,
     /// Provider-assigned assistant message ID retained on the stream.
     message_id: Option<String>,
 }
@@ -55,7 +56,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         reasoning_blocks: Vec::new(),
         reasoning_delta: String::new(),
         tool_calls: Vec::new(),
-        finals: Vec::new(),
         choice: vec![AssistantContent::text("")],
         response: None,
         message_id: None,
@@ -66,39 +66,40 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         let item = item.expect("stream item should be ok");
         raw_items.push(Ok(item.clone()));
         match item {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
+            Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
                 ..
-            } => run.text.push_str(&text),
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            } => {
-                run.reasoning_blocks.push(reasoning);
+            }) => {
+                run.reasoning_blocks.push(
+                    reasoning
+                        .open(reasoning.issuer())
+                        .cloned()
+                        .expect("reasoning opens"),
+                );
             }
-            StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text: reasoning },
-                ..
-            } => {
+            Item::Event(StreamEvent::Reasoning {
+                text: reasoning, ..
+            }) => {
                 run.reasoning_delta.push_str(&reasoning);
             }
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
                 ..
-            } => {
+            }) => {
                 run.tool_calls.push(tool_call);
             }
-            StreamEvent::Final(response) => run.finals.push(response),
             _ => {}
         }
     }
+    let response = stream.finish().await.expect("the stream ends");
 
-    run.choice = stream.folded().snapshot();
+    run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.folded().terminal().cloned();
-    run.message_id = stream.folded().message_id().map(str::to_owned);
+    run.response = Some(response.clone());
+    run.message_id = response.message_id.clone();
     run
 }
 
@@ -107,7 +108,13 @@ fn aggregated_reasoning_parts(choice: &[AssistantContent]) -> Vec<ReasoningConte
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.content.clone()),
+            AssistantContent::Reasoning(reasoning) => Some(
+                reasoning
+                    .open(reasoning.issuer())
+                    .expect("sealed reasoning")
+                    .content
+                    .clone(),
+            ),
             _ => None,
         })
         .flatten()
@@ -115,18 +122,13 @@ fn aggregated_reasoning_parts(choice: &[AssistantContent]) -> Vec<ReasoningConte
 }
 
 fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
-    assert_eq!(
-        run.finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
     let terminal = run
         .response
         .as_ref()
         .expect("aggregated stream should retain the terminal record");
     assert_eq!(
-        terminal.finish_reason.as_ref(),
-        Some(&expected_finish),
+        terminal.finish_reason(),
+        Some(expected_finish),
         "unexpected finish reason"
     );
     assert!(
@@ -375,7 +377,8 @@ async fn parallel_tool_calls_both_survive_aggregation() {
                 // IDs derived from the recorded turn, never minted literally.
                 assert_eq!(aggregated.id, streamed.id, "{name} id should aggregate");
                 assert_eq!(
-                    aggregated.provider, streamed.provider,
+                    aggregated.id.provider(),
+                    streamed.id.provider(),
                     "{name} provider ids should aggregate"
                 );
             }
@@ -420,13 +423,12 @@ async fn tool_call_then_followup_text_across_turns() {
 
             let assistant_message = Message::Assistant {
                 id: first.message_id.clone(),
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
+                content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
             };
-            let tool_result = Message::from(UserContent::tool_result_for(
+            let tool_result = Message::from(UserContent::tool_result(
                 tool_call.id.clone(),
-                tool_call.provider.clone(),
                 tool_call.function.name.clone(),
-                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
             ));
             let followup_request = CompletionRequest::new(
                 "Now reply in one short sentence using the provided tool result. \
@@ -501,7 +503,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 .choice
                 .iter()
                 .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => reasoning.id.as_deref(),
+                    AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()).expect("sealed reasoning").id.as_deref(),
                     _ => None,
                 })
                 .collect();
@@ -534,14 +536,9 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // gate together with the tool result.
             let first_assistant = Message::Assistant {
                 id: first.message_id.clone(),
-                content: first.choice.clone(),
+                content: rig_core::NonEmpty::from_vec(first.choice.clone()).expect("non-empty"),
             };
-            let tool_result = Message::from(UserContent::tool_result_for(
-                tool_call.id.clone(),
-                tool_call.provider.clone(),
-                tool_call.function.name.clone(),
-                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-            ));
+            let tool_result = Message::from(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT))));
             let second_request = CompletionRequest::new(
                     "Answer in one short sentence that includes the exact tool output. \
                      Do not call any tools.",
@@ -569,7 +566,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // Turn 3: both prior assistant turns' rs_* items replay together.
             let second_assistant = Message::Assistant {
                 id: second.message_id.clone(),
-                content: second.choice.clone(),
+                content: rig_core::NonEmpty::from_vec(second.choice.clone()).expect("non-empty"),
             };
             let third_request = CompletionRequest::new(
                     "Repeat the exact tool output one more time, alone on a single line.",

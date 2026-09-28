@@ -128,11 +128,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_019Mq78rMtohgavHsEAZexWj"
-              },
-              "provider": {
-                "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                "provider": {
+                  "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                }
               },
               "function": {
                 "name": "add",
@@ -177,174 +175,102 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Let"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " me calculate"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " sum right"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " away!"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_019Mq78rMtohgavHsEAZexWj",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Let me calculate the sum right away!"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_019Mq78rMtohgavHsEAZexWj",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"x\": 17, \"y\": 25}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_019Mq78rMtohgavHsEAZexWj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_019Mq78rMtohgavHsEAZexWj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 1"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_019Mq78rMtohgavHsEAZexWj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "7"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_019Mq78rMtohgavHsEAZexWj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ", \"y\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_019Mq78rMtohgavHsEAZexWj",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "25}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_019Mq78rMtohgavHsEAZexWj",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_019Mq78rMtohgavHsEAZexWj"
-            },
-            "provider": {
-              "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Let me calculate the sum right away!"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 660,
-            "output_tokens": 77,
-            "total_tokens": 737,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcZhXxtqZ5gpZVBVxCy",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZh5BJDoh1hnQ7uLSg",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 77,
-              "input_tokens": 660,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZhXxtqZ5gpZVBVxCy",
-            "model": "claude-sonnet-4-6"
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -414,11 +340,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_019Mq78rMtohgavHsEAZexWj"
-                  },
-                  "provider": {
-                    "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                    "provider": {
+                      "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -438,11 +362,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_019Mq78rMtohgavHsEAZexWj"
-                  },
-                  "provider": {
-                    "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                    "provider": {
+                      "call_id": "toolu_019Mq78rMtohgavHsEAZexWj"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -528,116 +450,86 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The dominant"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " color"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " **red"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "**,"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "17 + 25 ="
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " **42**."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The dominant color is **red**, and 17 + 25 = **42**."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 750,
-            "output_tokens": 22,
-            "total_tokens": 772,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcZtQKNcEAj5zv5K5uS",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZsxGn2WcZtX9iiiP1",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 22,
-              "input_tokens": 750,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcZtQKNcEAj5zv5K5uS",
-            "model": "claude-sonnet-4-6"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The dominant color is **red**, and 17 + 25 = **42**."
+            }
           }
         }
       ]

@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use rig_core::completion::{AssistantContent, CompletionRequest, ToolDefinition};
 use rig_core::message::{
-    Message, Reasoning, ToolCall, ToolCallId, ToolChoice, ToolFunction, ToolResultContent,
+    CallId, Message, Reasoning, ToolCall, ToolChoice, ToolFunction, ToolName, ToolResultContent,
     UserContent,
 };
 use serde::Deserialize;
@@ -125,7 +125,10 @@ fn validate_protocol_inputs(
                             validate_protocol_text(&text.text, "assistant text", protocol)?;
                         }
                         AssistantContent::Reasoning(reasoning) => validate_protocol_text(
-                            &reasoning.display_text(),
+                            &reasoning
+                                .open(reasoning.issuer())
+                                .map(Reasoning::display_text)
+                                .unwrap_or_default(),
                             "assistant reasoning",
                             protocol,
                         )?,
@@ -326,7 +329,7 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
 }
 
 fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
-    let mut messages = request.chat_history.clone();
+    let mut messages = request.chat_history.clone().into_vec();
     if !request.documents.is_empty() {
         let context = request
             .documents
@@ -487,9 +490,9 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
         first_message = 1;
     }
 
-    let mut aliases = HashMap::<String, ToolCallId>::new();
-    let mut unresolved = HashSet::<ToolCallId>::new();
-    let mut answered = HashSet::<ToolCallId>::new();
+    let mut aliases = HashMap::<String, CallId>::new();
+    let mut unresolved = HashSet::<CallId>::new();
+    let mut answered = HashSet::<CallId>::new();
     let mut rendered_messages = Vec::new();
     for message in messages.iter().skip(first_message) {
         rendered_messages.push(render_qwen_message(
@@ -550,9 +553,9 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
 
 fn render_qwen_message(
     message: &Message,
-    aliases: &mut HashMap<String, ToolCallId>,
-    unresolved: &mut HashSet<ToolCallId>,
-    answered: &mut HashSet<ToolCallId>,
+    aliases: &mut HashMap<String, CallId>,
+    unresolved: &mut HashSet<CallId>,
+    answered: &mut HashSet<CallId>,
 ) -> Result<RenderedMessage, CandleError> {
     match message {
         Message::System { content } => Ok(RenderedMessage::Normal {
@@ -577,7 +580,7 @@ fn render_qwen_message(
                                 call.id
                             )));
                         }
-                        if let Some(provider) = &call.provider {
+                        if let Some(provider) = call.id.provider() {
                             let call_id = &provider.call_id;
                             if aliases
                                 .get(call_id)
@@ -636,8 +639,8 @@ fn render_qwen_message(
                             });
                         }
                         let canonical_by_call_id = result
-                            .provider
-                            .as_ref()
+                            .call
+                            .provider()
                             .and_then(|provider| aliases.get(&provider.call_id));
                         if let (Some(by_id), Some(by_call_id)) =
                             (canonical_by_id, canonical_by_call_id)
@@ -719,7 +722,9 @@ fn parse_qwen3_assistant(
         })?;
         let reasoning = remaining[THINK_START.len()..end].trim();
         if !reasoning.is_empty() {
-            items.push(AssistantContent::Reasoning(Reasoning::new(reasoning)));
+            items.push(AssistantContent::Reasoning(
+                Reasoning::new(reasoning).sealed(crate::types::PROVIDER_NAME),
+            ));
         }
         remaining = remaining[end + THINK_END.len()..].trim_start();
     } else if remaining.contains(THINK_END) {
@@ -779,12 +784,12 @@ fn parse_qwen3_assistant(
                 "duplicate or empty tool-call ID `{id}`"
             )));
         }
-        // The `tool_calls`-th call of the turn: an id-less envelope mints
-        // its handle at that index, so two calls never share one.
-        items.push(AssistantContent::ToolCall(ToolCall::from_wire_indexed(
+        let name = ToolName::new(envelope.name)
+            .map_err(|error| CandleError::MalformedToolCall(error.to_string()))?;
+        // Rig issues an id for an id-less envelope.
+        items.push(AssistantContent::ToolCall(ToolCall::from_wire(
             envelope.id.unwrap_or_default(),
-            tool_calls as u64,
-            ToolFunction::new(envelope.name, envelope.arguments),
+            ToolFunction::new(name, envelope.arguments),
         )));
         tool_calls += 1;
         remaining = after_start[end + TOOL_CALL_END.len()..].trim_start();
@@ -803,7 +808,6 @@ fn parse_qwen3_assistant(
         ));
     }
     // Preserve empty turns without inventing model output.
-    rig_core::message::normalize_missing_tool_call_ids(&mut items);
     let visible_text = canonicalize_visible_text(&mut items);
     Ok(ParsedAssistant {
         items,

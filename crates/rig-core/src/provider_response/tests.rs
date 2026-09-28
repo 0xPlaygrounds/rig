@@ -262,11 +262,12 @@ fn attaching_headers_to_a_slotless_variant_is_a_no_op() {
     assert!(error.provider_response_headers().is_none());
     assert_eq!(error.to_string(), "ProviderError: rig diagnostic");
 
-    let error = crate::error::ProviderError::Http(crate::http_client::Error::StreamEnded)
+    let error = crate::error::ProviderError::Http(crate::http_client::Error::StreamEnded.into())
         .with_response_headers(Some(retry_after_headers()));
     assert!(matches!(
         error,
-        crate::error::ProviderError::Http(crate::http_client::Error::StreamEnded)
+        crate::error::ProviderError::Http(ref error)
+            if matches!(**error, crate::http_client::Error::StreamEnded)
     ));
     assert!(error.provider_response_headers().is_none());
 }

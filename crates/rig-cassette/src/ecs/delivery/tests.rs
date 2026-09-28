@@ -31,9 +31,9 @@ fn cancelled_prefix_stops_before_fallback_and_retains_ownership() {
                 poll <= count,
                 "the cancelled prefix must not poll the synthesized fallback"
             );
-            Poll::Ready(Some(Ok(StreamEvent::Unknown(
+            Poll::Ready(Some(Ok(Relayed::Item(Item::Unknown(
                 rig_core::streaming::UnknownPayload::new(serde_json::Value::Null),
-            ))))
+            )))))
         }));
         let mut limited = cancelled_prefix(source, count);
         let mut cx = Context::from_waker(Waker::noop());

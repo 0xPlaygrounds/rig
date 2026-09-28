@@ -12,7 +12,7 @@ async fn streaming() {
             "summary": null
         });
         // Copilot's terminal record carries reasoning metadata that rig's
-        // normalized `StreamFinal` does not model; its `raw` keeps it.
+        // normalized `CompletionResponse` does not model; its `raw` keeps it.
         let mut finals = Vec::new();
         reasoning::run_reasoning_roundtrip_streaming_with_final(
             ReasoningRoundtripAgent::new(
@@ -28,7 +28,7 @@ async fn streaming() {
         let response = finals
             .first()
             .expect("Copilot reasoning stream should yield a provider final response");
-        let response: rig::providers::openai::responses_api::streaming::StreamingCompletionResponse =
+        let response: rig::providers::openai::responses_api::CompletionResponse =
             serde_json::from_value(response.raw.clone())
                 .expect("Copilot reasoning stream should use the Responses route");
         assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));

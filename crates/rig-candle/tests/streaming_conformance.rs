@@ -6,14 +6,16 @@
 //! normalization — with no model load. This family never produces `Unknown` and has no frame-level decode,
 //! so the malformed/unknown scenarios self-report as skipped.
 
+#![allow(clippy::expect_used)]
+
 use rig_candle::{
     CandleCompletionResponse, CandleFrame, FinishReason as CandleFinishReason, Generation,
     GenerationEvent,
 };
 use rig_core::completion::{CompletionRequest, FinishReason};
-use rig_core::driver::{Exchange, Model, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
-use rig_core::streaming::{BlockId, ToolCallEnd};
+use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName};
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, event_frame, fixtures::drain,
 };
@@ -25,24 +27,18 @@ type CandleEvent = GenerationEvent;
 struct Scripted(std::sync::Arc<std::sync::Mutex<Vec<Result<CandleEvent, ProviderError>>>>);
 
 impl Transport<Generation> for Scripted {
-    fn send(
-        &self,
-        _request: CompletionRequest,
-        _exchange: Exchange,
-    ) -> Result<Sending<CandleFrame>, ProviderError> {
-        let events = std::mem::take(
-            &mut *self
-                .0
-                .lock()
-                .map_err(|_| ProviderError::Provider("script lock poisoned".to_owned()))?,
-        );
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter(
-                events
-                    .into_iter()
-                    .map(|event| event.map(CandleFrame::Event)),
-            ))
-        }))
+    fn send(&self, _request: CompletionRequest, _exchange: Exchange) -> Opening<CandleFrame> {
+        let events = match self.0.lock() {
+            Ok(mut events) => std::mem::take(&mut *events),
+            Err(_) => {
+                return Opening::failed(ProviderError::Provider("script lock poisoned".to_owned()));
+            }
+        };
+        Opening::ready(Opened::new(futures::stream::iter(
+            events
+                .into_iter()
+                .map(|event| event.map(CandleFrame::Event)),
+        )))
     }
 }
 
@@ -60,7 +56,7 @@ fn driver() -> WireDriver {
                                 "candle conformance frames must be generation events".to_string(),
                             )
                         }),
-                    Err(error) => Err(ProviderError::Http(error)),
+                    Err(error) => Err(ProviderError::Http(error.into())),
                 })
                 .collect();
             let stream = Model::new(
@@ -95,11 +91,15 @@ fn fixture() -> ProviderWireFixture {
             "hi".to_string(),
         ))],
         expected_texts: vec!["hi"],
-        tool_call_frames: vec![event_frame::<CandleEvent>(GenerationEvent::ToolCall {
-            id: BlockId::wire("call_1"),
-            end: ToolCallEnd::whole("get_weather", serde_json::json!({"city": "Tokyo"}))
-                .with_tool_id("call_1"),
-        })],
+        tool_call_frames: vec![event_frame::<CandleEvent>(GenerationEvent::ToolCall(
+            ToolCall::new(
+                CallId::from_wire("call_1"),
+                ToolFunction::new(
+                    ToolName::new("get_weather").expect("a tool name"),
+                    serde_json::json!({"city": "Tokyo"}),
+                ),
+            ),
+        ))],
         expected_tool_name: "get_weather",
         // Local generation delivers tool calls whole after the buffered turn
         // is parsed; arguments never stream.

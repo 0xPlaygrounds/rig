@@ -101,24 +101,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_c27e3876-1b04-92ce-8e03-b4620aa3c89e",
               "content": [
                 {
                   "type": "summary",
                   "content": "I will extract structured data from the provided text."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-d2253617-9347-4b26-a5fc-4b56c257a20a-0"
-              },
-              "provider": {
-                "call_id": "call-d2253617-9347-4b26-a5fc-4b56c257a20a-0",
-                "item_id": "fc_c27e3876-1b04-92ce-8e03-b4620aa3c89e_0"
+                "provider": {
+                  "call_id": "call-d2253617-9347-4b26-a5fc-4b56c257a20a-0",
+                  "item_id": "fc_c27e3876-1b04-92ce-8e03-b4620aa3c89e_0"
+                }
               },
               "function": {
                 "name": "submit",

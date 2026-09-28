@@ -2,27 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -59,7 +43,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -184,11 +168,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "8BxQ4Yb0L"
-              },
-              "provider": {
-                "call_id": "8BxQ4Yb0L"
+                "provider": {
+                  "call_id": "8BxQ4Yb0L"
+                }
               },
               "function": {
                 "name": "lookup",
@@ -233,77 +215,41 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:8BxQ4Yb0L",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:8BxQ4Yb0L",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"q\": \"What is the capital of France?\"}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"q\": \"What is the capital of France?\"}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:8BxQ4Yb0L",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "8BxQ4Yb0L",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "8BxQ4Yb0L"
-            },
-            "provider": {
-              "call_id": "8BxQ4Yb0L"
-            },
-            "function": {
-              "name": "lookup",
-              "arguments": {
-                "q": "What is the capital of France?"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1083,
-            "output_tokens": 16,
-            "total_tokens": 1099
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1083,
-              "completion_tokens": 16,
-              "total_tokens": 1099
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RtGb8YrdGsqbN7Nmo8CN35m9",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.00010553125000000001
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "8BxQ4Yb0L"
+                }
+              },
+              "function": {
+                "name": "lookup",
+                "arguments": {
+                  "q": "What is the capital of France?"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -464,11 +410,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "8BxQ4Yb0L"
-                  },
-                  "provider": {
-                    "call_id": "8BxQ4Yb0L"
+                    "provider": {
+                      "call_id": "8BxQ4Yb0L"
+                    }
                   },
                   "function": {
                     "name": "lookup",
@@ -487,11 +431,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "8BxQ4Yb0L"
-                  },
-                  "provider": {
-                    "call_id": "8BxQ4Yb0L"
+                    "provider": {
+                      "call_id": "8BxQ4Yb0L"
+                    }
                   },
                   "name": "lookup",
                   "content": [
@@ -577,60 +519,29 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Paris"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Paris"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1122,
-            "output_tokens": 2,
-            "total_tokens": 1124
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1122,
-              "completion_tokens": 2,
-              "total_tokens": 1124
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-RMzcMvNPwxej5w1iu3PjVu0A",
-            "model": "mistral-small-3-2-24b-instruct",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0001056875
-              }
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Paris"
             }
           }
         }

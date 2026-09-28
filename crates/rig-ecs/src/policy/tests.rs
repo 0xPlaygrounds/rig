@@ -170,9 +170,9 @@ fn an_empty_turn_is_not_history() {
 #[test]
 fn the_fold_reproduces_the_smoke_request() {
     let prompt = MessageParts::User {
-        content: vec![UserContent::text(
+        content: rig_core::NonEmpty::new(UserContent::text(
             "In one or two sentences, explain what Rust programming language is and why memory safety matters.",
-        )],
+        )),
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -188,7 +188,8 @@ fn the_fold_reproduces_the_smoke_request() {
         output_tool: None,
         output_tool_config: None,
     };
-    let folded = serde_json::to_value(fold_request(&graph)).expect("serde");
+    let folded =
+        serde_json::to_value(fold_request(&graph).expect("the graph folds")).expect("serde");
     assert_eq!(folded, request("anthropic_completion_smoke", 0));
 }
 
@@ -202,7 +203,7 @@ fn documents_and_tools_fold_from_the_graph() {
     let documents: Vec<Document> =
         serde_json::from_value(golden["documents"].clone()).expect("serde");
     let prompt = MessageParts::User {
-        content: vec![UserContent::text("What does \"glarb-glarb\" mean?")],
+        content: rig_core::NonEmpty::new(UserContent::text("What does \"glarb-glarb\" mean?")),
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -219,7 +220,7 @@ fn documents_and_tools_fold_from_the_graph() {
         output_tool_config: None,
     };
     assert_eq!(
-        serde_json::to_value(fold_request(&graph)).expect("serde"),
+        serde_json::to_value(fold_request(&graph).expect("the graph folds")).expect("serde"),
         golden
     );
 
@@ -239,9 +240,9 @@ fn documents_and_tools_fold_from_the_graph() {
         layers: Vec::new(),
     };
     let prompt = MessageParts::User {
-        content: vec![UserContent::text(
+        content: rig_core::NonEmpty::new(UserContent::text(
             "What is 17 + 25? Reply with just the number.",
-        )],
+        )),
     };
     let graph = RequestGraph {
         preamble: Some("You are a concise assistant. Answer directly."),
@@ -258,7 +259,7 @@ fn documents_and_tools_fold_from_the_graph() {
         output_tool_config: None,
     };
     assert_eq!(
-        serde_json::to_value(fold_request(&graph)).expect("serde"),
+        serde_json::to_value(fold_request(&graph).expect("the graph folds")).expect("serde"),
         golden
     );
 }
@@ -283,66 +284,6 @@ fn message_parts_round_trip_but_never_a_system_message() {
         kind: std::sync::Arc::from("unused"),
         payload: serde_json::Value::Null,
     };
-}
-
-fn invalid_streamed_turn(
-    name_delta: Option<&str>,
-) -> (
-    Vec<AssistantContent>,
-    Vec<rig_core::streaming::StreamEvent>,
-    ToolCallId,
-) {
-    use rig_core::{
-        message::{ToolCall, ToolFunction},
-        streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent, ToolCallEnd},
-    };
-    let call = ToolCall::from_wire(
-        "provider-final",
-        ToolFunction::new("unknown".into(), serde_json::json!({"x": 1})),
-    );
-    let block = BlockId::wire("assembly");
-    let mut events = vec![StreamEvent::BlockStart {
-        id: block.clone(),
-        kind: BlockKind::ToolCall,
-    }];
-    if let Some(name) = name_delta {
-        events.push(StreamEvent::BlockDelta {
-            id: block.clone(),
-            delta: Delta::ToolName { name: name.into() },
-        });
-    }
-    events.push(StreamEvent::BlockDelta {
-        id: block.clone(),
-        delta: Delta::ToolArguments {
-            arguments: "{\"x\":1}".into(),
-        },
-    });
-    events.push(StreamEvent::BlockEnd {
-        id: block,
-        end: BlockClose::ToolCall(
-            ToolCallEnd::whole("unknown", serde_json::json!({"x": 1}))
-                .with_tool_id("provider-final"),
-        ),
-        block: Some(AssistantContent::ToolCall(call.clone())),
-    });
-    let id = call.id.clone();
-    (vec![AssistantContent::ToolCall(call)], events, id)
-}
-
-#[test]
-fn args_only_invalid_call_retains_completed_identity_and_provenance() {
-    let (content, events, id) = invalid_streamed_turn(None);
-    let (partial, retained_id) = partial_turn_at(&content, Some(&events), &id, &["allowed".into()]);
-    assert_eq!(partial, content);
-    assert_eq!(retained_id, id);
-}
-
-#[test]
-fn valid_name_then_invalid_final_retains_completed_call() {
-    let (content, events, id) = invalid_streamed_turn(Some("allowed"));
-    let (partial, retained_id) = partial_turn_at(&content, Some(&events), &id, &["allowed".into()]);
-    assert_eq!(partial, content);
-    assert_eq!(retained_id, id);
 }
 
 #[test]

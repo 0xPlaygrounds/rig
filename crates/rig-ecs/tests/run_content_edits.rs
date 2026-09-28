@@ -21,7 +21,10 @@ fn fixture() -> (World, Entity, Entity, Entity, Entity) {
         &mut world,
         utterance,
         MessageParts::User {
-            content: vec![UserContent::text("original"), UserContent::text("sibling")],
+            content: rig_core::NonEmpty::with_rest(
+                UserContent::text("original"),
+                [UserContent::text("sibling")],
+            ),
         },
     )
     .unwrap();
@@ -67,9 +70,12 @@ fn ordered_edits_change_only_one_request_and_preserve_history() {
         .unwrap();
     assert_eq!(
         request.chat_history,
-        vec![Message::User {
-            content: vec![UserContent::text("patched"), UserContent::text("sibling")]
-        }]
+        rig_core::NonEmpty::new(Message::User {
+            content: rig_core::NonEmpty::with_rest(
+                UserContent::text("patched"),
+                [UserContent::text("sibling")]
+            )
+        })
     );
     assert_eq!(read_message(&world, utterance).unwrap(), original);
     assert!(world.get_entity(early).is_err());
@@ -113,9 +119,9 @@ fn edit_target_is_remapped_with_the_checkpoint() {
         "original and remapped runs both assemble"
     );
     assert!(
-        requests
-            .iter()
-            .all(|request| request.chat_history == vec![Message::user("sibling")])
+        requests.iter().all(
+            |request| request.chat_history == rig_core::NonEmpty::new(Message::user("sibling"))
+        )
     );
 }
 
@@ -125,14 +131,14 @@ fn nested_edit_target_and_its_result_parent_are_remapped() {
 
     let (mut world, _, turn, utterance, _) = fixture();
     let original = MessageParts::User {
-        content: vec![UserContent::tool_result(
-            "call",
-            "tool",
-            vec![
+        content: rig_core::NonEmpty::new(UserContent::tool_result(
+            rig_core::message::CallId::from_wire("call"),
+            rig_core::message::ToolName::new("tool").expect("tool name"),
+            rig_core::NonEmpty::with_rest(
                 ToolResultContent::text("original"),
-                ToolResultContent::text("sibling"),
-            ],
-        )],
+                [ToolResultContent::text("sibling")],
+            ),
+        )),
     };
     write_message(&mut world, utterance, original.clone()).unwrap();
     let result = world.get::<Children>(utterance).unwrap()[0];
@@ -155,14 +161,14 @@ fn nested_edit_target_and_its_result_parent_are_remapped() {
     assert!(loaded.entities.contains(&remapped_result));
     world.run_schedule(RigSchedule);
     let expected = Message::User {
-        content: vec![UserContent::tool_result(
-            "call",
-            "tool",
-            vec![
+        content: rig_core::NonEmpty::new(UserContent::tool_result(
+            rig_core::message::CallId::from_wire("call"),
+            rig_core::message::ToolName::new("tool").expect("tool name"),
+            rig_core::NonEmpty::with_rest(
                 ToolResultContent::text("patched"),
-                ToolResultContent::text("sibling"),
-            ],
-        )],
+                [ToolResultContent::text("sibling")],
+            ),
+        )),
     };
     let requests: Vec<_> = world
         .query::<&PendingEffect>()
@@ -176,7 +182,7 @@ fn nested_edit_target_and_its_result_parent_are_remapped() {
     assert!(
         requests
             .iter()
-            .all(|request| request.chat_history == vec![expected.clone()])
+            .all(|request| request.chat_history == rig_core::NonEmpty::new(expected.clone()))
     );
     assert_eq!(read_message(&world, utterance).unwrap(), original);
     assert_eq!(read_message(&world, remapped_utterance).unwrap(), original);
@@ -192,7 +198,7 @@ fn conflicting_history_and_cross_run_targets_fail_before_dispatch() {
                 &mut world,
                 utterance,
                 MessageParts::User {
-                    content: vec![UserContent::text("foreign")],
+                    content: rig_core::NonEmpty::new(UserContent::text("foreign")),
                 },
             )
             .unwrap();
@@ -290,24 +296,23 @@ fn missing_target_is_rejected_instead_of_silently_ignoring_an_edit() {
 
 #[test]
 fn nested_text_edits_preserve_annotations_and_structured_siblings() {
-    use rig_core::message::{Text, ToolCallId, ToolResult, ToolResultContent};
+    use rig_core::message::{CallId, Text, ToolResult, ToolResultContent};
     let (mut world, _, _, utterance, _) = fixture();
     let text: Text = serde_json::from_value(
         serde_json::json!({"text":"original","additional_params":{"annotation":"preserved"}}),
     )
     .unwrap();
     let original = MessageParts::User {
-        content: vec![UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new("call").unwrap(),
-            provider: None,
-            name: "tool".into(),
-            content: vec![
+        content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+            call: CallId::from_wire("call"),
+            name: rig_core::message::ToolName::new("tool").expect("tool name"),
+            content: rig_core::NonEmpty::with_rest(
                 ToolResultContent::Text(text.clone()),
-                ToolResultContent::Json {
+                [ToolResultContent::Json {
                     value: serde_json::json!({"keep":true}),
-                },
-            ],
-        })],
+                }],
+            ),
+        })),
     };
     write_message(&mut world, utterance, original.clone()).unwrap();
     let result = world
@@ -331,17 +336,16 @@ fn nested_text_edits_preserve_annotations_and_structured_siblings() {
     let mut changed = text;
     changed.text = "changed".into();
     let expected = MessageParts::User {
-        content: vec![UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new("call").unwrap(),
-            provider: None,
-            name: "tool".into(),
-            content: vec![
+        content: rig_core::NonEmpty::new(UserContent::ToolResult(ToolResult {
+            call: CallId::from_wire("call"),
+            name: rig_core::message::ToolName::new("tool").expect("tool name"),
+            content: rig_core::NonEmpty::with_rest(
                 ToolResultContent::Text(changed),
-                ToolResultContent::Json {
+                [ToolResultContent::Json {
                     value: serde_json::json!({"keep":true}),
-                },
-            ],
-        })],
+                }],
+            ),
+        })),
     };
     assert_eq!(graph.message_with(utterance, &edits).unwrap(), expected);
     let removed = graph
@@ -351,21 +355,22 @@ fn nested_text_edits_preserve_annotations_and_structured_siblings() {
         )
         .unwrap();
     assert!(
-        matches!(removed, MessageParts::User { content } if matches!(content.first(), Some(UserContent::ToolResult(result)) if result.content == vec![ToolResultContent::Json { value: serde_json::json!({"keep":true}) }]))
+        matches!(removed, MessageParts::User { content } if matches!(content.first(), UserContent::ToolResult(result) if result.content == rig_core::NonEmpty::new(ToolResultContent::Json { value: serde_json::json!({"keep":true}) })))
     );
-    let removed_parent = graph
-        .message_with(
-            utterance,
-            &std::collections::BTreeMap::from([
-                (result, RequestPartEdit::Remove),
-                (
-                    target,
-                    RequestPartEdit::Text("ignored under removed parent".into()),
-                ),
-            ]),
-        )
-        .unwrap();
-    assert_eq!(removed_parent, MessageParts::User { content: vec![] });
+    let removed_parent = graph.message_with(
+        utterance,
+        &std::collections::BTreeMap::from([
+            (result, RequestPartEdit::Remove),
+            (
+                target,
+                RequestPartEdit::Text("ignored under removed parent".into()),
+            ),
+        ]),
+    );
+    assert!(
+        removed_parent.is_err(),
+        "a message left with no parts is not a message"
+    );
     assert_eq!(graph.message(utterance).unwrap(), original);
 }
 
@@ -376,7 +381,9 @@ fn text_edits_on_images_fail_before_dispatch() {
         &mut world,
         utterance,
         MessageParts::User {
-            content: vec![UserContent::Image(rig_core::message::Image::default())],
+            content: rig_core::NonEmpty::new(UserContent::Image(
+                rig_core::message::Image::default(),
+            )),
         },
     )
     .unwrap();

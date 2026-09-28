@@ -17,11 +17,14 @@
 //! `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for remote or authenticated daemons.
 use crate::completion::Usage;
 use crate::error::EncodeError;
+use crate::error::ProviderError;
 use crate::message::DocumentSourceKind;
+use crate::message::{CallId, ToolName};
 use crate::model::ModelInfo;
-use crate::operation::Completion;
+use crate::operation::{Completion, Finish, TextPart};
 use crate::providers::internal;
-use crate::streaming::{StreamFinal, ToolCallEnd};
+use crate::providers::internal::thoughts::Thoughts;
+use crate::wire::{Flow, Out};
 use crate::{
     completion::{self, CompletionRequest},
     json_utils, message,
@@ -40,6 +43,9 @@ const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 /// Stable descriptor name recorded on normalized responses, streams, and
 /// telemetry spans for this provider.
 const PROVIDER_NAME: &str = "ollama";
+
+/// The issuer of Ollama's reasoning, which is the only reasoning it replays.
+const ISSUER: crate::message::Issuer = crate::message::Issuer::from_static(PROVIDER_NAME);
 
 /// The `all-minilm` embedding model.
 pub const ALL_MINILM: &str = "all-minilm";
@@ -214,9 +220,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         }
         let mut partial_history = vec![];
         partial_history.extend(chat_history);
-        // Ollama tool messages are name-keyed: cross-provider ingested
-        // results arrive with an empty name and their call carries it.
-        crate::providers::internal::resolve_empty_tool_result_names(&mut partial_history);
 
         let mut full_history: Vec<Message> = Vec::new();
         full_history.extend(
@@ -318,8 +321,7 @@ enum Level {
 }
 
 /// Ollama's terminal stream record: the `done: true` line's counters as rig
-/// parsed them, serialized onto [`StreamFinal::raw`] by the adapter's
-/// terminal mapping.
+/// parsed them, a streamed response's `raw`.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
     /// Provider-reported model identifier from the terminating NDJSON line.
@@ -339,43 +341,38 @@ impl From<&StreamingCompletionResponse> for Usage {
     }
 }
 
-/// The adapter's terminal mapping: Ollama's `done: true` record as a
-/// normalized [`StreamFinal`] (the caller attaches `raw`).
-fn stream_final(response: StreamingCompletionResponse, raw: serde_json::Value) -> StreamFinal {
+/// Ollama's `done: true` record as the provider's end of the reply.
+fn finish_of(response: StreamingCompletionResponse) -> Finish {
     // Ollama's `/api/chat` stream assigns no message identifier, so the
     // normalized `message_id` stays unset.
-    StreamFinal::new(PROVIDER_NAME, Usage::from(&response), raw)
-        .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
+    Finish::new(Usage::from(&response))
+        .with_optional_reason(response.done_reason.as_deref().map(map_done_reason))
         .with_model(response.model)
 }
 
-/// Decode unary or streaming `/api/chat` records. Only `done: true` emits a
-/// terminal record; EOF alone does not. The driver handles corrupt-frame policy.
-pub struct OllamaDecoder {
-    /// Accumulates reasoning under one reply-local key and derives its close.
-    reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Reply-wide ID generator so id-less calls in separate records remain distinct.
-    tool_ids: crate::streaming::SyntheticIds,
+/// Decode `/api/chat` records, one whole reply or a stream of lines. Only a
+/// `done: true` record ends the reply; EOF alone does not.
+#[derive(Default)]
+pub struct OllamaDecoder<'id> {
+    /// Reasoning closes when content of another kind interleaves.
+    thoughts: Thoughts<'id>,
+    text: Option<TextPart<'id>>,
 }
 
-impl Default for OllamaDecoder {
-    fn default() -> Self {
-        Self {
-            reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                crate::streaming::MintKind::Reasoning,
-            ),
-            tool_ids: crate::streaming::SyntheticIds::tool(),
+impl<'id> OllamaDecoder<'id> {
+    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
+        if let Some(part) = self.text.take() {
+            out.close_text(part);
         }
     }
-}
 
-impl OllamaDecoder {
-    /// Emit record content and calls, plus terminal metadata when `done` is true.
+    /// Write a record's content and calls, and end the reply when it is
+    /// `done`.
     fn interpret_record(
         &mut self,
         response: CompletionResponse,
-        out: &mut crate::operation::AdapterOutput,
-    ) {
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         let done = response.done;
         let model = response.model;
         if let Message::Assistant {
@@ -385,26 +382,6 @@ impl OllamaDecoder {
             ..
         } = response.message
         {
-            // Id-less calls need distinct minted keys, not tool names; only daemon
-            // IDs may be treated as provider-issued durable identity.
-            let mut tool_events = crate::operation::AdapterOutput::new();
-            for tool_call in tool_calls {
-                let key = match tool_call
-                    .id
-                    .as_deref()
-                    .and_then(crate::streaming::non_empty_id)
-                {
-                    Some(wire_id) => crate::streaming::BlockId::wire(wire_id.as_str()),
-                    None => self.tool_ids.mint(),
-                };
-                let mut end =
-                    ToolCallEnd::whole(tool_call.function.name, tool_call.function.arguments);
-                if let Some(wire_id) = key.wire_str() {
-                    end = end.with_tool_id(wire_id);
-                }
-                tool_events.tool_end(key, end);
-            }
-
             // Split embedded reasoning only in terminal content without explicit
             // thinking; partial deltas may lack the closing marker.
             let (reasoning, text) = match thinking.as_deref() {
@@ -416,40 +393,54 @@ impl OllamaDecoder {
                 }
                 _ => (thinking, content),
             };
-
-            self.reasoning.emit_chunk(
-                internal::chunk_lifecycle::ChunkParts {
-                    reasoning,
-                    reasoning_signature: None,
-                    text: Some(text),
-                    text_meta: None,
-                    tool_events: tool_events
-                        .into_items()
-                        .into_iter()
-                        .filter_map(Result::ok)
-                        .collect(),
-                },
-                out,
-            );
+            if let Some(reasoning) = reasoning.filter(|reasoning| !reasoning.is_empty()) {
+                self.close_text(&mut out);
+                self.thoughts.fragment(&mut out, &reasoning);
+            }
+            if !text.is_empty() || !tool_calls.is_empty() {
+                self.thoughts.boundary();
+            }
+            if !text.is_empty() {
+                let part = self.text.get_or_insert_with(|| out.text());
+                out.push_text(part, &text);
+            }
+            // An id-less call gets an id rig issues, never the tool name:
+            // only the daemon's ids are provider-issued.
+            for tool_call in tool_calls {
+                self.close_text(&mut out);
+                let Ok(name) = ToolName::new(tool_call.function.name) else {
+                    continue;
+                };
+                out.tool_call(crate::message::ToolCall {
+                    id: CallId::from_wire(tool_call.id.unwrap_or_default()),
+                    function: crate::message::ToolFunction {
+                        name,
+                        arguments: tool_call.function.arguments,
+                    },
+                    signature: None,
+                    additional_params: None,
+                })?;
+            }
         }
 
         // Nonterminal counters do not establish successful turn completion.
-        if done {
-            let native = StreamingCompletionResponse {
-                model,
-                total_duration: response.total_duration,
-                load_duration: response.load_duration,
-                prompt_eval_count: response.prompt_eval_count,
-                prompt_eval_duration: response.prompt_eval_duration,
-                eval_count: response.eval_count,
-                eval_duration: response.eval_duration,
-                done_reason: response.done_reason,
-            };
-            match serde_json::to_value(&native) {
-                Ok(raw) => out.final_record(stream_final(native, raw)),
-                Err(err) => out.error(err.into()),
-            }
+        if !done {
+            return Ok(Flow::More);
         }
+        let native = StreamingCompletionResponse {
+            model,
+            total_duration: response.total_duration,
+            load_duration: response.load_duration,
+            prompt_eval_count: response.prompt_eval_count,
+            prompt_eval_duration: response.prompt_eval_duration,
+            eval_count: response.eval_count,
+            eval_duration: response.eval_duration,
+            done_reason: response.done_reason,
+        };
+        self.close_text(&mut out);
+        self.thoughts.close(&mut out, None);
+        out.raw(serde_json::to_value(&native)?);
+        Ok(out.end(finish_of(native)))
     }
 
     /// Classify one NDJSON line. The wire has no discriminator at all: a
@@ -464,24 +455,23 @@ impl OllamaDecoder {
     }
 }
 
-/// EOF without a `done: true` record is truncation, so the decoder adds
-/// nothing at the end of the reply.
-impl crate::wire::Decoder<Completion> for OllamaDecoder {
+/// EOF without a `done: true` record is truncation.
+impl<'id> crate::wire::Decoder<'id, Completion> for OllamaDecoder<'id> {
     type Event = CompletionResponse;
 
     fn classify(
         &self,
         frame: crate::wire::WireFrame,
     ) -> crate::wire::WireEvent<CompletionResponse> {
-        Self::classify_line(frame)
+        OllamaDecoder::classify_line(frame)
     }
 
-    fn interpret(
+    fn decode(
         &mut self,
         response: CompletionResponse,
-        out: &mut crate::wire::Out<'_, Completion>,
-    ) {
-        self.interpret_record(response, out);
+        out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        self.interpret_record(response, out)
     }
 }
 
@@ -673,10 +663,9 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 for content in content {
                     match content {
                         crate::message::UserContent::ToolResult(crate::message::ToolResult {
+                            call,
                             name,
                             content,
-                            provider,
-                            ..
                         }) => {
                             let function_name = name;
                             if !pending_user_content.is_empty() {
@@ -701,9 +690,9 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 .collect::<Result<Vec<_>, _>>()?
                                 .join("\n");
                             messages.push(Message::ToolResult {
-                                name: function_name,
+                                name: function_name.into(),
                                 content,
-                                call_id: provider.map(|provider| provider.call_id),
+                                call_id: call.provider().map(|provider| provider.call_id.clone()),
                             });
                         }
                         content => pending_user_content.push(content),
@@ -730,6 +719,10 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             tool_calls.push(tool_call);
                         }
                         crate::message::AssistantContent::Reasoning(reasoning) => {
+                            // Reasoning another service issued is not replayed.
+                            let Some(reasoning) = reasoning.open(&ISSUER) else {
+                                continue;
+                            };
                             let display = reasoning.display_text();
                             if !display.is_empty() {
                                 thinking = Some(display);
@@ -772,10 +765,13 @@ impl Message {
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
-            id: tool_call.provider.map(|provider| provider.call_id),
+            id: tool_call
+                .id
+                .provider()
+                .map(|provider| provider.call_id.clone()),
             r#type: ToolType::Function,
             function: Function {
-                name: tool_call.function.name,
+                name: tool_call.function.name.into(),
                 arguments: tool_call.function.arguments,
             },
         }

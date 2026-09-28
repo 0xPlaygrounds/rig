@@ -18,7 +18,11 @@ fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
     let input = input_messages(&[
         Message::system("follow policy"),
         Message::user("hello"),
-        Message::tool_result("call_1", "weather", "sunny"),
+        Message::tool_result(
+            crate::message::CallId::from_wire("call_1"),
+            crate::message::ToolName::new("weather").expect("tool name"),
+            "sunny",
+        ),
     ]);
     assert_eq!(
         serde_json::to_value(input).expect("semantic-convention input DTOs serialize"),
@@ -35,7 +39,7 @@ fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
                 "role": "user",
                 "parts": [{
                     "type": "tool_call_response",
-                    "id": "explicit:call_1",
+                    "id": "call_1",
                     "response": "sunny"
                 }]
             }
@@ -44,7 +48,7 @@ fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
 
     let output = vec![AssistantContent::tool_call(
         "call_1",
-        "weather",
+        crate::message::ToolName::new("weather").expect("tool name"),
         json!({"city": "Paris"}),
     )];
     assert_eq!(
@@ -54,7 +58,7 @@ fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
             "role": "assistant",
             "parts": [{
                 "type": "tool_call",
-                "id": "explicit:call_1",
+                "id": "call_1",
                 "name": "weather",
                 "arguments": {"city": "Paris"}
             }],

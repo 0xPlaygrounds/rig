@@ -15,7 +15,8 @@ use rig::completion::PromptError;
 use rig::effect::{EffectFamily, Outcome};
 use rig::error::ErrorKind;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{
@@ -72,10 +73,9 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
             {
                 let mut stream = agent.prompt(NOTE_PROMPT).max_turns(3).stream();
                 while let Some(item) = stream.next().await {
-                    if let Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                        delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                        ..
-                    })) = item
+                    if let Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(
+                        StreamEvent::Arguments { .. },
+                    ))) = item
                     {
                         break;
                     }

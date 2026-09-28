@@ -114,11 +114,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-1"
-              },
-              "provider": {
-                "call_id": "call-1"
+                "provider": {
+                  "call_id": "call-1"
+                }
               },
               "function": {
                 "name": "multiply",
@@ -139,93 +137,51 @@
           "model": null,
           "raw": {
             "usage": {},
-            "finish_reason": null,
             "message_id": null,
             "response_id": null,
-            "provider": "mock",
             "model": null,
-            "raw": {
-              "provider": "mock"
-            }
+            "provider_request_id": null
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:call-1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call-1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 2, "
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\": 2, \"y\": 3}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call-1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"y\": 3}"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call-1",
-          "delta": {
-            "delta": "tool_name",
-            "name": "multiply"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call-1",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call-1"
-            },
-            "provider": {
-              "call_id": "call-1"
-            },
-            "function": {
-              "name": "multiply",
-              "arguments": {
-                "x": 2,
-                "y": 3
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
-          "provider": "mock",
-          "model": null,
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call-1"
+                }
+              },
+              "function": {
+                "name": "multiply",
+                "arguments": {
+                  "x": 2,
+                  "y": 3
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -260,8 +216,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "wire:call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "function": {
                     "name": "multiply",
@@ -281,8 +238,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "wire:call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "name": "multiply",
                   "content": [
@@ -332,11 +290,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-2"
-              },
-              "provider": {
-                "call_id": "call-2"
+                "provider": {
+                  "call_id": "call-2"
+                }
               },
               "function": {
                 "name": "add",
@@ -357,93 +313,51 @@
           "model": null,
           "raw": {
             "usage": {},
-            "finish_reason": null,
             "message_id": null,
             "response_id": null,
-            "provider": "mock",
             "model": null,
-            "raw": {
-              "provider": "mock"
-            }
+            "provider_request_id": null
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:call-2",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call-2",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 2, "
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\": 2, \"y\": 3}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call-2",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"y\": 3}"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call-2",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call-2",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call-2"
-            },
-            "provider": {
-              "call_id": "call-2"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 2,
-                "y": 3
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
-          "provider": "mock",
-          "model": null,
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call-2"
+                }
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 2,
+                  "y": 3
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -502,8 +416,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "wire:call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "function": {
                     "name": "multiply",
@@ -523,8 +438,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "wire:call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "name": "multiply",
                   "content": [
@@ -543,11 +459,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-2"
-                  },
-                  "provider": {
-                    "call_id": "call-2"
+                    "provider": {
+                      "call_id": "call-2"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -567,11 +481,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-2"
-                  },
-                  "provider": {
-                    "call_id": "call-2"
+                    "provider": {
+                      "call_id": "call-2"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -631,61 +543,38 @@
           "model": null,
           "raw": {
             "usage": {},
-            "finish_reason": null,
             "message_id": null,
             "response_id": null,
-            "provider": "mock",
             "model": null,
-            "raw": {
-              "provider": "mock"
-            }
+            "provider_request_id": null
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "2 + 3 = 5"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "2 + 3 = 5"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
-          "provider": "mock",
-          "model": null,
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "2 + 3 = 5"
             }
           }
         }

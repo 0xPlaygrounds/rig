@@ -140,7 +140,7 @@ impl<Op: Operation> DynModel<Op> {
         &self,
         request: impl Into<Op::Request>,
     ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
-        self.drained(request.into(), None)
+        self.finished(request.into(), None)
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
@@ -149,17 +149,22 @@ impl<Op: Operation> DynModel<Op> {
         request: impl Into<Op::Request>,
         observation: AdapterContext,
     ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
-        self.drained(request.into(), Some(observation))
+        self.finished(request.into(), Some(observation))
     }
 
     /// The call opens when first polled, as [`Model::call`] does.
-    fn drained(
+    fn finished(
         &self,
         request: Op::Request,
         observation: Option<AdapterContext>,
     ) -> impl Future<Output = Result<Op::Response, ProviderError>> + WasmCompatSend + 'static {
         let inner = self.inner.clone();
-        async move { inner.open(request, Mode::Unary, observation)?.drain().await }
+        async move {
+            inner
+                .open(request, Mode::Unary, observation)?
+                .finish()
+                .await
+        }
     }
 
     /// Open a streamed reply; [`Model::stream`] with the model erased.

@@ -108,24 +108,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_450dbb4a-9b53-9e2f-9125-25bc9be25852",
               "content": [
                 {
                   "type": "summary",
                   "content": "Extracting structured data from the text about John Doe."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0"
-              },
-              "provider": {
-                "call_id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0",
-                "item_id": "fc_450dbb4a-9b53-9e2f-9125-25bc9be25852_0"
+                "provider": {
+                  "call_id": "call-3f00a3f7-89c6-421e-aef1-43684239d3da-0",
+                  "item_id": "fc_450dbb4a-9b53-9e2f-9125-25bc9be25852_0"
+                }
               },
               "function": {
                 "name": "submit",

@@ -121,12 +121,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_N7Dt2vqsCPdNiJjipTjKRl23"
-              },
-              "provider": {
-                "call_id": "call_N7Dt2vqsCPdNiJjipTjKRl23",
-                "item_id": "fc_0c12eca9d4803290006ab3969b00e087d0a8c6558d65a54f7c"
+                "provider": {
+                  "call_id": "call_N7Dt2vqsCPdNiJjipTjKRl23",
+                  "item_id": "fc_0c12eca9d4803290006ab3969b00e087d0a8c6558d65a54f7c"
+                }
               },
               "function": {
                 "name": "submit",

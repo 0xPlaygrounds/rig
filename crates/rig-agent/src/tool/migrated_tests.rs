@@ -594,7 +594,7 @@ async fn explicit_image_tool_outputs_remain_structured() {
 
     assert_eq!(content.len(), 1);
     match content.first() {
-        Some(ToolResultContent::Image(image)) => {
+        ToolResultContent::Image(image) => {
             assert!(matches!(image.data, DocumentSourceKind::Base64(_)));
             assert_eq!(
                 image.media_type,

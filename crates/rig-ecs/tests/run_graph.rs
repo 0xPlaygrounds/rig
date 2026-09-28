@@ -76,11 +76,11 @@ fn an_utterance_despawned_before_assemble_leaves_the_next_request() {
     add_before_assemble(&mut app, despawn_the_assistant_utterance);
     let history = vec![
         MessageParts::User {
-            content: vec![UserContent::text("A")],
+            content: rig_core::NonEmpty::new(UserContent::text("A")),
         },
         MessageParts::Assistant {
             id: None,
-            content: vec![rig_core::message::AssistantContent::text("B")],
+            content: rig_core::NonEmpty::new(rig_core::message::AssistantContent::text("B")),
         },
     ];
     let run = app

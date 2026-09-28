@@ -81,10 +81,11 @@ use rig_cassette::effect_log::{
 use rig_core::{
     completion::{CompletionRequest, Document},
     effect::{EffectFamily, EffectRecord, HandlerKey, MemoryOutcome},
-    error::ErrorKind,
+    error::{ErrorKind, ErrorReport},
     id::ConversationId,
     message::ToolChoice,
     message::{AssistantContent, Message, UserContent},
+    streaming::{Item, StreamEvent},
     tool::{ToolContext, ToolOutput},
     transcript::tool_result_output,
 };
@@ -160,9 +161,8 @@ pub enum Hook {
     ClearAtStart,
     /// `on_run_settled` → `Clear` after the run's `Append`.
     ClearAtSettled,
-    /// `on_tool_call_delta` → `Stop` on the delta naming the tool (Matrix K).
-    StopOnToolNameDelta,
-    /// `on_tool_call_delta` → `Stop` on the first arguments delta.
+    /// `on_tool_call_delta` → `Stop` on the first non-empty arguments delta
+    /// (Matrix K).
     StopOnToolArgumentsDelta,
     /// `on_completion_call` → `tool_choice: Required` on turn 1 (Matrix M).
     PatchToolChoiceRequiredFirst,
@@ -1840,24 +1840,7 @@ impl AgentHook for ClearAtSettled {
 // ---------------------------------------------------------------------------
 // Matrix K: stops on the delta wire.
 
-pub const STOP_ON_TOOL_NAME_DELTA: &str = "stop on the tool's name delta";
 pub const STOP_ON_TOOL_ARGUMENTS_DELTA: &str = "stop on the tool's arguments delta";
-
-struct StopOnToolNameDelta;
-
-impl AgentHook for StopOnToolNameDelta {
-    async fn on_tool_call_delta(
-        &self,
-        _ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        if event.tool_name.is_some() {
-            ObservationAction::stop(STOP_ON_TOOL_NAME_DELTA)
-        } else {
-            ObservationAction::continue_run()
-        }
-    }
-}
 
 struct StopOnToolArgumentsDelta;
 
@@ -1867,7 +1850,7 @@ impl AgentHook for StopOnToolArgumentsDelta {
         _ctx: &HookContext,
         event: ToolCallDelta<'_>,
     ) -> ObservationAction {
-        if event.tool_name.is_none() && !event.delta.is_empty() {
+        if !event.delta.is_empty() {
             ObservationAction::stop(STOP_ON_TOOL_ARGUMENTS_DELTA)
         } else {
             ObservationAction::continue_run()
@@ -1952,7 +1935,6 @@ pub fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
         | Hook::EmbedPrompt
         | Hook::ClearAtStart
         | Hook::ClearAtSettled
-        | Hook::StopOnToolNameDelta
         | Hook::StopOnToolArgumentsDelta
         | Hook::RouteOnFirstTurn
         | Hook::SelectLate
@@ -2160,7 +2142,6 @@ fn add_hooks<S>(
             Hook::EmbedPrompt => builder.add_hook(EmbedPrompt),
             Hook::ClearAtStart => builder.add_hook(ClearAtStart),
             Hook::ClearAtSettled => builder.add_hook(ClearAtSettled),
-            Hook::StopOnToolNameDelta => builder.add_hook(StopOnToolNameDelta),
             Hook::StopOnToolArgumentsDelta => builder.add_hook(StopOnToolArgumentsDelta),
             Hook::PatchToolChoiceRequiredFirst => builder.add_hook(PatchToolChoiceRequiredFirst),
             Hook::PatchToolChoiceNoneSecond => builder.add_hook(PatchToolChoiceNoneSecond),
@@ -2260,8 +2241,14 @@ pub fn assert_same_records(replayed: &EffectLog, log: &EffectLog, interpreter: &
     };
     let golden_parents = parent_positions(log, "the golden");
     let replayed_parents = parent_positions(replayed, "the replay");
-    let replayed: Vec<_> = replayed.iter().map(as_data).collect();
-    let recorded: Vec<_> = log.iter().map(as_data).collect();
+    // The ids rig issued afresh are compared by where they appear.
+    let as_log = |which: &EffectLog| -> Vec<serde_json::Value> {
+        let records = serde_json::Value::Array(which.iter().map(as_data).collect());
+        let canonical = rig_cassette::effect_log::canonical_local_ids(records);
+        canonical.as_array().cloned().unwrap_or_default()
+    };
+    let replayed = as_log(replayed);
+    let recorded = as_log(log);
     for (position, (got, want)) in replayed_parents.iter().zip(&golden_parents).enumerate() {
         assert_eq!(
             got, want,
@@ -2897,7 +2884,6 @@ pub async fn call_tools(
         if is_add && hooks.contains(&Hook::DenyAdd) {
             return Ok(tool_result_output(
                 call.tool_call.id.clone(),
-                call.tool_call.provider.clone(),
                 name,
                 ToolOutput::text(DENY_REASON),
             ));
@@ -2922,7 +2908,6 @@ pub async fn call_tools(
             Err(report) if report.kind == ErrorKind::Denied => {
                 return Ok(tool_result_output(
                     call.tool_call.id.clone(),
-                    call.tool_call.provider.clone(),
                     name,
                     rig_core::tool::ToolResult::skipped(report.message)
                         .output()
@@ -2932,7 +2917,6 @@ pub async fn call_tools(
             Err(report) => {
                 return Ok(tool_result_output(
                     call.tool_call.id.clone(),
-                    call.tool_call.provider.clone(),
                     name,
                     rig_core::tool::ToolResult::failed(
                         rig_core::tool::ToolExecutionError::other(report.message.clone())
@@ -2965,12 +2949,7 @@ pub async fn call_tools(
             output = ToolOutput::text(REPLACED_RESULT);
         }
         // The engine's own shaping of a result (`rig_core::transcript`).
-        Ok(tool_result_output(
-            call.tool_call.id.clone(),
-            call.tool_call.provider.clone(),
-            name,
-            output,
-        ))
+        Ok(tool_result_output(call.tool_call.id.clone(), name, output))
     };
     futures::stream::iter(calls)
         .map(dispatch)
@@ -3029,7 +3008,6 @@ pub fn hook_name(hook: Hook) -> String {
         Hook::EmbedPrompt => "EmbedPrompt",
         Hook::ClearAtStart => "ClearAtStart",
         Hook::ClearAtSettled => "ClearAtSettled",
-        Hook::StopOnToolNameDelta => "StopOnToolNameDelta",
         Hook::StopOnToolArgumentsDelta => "StopOnToolArgumentsDelta",
         Hook::PatchToolChoiceRequiredFirst => "PatchToolChoiceRequiredFirst",
         Hook::PatchToolChoiceNoneSecond => "PatchToolChoiceNoneSecond",
@@ -3717,9 +3695,9 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         let mut delta_stop: Option<&'static str> = None;
                         let mut turn_abandoned = false;
                         let mut unknown_tool_call = false;
-                        while let Some(event) = within(stream.next()).await {
-                            let event = match event {
-                                Ok(event) => event,
+                        while let Some(item) = within(stream.next()).await {
+                            let item = match item.map_err(|error| ErrorReport::from(&error)) {
+                                Ok(item) => item,
                                 Err(report)
                                     if program.cancel_after_first_delta
                                         && report.kind == rig_core::error::ErrorKind::Cancelled =>
@@ -3746,58 +3724,52 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             };
                             // The observe-only hooks' stops, at the delta they
                             // fire on: the engine leaves the stream there.
-                            if let rig_core::streaming::StreamEvent::BlockDelta { delta, .. } =
-                                &event
-                            {
-                                let stop = match delta {
-                                    rig_core::streaming::Delta::Text { .. }
-                                        if program.hooks.contains(&Hook::StopOnTextDelta) =>
-                                    {
-                                        Some(STOP_ON_TEXT_DELTA)
-                                    }
-                                    rig_core::streaming::Delta::ToolName { .. }
-                                    | rig_core::streaming::Delta::ToolArguments { .. }
-                                        if program.hooks.contains(&Hook::StopOnToolCallDelta) =>
-                                    {
-                                        Some(STOP_ON_TOOL_CALL_DELTA)
-                                    }
-                                    rig_core::streaming::Delta::ToolName { .. }
-                                        if program.hooks.contains(&Hook::StopOnToolNameDelta) =>
-                                    {
-                                        Some(STOP_ON_TOOL_NAME_DELTA)
-                                    }
-                                    rig_core::streaming::Delta::ToolArguments { arguments }
-                                        if program
-                                            .hooks
-                                            .contains(&Hook::StopOnToolArgumentsDelta)
-                                            && !arguments.is_empty() =>
-                                    {
-                                        Some(STOP_ON_TOOL_ARGUMENTS_DELTA)
-                                    }
-                                    rig_core::streaming::Delta::Reasoning { .. }
-                                        if program.hooks.contains(&Hook::StopOnReasoningDelta) =>
-                                    {
-                                        Some(STOP_ON_REASONING_DELTA)
-                                    }
-                                    _ => None,
-                                };
-                                if stop.is_some() {
-                                    delta_stop = stop;
-                                    break;
+                            let stop = match &item {
+                                Item::Event(StreamEvent::Text { .. })
+                                    if program.hooks.contains(&Hook::StopOnTextDelta) =>
+                                {
+                                    Some(STOP_ON_TEXT_DELTA)
                                 }
+                                Item::Event(StreamEvent::Reasoning { .. })
+                                    if program.hooks.contains(&Hook::StopOnReasoningDelta) =>
+                                {
+                                    Some(STOP_ON_REASONING_DELTA)
+                                }
+                                _ => None,
+                            };
+                            if stop.is_some() {
+                                delta_stop = stop;
+                                break;
                             }
-                            let events = assembler.ingest(&event).expect("a well-formed stream");
+                            let events = assembler.ingest(&item).expect("a well-formed stream");
                             // An invalid call surfaced mid-stream: resolved as the
                             // engine resolves it — the hook's decision, else the
                             // runner's policy — through the run's streamed seam.
                             for streamed in events {
+                                // A valid call's one arguments delta fires when
+                                // its end validates it, as in the engine.
+                                if let StreamedTurnEvent::EmitToolCall { .. } = streamed {
+                                    delta_stop =
+                                        if program.hooks.contains(&Hook::StopOnToolCallDelta) {
+                                            Some(STOP_ON_TOOL_CALL_DELTA)
+                                        } else if program
+                                            .hooks
+                                            .contains(&Hook::StopOnToolArgumentsDelta)
+                                        {
+                                            Some(STOP_ON_TOOL_ARGUMENTS_DELTA)
+                                        } else {
+                                            None
+                                        };
+                                    if delta_stop.is_some() {
+                                        break;
+                                    }
+                                    continue;
+                                }
                                 let StreamedTurnEvent::InvalidToolCall(invalid) = streamed else {
                                     continue;
                                 };
-                                let partial = assembler.partial_turn(
-                                    stream.folded().message_id().map(str::to_owned),
-                                    stream.folded().reasoning_issuer(),
-                                );
+                                let partial = assembler
+                                    .partial_turn(stream.message_id(), &stream.partial().choice);
                                 let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
                                     Some(retry_feedback(&invalid.tool_call.function.name))
                                 } else if program.hooks.contains(&Hook::RepairToAdd) {
@@ -3851,7 +3823,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                     }
                                 }
                             }
-                            if turn_abandoned || unknown_tool_call {
+                            if turn_abandoned || unknown_tool_call || delta_stop.is_some() {
                                 break;
                             }
                         }
@@ -3896,25 +3868,17 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             drop(stream);
                             break None;
                         }
-                        let terminal = stream
-                            .folded()
-                            .terminal()
-                            .expect("a stream that reached its end carries its terminal record");
-                        let usage = terminal.usage;
-                        let raw = terminal.raw.clone();
-                        let snapshot = stream.folded().snapshot();
-                        let streamed = assembler.finish(
-                            stream.folded().message_id().map(str::to_owned),
-                            &snapshot,
-                            stream.folded().reasoning_issuer(),
-                        );
+                        let response = within(stream.finish())
+                            .await
+                            .expect("a stream that reached its end carries its response");
+                        let streamed = assembler.finish(response.message_id.clone(), &response);
                         ModelTurn::new(
                             streamed.message_id,
                             streamed.choice,
-                            usage,
+                            response.usage,
                             streamed.executable_tool_names,
                             streamed.allowed_tool_names,
-                            raw,
+                            response.raw,
                         )
                     } else {
                         let response = match (within(model.call(request)).await, program.ending) {

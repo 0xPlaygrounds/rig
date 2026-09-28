@@ -210,11 +210,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-              },
-              "provider": {
-                "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                "provider": {
+                  "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                }
               },
               "function": {
                 "name": "list_files",
@@ -256,155 +254,115 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "I'll follow"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the protocol you"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'ve specified."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Let me start by"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " listing"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the files in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the repository."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01QNbnp5VfYcjpoQLqZHs16d",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01QNbnp5VfYcjpoQLqZHs16d",
-          "delta": {
-            "delta": "tool_name",
-            "name": "list_files"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01QNbnp5VfYcjpoQLqZHs16d",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01QNbnp5VfYcjpoQLqZHs16d",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-            },
-            "provider": {
-              "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-            },
-            "function": {
-              "name": "list_files",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1071,
-            "output_tokens": 57,
-            "total_tokens": 1128,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLca3FdPVnyNyAxZTTet",
-          "response_id": null,
-          "provider_request_id": "req_011CfLca2p5bf3caVizaLWFT",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 57,
-              "input_tokens": 1071,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLca3FdPVnyNyAxZTTet",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "list_files",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -466,11 +424,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -487,11 +443,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -583,11 +537,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-              },
-              "provider": {
-                "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                "provider": {
+                  "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -631,165 +583,101 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " let"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " me read"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the README.md"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " file:"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01SY9ks52GYy5oUafYGLN3Kb",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now let me read the README.md file:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01SY9ks52GYy5oUafYGLN3Kb",
-          "delta": {
-            "delta": "tool_name",
-            "name": "read_file"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"path\": \"README.md\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01SY9ks52GYy5oUafYGLN3Kb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SY9ks52GYy5oUafYGLN3Kb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"path\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SY9ks52GYy5oUafYGLN3Kb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ": \"READ"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01SY9ks52GYy5oUafYGLN3Kb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ME.md\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01SY9ks52GYy5oUafYGLN3Kb",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-            },
-            "provider": {
-              "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "README.md"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now let me read the README.md file:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1167,
-            "output_tokens": 66,
-            "total_tokens": 1233,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLca7JT8o7bkT1ZwAU2o",
-          "response_id": null,
-          "provider_request_id": "req_011CfLca6pRzEJJkfvwHhXUf",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 66,
-              "input_tokens": 1167,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLca7JT8o7bkT1ZwAU2o",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "README.md"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -851,11 +739,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -872,11 +758,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -899,11 +783,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -922,11 +804,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1018,11 +898,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-              },
-              "provider": {
-                "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                "provider": {
+                  "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -1066,165 +944,93 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now let me read"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the tests"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "/basic.rs"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " file:"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01W1BGZWdXwCicVcgHcmg9Pf",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now let me read the tests/basic.rs file:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01W1BGZWdXwCicVcgHcmg9Pf",
-          "delta": {
-            "delta": "tool_name",
-            "name": "read_file"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"path\": \"tests/basic.rs\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01W1BGZWdXwCicVcgHcmg9Pf",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01W1BGZWdXwCicVcgHcmg9Pf",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"path\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01W1BGZWdXwCicVcgHcmg9Pf",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ": \"test"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01W1BGZWdXwCicVcgHcmg9Pf",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "s/basic"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01W1BGZWdXwCicVcgHcmg9Pf",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ".rs\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01W1BGZWdXwCicVcgHcmg9Pf",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-            },
-            "provider": {
-              "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "tests/basic.rs"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now let me read the tests/basic.rs file:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1317,
-            "output_tokens": 70,
-            "total_tokens": 1387,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcaBt2rWHevQzHDVn2v",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcaBQ1czGGmNSNESRmu",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 70,
-              "input_tokens": 1317,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcaBt2rWHevQzHDVn2v",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -1286,11 +1092,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -1307,11 +1111,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -1334,11 +1136,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1357,11 +1157,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1384,11 +1182,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1407,11 +1203,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1503,11 +1297,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-              },
-              "provider": {
-                "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                "provider": {
+                  "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -1551,149 +1343,85 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now let me read"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the src/lib"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ".rs file:"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01Ad2ryaouHcC7ZDUW14MtL5",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now let me read the src/lib.rs file:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01Ad2ryaouHcC7ZDUW14MtL5",
-          "delta": {
-            "delta": "tool_name",
-            "name": "read_file"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"path\": \"src/lib.rs\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01Ad2ryaouHcC7ZDUW14MtL5",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01Ad2ryaouHcC7ZDUW14MtL5",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"path\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01Ad2ryaouHcC7ZDUW14MtL5",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ": \"src/"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01Ad2ryaouHcC7ZDUW14MtL5",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "lib.rs\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01Ad2ryaouHcC7ZDUW14MtL5",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-            },
-            "provider": {
-              "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "src/lib.rs"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now let me read the src/lib.rs file:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1497,
-            "output_tokens": 70,
-            "total_tokens": 1567,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcaGPQTUspSqzuSFSjq",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcaFoRtM2bd7eycb5ya",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 70,
-              "input_tokens": 1497,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcaGPQTUspSqzuSFSjq",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "src/lib.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -1755,11 +1483,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -1776,11 +1502,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -1803,11 +1527,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1826,11 +1548,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1853,11 +1573,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1876,11 +1594,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -1903,11 +1619,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -1926,11 +1640,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -2022,11 +1734,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-              },
-              "provider": {
-                "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                "provider": {
+                  "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                }
               },
               "function": {
                 "name": "run_tests",
@@ -2068,147 +1778,107 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now let me run"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the tests to see"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " which"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " one"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " fails"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_012WARmHmdxiifhrvRFeGXUq",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now let me run the tests to see which one fails:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_012WARmHmdxiifhrvRFeGXUq",
-          "delta": {
-            "delta": "tool_name",
-            "name": "run_tests"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_012WARmHmdxiifhrvRFeGXUq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_012WARmHmdxiifhrvRFeGXUq",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-            },
-            "provider": {
-              "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now let me run the tests to see which one fails:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1619,
-            "output_tokens": 49,
-            "total_tokens": 1668,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcaMunt3YG7LVop8WrH",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcaKtjymQZNo5QoKrxG",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 49,
-              "input_tokens": 1619,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcaMunt3YG7LVop8WrH",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -2270,11 +1940,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -2291,11 +1959,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -2318,11 +1984,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -2341,11 +2005,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -2368,11 +2030,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -2391,11 +2051,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -2418,11 +2076,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -2441,11 +2097,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -2468,11 +2122,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -2489,11 +2141,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -2585,11 +2235,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-              },
-              "provider": {
-                "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                "provider": {
+                  "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                }
               },
               "function": {
                 "name": "write_file",
@@ -2634,366 +2282,150 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " test is failing because"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " `days_in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "_year()`"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " returns 360 "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "but should"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " return 365."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Let me fix this"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " src/lib."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "rs:"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_name",
-            "name": "write_file"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"path\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ": \"src/"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "lib.rs\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ", \"cont"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ent\": \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "pub mod"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " calend"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ar;\\n\\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "/// The"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " number"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of day"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "s in a "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "common "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "(non-le"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ap) yea"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "r.\\npub"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " fn day"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "s_in_ye"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ar() ->"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " u32 {\\"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "n    36"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "5\\n}\\n\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01AGBC3Et6GJstFBzKBRKZPb",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-            },
-            "provider": {
-              "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-            },
-            "function": {
-              "name": "write_file",
-              "arguments": {
-                "path": "src/lib.rs",
-                "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1845,
-            "output_tokens": 148,
-            "total_tokens": 1993,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcaRqRPArW9tvMs8WGJ",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcaRJRyy7eWXQ6Gyvd7",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 148,
-              "input_tokens": 1845,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcaRqRPArW9tvMs8WGJ",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -3055,11 +2487,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -3076,11 +2506,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -3103,11 +2531,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -3126,11 +2552,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -3153,11 +2577,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -3176,11 +2598,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -3203,11 +2623,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -3226,11 +2644,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -3253,11 +2669,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -3274,11 +2688,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -3301,11 +2713,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "function": {
                     "name": "write_file",
@@ -3325,11 +2735,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "name": "write_file",
                   "content": [
@@ -3421,11 +2829,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-              },
-              "provider": {
-                "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                "provider": {
+                  "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                }
               },
               "function": {
                 "name": "run_tests",
@@ -3467,115 +2873,75 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now let me run"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the tests again:"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_014HGQ3jsKXL8X6VTeLeAYYY",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now let me run the tests again:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_014HGQ3jsKXL8X6VTeLeAYYY",
-          "delta": {
-            "delta": "tool_name",
-            "name": "run_tests"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_014HGQ3jsKXL8X6VTeLeAYYY",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_014HGQ3jsKXL8X6VTeLeAYYY",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-            },
-            "provider": {
-              "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now let me run the tests again:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 2016,
-            "output_tokens": 45,
-            "total_tokens": 2061,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcaYbyf5Wtn5JCJkFqQ",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcaY8h9L67KFNs8ioPo",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 45,
-              "input_tokens": 2016,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcaYbyf5Wtn5JCJkFqQ",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -3637,11 +3003,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -3658,11 +3022,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -3685,11 +3047,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -3708,11 +3068,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -3735,11 +3093,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -3758,11 +3114,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -3785,11 +3139,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -3808,11 +3160,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -3835,11 +3185,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -3856,11 +3204,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -3883,11 +3229,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "function": {
                     "name": "write_file",
@@ -3907,11 +3251,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "name": "write_file",
                   "content": [
@@ -3934,11 +3276,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-                  },
-                  "provider": {
-                    "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    "provider": {
+                      "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -3955,11 +3295,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-                  },
-                  "provider": {
-                    "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    "provider": {
+                      "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -4051,11 +3389,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-              },
-              "provider": {
-                "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                "provider": {
+                  "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -4099,245 +3435,173 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Good"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "! The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " first test passes now"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ". The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " second test is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " failing because `days"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "_in_week"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "()` returns "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "8 but should"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " return 7."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Let me read"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " src"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "/calendar.rs"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01VHjWdHcfz5q8eNRtX3HcuA",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Good! The first test passes now. The second test is failing because `days_in_week()` returns 8 but should return 7. Let me read src/calendar.rs:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01VHjWdHcfz5q8eNRtX3HcuA",
-          "delta": {
-            "delta": "tool_name",
-            "name": "read_file"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"path\": \"src/calendar.rs\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01VHjWdHcfz5q8eNRtX3HcuA",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01VHjWdHcfz5q8eNRtX3HcuA",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"path\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01VHjWdHcfz5q8eNRtX3HcuA",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ": \"src/"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01VHjWdHcfz5q8eNRtX3HcuA",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "calenda"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01VHjWdHcfz5q8eNRtX3HcuA",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "r.rs\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01VHjWdHcfz5q8eNRtX3HcuA",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-            },
-            "provider": {
-              "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-            },
-            "function": {
-              "name": "read_file",
-              "arguments": {
-                "path": "src/calendar.rs"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Good! The first test passes now. The second test is failing because `days_in_week()` returns 8 but should return 7. Let me read src/calendar.rs:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 2247,
-            "output_tokens": 99,
-            "total_tokens": 2346,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcabwPMrv3wD8UqqWXF",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcabSdPnXvFBhWPzdFn",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 99,
-              "input_tokens": 2247,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcabwPMrv3wD8UqqWXF",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "src/calendar.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -4399,11 +3663,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -4420,11 +3682,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -4447,11 +3707,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -4470,11 +3728,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -4497,11 +3753,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -4520,11 +3774,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -4547,11 +3799,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -4570,11 +3820,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -4597,11 +3845,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -4618,11 +3864,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -4645,11 +3889,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "function": {
                     "name": "write_file",
@@ -4669,11 +3911,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "name": "write_file",
                   "content": [
@@ -4696,11 +3936,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-                  },
-                  "provider": {
-                    "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    "provider": {
+                      "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -4717,11 +3955,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-                  },
-                  "provider": {
-                    "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    "provider": {
+                      "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -4744,11 +3980,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    "provider": {
+                      "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -4767,11 +4001,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    "provider": {
+                      "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -4863,11 +4095,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
-              },
-              "provider": {
-                "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                "provider": {
+                  "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                }
               },
               "function": {
                 "name": "write_file",
@@ -4912,302 +4142,118 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now let me fix"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " src"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "/calendar.rs"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " return 7 "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "instead of 8"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now let me fix src/calendar.rs to return 7 instead of 8:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_name",
-            "name": "write_file"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"path\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ": \"src/"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "calenda"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "r.rs\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ", \"cont"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "ent\": \""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "/// The"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " number"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of day"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "s in a "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "week.\\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "pub fn "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "days_in"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "_week()"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " -> u32"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " {\\n   "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " 7\\n}\\n"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01D8LU96MNmmreK8EmLdPcPk",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
-            },
-            "provider": {
-              "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
-            },
-            "function": {
-              "name": "write_file",
-              "arguments": {
-                "path": "src/calendar.rs",
-                "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now let me fix src/calendar.rs to return 7 instead of 8:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 2387,
-            "output_tokens": 122,
-            "total_tokens": 2509,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcahp7pYF5jK986KNka",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcahLLWJXKm6oXKjgDZ",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 122,
-              "input_tokens": 2387,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcahp7pYF5jK986KNka",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/calendar.rs",
+                  "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -5269,11 +4315,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -5290,11 +4334,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -5317,11 +4359,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -5340,11 +4380,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -5367,11 +4405,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -5390,11 +4426,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -5417,11 +4451,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -5440,11 +4472,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -5467,11 +4497,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -5488,11 +4516,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -5515,11 +4541,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "function": {
                     "name": "write_file",
@@ -5539,11 +4563,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "name": "write_file",
                   "content": [
@@ -5566,11 +4588,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-                  },
-                  "provider": {
-                    "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    "provider": {
+                      "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -5587,11 +4607,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-                  },
-                  "provider": {
-                    "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    "provider": {
+                      "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -5614,11 +4632,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    "provider": {
+                      "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -5637,11 +4653,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    "provider": {
+                      "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -5664,11 +4678,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                    "provider": {
+                      "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                    }
                   },
                   "function": {
                     "name": "write_file",
@@ -5688,11 +4700,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                    "provider": {
+                      "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                    }
                   },
                   "name": "write_file",
                   "content": [
@@ -5784,11 +4794,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
-              },
-              "provider": {
-                "call_id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
+                "provider": {
+                  "call_id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
+                }
               },
               "function": {
                 "name": "run_tests",
@@ -5830,123 +4838,83 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " let me run the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " tests again:"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01Rvy4hSSskmxQ9kjfxASnSd",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now let me run the tests again:"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01Rvy4hSSskmxQ9kjfxASnSd",
-          "delta": {
-            "delta": "tool_name",
-            "name": "run_tests"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01Rvy4hSSskmxQ9kjfxASnSd",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01Rvy4hSSskmxQ9kjfxASnSd",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
-            },
-            "provider": {
-              "call_id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
-            },
-            "function": {
-              "name": "run_tests",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now let me run the tests again:"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 2532,
-            "output_tokens": 45,
-            "total_tokens": 2577,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcaoe6jhcRtHWP4PZem",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcaoLVE1tFjsT3cpHsJ",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 45,
-              "input_tokens": 2532,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcaoe6jhcRtHWP4PZem",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -6008,11 +4976,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -6029,11 +4995,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    "provider": {
+                      "call_id": "toolu_01QNbnp5VfYcjpoQLqZHs16d"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -6056,11 +5020,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -6079,11 +5041,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    "provider": {
+                      "call_id": "toolu_01SY9ks52GYy5oUafYGLN3Kb"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -6106,11 +5066,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -6129,11 +5087,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    "provider": {
+                      "call_id": "toolu_01W1BGZWdXwCicVcgHcmg9Pf"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -6156,11 +5112,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -6179,11 +5133,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    "provider": {
+                      "call_id": "toolu_01Ad2ryaouHcC7ZDUW14MtL5"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -6206,11 +5158,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -6227,11 +5177,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_012WARmHmdxiifhrvRFeGXUq"
-                  },
-                  "provider": {
-                    "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    "provider": {
+                      "call_id": "toolu_012WARmHmdxiifhrvRFeGXUq"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -6254,11 +5202,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "function": {
                     "name": "write_file",
@@ -6278,11 +5224,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    "provider": {
+                      "call_id": "toolu_01AGBC3Et6GJstFBzKBRKZPb"
+                    }
                   },
                   "name": "write_file",
                   "content": [
@@ -6305,11 +5249,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-                  },
-                  "provider": {
-                    "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    "provider": {
+                      "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -6326,11 +5268,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
-                  },
-                  "provider": {
-                    "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    "provider": {
+                      "call_id": "toolu_014HGQ3jsKXL8X6VTeLeAYYY"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -6353,11 +5293,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    "provider": {
+                      "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -6376,11 +5314,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    "provider": {
+                      "call_id": "toolu_01VHjWdHcfz5q8eNRtX3HcuA"
+                    }
                   },
                   "name": "read_file",
                   "content": [
@@ -6403,11 +5339,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                    "provider": {
+                      "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                    }
                   },
                   "function": {
                     "name": "write_file",
@@ -6427,11 +5361,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                    "provider": {
+                      "call_id": "toolu_01D8LU96MNmmreK8EmLdPcPk"
+                    }
                   },
                   "name": "write_file",
                   "content": [
@@ -6454,11 +5386,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
+                    "provider": {
+                      "call_id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
+                    }
                   },
                   "function": {
                     "name": "run_tests",
@@ -6475,11 +5405,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
+                    "provider": {
+                      "call_id": "toolu_01Rvy4hSSskmxQ9kjfxASnSd"
+                    }
                   },
                   "name": "run_tests",
                   "content": [
@@ -6601,92 +5529,62 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Perfect"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "! All tests pass"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " now"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ". "
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "\n\ndone"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Perfect! All tests pass now. \n\ndone"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 2650,
-            "output_tokens": 13,
-            "total_tokens": 2663,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcas3EUfGHVh8DJT2h7",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcarahujGFd1fW6hoF3",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 13,
-              "input_tokens": 2650,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcas3EUfGHVh8DJT2h7",
-            "model": "claude-haiku-4-5-20251001"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Perfect! All tests pass now. \n\ndone"
+            }
           }
         }
       ]

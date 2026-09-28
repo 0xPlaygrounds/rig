@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 12
+          "items": 3
         }
       },
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -176,7 +176,7 @@
         "Err": {
           "kind": "response",
           "retryable": true,
-          "message": "the stream ended before its terminal record",
+          "message": "ResponseError: the reply ended before the provider ended it",
           "code": null,
           "http_status": null,
           "refusal": false,
@@ -185,125 +185,44 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_name",
-            "name": "subtract"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\":2,\"y\":5}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "x"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "y"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "5"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
-            "name": "subtract",
-            "arguments": {
-              "x": 2,
-              "y": 5
-            },
-            "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_AuFxd1Vs7yR79tB3msYfeCb3"
-            },
-            "provider": {
-              "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
-              "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
-            },
-            "function": {
-              "name": "subtract",
-              "arguments": {
-                "x": 2,
-                "y": 5
-              }
-            },
-            "signature": null,
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+                  "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
+                }
+              },
+              "function": {
+                "name": "subtract",
+                "arguments": {
+                  "x": 2,
+                  "y": 5
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],

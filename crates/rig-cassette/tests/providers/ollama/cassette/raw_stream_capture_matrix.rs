@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on Ollama's streaming `/api/chat`
-//! path ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! path ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -8,23 +8,23 @@
 //! [`ollama::StreamingCompletionResponse`] carries it — serialized with
 //! `serde_json::to_value` by the provider adapter. It is the terminal record
 //! only, never the stream's frames, and nothing about it is sent to the daemon.
-//! `raw == Value::Null` means only that a `StreamFinal` was built by hand
+//! `raw == Value::Null` means only that a `CompletionResponse` was built by hand
 //! without a provider terminal behind it, which no cell here can produce.
 //!
 //! Ollama's stream is newline-delimited JSON, not SSE: every line is a chat
 //! record and exactly one — the last — carries `done: true` together with the
 //! token counts and the nanosecond timings. Those timings (`total_duration`,
 //! `eval_duration`, …) are what cell 2 reads back: the normalized
-//! [`StreamFinal`](rig::streaming::StreamFinal) has no field for them.
+//! [`CompletionResponse`](rig::completion::CompletionResponse) has no field for them.
 //!
 //! Because the wire is Ollama's own — NDJSON lines, `done`/`done_reason`,
 //! `prompt_eval_count`/`eval_count`, no response id — the shared
 //! chat-completions terminal contract does not describe it, and neither do
 //! the shared SSE premise readers. What is shared here is the execution layer
-//! ([`capture_sole_terminal`](crate::raw_capture::capture_sole_terminal),
+//! ([`capture_terminal`](crate::raw_capture::capture_terminal),
 //! which is the one-terminal-record rule this wire has) and the
 //! format-agnostic normalized-surface assertions
-//! ([`stream_normalized_without_raw`](crate::raw_capture::stream_normalized_without_raw)
+//! ([`normalized_without_raw`](crate::support::normalized_without_raw)
 //! with [`assert_normalized_lacks`](crate::raw_capture::assert_normalized_lacks)).
 //! [`recorded_terminal_line`] stays local: it is the NDJSON rule, not the
 //! frame rules the SSE dialects share.
@@ -51,10 +51,9 @@ use serde_json::{Value, json};
 
 use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_interaction_bodies;
-use crate::raw_capture::{
-    assert_normalized_lacks, capture_sole_terminal, stream_normalized_without_raw,
-};
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal};
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const OLLAMA_PROVIDER: &str = "ollama";
@@ -117,7 +116,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -165,7 +164,7 @@ async fn stream_raw_exposes_terminal_durations() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
         |client| async move {
-            capture_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should start");
         },
@@ -175,7 +174,7 @@ async fn stream_raw_exposes_terminal_durations() {
 
     // The normalized terminal record provably lacks the timings.
     assert_normalized_lacks(
-        &stream_normalized_without_raw(&terminal),
+        &normalized_without_raw(terminal.clone()),
         &["total_duration", "eval_duration", "load_duration"],
     );
 

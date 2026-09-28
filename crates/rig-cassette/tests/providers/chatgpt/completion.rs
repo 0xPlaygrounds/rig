@@ -3,7 +3,8 @@
 use futures::StreamExt;
 use rig::message::AssistantContent;
 use rig::message::Message;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::{
@@ -55,16 +56,14 @@ async fn system_messages_are_lifted_into_instructions() {
 
     let mut text = String::new();
     while let Some(item) = stream.next().await {
-        if let StreamEvent::BlockDelta {
-            delta: Delta::Text { text: delta },
-            ..
-        } = item.expect("system-message stream item should succeed")
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+            item.expect("system-message stream item should succeed")
         {
             text.push_str(&delta);
         }
     }
     if text.trim().is_empty() {
-        text = aggregated_text(&stream.folded().snapshot());
+        text = aggregated_text(&stream.partial().choice);
     }
     assert_nonempty_response(&text);
     assert_contains_any_case_insensitive(&text, &["maple"]);

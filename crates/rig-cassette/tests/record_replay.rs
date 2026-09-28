@@ -71,14 +71,14 @@ fn two_tool_calls_then_done() -> MockCompletionModel {
             rig_core::message::AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
                 "tc-1",
                 rig_core::message::ToolFunction::new(
-                    "slow".to_owned(),
+                    rig_core::message::ToolName::new("slow".to_owned()).expect("tool name"),
                     json!({"delay_ms": 40, "tag": "first"}),
                 ),
             )),
             rig_core::message::AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
                 "tc-2",
                 rig_core::message::ToolFunction::new(
-                    "slow".to_owned(),
+                    rig_core::message::ToolName::new("slow".to_owned()).expect("tool name"),
                     json!({"delay_ms": 0, "tag": "second"}),
                 ),
             )),

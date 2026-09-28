@@ -116,11 +116,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
-              },
-              "provider": {
-                "call_id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
+                "provider": {
+                  "call_id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -132,11 +130,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_r97tyGos2bVCmcYJhe71LpTn"
-              },
-              "provider": {
-                "call_id": "call_r97tyGos2bVCmcYJhe71LpTn"
+                "provider": {
+                  "call_id": "call_r97tyGos2bVCmcYJhe71LpTn"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -186,123 +182,76 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_K71eN6BKPEwMAQvwiXmLlZsq",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_harbor_label"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_K71eN6BKPEwMAQvwiXmLlZsq",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_r97tyGos2bVCmcYJhe71LpTn",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_orchard_label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_r97tyGos2bVCmcYJhe71LpTn",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_K71eN6BKPEwMAQvwiXmLlZsq",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_K71eN6BKPEwMAQvwiXmLlZsq",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
-            },
-            "provider": {
-              "call_id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_r97tyGos2bVCmcYJhe71LpTn",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_r97tyGos2bVCmcYJhe71LpTn",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_r97tyGos2bVCmcYJhe71LpTn"
-            },
-            "provider": {
-              "call_id": "call_r97tyGos2bVCmcYJhe71LpTn"
-            },
-            "function": {
-              "name": "lookup_orchard_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 255,
-            "output_tokens": 246,
-            "total_tokens": 501,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 192
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBE0rSdnyAelo8tU6D8I8DynBMu",
-          "provider_request_id": "req_b96c0f19c78d401e9cd54cd9a481c363",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 255,
-              "completion_tokens": 246,
-              "total_tokens": 501,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 192
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDBE0rSdnyAelo8tU6D8I8DynBMu",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "p",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_r97tyGos2bVCmcYJhe71LpTn"
+                }
+              },
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -393,11 +342,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
-                  },
-                  "provider": {
-                    "call_id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
+                    "provider": {
+                      "call_id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -409,11 +356,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_r97tyGos2bVCmcYJhe71LpTn"
-                  },
-                  "provider": {
-                    "call_id": "call_r97tyGos2bVCmcYJhe71LpTn"
+                    "provider": {
+                      "call_id": "call_r97tyGos2bVCmcYJhe71LpTn"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -430,11 +375,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
-                  },
-                  "provider": {
-                    "call_id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
+                    "provider": {
+                      "call_id": "call_K71eN6BKPEwMAQvwiXmLlZsq"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -447,11 +390,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_r97tyGos2bVCmcYJhe71LpTn"
-                  },
-                  "provider": {
-                    "call_id": "call_r97tyGos2bVCmcYJhe71LpTn"
+                    "provider": {
+                      "call_id": "call_r97tyGos2bVCmcYJhe71LpTn"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -542,203 +483,165 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Har"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "bor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " label"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " crimson"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-h"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "bor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ";"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " orchard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " error"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " orchard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " lookup"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " broken"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Harbor label: crimson-harbor; orchard error: the orchard lookup is broken."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 330,
-            "output_tokens": 283,
-            "total_tokens": 613,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 256
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBHKzHJFfWqQJsFdsUq7FaINnCB",
-          "provider_request_id": "req_58e49c44bac64933a6d9c6284785cdf1",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 330,
-              "completion_tokens": 283,
-              "total_tokens": 613,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 256
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDBHKzHJFfWqQJsFdsUq7FaINnCB",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "E",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Harbor label: crimson-harbor; orchard error: the orchard lookup is broken."
             }
           }
         }

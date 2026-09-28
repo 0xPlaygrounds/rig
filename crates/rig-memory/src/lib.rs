@@ -329,9 +329,11 @@ impl HeuristicTokenCounter {
         use rig_core::message::AssistantContent;
         match content {
             AssistantContent::Text(text) => self.bytes_to_tokens(text.text.len()),
-            AssistantContent::Reasoning(reasoning) => {
-                self.bytes_to_tokens(reasoning.display_text().len())
-            }
+            AssistantContent::Reasoning(reasoning) => self.bytes_to_tokens(
+                reasoning
+                    .open(reasoning.issuer())
+                    .map_or(0, |reasoning| reasoning.display_text().len()),
+            ),
             AssistantContent::ToolCall(call) => {
                 let name_bytes = call.function.name.len();
                 let args_bytes = call.function.arguments.to_string().len();

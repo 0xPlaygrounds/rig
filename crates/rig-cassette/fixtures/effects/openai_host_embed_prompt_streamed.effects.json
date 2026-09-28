@@ -3216,6 +3216,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 28,
               "input_tokens_details": {
@@ -3227,96 +3241,72 @@
               },
               "total_tokens": 31
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "Ready.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-            "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Ready"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Ready."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 3,
-            "total_tokens": 31,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-          "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
-          "provider_request_id": "req_475dd217ebaa46b4a2b097b103cd11f6",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 28,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 3,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 31
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_01c5284677fdb93a006ab395fd518487d09aa3b562317b7d62",
-            "response_id": "resp_01c5284677fdb93a006ab395fc55b487d0935621cfc8e95528",
-            "model": "gpt-4o-2024-08-06"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Ready."
+            }
           }
         }
       ]

@@ -9,7 +9,7 @@
 use rig_core::{
     completion::{
         CompletionRequest, Document, ToolDefinition,
-        message::{AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, UserContent},
+        message::{AssistantContent, CallId, Message, ToolChoice, ToolName, UserContent},
     },
     effect::{HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -216,7 +216,11 @@ pub struct RequestGraph<'a> {
 
 /// Construct a completion request from ordered graph inputs and resolved output
 /// policy. Non-tool descriptors are omitted; an invalid native schema is omitted.
-pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
+/// A graph with neither a preamble nor an utterance holds no conversation and
+/// is [`ContentError::Missing`](crate::agent::content::parts::ContentError::Missing).
+pub fn fold_request(
+    graph: &RequestGraph<'_>,
+) -> Result<CompletionRequest, crate::agent::content::parts::ContentError> {
     let mut chat_history: Vec<Message> = Vec::with_capacity(graph.utterances.len() + 2);
     let system = system_message(graph);
     if let Some(content) = system {
@@ -251,7 +255,9 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
         | (OutputKind::Auto | OutputKind::Tool | OutputKind::Prompted, _) => None,
     };
 
-    CompletionRequest {
+    let chat_history = rig_core::NonEmpty::from_vec(chat_history)
+        .map_err(|_| crate::agent::content::parts::ContentError::Missing)?;
+    Ok(CompletionRequest {
         model: None,
         chat_history,
         documents: graph.documents.clone(),
@@ -262,7 +268,7 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
         additional_params: graph.additional_params.cloned(),
         output_schema,
         record_telemetry_content: false,
-    }
+    })
 }
 
 /// The system message: the preamble with the output mode's augmentation,
@@ -319,9 +325,8 @@ pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition>
 /// Returns a run failure for cancellation, unavailable handlers, a closed bus,
 /// or replay divergence.
 pub fn tool_result_part(
-    id: ToolCallId,
-    provider: Option<ProviderCallId>,
-    name: String,
+    id: CallId,
+    name: ToolName,
     outcome: &Result<Outcome, ErrorReport>,
 ) -> Result<(UserContent, ToolResultStatus), Failure> {
     if let Some(failure) = tool_failure(outcome) {
@@ -360,7 +365,7 @@ pub fn tool_result_part(
         ),
     };
     Ok((
-        tool_result_output(id, provider, name, result.output().clone()),
+        tool_result_output(id, name, result.output().clone()),
         status,
     ))
 }
@@ -451,15 +456,14 @@ pub fn tool_failure(outcome: &Result<Outcome, ErrorReport>) -> Option<Failure> {
 /// notice for every other call of `content`, in call order.
 pub fn invalid_peer_results(
     content: &[AssistantContent],
-    id: &ToolCallId,
+    id: &CallId,
     text: &str,
-) -> MessageParts {
+) -> Option<MessageParts> {
     let parts = content
         .iter()
         .filter_map(|part| match part {
             AssistantContent::ToolCall(call) => Some(tool_result_message(
                 call.id.clone(),
-                call.provider.clone(),
                 call.function.name.clone(),
                 if &call.id == id {
                     text.to_owned()
@@ -472,117 +476,7 @@ pub fn invalid_peer_results(
             | AssistantContent::Image(_) => None,
         })
         .collect();
-    MessageParts::User { content: parts }
-}
-
-/// The turn as it stood when an invalid call surfaced mid-stream (CONTRACT
-/// §8.2). Only a rejecting name delta creates an early diagnostic with an
-/// assembly identity and the arguments buffered before that name. A rejection
-/// at the completed block, or a unary turn, retains the completed call.
-/// Returns the retained call's ID so retry/skip feedback answers that identity.
-pub fn partial_turn_at(
-    content: &[AssistantContent],
-    events: Option<&[rig_core::streaming::StreamEvent]>,
-    invalid_id: &ToolCallId,
-    allowed_names: &[String],
-) -> (Vec<AssistantContent>, ToolCallId) {
-    use rig_core::{
-        message::{ToolCall, ToolFunction},
-        streaming::{BlockId, BlockKind, Delta, StreamEvent},
-    };
-    let Some(events) = events else {
-        return (content.to_vec(), invalid_id.clone());
-    };
-    struct Block {
-        id: BlockId,
-        arguments: String,
-        name_validated: bool,
-        diagnostic: Option<ToolCall>,
-        completed_id: Option<ToolCallId>,
-    }
-    let mut blocks: Vec<Block> = Vec::new();
-    for event in events {
-        match event {
-            StreamEvent::BlockStart {
-                id,
-                kind: BlockKind::ToolCall,
-            } => blocks.push(Block {
-                id: id.clone(),
-                arguments: String::new(),
-                name_validated: false,
-                diagnostic: None,
-                completed_id: None,
-            }),
-            StreamEvent::BlockDelta { id, delta } => {
-                let Some(block) = blocks.iter_mut().rev().find(|block| &block.id == id) else {
-                    continue;
-                };
-                if block.diagnostic.is_some() {
-                    continue;
-                }
-                match delta {
-                    Delta::ToolName { name } if !allowed_names.contains(name) => {
-                        block.diagnostic = Some(ToolCall::new(
-                            ToolCallId::from_block(&block.id),
-                            ToolFunction::new(
-                                name.clone(),
-                                serde_json::from_str(&block.arguments)
-                                    .unwrap_or(serde_json::Value::Null),
-                            ),
-                        ));
-                    }
-                    Delta::ToolName { .. } => {
-                        block.name_validated = true;
-                        block.arguments.clear();
-                    }
-                    Delta::ToolArguments { arguments } if !block.name_validated => {
-                        block.arguments.push_str(arguments)
-                    }
-                    _ => {}
-                }
-            }
-            StreamEvent::BlockEnd {
-                id,
-                block: Some(AssistantContent::ToolCall(call)),
-                ..
-            } => {
-                if let Some(block) = blocks.iter_mut().rev().find(|block| &block.id == id) {
-                    block.completed_id = Some(call.id.clone());
-                }
-            }
-            _ => {}
-        }
-    }
-    if blocks.is_empty() {
-        return (content.to_vec(), invalid_id.clone());
-    }
-    let mut kept = Vec::new();
-    let mut call_index = 0;
-    for part in content {
-        match part {
-            AssistantContent::ToolCall(call) => {
-                let block = blocks
-                    .iter()
-                    .find(|block| block.completed_id.as_ref() == Some(&call.id))
-                    .or_else(|| blocks.get(call_index));
-                call_index += 1;
-                if &call.id == invalid_id {
-                    let partial = block
-                        .and_then(|block| block.diagnostic.as_ref())
-                        .unwrap_or(call)
-                        .clone();
-                    let diagnostic_id = partial.id.clone();
-                    kept.push(AssistantContent::ToolCall(partial));
-                    return (kept, diagnostic_id);
-                }
-                kept.push(part.clone());
-            }
-            AssistantContent::Text(_)
-            | AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_) => kept.push(part.clone()),
-        }
-    }
-    (kept, invalid_id.clone())
+    MessageParts::user(parts).ok()
 }
 
 /// Return retrieval text from the last utterance with usable text, or an empty
@@ -611,7 +505,7 @@ pub fn answer_text(content: &[AssistantContent]) -> String {
 /// A user message of one text part.
 pub fn user_text(text: &str) -> Message {
     Message::User {
-        content: vec![UserContent::text(text)],
+        content: rig_core::NonEmpty::new(UserContent::text(text)),
     }
 }
 

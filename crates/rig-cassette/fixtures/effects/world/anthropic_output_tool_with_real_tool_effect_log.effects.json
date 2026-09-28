@@ -166,11 +166,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
-              },
-              "provider": {
-                "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
+                "provider": {
+                  "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
+                }
               },
               "function": {
                 "name": "add",
@@ -298,11 +296,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
+                    "provider": {
+                      "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -322,11 +318,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
+                    "provider": {
+                      "call_id": "toolu_01Jz1wkprkzZUMgk514Dyg4n"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -405,11 +399,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01CVpPhS4MGTznXKiKs8uRBo"
-              },
-              "provider": {
-                "call_id": "toolu_01CVpPhS4MGTznXKiKs8uRBo"
+                "provider": {
+                  "call_id": "toolu_01CVpPhS4MGTznXKiKs8uRBo"
+                }
               },
               "function": {
                 "name": "final_result",

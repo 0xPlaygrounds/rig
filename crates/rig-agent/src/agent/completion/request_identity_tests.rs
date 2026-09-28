@@ -206,11 +206,9 @@ const GOLDEN: &str = r#"
               "name": "add"
             },
             "id": {
-              "id": "tc1",
-              "origin": "explicit"
-            },
-            "provider": {
-              "call_id": "tc1"
+              "provider": {
+                "call_id": "tc1"
+              }
             },
             "signature": null,
             "type": "toolcall"
@@ -223,8 +221,9 @@ const GOLDEN: &str = r#"
         "content": [
           {
             "call": {
-              "id": "tc1",
-              "origin": "explicit"
+              "provider": {
+                "call_id": "tc1"
+              }
             },
             "content": [
               {
@@ -233,9 +232,6 @@ const GOLDEN: &str = r#"
               }
             ],
             "name": "add",
-            "provider": {
-              "call_id": "tc1"
-            },
             "type": "toolresult"
           }
         ],
@@ -328,11 +324,9 @@ const GOLDEN: &str = r#"
               "name": "add"
             },
             "id": {
-              "id": "tc1",
-              "origin": "explicit"
-            },
-            "provider": {
-              "call_id": "tc1"
+              "provider": {
+                "call_id": "tc1"
+              }
             },
             "signature": null,
             "type": "toolcall"
@@ -345,8 +339,9 @@ const GOLDEN: &str = r#"
         "content": [
           {
             "call": {
-              "id": "tc1",
-              "origin": "explicit"
+              "provider": {
+                "call_id": "tc1"
+              }
             },
             "content": [
               {
@@ -355,9 +350,6 @@ const GOLDEN: &str = r#"
               }
             ],
             "name": "add",
-            "provider": {
-              "call_id": "tc1"
-            },
             "type": "toolresult"
           }
         ],

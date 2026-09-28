@@ -1,5 +1,5 @@
 //! Matrix for raw terminal-record capture on both Copilot streaming routes
-//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
@@ -9,7 +9,7 @@
 //! route that is the shared chat terminal type, on the Responses route the
 //! shared Responses one, and each cell reads `raw` back through the type its
 //! route owns. It is the terminal record only, and nothing about it is sent
-//! to Copilot. `raw == Value::Null` means only that a `StreamFinal` was built
+//! to Copilot. `raw == Value::Null` means only that a `CompletionResponse` was built
 //! by hand without a provider terminal behind it, which no cell here can
 //! produce. Which route a stream took is a fact about the wire rather than
 //! about `raw`, so each typed-access cell asserts it on the bound wire
@@ -28,7 +28,7 @@
 //! accumulates unknown top-level chunk fields under `additional_params`,
 //! which is where Copilot's own `copilot_usage` block (with `total_nano_aiu`)
 //! and the `system_fingerprint` land — neither has a home on the normalized
-//! [`StreamFinal`](rig::streaming::StreamFinal); on the Responses route the
+//! [`CompletionResponse`](rig::completion::CompletionResponse); on the Responses route the
 //! terminal `status`.
 //!
 //! # Matrix
@@ -57,10 +57,9 @@ use serde_json::Value;
 
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
 use crate::copilot::with_copilot_cassette_result;
-use crate::raw_capture::{
-    assert_normalized_lacks, capture_sole_terminal, chat, responses, stream_normalized_without_raw,
-};
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat, responses};
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
 const COPILOT_PROVIDER: &str = "copilot";
@@ -147,7 +146,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
-            capture_sole_terminal(model, request(), sink).await
+            capture_terminal(model, request(), sink).await
         },
     )
     .await
@@ -181,14 +180,14 @@ async fn chat_stream_raw_exposes_copilot_usage() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage",
         |client| async move {
-            capture_sole_terminal(client.completion(CHAT_MODEL), request(), sink).await
+            capture_terminal(client.completion(CHAT_MODEL), request(), sink).await
         },
     )
     .await
     .expect("chat_stream_raw_exposes_copilot_usage should replay from its cassette");
 
     let terminal = captured.take();
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert_normalized_lacks(
         &normalized,
         &["copilot_usage", "system_fingerprint", "additional_params"],
@@ -258,7 +257,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
             );
-            capture_sole_terminal(model, request(), sink).await
+            capture_terminal(model, request(), sink).await
         },
     )
     .await
@@ -290,14 +289,14 @@ async fn responses_stream_raw_exposes_terminal_status() {
     with_copilot_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status",
         |client| async move {
-            capture_sole_terminal(client.completion(RESPONSES_MODEL), request(), sink).await
+            capture_terminal(client.completion(RESPONSES_MODEL), request(), sink).await
         },
     )
     .await
     .expect("responses_stream_raw_exposes_terminal_status should replay from its cassette");
 
     let terminal = captured.take();
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert_normalized_lacks(&normalized, &["status"]);
 
     let raw = &terminal.raw;
@@ -308,7 +307,7 @@ async fn responses_stream_raw_exposes_terminal_status() {
     );
     assert_eq!(raw["status"], recorded_terminal["status"]);
     assert_eq!(raw["usage"], recorded_terminal["usage"]);
-    let typed: responses_api::streaming::StreamingCompletionResponse =
+    let typed: responses_api::CompletionResponse =
         serde_json::from_value(raw.clone()).expect("raw must deserialize");
-    assert_eq!(typed.status, Some(responses_api::ResponseStatus::Completed));
+    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
 }

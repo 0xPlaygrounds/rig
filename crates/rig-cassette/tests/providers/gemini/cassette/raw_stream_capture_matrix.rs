@@ -7,7 +7,7 @@
 //! record at EOF — Gemini's own
 //! [`StreamingCompletionResponse`], assembled from the stream's last
 //! `finishReason`, usage and metadata — and serializes it onto the terminal
-//! [`rig::streaming::StreamFinal::raw`]. There is no opt-in and nothing
+//! [`rig::completion::CompletionResponse::raw`]. There is no opt-in and nothing
 //! about it reaches the wire; `raw` is `Value::Null` only on a terminal
 //! constructed without a provider stream behind it, never because capture
 //! "was not requested".
@@ -45,13 +45,15 @@ use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamEvent, StreamFinal};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_gemini_cassette;
-use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
+use crate::raw_capture::capture_text_and_terminal;
+use crate::support::normalized_without_raw;
 use crate::support::{Adder, Observed, json_contains_key};
 use rig::completion::CompletionRequest;
 
@@ -85,7 +87,7 @@ fn forced_tool_request() -> rig::completion::CompletionRequest {
 /// terminal record.
 struct Drained {
     tool_calls: Vec<ToolCall>,
-    terminal: StreamFinal,
+    terminal: rig::completion::CompletionResponse,
 }
 
 /// Drain a model stream, keeping every tool call it yielded.
@@ -94,7 +96,7 @@ struct Drained {
 /// helpers: cell 3 is about a streamed `functionCall`, so it needs the tool
 /// calls the stream yielded *beside* the terminal record, which no shared
 /// helper parks. The sole-terminal claim it makes is the same one
-/// [`capture_text_and_sole_terminal`](crate::raw_capture::capture_text_and_sole_terminal)
+/// [`capture_text_and_terminal`](crate::raw_capture::capture_text_and_terminal)
 /// makes for this file's text-only cells.
 async fn drain_stream<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
@@ -104,26 +106,23 @@ async fn drain_stream<
     request: rig::completion::CompletionRequest,
 ) -> Drained {
     let mut stream = model.stream(request).expect("stream should open");
-    let mut terminal = None;
     let mut tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
-        match item.expect("stream item should succeed") {
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
-                ..
-            } => tool_calls.push(tool_call),
-            StreamEvent::Final(final_record) => {
-                assert!(
-                    terminal.replace(final_record).is_none(),
-                    "a stream yields exactly one terminal record"
-                );
-            }
-            _ => {}
+        if let Item::Event(StreamEvent::End {
+            content: AssistantContent::ToolCall(tool_call),
+            ..
+        }) = item.expect("stream item should succeed")
+        {
+            tool_calls.push(tool_call)
         }
     }
+    let terminal = stream
+        .finish()
+        .await
+        .expect("stream should yield a terminal record");
     Drained {
         tool_calls,
-        terminal: terminal.expect("stream should yield a terminal record"),
+        terminal,
     }
 }
 
@@ -201,12 +200,12 @@ fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Observed<(String, StreamFinal)> = Observed::default();
+    let observed: Observed<(String, rig::completion::CompletionResponse)> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_text_and_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should open");
         },
@@ -250,12 +249,12 @@ async fn raw_roundtrips_streaming_completion_response() {
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Observed<(String, StreamFinal)> = Observed::default();
+    let observed: Observed<(String, rig::completion::CompletionResponse)> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            capture_text_and_sole_terminal(client.completion(MODEL), request(), sink)
+            capture_text_and_terminal(client.completion(MODEL), request(), sink)
                 .await
                 .expect("stream should open");
         },
@@ -268,14 +267,14 @@ async fn raw_exposes_terminal_only_fields() {
     // The normalized terminal provably lacks these: `finish_reason` is rig's
     // vocabulary (`stop`), and the per-modality breakdown has no normalized
     // home.
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert!(!json_contains_key(&normalized, "promptTokensDetails"));
     assert_ne!(
         normalized.get("finish_reason"),
         Some(&Value::String("STOP".to_string())),
         "the normalized finish reason is rig's spelling, not Gemini's"
     );
-    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
 
     let raw = &terminal.raw;
     let last = last_usage_frame(SCENARIO);
@@ -346,7 +345,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     );
 
     // The normalized terminal reports the reconciled ToolCalls …
-    assert_eq!(terminal.finish_reason, Some(FinishReason::ToolCalls));
+    assert_eq!(terminal.finish_reason(), Some(FinishReason::ToolCalls));
     // … while raw keeps Gemini's own STOP.
     assert_eq!(
         raw.get("finish_reason"),

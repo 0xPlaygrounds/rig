@@ -4694,6 +4694,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "frozen_api"
+version = "0.42.0"
+dependencies = [
+ "bytes",
+ "futures",
+ "http 1.4.2",
+ "rig",
+ "rig-reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10497,6 +10511,7 @@ dependencies = [
  "bevy_tasks",
  "bytes",
  "futures",
+ "http 1.4.2",
  "httpdate",
  "httpmock",
  "proptest",
@@ -10582,6 +10597,7 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
+ "uuid",
 ]
 
 [[package]]

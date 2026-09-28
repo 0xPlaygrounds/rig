@@ -40,7 +40,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::providers::openai;
-use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_chat_stream_logprobs_cassette_result};
@@ -152,15 +151,15 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
         }
         Transport::Streaming => {
             let mut stream = model.stream(request)?;
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(record) = item? {
-                    terminal = Some(record);
-                }
+                item?;
             }
-            let terminal = terminal.context("stream should carry a terminal record")?;
+            let terminal = stream
+                .finish()
+                .await
+                .context("stream should carry a terminal record")?;
             // The provider-native chat-completions terminal rides serialized
-            // on `StreamFinal::raw`; decode it to prove the shape, then read
+            // on `CompletionResponse::raw`; decode it to prove the shape, then read
             // the serialized form the way the old raw surface did.
             let terminal = serde_json::from_value::<
                 openai::wire::StreamingCompletionResponse<openai::completion::Usage>,

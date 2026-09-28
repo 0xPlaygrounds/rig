@@ -426,11 +426,10 @@ async fn witnessed_success_matches_the_unwitnessed_run() {
     );
         let usage = observed
             .stream()
-            .events
-            .iter()
-            .rev()
-            .find_map(|event| match event {
-                rig::streaming::StreamEvent::Final(final_event) => Some(final_event.usage),
+            .outcome
+            .as_ref()
+            .and_then(|outcome| match outcome {
+                Ok(rig::effect::Outcome::Completion(final_event)) => Some(final_event.usage),
                 _ => None,
             })
             .expect("the terminal record's usage");

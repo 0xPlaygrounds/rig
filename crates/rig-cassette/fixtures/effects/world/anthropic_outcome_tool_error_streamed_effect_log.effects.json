@@ -2,69 +2,29 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
         "batch": 9,
         "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -72,15 +32,7 @@
         }
       },
       {
-        "batch": 24,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -88,7 +40,7 @@
         }
       },
       {
-        "batch": 26,
+        "batch": 19,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -96,7 +48,23 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 20,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 21,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 22,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -104,31 +72,7 @@
         }
       },
       {
-        "batch": 28,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 29,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 31,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 31,
+        "batch": 23,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -247,11 +191,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-              },
-              "provider": {
-                "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
+                "provider": {
+                  "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
+                }
               },
               "function": {
                 "name": "add",
@@ -296,116 +238,43 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\": 17, \"y\": 25}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 1"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "7"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ", \"y\": "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "25}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01BJ9r2UfGrVt2QLHFkTpsgx",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-            },
-            "provider": {
-              "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 611,
-            "output_tokens": 69,
-            "total_tokens": 680,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
-          "response_id": null,
-          "provider_request_id": "req_011CfLccFZbXbNrcUHnACKi1",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 69,
-              "input_tokens": 611,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLccFvvqgbpzszzQiC27",
-            "model": "claude-sonnet-4-6"
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -473,11 +342,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
+                    "provider": {
+                      "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -497,11 +364,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
+                    "provider": {
+                      "call_id": "toolu_01BJ9r2UfGrVt2QLHFkTpsgx"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -585,164 +450,134 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "I"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'m"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " sorry, it"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " seems"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the add tool is currently"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " broken and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " unable"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to return"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a result. You"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " may"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " want"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " to try again"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " later"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "!"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "I'm sorry, it seems the add tool is currently broken and unable to return a result. You may want to try again later!"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 697,
-            "output_tokens": 30,
-            "total_tokens": 727,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
-          "response_id": null,
-          "provider_request_id": "req_011CfLccMtMZ5pogox7Zv2UZ",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 30,
-              "input_tokens": 697,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLccNMdyEMZ4MumLQcXe",
-            "model": "claude-sonnet-4-6"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'm sorry, it seems the add tool is currently broken and unable to return a result. You may want to try again later!"
+            }
           }
         }
       ],

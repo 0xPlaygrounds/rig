@@ -1,27 +1,23 @@
-//! Streaming helpers for [`MockCompletionModel`](super::MockCompletionModel).
+//! Streaming helpers for [`MockCompletionModel`](super::MockCompletionModel):
+//! the script a mock reply is written from, and the decoder that writes it
+//! through the completion writer's part handles, as a wire's decoder does.
 
+use std::collections::HashMap;
+
+use crate::completion::{CompletionResponse, Usage};
 use crate::error::ProviderError;
-use crate::{
-    completion::Usage,
-    message::ReasoningContent,
-    streaming::{StreamFinal, ToolCallEnd, UnparseableToolInput},
+use crate::message::ReasoningContent;
+use crate::operation::{
+    CallFragment, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart,
 };
-
-use crate::operation::AdapterOutput;
+use crate::wire::{Decoder, Flow, Out, WireEvent};
 
 /// Provider descriptor name reported by the test doubles.
 pub const MOCK_PROVIDER: &str = "mock";
 
-/// Build the terminal record the mock model yields, carrying `usage`.
-pub fn mock_final(usage: Usage) -> StreamFinal {
-    // The document is replaced with the whole scripted record, serialized,
-    // when the fixture is interpreted (see `apply`); until then it names
-    // the mock as its origin the way a real terminal names its provider.
-    StreamFinal::new(
-        MOCK_PROVIDER,
-        usage,
-        serde_json::json!({ "provider": MOCK_PROVIDER }),
-    )
+/// The end the mock model's reply finishes with, carrying `usage`.
+pub fn mock_final(usage: Usage) -> Finish {
+    Finish::new(usage)
 }
 
 /// Convert a fixture JSON value into canonical params: `null`/`{}` mean
@@ -37,8 +33,8 @@ fn fixture_additional_params(
     })
 }
 
-/// Build a terminal record whose usage has only `total_tokens` set.
-pub fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
+/// The end of a reply whose usage has only `total_tokens` set.
+pub fn mock_final_with_total_tokens(total_tokens: u64) -> Finish {
     mock_final(Usage {
         total_tokens: Some(total_tokens),
         ..Default::default()
@@ -50,12 +46,12 @@ pub fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
 pub enum MockStreamEvent {
     /// Text chunk.
     Text(String),
-    /// Start a new text content block with optional provider metadata.
+    /// Start a new text part with optional provider metadata.
     TextStart {
         id: String,
         additional_params: Option<serde_json::Value>,
     },
-    /// Provider-specific metadata for the current text content block.
+    /// Provider-specific metadata for the current text part.
     TextAdditionalParams(serde_json::Value),
     /// Complete tool call event.
     ToolCall {
@@ -64,13 +60,12 @@ pub enum MockStreamEvent {
         arguments: serde_json::Value,
         call_id: Option<String>,
     },
-    /// Tool call name delta event.
+    /// A tool call's name, as a wire streams it.
     ToolCallNameDelta { id: String, name: String },
-    /// Tool call arguments delta event.
+    /// A fragment of a tool call's arguments.
     ToolCallArgumentsDelta { id: String, arguments: String },
-    /// The end of a tool call streamed as deltas: the accumulator
-    /// finalizes the fragments into the completed call, as a wire's
-    /// step-stop does.
+    /// The end of a tool call streamed as fragments: the call closes with
+    /// what they carried, as a wire's step-stop does.
     ToolCallEnd { id: String },
     /// Complete reasoning event.
     Reasoning {
@@ -83,38 +78,26 @@ pub enum MockStreamEvent {
     MessageId(String),
     /// Provider-native output item that Rig does not model.
     Unknown(serde_json::Value),
-    /// Final raw response carrying optional usage.
-    FinalResponse(StreamFinal),
-    /// Stream error.
+    /// The provider's end of the reply.
+    FinalResponse(Finish),
+    /// A failure, which ends the reply.
     Error(MockError),
 }
 
 use super::completion::MockError;
 
-/// Fixture-syntax decoding of a part identity.
-///
-/// Corpus fixtures are plain data and spell identities as strings; the
-/// minted renderings (`reasoning-0`, `block-3`, `output-1`, `tool-2`,
-/// `text-0`) are the fixture syntax for a `BlockId::Minted` of that kind
-/// and index, and anything else is a wire id. This is *fixture encoding*,
-/// not provenance recovery: production code never parses an id string —
-/// provenance travels in [`BlockId`](crate::streaming::BlockId) itself.
-fn fixture_part_id(id: String) -> crate::streaming::BlockId {
-    use crate::streaming::MintKind;
-    for (namespace, kind) in [
-        ("reasoning-", MintKind::Reasoning),
-        ("block-", MintKind::Block),
-        ("output-", MintKind::Output),
-        ("tool-", MintKind::Tool),
-        ("text-", MintKind::Text),
-    ] {
-        if let Some(rest) = id.strip_prefix(namespace)
-            && let Ok(index) = rest.parse::<u64>()
-        {
-            return kind.for_wire_index(index);
-        }
-    }
-    crate::streaming::BlockId::wire(id)
+/// The provider id a fixture spells, when it spells one. Corpus fixtures
+/// are plain data: the renderings `reasoning-0`, `block-3`, `output-1`,
+/// `tool-2` and `text-0` name a part the wire gave no id, and anything else
+/// is the wire's own id.
+fn fixture_provider_id(id: &str) -> Option<&str> {
+    let unnamed = ["reasoning-", "block-", "output-", "tool-", "text-"]
+        .iter()
+        .any(|namespace| {
+            id.strip_prefix(namespace)
+                .is_some_and(|rest| rest.parse::<u64>().is_ok())
+        });
+    (!id.is_empty() && !unnamed).then_some(id)
 }
 
 impl MockStreamEvent {
@@ -225,7 +208,7 @@ impl MockStreamEvent {
         Self::Unknown(value)
     }
 
-    /// Create a final response event with usage.
+    /// Create the provider's end of the reply, with usage.
     pub fn final_response(usage: Usage) -> Self {
         Self::FinalResponse(mock_final(usage))
     }
@@ -244,162 +227,239 @@ impl MockStreamEvent {
     pub fn error(message: impl Into<String>) -> Self {
         Self::Error(MockError::provider(message))
     }
+}
 
-    /// Emit this scripted event as canonical stream events into `out` — the
-    /// same helper adapters use, so a script speaks exactly the grammar a
-    /// wire would.
-    pub(crate) fn emit(
-        self,
-        out: &mut AdapterOutput,
-        tool_ids: &mut crate::streaming::SyntheticIds,
-    ) -> Result<(), ProviderError> {
-        match self {
-            Self::Text(text) => out.text(text),
-            Self::TextStart {
-                id,
+/// One step of a mock reply: a scripted event, or a whole response.
+#[derive(Clone, Debug)]
+pub enum MockFrame {
+    /// A scripted event.
+    Event(MockStreamEvent),
+    /// A whole response, as a unary turn answers.
+    Response(Box<CompletionResponse>),
+}
+
+/// The decoder of [`MockScript`](super::MockScript): each scripted step is
+/// written through the completion writer's part handles.
+#[derive(Default)]
+pub struct MockDecoder<'id> {
+    /// The text part bare text extends.
+    text: Option<TextPart<'id>>,
+    /// The reasoning part each scripted id streams into, in start order.
+    reasoning: Vec<(String, ReasoningPart<'id>)>,
+    /// The buffer index each scripted call id streams under.
+    calls: HashMap<String, usize>,
+    next_call: usize,
+}
+
+impl<'id> MockDecoder<'id> {
+    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
+        if let Some(part) = self.text.take() {
+            out.close_text(part);
+        }
+    }
+
+    fn call_index(&mut self, id: &str) -> usize {
+        if let Some(index) = self.calls.get(id) {
+            return *index;
+        }
+        let index = self.next_call;
+        self.next_call += 1;
+        if !id.is_empty() {
+            self.calls.insert(id.to_owned(), index);
+        }
+        index
+    }
+
+    fn event(
+        &mut self,
+        event: MockStreamEvent,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        match event {
+            MockStreamEvent::Text(text) => {
+                let part = self.text.get_or_insert_with(|| out.text());
+                out.push_text(part, &text);
+            }
+            MockStreamEvent::TextStart {
+                id: _,
                 additional_params,
-            } => out.text_start(
-                fixture_part_id(id),
-                additional_params
+            } => {
+                self.close_text(&mut out);
+                let part = out.text();
+                if let Some(params) = additional_params
                     .map(fixture_additional_params)
                     .transpose()?
-                    .flatten(),
-            ),
-            Self::TextAdditionalParams(additional_params) => {
-                match fixture_additional_params(additional_params)? {
-                    // The real variant is non-empty by construction; an empty
-                    // fixture object is a scripting mistake, not a no-op.
-                    None => {
-                        return Err(ProviderError::Provider(
-                            "mock stream fixture `TextAdditionalParams` carries no data — \
-                             drop the event instead"
-                                .to_string(),
-                        ));
-                    }
-                    Some(params) => out.text_meta(params),
+                    .flatten()
+                {
+                    out.text_params(&part, params);
                 }
+                self.text = Some(part);
             }
-            Self::ToolCall {
+            MockStreamEvent::TextAdditionalParams(additional_params) => {
+                // The real metadata is non-empty by construction; an empty
+                // fixture object is a scripting mistake, not a no-op.
+                let Some(params) = fixture_additional_params(additional_params)? else {
+                    return Err(ProviderError::Provider(
+                        "mock stream fixture `TextAdditionalParams` carries no data — \
+                         drop the event instead"
+                            .to_string(),
+                    ));
+                };
+                let part = self.text.get_or_insert_with(|| out.text());
+                out.text_params(part, params);
+            }
+            MockStreamEvent::ToolCall {
                 id,
                 name,
                 arguments,
                 call_id,
             } => {
-                // An empty id is an id-less wire: mint the key, as every
-                // adapter for such a wire does. A wire-derived key doubles
-                // as the durable id (the common case: providers key by the
-                // id the wire issued); minted keys carry none.
-                let key = if id.is_empty() {
-                    tool_ids.mint()
-                } else {
-                    fixture_part_id(id)
+                self.close_text(&mut out);
+                // An id-less call is a wire that sends none: rig issues the
+                // id. A call id beside the wire id makes the pair a
+                // dual-identifier call. A call scripted as fragments under
+                // this id is the one this restatement closes.
+                let index = match self.calls.remove(&id) {
+                    Some(index) => index,
+                    None => self.call_index(""),
                 };
-                let mut end = ToolCallEnd::whole(name, arguments);
-                if let Some(tool_id) = key.wire_str() {
-                    end = end.with_tool_id(tool_id);
+                let wire_id = fixture_provider_id(&id);
+                out.call_fragment(
+                    index,
+                    CallFragment {
+                        id: call_id.as_deref().or(wire_id),
+                        item_id: call_id.as_ref().and(wire_id),
+                        name: Some(name.as_str()),
+                        ..CallFragment::default()
+                    },
+                )?;
+                out.announce_pending(index, arguments);
+                out.close_pending(index, IfMalformed::Fail)?;
+            }
+            MockStreamEvent::ToolCallNameDelta { id, name } => {
+                self.close_text(&mut out);
+                let index = self.call_index(&id);
+                out.call_fragment(
+                    index,
+                    CallFragment {
+                        id: fixture_provider_id(&id),
+                        name: Some(name.as_str()),
+                        ..CallFragment::default()
+                    },
+                )?;
+            }
+            MockStreamEvent::ToolCallArgumentsDelta { id, arguments } => {
+                self.close_text(&mut out);
+                let index = self.call_index(&id);
+                out.call_fragment(
+                    index,
+                    CallFragment {
+                        id: fixture_provider_id(&id),
+                        arguments: Some(arguments.as_str()),
+                        ..CallFragment::default()
+                    },
+                )?;
+            }
+            MockStreamEvent::ToolCallEnd { id } => {
+                let index = self.call_index(&id);
+                self.calls.remove(&id);
+                out.close_pending(index, IfMalformed::Fail)?;
+            }
+            MockStreamEvent::Reasoning { id, content } => {
+                self.close_text(&mut out);
+                let reasoning = crate::message::Reasoning {
+                    id: fixture_provider_id(&id).map(str::to_owned),
+                    content: vec![content],
+                };
+                // A whole reasoning restates the part streamed under its id,
+                // and closes it.
+                match self.reasoning.iter().position(|(open, _)| *open == id) {
+                    Some(at) => {
+                        let (_, part) = self.reasoning.remove(at);
+                        out.close_reasoning(
+                            part,
+                            Seal {
+                                id: reasoning.id.clone(),
+                                restated: Some(reasoning),
+                                ..Seal::default()
+                            },
+                        );
+                    }
+                    None => out.reasoning_block(reasoning),
                 }
-                if let Some(call_id) = call_id {
-                    end = end.with_call_id(call_id);
+            }
+            MockStreamEvent::ReasoningDelta { id, reasoning } => {
+                self.close_text(&mut out);
+                let at = match self.reasoning.iter().position(|(open, _)| *open == id) {
+                    Some(at) => at,
+                    None => {
+                        self.reasoning.push((id, out.reasoning()));
+                        self.reasoning.len() - 1
+                    }
+                };
+                if let Some((_, part)) = self.reasoning.get(at) {
+                    out.push_reasoning(part, &reasoning);
                 }
-                out.tool_end(key, end);
             }
-            Self::ToolCallNameDelta { id, name } => out.tool_name(&fixture_part_id(id), name),
-            Self::ToolCallArgumentsDelta { id, arguments } => {
-                out.tool_arguments(&fixture_part_id(id), arguments)
+            MockStreamEvent::MessageId(id) => out.message_id(id),
+            MockStreamEvent::Unknown(value) => out.unknown(value.into()),
+            MockStreamEvent::FinalResponse(finish) => {
+                self.close_text(&mut out);
+                for (id, part) in std::mem::take(&mut self.reasoning) {
+                    out.close_reasoning(
+                        part,
+                        Seal {
+                            id: fixture_provider_id(&id).map(str::to_owned),
+                            ..Seal::default()
+                        },
+                    );
+                }
+                // The mock's document is its scripted end, serialized.
+                out.raw(serde_json::to_value(&finish)?);
+                return Ok(out.end(finish));
             }
-            Self::ToolCallEnd { id } => out.tool_end(
-                fixture_part_id(id),
-                ToolCallEnd::new(UnparseableToolInput::Error),
-            ),
-            Self::Reasoning { id, content } => {
-                // Fixture syntax: a wire-shaped id is both the key and the
-                // durable handle; a legacy minted rendering is a key only.
-                let key = fixture_part_id(id.clone());
-                let provider_id = key
-                    .wire_str()
-                    .and_then(|_| crate::streaming::non_empty_id(id));
-                out.reasoning_block(key, provider_id, content);
-            }
-            Self::ReasoningDelta { id, reasoning } => {
-                let key = fixture_part_id(id.clone());
-                let provider_id = key
-                    .wire_str()
-                    .and_then(|_| crate::streaming::non_empty_id(id));
-                out.reasoning_delta(&key, provider_id, reasoning);
-            }
-            Self::MessageId(id) => out.message_id(id),
-            Self::Unknown(value) => out.unknown(value.into()),
-            Self::FinalResponse(mut response) => {
-                // The mock's terminal type is `StreamFinal` itself, so `raw`
-                // is the scripted terminal serialized — the same capture
-                // every real adapter performs.
-                response.raw = serde_json::to_value(&response)?;
-                out.final_record(response);
-            }
-            Self::Error(error) => out.error(error.into_completion_error()),
+            MockStreamEvent::Error(error) => return Err(error.into_completion_error()),
         }
-        Ok(())
+        Ok(Flow::More)
+    }
+
+    fn response(
+        &mut self,
+        response: CompletionResponse,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        for content in response.choice.iter().cloned() {
+            out.content(content)?;
+        }
+        if let Some(message_id) = response.message_id.clone() {
+            out.message_id(message_id);
+        }
+        out.raw(response.raw.clone());
+        Ok(out.end(
+            Finish::new(response.usage)
+                .with_optional_reason(response.finish_reason())
+                .with_optional_response_id(response.response_id.clone())
+                .with_optional_model(response.model.clone())
+                .with_optional_provider_request_id(response.provider_request_id.clone()),
+        ))
     }
 }
 
-/// A completion stream `provider` opened over `items`, as the driver yields
-/// them, with the reasoning `issuer` it names up front.
-#[cfg(test)]
-pub(crate) fn scripted_stream(
-    provider: &str,
-    issuer: Option<&str>,
-    items: impl futures::Stream<Item = Result<crate::streaming::StreamEvent, ProviderError>>
-    + Send
-    + 'static,
-) -> crate::streaming::CompletionStream {
-    crate::streaming::Streamed::new(
-        Box::new(Scripted {
-            items: Box::pin(items),
-            provider: provider.to_owned(),
-        }),
-        crate::operation::CompletionReply::written(crate::operation::CompletionFold::opened(
-            provider,
-            issuer.map(str::to_owned),
-            crate::wire::Mode::Streaming,
-        )),
-        tracing::Span::none(),
-        provider,
-    )
-}
+impl<'id> Decoder<'id, Completion, MockFrame> for MockDecoder<'id> {
+    type Event = MockFrame;
 
-/// Items handed to the consumer as they are: a stream already canonical.
-#[cfg(test)]
-struct Scripted {
-    items: crate::wasm_compat::WasmBoxedStream<
-        'static,
-        Result<crate::streaming::StreamEvent, ProviderError>,
-    >,
-    provider: String,
-}
+    fn classify(&self, frame: MockFrame) -> WireEvent<MockFrame> {
+        WireEvent::Known(frame)
+    }
 
-#[cfg(test)]
-impl crate::driver::Source<crate::operation::Completion> for Scripted {
-    fn poll_into(
+    fn decode(
         &mut self,
-        cx: &mut std::task::Context<'_>,
-        _fold: &mut crate::operation::CompletionReply,
-        ready: &mut crate::wire::Ready<crate::operation::Completion>,
-    ) -> std::task::Poll<crate::driver::Progress> {
-        use futures::StreamExt;
-
-        match self.items.poll_next_unpin(cx) {
-            std::task::Poll::Pending => std::task::Poll::Pending,
-            std::task::Poll::Ready(Some(item)) => {
-                ready.push(item);
-                std::task::Poll::Ready(crate::driver::Progress::Pushed)
-            }
-            std::task::Poll::Ready(None) => {
-                std::task::Poll::Ready(crate::driver::Progress::Closed(crate::wire::Reply {
-                    provider: self.provider.clone(),
-                    raw: serde_json::Value::Null,
-                    provider_request_id: None,
-                }))
-            }
+        frame: MockFrame,
+        out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        match frame {
+            MockFrame::Event(event) => self.event(event, out),
+            MockFrame::Response(response) => self.response(*response, out),
         }
     }
 }

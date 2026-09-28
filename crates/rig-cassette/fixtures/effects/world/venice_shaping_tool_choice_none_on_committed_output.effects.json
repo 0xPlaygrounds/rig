@@ -169,11 +169,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "QB6KaaCSs"
-              },
-              "provider": {
-                "call_id": "QB6KaaCSs"
+                "provider": {
+                  "call_id": "QB6KaaCSs"
+                }
               },
               "function": {
                 "name": "add",
@@ -306,11 +304,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "QB6KaaCSs"
-                  },
-                  "provider": {
-                    "call_id": "QB6KaaCSs"
+                    "provider": {
+                      "call_id": "QB6KaaCSs"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -330,11 +326,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "QB6KaaCSs"
-                  },
-                  "provider": {
-                    "call_id": "QB6KaaCSs"
+                    "provider": {
+                      "call_id": "QB6KaaCSs"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -497,11 +491,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "QB6KaaCSs"
-                  },
-                  "provider": {
-                    "call_id": "QB6KaaCSs"
+                    "provider": {
+                      "call_id": "QB6KaaCSs"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -521,11 +513,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "QB6KaaCSs"
-                  },
-                  "provider": {
-                    "call_id": "QB6KaaCSs"
+                    "provider": {
+                      "call_id": "QB6KaaCSs"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -619,11 +609,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "tZ5y1eNDh"
-              },
-              "provider": {
-                "call_id": "tZ5y1eNDh"
+                "provider": {
+                  "call_id": "tZ5y1eNDh"
+                }
               },
               "function": {
                 "name": "final_result",

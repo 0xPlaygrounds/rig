@@ -24,6 +24,7 @@
 //! |---|---|
 //! | all 8 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_text.yaml` |
 
+use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
 
@@ -31,7 +32,7 @@ use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde_json::Value;
 
 use super::support::with_mistral_history_roundtrip_cassette_result;
@@ -92,13 +93,13 @@ fn history(shape: Shape) -> Vec<Message> {
     match shape {
         Shape::Text => vec![
             Message::User {
-                content: vec![UserContent::text(
+                content: rig_core::NonEmpty::new(UserContent::text(
                     "Unicode context: café 東京. The marker is exactly: lantern-42.",
-                )],
+                )),
             },
             Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::text("lantern-42")],
+                content: rig_core::NonEmpty::new(AssistantContent::text("lantern-42")),
             },
         ],
     }
@@ -151,39 +152,33 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
         }
         (Transport::Streaming, Surface::Raw) => {
             let mut stream = model.stream(request(cell))?;
-            let mut observation = Observation {
-                text: String::new(),
-                saw_terminal: false,
-            };
+            let mut text = String::new();
             while let Some(item) = stream.next().await {
-                match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::Final(_) => observation.saw_terminal = true,
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
+                    text.push_str(&delta);
                 }
             }
-            observation
+            // `finish` succeeds only once the provider ended the reply.
+            stream.finish().await?;
+            Observation {
+                text,
+                saw_terminal: true,
+            }
         }
         (Transport::Streaming, Surface::Normalized) => {
             let mut stream = model.stream(request(cell))?;
-            let mut observation = Observation {
-                text: String::new(),
-                saw_terminal: false,
-            };
+            let mut text = String::new();
             while let Some(item) = stream.next().await {
-                match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::Final(_) => observation.saw_terminal = true,
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
+                    text.push_str(&delta);
                 }
             }
-            observation
+            // `finish` succeeds only once the provider ended the reply.
+            stream.finish().await?;
+            Observation {
+                text,
+                saw_terminal: true,
+            }
         }
     };
 

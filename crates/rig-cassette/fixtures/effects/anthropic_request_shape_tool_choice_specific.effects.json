@@ -122,11 +122,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
-              },
-              "provider": {
-                "call_id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
+                "provider": {
+                  "call_id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
+                }
               },
               "function": {
                 "name": "add",
@@ -244,11 +242,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
+                    "provider": {
+                      "call_id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -268,11 +264,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
+                    "provider": {
+                      "call_id": "toolu_01Dm6MWg7HDTyg9fYxFRwc2L"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -330,11 +324,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01V3HSELGBB4LNpnmo2ykGSY"
-              },
-              "provider": {
-                "call_id": "toolu_01V3HSELGBB4LNpnmo2ykGSY"
+                "provider": {
+                  "call_id": "toolu_01V3HSELGBB4LNpnmo2ykGSY"
+                }
               },
               "function": {
                 "name": "add",

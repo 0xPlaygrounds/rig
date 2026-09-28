@@ -13,10 +13,13 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
+use crate::error::ProviderError;
+use crate::message::Issuer;
 use crate::model::{ModelInfo, ModelList};
 pub use crate::operation::VerifyDecoder;
 use crate::operation::{Completion, ModelListing, ModelPage, Verify as VerifyOp};
 use crate::providers::internal::named_dialect;
+use crate::wire::Flow;
 use crate::wire::{
     Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
     WireFrame,
@@ -456,9 +459,13 @@ impl Messages {
             request.max_tokens = Some(tokens);
         }
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        // Only reasoning this dialect issued is replayed here.
+        let issuers = [Issuer::from_static(self.provider.dialect.name)];
+        let request = request.replayable_to(&issuers)?;
         let typed = AnthropicCompletionRequest::try_from_params(
             AnthropicRequestParams {
                 model: &model,
+                issuers: &issuers,
                 request,
                 prompt_caching: self.prompt_caching,
                 automatic_caching: self.automatic_caching,
@@ -490,7 +497,7 @@ impl Wire for Messages {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = MessagesDecoder;
+    type Decoder<'id> = MessagesDecoder<'id>;
 
     /// Constrained output decoding does not suppress strict tool calls.
     fn describe(&self) -> Descriptor<'_> {
@@ -501,12 +508,7 @@ impl Wire for Messages {
             ))
     }
 
-    fn encode(&self, mut request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        // Reasoning another issuer signed is not replayed here.
-        crate::message::retain_replayable_reasoning(
-            &mut request.chat_history,
-            &[self.provider.dialect.name],
-        );
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let body = self.body(request, mode)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -532,8 +534,8 @@ impl Wire for Messages {
         .with_projection(MessagesDecoder::project))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        MessagesDecoder::new(self.provider.dialect.name)
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        MessagesDecoder::new()
     }
 }
 
@@ -548,7 +550,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ModelsDecoder;
+    type Decoder<'id> = ModelsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
@@ -561,7 +563,7 @@ impl Wire for Models {
         ))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ModelsDecoder
     }
 }
@@ -610,22 +612,26 @@ impl From<ModelEntry> for ModelInfo {
 /// Decodes `GET /v1/models` and the cursor Anthropic names.
 pub struct ModelsDecoder;
 
-impl Decoder<ModelListing> for ModelsDecoder {
+impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
     type Event = ModelsPage;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["data"])
     }
 
-    fn interpret(&mut self, page: Self::Event, out: &mut Out<'_, ModelListing>) {
+    fn decode(
+        &mut self,
+        page: Self::Event,
+        out: Out<'id, ModelListing>,
+    ) -> Result<Flow, ProviderError> {
         // Missing or empty cursors would repeatedly fetch page one, even with has_more.
         let next = page
             .last_id
             .filter(|cursor| page.has_more && !cursor.is_empty());
-        out.push(Ok(ModelPage {
+        Ok(out.end(ModelPage {
             models: ModelList::new(page.data.into_iter().map(ModelInfo::from).collect()),
             next,
-        }));
+        }))
     }
 }
 
@@ -641,7 +647,7 @@ impl Wire for Verify {
     type Op = VerifyOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = VerifyDecoder;
+    type Decoder<'id> = VerifyDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
@@ -658,7 +664,7 @@ impl Wire for Verify {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         VerifyDecoder
     }
 }

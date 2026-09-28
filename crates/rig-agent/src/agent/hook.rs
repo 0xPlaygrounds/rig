@@ -22,7 +22,8 @@
 //! }
 //! ```
 
-use rig_core::streaming::BlockId;
+use rig_core::message::CallId;
+use rig_core::streaming::Part;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::HashMap, future::Future, sync::Arc};
 
@@ -490,12 +491,8 @@ pub struct TextDelta<'a> {
 /// Streaming reasoning delta.
 #[derive(Clone, Copy)]
 pub struct ReasoningDelta<'a> {
-    /// The stream block this reasoning part streams under: stable across
-    /// the part's deltas and its eventual completed reasoning item. A minted
-    /// block id is never persisted as a provider-issued reasoning id.
-    pub id: &'a BlockId,
-    /// Provider-issued durable reasoning item id, when the wire provides one.
-    pub provider_id: Option<&'a str>,
+    /// The reasoning part: stable across its deltas and its end.
+    pub part: Part,
     /// Newly received reasoning fragment.
     pub delta: &'a str,
     /// Reasoning text accumulated for this reasoning part through this delta.
@@ -505,12 +502,13 @@ pub struct ReasoningDelta<'a> {
 /// Streaming tool-call delta.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
-    /// Stable block ID shared by fragments and the completed call's
-    /// [`DispatchEvent`]. Provider-issued IDs arrive with the completed call.
-    pub block_id: &'a BlockId,
-    /// Tool name on the first delta.
-    pub tool_name: Option<&'a str>,
-    /// Newly received argument fragment.
+    /// The call's part.
+    pub part: Part,
+    /// The call's id, as its [`DispatchEvent`] carries it.
+    pub call_id: &'a CallId,
+    /// The tool the call names.
+    pub tool_name: &'a str,
+    /// The call's argument JSON: a call streams once, when it ends.
     pub delta: &'a str,
 }
 
@@ -641,8 +639,8 @@ pub struct DispatchEvent<'a> {
     pub kind: &'a EffectKind,
     /// The turn the effect belongs to.
     pub turn: usize,
-    /// The block the effect answers, for a tool call the model emitted.
-    pub block_id: Option<&'a BlockId>,
+    /// The call the effect answers, for a tool call the model emitted.
+    pub call_id: Option<&'a CallId>,
     /// Tool invocation context, carried separately from the effect.
     pub context: Option<&'a ToolContext>,
 }
@@ -780,8 +778,8 @@ pub struct OutcomeEvent<'a> {
     pub outcome: &'a Result<Outcome, ErrorReport>,
     /// The turn the effect belongs to.
     pub turn: usize,
-    /// The block the effect answered, for a tool call the model emitted.
-    pub block_id: Option<&'a BlockId>,
+    /// The call the effect answered, for a tool call the model emitted.
+    pub call_id: Option<&'a CallId>,
     /// Published tool context, carried separately from the outcome.
     pub context: Option<&'a ToolContext>,
 }

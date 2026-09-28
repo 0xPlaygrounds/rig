@@ -122,12 +122,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0"
-              },
-              "provider": {
-                "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
-                "item_id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0"
+                "provider": {
+                  "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
+                  "item_id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0"
+                }
               },
               "function": {
                 "name": "submit",
@@ -334,24 +332,22 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "xai",
               "id": "rs_08c8041e-9ca8-9fcb-8bee-ff65d347a213",
               "content": [
                 {
                   "type": "summary",
                   "content": "Extracting structured data from the text. The name is Bob Johnson. The age is 55. The occupation is retired teacher."
                 }
-              ],
-              "provider": "xai"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0"
-              },
-              "provider": {
-                "call_id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0",
-                "item_id": "fc_08c8041e-9ca8-9fcb-8bee-ff65d347a213_0"
+                "provider": {
+                  "call_id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0",
+                  "item_id": "fc_08c8041e-9ca8-9fcb-8bee-ff65d347a213_0"
+                }
               },
               "function": {
                 "name": "submit",

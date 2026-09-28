@@ -132,11 +132,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01G4hZ3zR2fxAX9NS2xhAuEQ"
-              },
-              "provider": {
-                "call_id": "toolu_01G4hZ3zR2fxAX9NS2xhAuEQ"
+                "provider": {
+                  "call_id": "toolu_01G4hZ3zR2fxAX9NS2xhAuEQ"
+                }
               },
               "function": {
                 "name": "add",

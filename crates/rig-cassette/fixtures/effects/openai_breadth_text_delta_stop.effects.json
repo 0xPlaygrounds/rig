@@ -75,17 +75,18 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Rust"
           }
         }

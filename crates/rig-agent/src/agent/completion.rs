@@ -97,7 +97,7 @@ pub(crate) async fn build_prepared_completion_request(
             other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
         })
         .map_err(|report| {
-            ProviderError::Request(format!("Failed to get tool definitions: {report}").into())
+            ProviderError::request(format!("Failed to get tool definitions: {report}"))
         })?;
         dynamic_tool_ids.extend(ids);
     }
@@ -135,10 +135,6 @@ pub(crate) async fn build_prepared_completion_request(
     } else {
         Vec::new()
     };
-    // An empty history or content block is a local, named error, not a
-    // remote 400.
-    request.validate_message_content()?;
-
     Ok(PreparedCompletionRequest {
         request,
         telemetry_messages,

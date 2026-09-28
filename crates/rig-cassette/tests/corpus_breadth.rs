@@ -191,6 +191,6 @@ fn the_output_tool_call_carries_the_wires_ids() {
             other => panic!("{fixture}: a completion, not {other:?}"),
         };
         assert_eq!(call.function.name, "final_result", "{fixture}");
-        assert_eq!(call.id.is_generated(), minted, "{fixture}: {:?}", call.id);
+        assert_eq!(call.id.is_local(), minted, "{fixture}: {:?}", call.id);
     }
 }

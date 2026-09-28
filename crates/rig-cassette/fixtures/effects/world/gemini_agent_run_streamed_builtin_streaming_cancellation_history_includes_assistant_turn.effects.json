@@ -132,8 +132,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000000"
               },
               "function": {
                 "name": "add",
@@ -179,72 +178,41 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "add",
-            "arguments": {
-              "x": 21,
-              "y": 21
-            },
-            "signature": "CiQBaRR9E2E9ebhFw5X2ER/bmOllCSlrbHh/YONkGJsw0egv9Y4KSwFpFH0TeKTBDyqs4gWp6wU+9r+dq28Do3uY/QHVWSOPEgFc9bKPt+VoPwaZEaq25MpR0cJhqsgjDWJ5vqw+Ea8fbKiP1+HQtcPinwp7AWkUfRPQbZG2t4j7YesxSdUc12D0DMlhCaiRQl1vFHQMcsAmHuHcr34wHMbLJgSLOhz4sTn2XVu1jgxfMQrX/c7c0+ZN7FNmhxNwCX0l+272GiGc64fsvm3Wr9U9gf8/JTHnqaG23f3sqRCF3P023oV0/0pL1gQrs0UW",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 21,
-                "y": 21
-              }
-            },
-            "signature": "CiQBaRR9E2E9ebhFw5X2ER/bmOllCSlrbHh/YONkGJsw0egv9Y4KSwFpFH0TeKTBDyqs4gWp6wU+9r+dq28Do3uY/QHVWSOPEgFc9bKPt+VoPwaZEaq25MpR0cJhqsgjDWJ5vqw+Ea8fbKiP1+HQtcPinwp7AWkUfRPQbZG2t4j7YesxSdUc12D0DMlhCaiRQl1vFHQMcsAmHuHcr34wHMbLJgSLOhz4sTn2XVu1jgxfMQrX/c7c0+ZN7FNmhxNwCX0l+272GiGc64fsvm3Wr9U9gf8/JTHnqaG23f3sqRCF3P023oV0/0pL1gQrs0UW",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\":21,\"y\":21}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 109,
-            "output_tokens": 20,
-            "total_tokens": 176,
-            "reasoning_tokens": 47
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "96uyavTuJOmfqtsPx4qjoAQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 109,
-              "candidatesTokenCount": 20,
-              "totalTokenCount": 176,
-              "thoughtsTokenCount": 47,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 109
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000000"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 21,
+                  "y": 21
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "96uyavTuJOmfqtsPx4qjoAQ"
+              },
+              "signature": "CiQBaRR9E2E9ebhFw5X2ER/bmOllCSlrbHh/YONkGJsw0egv9Y4KSwFpFH0TeKTBDyqs4gWp6wU+9r+dq28Do3uY/QHVWSOPEgFc9bKPt+VoPwaZEaq25MpR0cJhqsgjDWJ5vqw+Ea8fbKiP1+HQtcPinwp7AWkUfRPQbZG2t4j7YesxSdUc12D0DMlhCaiRQl1vFHQMcsAmHuHcr34wHMbLJgSLOhz4sTn2XVu1jgxfMQrX/c7c0+ZN7FNmhxNwCX0l+272GiGc64fsvm3Wr9U9gf8/JTHnqaG23f3sqRCF3P023oV0/0pL1gQrs0UW",
+              "additional_params": null
+            }
           }
         }
       ],

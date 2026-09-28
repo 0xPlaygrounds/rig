@@ -166,11 +166,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
-              },
-              "provider": {
-                "call_id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
+                "provider": {
+                  "call_id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
+                }
               },
               "function": {
                 "name": "add",
@@ -295,11 +293,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
-                  },
-                  "provider": {
-                    "call_id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
+                    "provider": {
+                      "call_id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -319,11 +315,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
-                  },
-                  "provider": {
-                    "call_id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
+                    "provider": {
+                      "call_id": "call_00_nM5VttTDXRe5CtzYnBhn6816"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -398,11 +392,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_c5rSYJu7fnV4668bbJma5037"
-              },
-              "provider": {
-                "call_id": "call_00_c5rSYJu7fnV4668bbJma5037"
+                "provider": {
+                  "call_id": "call_00_c5rSYJu7fnV4668bbJma5037"
+                }
               },
               "function": {
                 "name": "final_result",

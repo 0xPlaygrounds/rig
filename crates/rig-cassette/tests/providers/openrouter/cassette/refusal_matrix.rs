@@ -539,7 +539,7 @@ async fn streaming_terminal_carries_usage_and_reason() {
                 terminal.usage
             );
             assert_eq!(
-                terminal.finish_reason,
+                terminal.finish_reason(),
                 Some(rig::completion::FinishReason::Stop)
             );
         },

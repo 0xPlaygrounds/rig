@@ -97,11 +97,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_201024"
-              },
-              "provider": {
-                "call_id": "call_201024"
+                "provider": {
+                  "call_id": "call_201024"
+                }
               },
               "function": {
                 "name": "final_result",

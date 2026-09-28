@@ -317,7 +317,7 @@ fn partial_out_of_order_parallel_batch_has_no_commit_until_every_result_lands() 
             r.call.to_string()
         })
         .collect();
-    assert_eq!(ids, vec!["explicit:c0", "explicit:c1", "explicit:c2"]);
+    assert_eq!(ids, vec!["c0", "c1", "c2"]);
     let encoded = serde_json::to_string(&content).unwrap();
     assert!(encoded.contains("expected tool failure"));
     assert!(encoded.contains("result-0"));

@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for Ollama's native chat wire,
 //! asserted through the *normalized* path: the aggregated
-//! [`CompletionStream::folded`] snapshot, the terminal [`StreamFinal`]
+//! [`Streamed::finish`](rig::streaming::Streamed::finish) response, the terminal `CompletionResponse`
 //! record, usage, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!
@@ -16,9 +16,11 @@
 //! daemon id and by structure — and assemble with uncorrupted arguments.
 
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ToolCall};
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 
 use super::super::support::with_ollama_cassette;
 use crate::support::{
@@ -34,9 +36,8 @@ struct StreamRun {
     reasoning_blocks: Vec<Reasoning>,
     reasoning_delta: String,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionResponse>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
@@ -45,7 +46,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         reasoning_blocks: Vec::new(),
         reasoning_delta: String::new(),
         tool_calls: Vec::new(),
-        finals: Vec::new(),
         choice: vec![AssistantContent::text("")],
         response: None,
     };
@@ -55,52 +55,42 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         let item = item.expect("stream item should be ok");
         raw_items.push(Ok(item.clone()));
         match item {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
+            Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
                 ..
-            } => run.text.push_str(&text),
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            } => {
-                run.reasoning_blocks.push(reasoning);
+            }) => {
+                run.reasoning_blocks
+                    .push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
             }
-            StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text },
-                ..
-            } => {
+            Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
             }
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
                 ..
-            } => run.tool_calls.push(tool_call),
-            StreamEvent::Final(response) => run.finals.push(response),
+            }) => run.tool_calls.push(tool_call),
             _ => {}
         }
     }
+    let response = stream.finish().await.expect("the stream ends");
 
-    run.choice = stream.folded().snapshot();
+    run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.folded().terminal().cloned();
+    run.response = Some(response.clone());
     run
 }
 
 fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
-    assert_eq!(
-        run.finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
     let terminal = run
         .response
         .as_ref()
         .expect("aggregated stream should retain the terminal record");
     assert_eq!(
-        terminal.finish_reason.as_ref(),
-        Some(&expected_finish),
+        terminal.finish_reason(),
+        Some(expected_finish),
         "unexpected finish reason"
     );
     assert!(
@@ -159,11 +149,14 @@ async fn thinking_and_tool_call_in_one_stream() {
             // rig records it as the provider id and adopts it as the
             // durable id instead of discarding it.
             let provider = streamed
-                .provider
-                .as_ref()
+                .id
+                .provider()
                 .expect("the daemon-issued call id must be preserved");
             assert_eq!(
-                streamed.id.explicit(),
+                streamed
+                    .id
+                    .provider()
+                    .map(|provider| provider.call_id.as_str()),
                 Some(provider.call_id.as_str()),
                 "the durable id adopts the daemon's call id"
             );
@@ -216,7 +209,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                     "{name} id should aggregate"
                 );
                 assert!(
-                    streamed.provider.is_some(),
+                    streamed.id.provider().is_some(),
                     "{name} must keep its daemon-issued call id"
                 );
                 assert!(
@@ -238,7 +231,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
             // streamed call is its own aggregated part, asserted above) and
             // by the daemon-issued ids, which are preserved and pairwise
             // distinct — nothing is fabricated, nothing collides.
-            let distinct_ids: std::collections::HashSet<&rig::message::ToolCallId> =
+            let distinct_ids: std::collections::HashSet<&rig::message::CallId> =
                 run.tool_calls.iter().map(|call| &call.id).collect();
             assert_eq!(
                 distinct_ids.len(),
@@ -293,7 +286,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
         // its daemon-issued id — nothing fabricated, nothing collapsed.
         for call in &add_calls {
             assert!(
-                call.provider.is_some(),
+                call.id.provider().is_some(),
                 "the daemon-issued call id must be preserved"
             );
             assert!(
@@ -310,7 +303,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
             argument_sets.len() >= 2,
             "the two same-name calls must keep distinct argument payloads, got {argument_sets:?}"
         );
-        let distinct_ids: std::collections::HashSet<&rig::message::ToolCallId> =
+        let distinct_ids: std::collections::HashSet<&rig::message::CallId> =
             add_calls.iter().map(|call| &call.id).collect();
         assert_eq!(
             distinct_ids.len(),
@@ -346,37 +339,38 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
         "streaming_grammar/chat_sourced_history_replay",
         |client| async move {
             let model = client.completion(MODEL);
+            // A call rig issued the id for: Ollama's wire carries no id for
+            // it, so the result pairs with the call by name.
+            let call_id = rig::message::CallId::from_wire("");
             let history = vec![
                 rig::message::Message::user(
                     "/no_think Use the add tool to compute 2 + 3, then state the result.",
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
-                        // The cross-provider shape: the other wire's
-                        // identifier survives as rig's correlation
-                        // handle, with no provider id for Ollama's wire.
-                        id: rig::message::ToolCallId::new("call_abc123")
-                            .expect("the chat-sourced identifier is non-empty"),
-                        provider: None,
-                        function: rig::message::ToolFunction {
-                            name: "add".to_owned(),
-                            arguments: serde_json::json!({"x": 2, "y": 3}),
+                    content: rig_core::NonEmpty::new(AssistantContent::ToolCall(
+                        rig::message::ToolCall {
+                            id: call_id.clone(),
+                            function: rig::message::ToolFunction {
+                                name: rig_core::message::ToolName::new("add").expect("tool name"),
+                                arguments: serde_json::json!({"x": 2, "y": 3}),
+                            },
+                            signature: None,
+                            additional_params: None,
                         },
-                        signature: None,
-                        additional_params: None,
-                    })],
+                    )),
                 },
                 rig::message::Message::User {
-                    content: vec![rig::message::UserContent::ToolResult(
+                    content: rig_core::NonEmpty::new(rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {
-                            call: rig::message::ToolCallId::new("call_abc123")
-                                .expect("the chat-sourced identifier is non-empty"),
-                            provider: None,
-                            name: "add".to_owned(),
-                            content: vec![rig::message::ToolResultContent::text("5")],
+                            call: call_id,
+                            name: rig_core::message::ToolName::new("add".to_owned())
+                                .expect("tool name"),
+                            content: rig_core::NonEmpty::new(
+                                rig::message::ToolResultContent::text("5"),
+                            ),
                         },
-                    )],
+                    )),
                 },
             ];
             let request =

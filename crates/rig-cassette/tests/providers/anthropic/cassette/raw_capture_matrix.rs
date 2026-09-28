@@ -534,7 +534,10 @@ async fn raw_exposes_thinking_block_and_signature() {
         })
         .expect("the normalized choice carries the reasoning");
     assert_eq!(
-        normalized_reasoning.content,
+        normalized_reasoning
+            .open(normalized_reasoning.issuer())
+            .expect("sealed reasoning")
+            .content,
         vec![ReasoningContent::Text {
             text: recorded_thinking_text.to_string(),
             signature: raw_thinking["signature"].as_str().map(str::to_string),
@@ -674,7 +677,8 @@ async fn raw_exposes_tool_use_block() {
     );
     assert_eq!(
         normalized_call
-            .provider
+            .id
+            .provider()
             .as_ref()
             .map(|provider| provider.call_id.as_str()),
         Some(typed_id),

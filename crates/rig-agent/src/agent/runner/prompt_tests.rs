@@ -24,7 +24,6 @@ use crate::{
 };
 use rig_core::completion::message::turn_delivered_no_answer;
 use rig_core::error::ProviderError;
-use rig_core::message::ProviderCallId;
 use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -69,9 +68,9 @@ async fn blocking_prompt_rejects_an_empty_truncated_turn() {
 #[tokio::test]
 async fn blocking_prompt_rejects_a_reasoning_only_truncated_turn() {
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_content(
-        AssistantContent::Reasoning(rig_core::message::Reasoning::new(
-            "thinking, never answering",
-        )),
+        AssistantContent::Reasoning(
+            rig_core::message::Reasoning::new("thinking, never answering").sealed("test"),
+        ),
     )
     .with_finish_reason(FinishReason::Length)]))
     .build();
@@ -133,10 +132,14 @@ fn answer_classification_covers_every_assistant_content_variant() {
         Some(rig_core::message::ImageMediaType::PNG),
         Some(rig_core::message::ImageDetail::default()),
     );
-    let reasoning = AssistantContent::Reasoning(rig_core::message::Reasoning::new("thinking"));
+    let reasoning =
+        AssistantContent::Reasoning(rig_core::message::Reasoning::new("thinking").sealed("test"));
     let tool_call = AssistantContent::ToolCall(ToolCall::from_wire(
         "call_1".to_string(),
-        ToolFunction::new("add".to_string(), json!({})),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
+            json!({}),
+        ),
     ));
 
     // Delivered an answer.
@@ -187,7 +190,7 @@ fn answer_classification_covers_every_assistant_content_variant() {
 #[test]
 fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
     let reasoning_only = vec![AssistantContent::Reasoning(
-        rig_core::message::Reasoning::new("t"),
+        rig_core::message::Reasoning::new("t").sealed("test"),
     )];
     let annotated_empty_text = vec![AssistantContent::Text(Text {
         text: String::new(),
@@ -221,7 +224,10 @@ fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
         )],
         vec![AssistantContent::ToolCall(ToolCall::from_wire(
             "call_1".to_string(),
-            ToolFunction::new("add".to_string(), json!({})),
+            ToolFunction::new(
+                rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
+                json!({}),
+            ),
         ))],
     ] {
         assert_eq!(
@@ -759,26 +765,22 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
 
     assert!(matches!(
         history.first(),
-        Some(Message::User { content })
+        Message::User { content }
             if matches!(
                 content.first(),
-                Some(UserContent::Text(text)) if text.text == "do tool work"
+                UserContent::Text(text) if text.text == "do tool work"
             )
     ));
 
-    // The wire issued "tool_call_1" (adopted as rig's durable id) and the
-    // provider-specific correlator was overridden to "call_1"; the result
-    // answers the durable id and echoes the provider correlator.
+    // The provider's correlator was overridden to "call_1"; the call carries
+    // that one id and the result answers it.
     assert!(matches!(
         history.get(1),
         Some(Message::Assistant { content, .. })
             if matches!(
                 content.first(),
-                Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id.explicit() == Some("tool_call_1")
-                        && tool_call.provider.as_ref().is_some_and(
-                            |provider| provider.call_id == "call_1"
-                        )
+                AssistantContent::ToolCall(tool_call)
+                    if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
             )
     ));
 
@@ -787,11 +789,8 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call.explicit() == Some("tool_call_1")
-                        && tool_result.provider.as_ref().is_some_and(
-                            |provider| provider.call_id == "call_1"
-                        )
+                UserContent::ToolResult(tool_result)
+                    if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
             )
     ));
 }
@@ -820,7 +819,7 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     let Message::Assistant { content, .. } = assistant else {
         panic!("expected the assistant tool-call turn, got {assistant:?}");
     };
-    let call_ids: Vec<&rig_core::message::ToolCallId> = content
+    let call_ids: Vec<&rig_core::message::CallId> = content
         .iter()
         .filter_map(|item| match item {
             AssistantContent::ToolCall(tool_call) => Some(&tool_call.id),
@@ -830,21 +829,20 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     let Message::User { content } = results else {
         panic!("expected the user retry-result turn, got {results:?}");
     };
-    let result_ids: Vec<&rig_core::message::ToolCallId> = content
+    let result_ids: Vec<&rig_core::message::CallId> = content
         .iter()
         .filter_map(|item| match item {
             UserContent::ToolResult(result) => Some(&result.call),
             _ => None,
         })
         .collect();
-    let unique_calls: BTreeSet<&rig_core::message::ToolCallId> = call_ids.iter().copied().collect();
+    let unique_calls: BTreeSet<&rig_core::message::CallId> = call_ids.iter().copied().collect();
     assert_eq!(
         unique_calls.len(),
         call_ids.len(),
         "tool-call ids must be unique: {call_ids:?}"
     );
-    let unique_results: BTreeSet<&rig_core::message::ToolCallId> =
-        result_ids.iter().copied().collect();
+    let unique_results: BTreeSet<&rig_core::message::CallId> = result_ids.iter().copied().collect();
     assert_eq!(
         unique_results.len(),
         result_ids.len(),
@@ -1003,11 +1001,12 @@ async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
     let context = &contexts[0];
     assert_eq!(context.tool_name, "default_api");
     assert_eq!(
-        context.tool_call_id.as_ref().and_then(|id| id.explicit()),
-        Some("tool_call_1")
+        context
+            .tool_call_id
+            .as_ref()
+            .and_then(|id| id.provider().map(|provider| provider.call_id.as_str())),
+        Some("provider_call_1")
     );
-    // No stream block was observed for this buffered model response.
-    assert_eq!(context.block_id, None);
     assert!(!context.is_streaming);
 }
 
@@ -1174,15 +1173,19 @@ async fn invalid_tool_call_hook_retry_adds_feedback_and_retries_non_streaming() 
 async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executing_valid_call() {
     let add_calls = Arc::new(AtomicU32::new(0));
     let valid_tool_call = ToolCall::from_wire(
-        "tool_call_1",
-        ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
-    )
-    .with_provider(ProviderCallId::new("call_1").expect("non-empty provider id"));
+        "call_1",
+        ToolFunction::new(
+            rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
+            json!({"x": 2, "y": 3}),
+        ),
+    );
     let invalid_tool_call = ToolCall::from_wire(
-        "tool_call_2",
-        ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
-    )
-    .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
+        "call_2",
+        ToolFunction::new(
+            rig_core::message::ToolName::new("default_api".to_string()).expect("tool name"),
+            json!({"x": 4, "y": 5}),
+        ),
+    );
     let model = MockCompletionModel::from_turns([
         MockTurn::from_contents([
             AssistantContent::ToolCall(valid_tool_call),
@@ -1217,13 +1220,13 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::ToolCall(tool_call)
-                    if tool_call.id.explicit() == Some("tool_call_1")
+                    if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
                         && tool_call.function.name == "add"
             ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.explicit() == Some("tool_call_2")
+                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -1234,8 +1237,8 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("tool_call_1")
-                            && result.provider.as_ref().is_some_and(
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                            && result.call.provider().as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
                             )
                             && result.content.iter().any(|content| matches!(
@@ -1247,8 +1250,8 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("tool_call_2")
-                            && result.provider.as_ref().is_some_and(
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                            && result.call.provider().as_ref().is_some_and(
                                 |provider| provider.call_id == "call_2"
                             )
                             && result.content.iter().any(|content| matches!(
@@ -1268,15 +1271,19 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
 async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing_valid_call() {
     let add_calls = Arc::new(AtomicU32::new(0));
     let valid_tool_call = ToolCall::from_wire(
-        "tool_call_1",
-        ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
-    )
-    .with_provider(ProviderCallId::new("call_1").expect("non-empty provider id"));
+        "call_1",
+        ToolFunction::new(
+            rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
+            json!({"x": 2, "y": 3}),
+        ),
+    );
     let invalid_tool_call = ToolCall::from_wire(
-        "tool_call_2",
-        ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
-    )
-    .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
+        "call_2",
+        ToolFunction::new(
+            rig_core::message::ToolName::new("default_api".to_string()).expect("tool name"),
+            json!({"x": 4, "y": 5}),
+        ),
+    );
     let model = MockCompletionModel::from_turns([
         MockTurn::from_contents([
             AssistantContent::ToolCall(valid_tool_call),
@@ -1309,8 +1316,8 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("tool_call_1")
-                            && result.provider.as_ref().is_some_and(
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                            && result.call.provider().as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
                             )
                             && result.content.iter().any(|content| matches!(
@@ -1322,8 +1329,8 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.explicit() == Some("tool_call_2")
-                            && result.provider.as_ref().is_some_and(
+                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                            && result.call.provider().as_ref().is_some_and(
                                 |provider| provider.call_id == "call_2"
                             )
                             && result.content.iter().any(|content| matches!(
@@ -1440,7 +1447,7 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
                     matches!(
                         content,
                         UserContent::ToolResult(result)
-                            if result.call.explicit() == Some("tool_call_1")
+                            if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("tool_call_1")
                                 && result.content.iter().any(|content| {
                                     matches!(
                                         content,
@@ -1754,7 +1761,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         Some(Message::User { content })
             if matches!(
                 content.first(),
-                Some(UserContent::Text(text)) if text.text == "do tool work"
+                UserContent::Text(text) if text.text == "do tool work"
             )
     ));
     assert!(history.iter().any(|message| matches!(
@@ -1762,9 +1769,9 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         Message::Assistant { content, .. }
             if matches!(
                 content.first(),
-                Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id.explicit() == Some("tool_call_1")
-                        && tool_call.provider.as_ref().is_some_and(
+                AssistantContent::ToolCall(tool_call)
+                    if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        && tool_call.id.provider().as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
             )
@@ -1774,9 +1781,9 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
         Message::User { content }
             if matches!(
                 content.first(),
-                Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call.explicit() == Some("tool_call_1")
-                        && tool_result.provider.as_ref().is_some_and(
+                UserContent::ToolResult(tool_result)
+                    if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        && tool_result.call.provider().as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
             )
@@ -1848,7 +1855,7 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
         Message::Assistant { content, .. }
             if matches!(
                 content.first(),
-                Some(AssistantContent::Text(text))
+                AssistantContent::Text(text)
                     if text.text.is_empty()
                         && text.additional_params.as_ref() == Some(&metadata)
             )
@@ -1946,8 +1953,8 @@ async fn explicit_with_history_overrides_memory() {
     assert_eq!(received.len(), 2, "caller history (1) + current prompt");
     assert!(matches!(
         received.first(),
-        Some(Message::User { content })
-            if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "from-caller")
+        Message::User { content }
+            if matches!(content.first(), UserContent::Text(t) if t.text == "from-caller")
     ));
 }
 
@@ -2051,7 +2058,7 @@ async fn append_persists_only_newly_committed_messages() {
         matches!(
             stored.first(),
             Some(Message::User { content })
-                if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "old-q")
+                if matches!(content.first(), UserContent::Text(t) if t.text == "old-q")
         ),
         "loaded history is preserved once at the front: {stored:?}"
     );
@@ -2298,32 +2305,6 @@ fn completion_call_identity_round_trips() {
     let json = serde_json::to_string(&call).expect("serialize");
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, call);
-}
-
-/// The agent driver validates the request it builds the way the builder's
-/// own `send`/`stream` do: an empty user content block is a local, named
-/// error and never reaches the provider.
-#[tokio::test]
-async fn an_empty_content_block_is_rejected_before_the_provider() {
-    let model = MockCompletionModel::text("unreachable");
-    let recorded = model.clone();
-    let agent = AgentBuilder::new(model).build();
-
-    let error = agent
-        .prompt(Message::User {
-            content: Vec::new(),
-        })
-        .await
-        .expect_err("an empty content block is refused");
-
-    assert!(
-        error.to_string().contains("content"),
-        "the error names the empty content: {error}"
-    );
-    assert!(
-        recorded.requests().is_empty(),
-        "the provider was never asked"
-    );
 }
 
 /// The model-turn hook reads the reconciled finish reason: a wire that

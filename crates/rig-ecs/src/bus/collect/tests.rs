@@ -14,10 +14,10 @@ impl Drop for Dropped {
     }
 }
 
-fn item() -> Result<StreamEvent, rig_core::error::ErrorReport> {
-    Ok(StreamEvent::Unknown(UnknownPayload::new(
+fn item() -> Result<Relayed, rig_core::error::ErrorReport> {
+    Ok(Relayed::Item(Item::Unknown(UnknownPayload::new(
         serde_json::Value::Null,
-    )))
+    ))))
 }
 
 #[cfg(not(target_family = "wasm"))]

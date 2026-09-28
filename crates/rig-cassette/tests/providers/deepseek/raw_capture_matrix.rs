@@ -78,7 +78,13 @@ fn reasoning_text_of(choice: &[AssistantContent]) -> String {
             AssistantContent::Reasoning(reasoning) => Some(reasoning),
             _ => None,
         })
-        .flat_map(|reasoning| reasoning.content.iter())
+        .flat_map(|reasoning| {
+            reasoning
+                .open(reasoning.issuer())
+                .expect("sealed reasoning")
+                .content
+                .iter()
+        })
         .filter_map(|content| match content {
             ReasoningContent::Text { text, .. } => Some(text.as_str()),
             _ => None,

@@ -7,7 +7,7 @@ use super::*;
 use crate::bus::Bus;
 use rig_core::{
     completion::{CompletionRequest, Message},
-    driver::{Exchange, Local, Model, Opened, Sending, Transport},
+    driver::{Exchange, Local, Model, Opened, Opening, Step, Transport},
     effect::{EffectFamily, HandlerKey, family},
     embeddings::{Embedding, EmbeddingResponse},
     error::ErrorKind,
@@ -70,10 +70,7 @@ impl Transport<Local<rig_core::operation::Embedding>> for Tiny {
         &self,
         texts: Vec<String>,
         _exchange: Exchange,
-    ) -> Result<
-        Sending<Result<EmbeddingResponse, rig_core::error::ProviderError>>,
-        rig_core::error::ProviderError,
-    > {
+    ) -> Opening<Step<rig_core::operation::Embedding>> {
         let response = EmbeddingResponse::new(
             texts
                 .into_iter()
@@ -84,16 +81,16 @@ impl Transport<Local<rig_core::operation::Embedding>> for Tiny {
                 .collect(),
             "tiny",
         );
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter([Ok(Ok(response))]))
-        }))
+        Opening::ready(Opened::new(futures::stream::iter([Ok(Step::End(
+            response,
+        ))])))
     }
 }
 
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("hi")],
+        chat_history: rig_core::NonEmpty::new(Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -211,7 +208,7 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
                         event.unwrap();
                     }
                     assert_eq!(
-                        stream.finish().expect("a terminal record").choice,
+                        stream.finish().await.expect("a terminal record").choice,
                         vec![AssistantContent::text("same")]
                     );
                 }
@@ -252,16 +249,16 @@ async fn model_handle_completes_and_streams() {
     let mut stream = streamer.stream(request());
     let mut text = String::new();
     while let Some(event) = within(stream.next()).await {
-        if let rig_core::streaming::StreamEvent::BlockDelta {
-            delta: rig_core::streaming::Delta::Text { text: piece },
+        if let rig_core::streaming::Item::Event(rig_core::streaming::StreamEvent::Text {
+            text: piece,
             ..
-        } = event.expect("event")
+        }) = event.expect("event")
         {
             text.push_str(&piece);
         }
     }
     assert_eq!(text, "streamed");
-    let finished = stream.finish().expect("a terminal record");
+    let finished = stream.finish().await.expect("a terminal record");
     assert_eq!(finished.choice, vec![AssistantContent::text("streamed")]);
     assert_eq!(finished.usage.total_tokens, Some(4));
 }

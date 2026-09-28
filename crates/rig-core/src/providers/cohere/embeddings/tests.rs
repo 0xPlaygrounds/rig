@@ -138,10 +138,10 @@ async fn image_batches_are_fully_validated_before_any_request() {
     assert!(http_client.requests().is_empty());
 }
 
-/// No images encode to an empty batch: nothing is sent, and the fold finds
-/// no payload, the response failure it has always been.
+/// No images are no request: the wire embeds one image per call, so an
+/// empty batch is refused before anything is sent.
 #[tokio::test]
-async fn an_empty_image_batch_sends_nothing_and_is_a_response_failure() {
+async fn an_empty_image_batch_sends_nothing_and_is_a_request_failure() {
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::default();
@@ -154,12 +154,9 @@ async fn an_empty_image_batch_sends_nothing_and_is_a_response_failure() {
         .call(Vec::<Vec<u8>>::new())
         .await
         .map(|response| response.embeddings)
-        .expect_err("an empty batch has no payload to fold");
+        .expect_err("an empty batch encodes no request");
 
-    assert!(
-        matches!(&error, ProviderError::Response(message) if message == "embedding reply carried no payload"),
-        "{error:?}"
-    );
+    assert_eq!(error.kind(), crate::error::ErrorKind::Request, "{error:?}");
     assert!(http_client.requests().is_empty());
 }
 

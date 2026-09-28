@@ -9,6 +9,8 @@
 //! # }
 //! ```
 
+use crate::error::ProviderError;
+use crate::wire::Flow;
 use serde_json::json;
 
 use crate::embeddings;
@@ -71,7 +73,7 @@ impl Wire for Embeddings {
     type Op = crate::operation::Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = EmbeddingsDecoder;
+    type Decoder<'id> = EmbeddingsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
@@ -120,7 +122,7 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         EmbeddingsDecoder
     }
 }
@@ -129,14 +131,18 @@ impl Wire for Embeddings {
 #[derive(Default)]
 pub struct EmbeddingsDecoder;
 
-impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
+impl<'id> Decoder<'id, crate::operation::Embedding> for EmbeddingsDecoder {
     type Event = gemini_api_types::EmbeddingResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_marker_keyed_frame(&frame.as_str(), &["embeddings"])
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, crate::operation::Embedding>) {
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, crate::operation::Embedding>,
+    ) -> Result<Flow, ProviderError> {
         let vectors = event
             .embeddings
             .into_iter()
@@ -152,10 +158,10 @@ impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
             })
             .collect();
         // Gemini supplies no usage or response id; the driver attaches the raw body.
-        out.push(Ok(embeddings::EmbeddingResponse::new(
+        Ok(out.end(embeddings::EmbeddingResponse::new(
             vectors,
             super::PROVIDER_NAME,
-        )));
+        )))
     }
 }
 

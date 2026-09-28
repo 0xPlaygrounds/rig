@@ -1,4 +1,5 @@
-//! Co-polled streaming replies with block identity and automatic block closure.
+//! Co-polled streaming replies written part by part, closed when the reply
+//! ends.
 //!
 //! ```
 //! use rig_core::serve::Reply;
@@ -12,21 +13,28 @@
 use futures::{SinkExt, StreamExt, channel::mpsc};
 
 use crate::{
-    error::ErrorReport,
-    operation::AdapterOutput,
-    streaming::{StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd},
+    error::{ErrorReport, ProviderError},
+    message::{CallId, LocalCallId, ToolCall, ToolFunction, ToolName},
+    operation::{Finish, Turn},
+    streaming::{Item, Relayed, StreamEvent},
+    wire::{Fold, Reply as WireReply},
 };
 
 use super::{Reply, SinkClosed};
 use crate::wasm_compat::WasmCompatSend;
 
-/// A streaming answer under construction. Obtained by [`Reply::written`];
-/// [`finish`](Self::finish) emits the terminal, while ordinary drop without
-/// a terminal leaves a truncated stream.
+/// A streaming answer under construction, the bus's completion writer.
+/// Obtained by [`Reply::written`]; [`finish`](Self::finish) ends the reply
+/// with the response it folds into, while a writer dropped without it
+/// leaves a truncated stream.
 pub struct StreamWriter {
-    events: mpsc::Sender<Result<StreamEvent, ErrorReport>>,
-    output: AdapterOutput,
-    tool_ids: SyntheticIds,
+    events: mpsc::Sender<Result<Relayed, ErrorReport>>,
+    turn: Turn,
+    items: std::collections::VecDeque<Result<Item<StreamEvent>, ProviderError>>,
+    /// The open text and reasoning parts bare fragments extend.
+    text: Option<usize>,
+    reasoning: Option<usize>,
+    raw: serde_json::Value,
 }
 
 impl Reply {
@@ -42,8 +50,11 @@ impl Reply {
         let (events, mut receiver) = mpsc::channel(0);
         let writer = StreamWriter {
             events,
-            output: AdapterOutput::self_closing(),
-            tool_ids: SyntheticIds::tool(),
+            turn: Turn::new(""),
+            items: std::collections::VecDeque::new(),
+            text: None,
+            reasoning: None,
+            raw: serde_json::Value::Null,
         };
         let mut writing = Some(Box::pin(write(writer)));
         Self::Stream(Box::pin(futures::stream::poll_fn(move |cx| {
@@ -61,50 +72,100 @@ impl Reply {
 }
 
 impl StreamWriter {
-    /// A text fragment: extends the open text block, or opens one.
+    /// A text fragment: extends the open text part, or opens one after
+    /// closing an open reasoning part.
     pub async fn text(&mut self, text: impl Into<String>) -> Result<(), SinkClosed> {
-        self.output.text(text);
+        self.close_reasoning();
+        let slot = match self.text {
+            Some(slot) => slot,
+            None => {
+                let slot = self.turn.open_text();
+                self.text = Some(slot);
+                slot
+            }
+        };
+        self.turn.write_text(&mut self.items, slot, &text.into());
         self.flush().await
     }
 
-    /// Extends or opens a reasoning block, closing any open text block first.
+    /// A reasoning fragment: extends the open reasoning part, or opens one
+    /// after closing an open text part.
     pub async fn reasoning(&mut self, text: impl Into<String>) -> Result<(), SinkClosed> {
-        self.output.reasoning(text);
+        self.close_text();
+        let slot = match self.reasoning {
+            Some(slot) => slot,
+            None => {
+                let slot = self.turn.open_reasoning();
+                self.reasoning = Some(slot);
+                slot
+            }
+        };
+        self.turn
+            .write_reasoning(&mut self.items, slot, &text.into());
         self.flush().await
     }
 
-    /// A whole tool call, under a minted id.
+    /// A whole tool call, under an id rig issues.
     pub async fn tool_call(
         &mut self,
         name: impl Into<String>,
         arguments: serde_json::Value,
     ) -> Result<(), SinkClosed> {
-        let id = self.tool_ids.mint();
-        self.output
-            .tool_end(id, ToolCallEnd::whole(name, arguments));
+        self.close_text();
+        self.close_reasoning();
+        let Ok(name) = ToolName::new(name) else {
+            return self
+                .error(ErrorReport::from(&ProviderError::Response(
+                    "a tool call needs a name".to_owned(),
+                )))
+                .await;
+        };
+        let call = ToolCall {
+            id: CallId::Local(LocalCallId::new()),
+            function: ToolFunction { name, arguments },
+            signature: None,
+            additional_params: None,
+        };
+        if let Err(error) = self.turn.write_call(&mut self.items, call) {
+            return self.error(ErrorReport::from(&error)).await;
+        }
         self.flush().await
     }
 
-    /// An event the writer did not build (a provider's own record, a
-    /// message id): passed through with the writer's block bookkeeping, so
-    /// later bare text opens a fresh block after it.
-    pub async fn event(&mut self, event: StreamEvent) -> Result<(), SinkClosed> {
-        self.output.push(Ok(event));
-        self.flush().await
+    /// The reply's provider document, the response's `raw`.
+    pub fn raw(&mut self, raw: serde_json::Value) {
+        self.raw = raw;
     }
 
-    /// An in-band error: the consumer's next item.
+    /// An in-band error: the consumer's last item.
     pub async fn error(&mut self, report: ErrorReport) -> Result<(), SinkClosed> {
         self.flush().await.map_err(|_| SinkClosed)?;
         self.events.send(Err(report)).await.map_err(|_| SinkClosed)
     }
 
-    /// The terminal record: closes the blocks bare fragments opened, sends
-    /// `record`. The returned stream ends when the writing future also finishes.
-    pub async fn finish(mut self, record: StreamFinal) -> Result<(), SinkClosed> {
-        self.output.close_active_blocks();
-        self.output.final_record(record);
-        self.flush().await
+    /// End the reply as `provider` ended it: closes the parts still open,
+    /// then sends the response the reply folds into. The returned stream
+    /// ends when the writing future also finishes.
+    pub async fn finish(
+        mut self,
+        provider: impl Into<String>,
+        finish: Finish,
+    ) -> Result<(), SinkClosed> {
+        self.close_text();
+        self.close_reasoning();
+        self.turn.close_open(&mut self.items);
+        self.flush().await?;
+        let reply = WireReply {
+            provider: provider.into(),
+            raw: std::mem::take(&mut self.raw),
+            provider_request_id: None,
+        };
+        let turn = std::mem::replace(&mut self.turn, Turn::new(""));
+        let item = match turn.finish(finish, reply) {
+            Ok(response) => Ok(Relayed::Done(Box::new(response))),
+            Err(error) => Err(ErrorReport::from(&error)),
+        };
+        self.events.send(item).await.map_err(|_| SinkClosed)
     }
 
     /// Whether the consumer has closed the receiving side.
@@ -112,12 +173,31 @@ impl StreamWriter {
         self.events.is_closed()
     }
 
+    fn close_text(&mut self) {
+        if let Some(slot) = self.text.take() {
+            self.turn.end_text(&mut self.items, slot);
+        }
+    }
+
+    fn close_reasoning(&mut self) {
+        if let Some(slot) = self.reasoning.take() {
+            self.turn.end_reasoning(&mut self.items, slot);
+        }
+    }
+
+    /// Send what the writer emitted, folding each event as it leaves.
     async fn flush(&mut self) -> Result<(), SinkClosed> {
-        for item in self.output.drain() {
-            self.events
-                .send(item.map_err(|error| ErrorReport::from(&error)))
-                .await
-                .map_err(|_| SinkClosed)?;
+        while let Some(item) = self.items.pop_front() {
+            let item = match item {
+                Ok(item) => {
+                    if let Item::Event(event) = &item {
+                        let _ = self.turn.absorb(event);
+                    }
+                    Ok(Relayed::Item(item))
+                }
+                Err(error) => Err(ErrorReport::from(&error)),
+            };
+            self.events.send(item).await.map_err(|_| SinkClosed)?;
         }
         Ok(())
     }

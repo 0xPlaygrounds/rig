@@ -8,7 +8,7 @@ use serde_json::json;
 fn streaming_request() -> crate::completion::CompletionRequest {
     crate::completion::CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("hello")],
+        chat_history: crate::NonEmpty::new(crate::message::Message::user("hello")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -142,7 +142,7 @@ fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
-    use crate::streaming::{Delta, StreamEvent};
+    use crate::streaming::{Item, StreamEvent};
     use futures::StreamExt;
 
     // A tool-protocol terminal failure, then more frames: a well-formed
@@ -171,10 +171,7 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
             items_after_error += 1;
         }
         match item {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => texts.push(text),
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => texts.push(text),
             Ok(_) => {}
             Err(_) => saw_error = true,
         }
@@ -187,9 +184,9 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
     );
     assert_eq!(
         items_after_error, 0,
-        "the in-band failure must end the stream: no later text, Unknown passthrough, or terminal"
+        "the in-band failure must end the stream: no later text, Unknown passthrough, or end"
     );
-    assert!(stream.folded().terminal().is_none());
+    assert!(stream.finish().await.is_err());
 }
 
 #[test]
@@ -629,7 +626,7 @@ mod terminal_emission {
 
     use crate::providers::gemini::GeminiConfig;
     use crate::providers::gemini::completion::{GEMINI_2_5_PRO_PREVIEW_06_05, GenerateContent};
-    use crate::streaming::{Delta, StreamEvent};
+    use crate::streaming::{Item, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -650,29 +647,39 @@ mod terminal_emission {
         )
     }
 
+    /// The texts the stream yielded, whether an error item came, and what
+    /// it finished with.
     async fn collect(
         sse_bytes: bytes::Bytes,
-    ) -> (Vec<String>, bool, bool, crate::streaming::CompletionStream) {
+    ) -> (
+        Vec<String>,
+        bool,
+        Result<crate::completion::CompletionResponse, crate::error::ProviderError>,
+    ) {
         let model = crate::driver::Model::new(wire(), MockStreamingClient { sse_bytes });
-        let mut stream = model
+        let stream = model
             .stream(super::streaming_request())
             .expect("stream should open");
+        drain(stream).await
+    }
 
+    async fn drain(
+        mut stream: crate::streaming::CompletionStream,
+    ) -> (
+        Vec<String>,
+        bool,
+        Result<crate::completion::CompletionResponse, crate::error::ProviderError>,
+    ) {
         let mut texts = Vec::new();
         let mut saw_error = false;
-        let mut saw_terminal = false;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                }) => texts.push(text),
-                Ok(StreamEvent::Final(_)) => saw_terminal = true,
+                Ok(Item::Event(StreamEvent::Text { text, .. })) => texts.push(text),
                 Ok(_) => {}
                 Err(_) => saw_error = true,
             }
         }
-        (texts, saw_error, saw_terminal, stream)
+        (texts, saw_error, stream.finish().await)
     }
 
     #[tokio::test]
@@ -694,40 +701,39 @@ mod terminal_emission {
 
         let mut signed = None;
         while let Some(item) = stream.next().await {
-            if let StreamEvent::BlockEnd {
-                block: Some(crate::message::AssistantContent::Reasoning(reasoning)),
+            if let Item::Event(StreamEvent::End {
+                content: crate::message::AssistantContent::Reasoning(reasoning),
                 ..
-            } = item.expect("stream item should be Ok")
+            }) = item.expect("stream item should be Ok")
             {
                 signed = Some(reasoning);
             }
         }
         let signed = signed.expect("signature-only block must be emitted");
-        assert!(signed.content.iter().any(|content| matches!(
+        assert!(signed.value().content.iter().any(|content| matches!(
             content,
             crate::message::ReasoningContent::Text { signature: Some(sig), .. } if sig == "sig-only"
         )));
     }
 
     #[tokio::test]
-    async fn truncated_stream_yields_content_but_no_terminal_record() {
-        let (texts, saw_error, saw_terminal, stream) = collect(sse(&[CONTENT_CHUNK])).await;
+    async fn truncated_stream_yields_content_then_truncation() {
+        let (texts, saw_error, finished) = collect(sse(&[CONTENT_CHUNK])).await;
 
         assert_eq!(texts, ["hi"]);
-        assert!(!saw_error);
+        assert!(saw_error, "the truncation is the last item");
         assert!(
-            !saw_terminal,
-            "EOF without a finishReason chunk must not synthesize a terminal record"
+            matches!(finished, Err(crate::error::ProviderError::Truncated)),
+            "EOF without a finishReason chunk is truncation: {finished:?}"
         );
-        assert!(stream.folded().terminal().is_none());
     }
 
     #[tokio::test]
-    async fn errored_stream_forwards_the_error_and_no_terminal_record() {
+    async fn errored_stream_forwards_the_error_and_no_end() {
         use crate::test_utils::SequencedStreamingHttpClient;
 
         // A transport failure after some content must reach the consumer
-        // and must not be papered over with a synthesized terminal record.
+        // and must not be papered over with a synthesized end.
         let model = crate::driver::Model::new(
             wire(),
             SequencedStreamingHttpClient::new(vec![
@@ -739,51 +745,28 @@ mod terminal_emission {
                 )),
             ]),
         );
-        let mut stream = model
+        let stream = model
             .stream(super::streaming_request())
             .expect("stream should open");
-
-        let mut texts = Vec::new();
-        let mut saw_error = false;
-        let mut saw_terminal = false;
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                }) => texts.push(text),
-                Ok(StreamEvent::Final(_)) => saw_terminal = true,
-                Ok(_) => {}
-                Err(_) => saw_error = true,
-            }
-        }
+        let (texts, saw_error, finished) = drain(stream).await;
 
         assert_eq!(texts, ["hi"]);
         assert!(saw_error, "the transport failure must reach the consumer");
-        assert!(
-            !saw_terminal,
-            "a failed stream must not synthesize a terminal record"
-        );
-        assert!(stream.folded().terminal().is_none());
+        assert!(finished.is_err(), "a failed stream has no response");
     }
 
     #[tokio::test]
-    async fn malformed_frame_then_eof_yields_error_and_no_terminal_record() {
-        let (texts, saw_error, saw_terminal, stream) =
-            collect(sse(&[CONTENT_CHUNK, "{not json"])).await;
+    async fn malformed_frame_then_eof_yields_error_and_no_end() {
+        let (texts, saw_error, finished) = collect(sse(&[CONTENT_CHUNK, "{not json"])).await;
 
         assert_eq!(texts, ["hi"]);
         assert!(saw_error, "the malformed frame must reach the consumer");
-        assert!(
-            !saw_terminal,
-            "a parse error followed by EOF must not read as a completed turn"
-        );
-        assert!(stream.folded().terminal().is_none());
+        assert!(finished.is_err(), "a parse error is not a completed turn");
     }
 
     #[tokio::test]
     async fn id_only_frame_updates_terminal_metadata_without_content() {
-        let (texts, saw_error, saw_terminal, stream) = collect(sse(&[
+        let (texts, saw_error, finished) = collect(sse(&[
             CONTENT_CHUNK,
             TERMINAL_CHUNK,
             r#"{"responseId":"last-response"}"#,
@@ -791,57 +774,32 @@ mod terminal_emission {
         .await;
         assert_eq!(texts, ["hi", "!"]);
         assert!(!saw_error);
-        assert!(saw_terminal);
         assert_eq!(
-            stream
-                .folded()
-                .terminal()
-                .cloned()
-                .unwrap()
-                .response_id
-                .as_deref(),
+            finished.expect("the reply ended").response_id.as_deref(),
             Some("last-response")
         );
     }
 
+    /// A corrupt frame ends the reply: a genuine finishReason chunk after
+    /// it is never read.
     #[tokio::test]
-    async fn malformed_frame_then_real_terminal_still_completes_the_stream() {
-        let (texts, saw_error, saw_terminal, stream) =
+    async fn a_malformed_frame_ends_the_reply_before_a_later_end() {
+        let (texts, saw_error, finished) =
             collect(sse(&[CONTENT_CHUNK, "{not json", TERMINAL_CHUNK])).await;
 
-        assert_eq!(texts, ["hi", "!"]);
+        assert_eq!(texts, ["hi"]);
         assert!(saw_error, "the malformed frame must reach the consumer");
-        assert!(
-            saw_terminal,
-            "a genuine finishReason chunk after a parse error still completes the stream"
-        );
-        let terminal = stream
-            .folded()
-            .terminal()
-            .cloned()
-            .expect("terminal record");
-        assert_eq!(
-            terminal.finish_reason,
-            Some(crate::completion::FinishReason::Stop)
-        );
-        assert_eq!(terminal.response_id.as_deref(), Some("resp-1"));
+        assert!(finished.is_err(), "the corrupt frame ended the reply");
     }
 
-    /// What an *undelivered* reply means depends on how it arrived, which is
-    /// the only thing the `Mode` this decoder was built for tells it.
-    ///
-    /// A buffered reply is the whole turn: one that names no terminal and
-    /// carried no content is the provider answering with nothing, and the
-    /// rejection the deleted unary mapper's `require_non_empty_response`
-    /// gave is still what a caller gets. The carve-out is the terminal set
-    /// that cut the turn short (`FinishReason::truncated_output`): the cap
-    /// and the filter hand back the empty choice with their reason and the
-    /// usage the reply carried instead of raising, while a turn that ran to
-    /// completion (`STOP`) and delivered nothing is still the defect. A
-    /// *stream* that ends undelivered is neither: it stopped early, and
-    /// that is reported by the absent terminal record.
+    /// An undelivered reply is rejected however it arrived: without a
+    /// finish reason it is truncated, and with one it is empty unless the
+    /// finish reason cut the turn short (`FinishReason::truncated_output`):
+    /// the cap and the filter hand back the empty choice with their reason
+    /// and the usage the reply carried, while a turn that ran to completion
+    /// (`STOP`) and delivered nothing is a defect.
     #[tokio::test]
-    async fn an_undelivered_reply_is_rejected_only_when_it_arrived_whole_and_named_no_terminal() {
+    async fn an_undelivered_reply_is_rejected_unless_its_finish_reason_cut_it_short() {
         use crate::completion::FinishReason;
         use crate::test_utils::RecordingHttpClient;
 
@@ -885,31 +843,29 @@ mod terminal_emission {
         let error = silent
             .call(super::streaming_request())
             .await
-            .expect_err("a whole reply that named no terminal and delivered nothing");
+            .expect_err("a whole reply that named no finish reason");
         assert!(
-            error
-                .to_string()
-                .contains(crate::message::EMPTY_RESPONSE_ERROR),
+            matches!(error, crate::error::ProviderError::Truncated),
             "{error}"
         );
 
-        // The same undelivered bytes on the streamed path: no error, and the
-        // missing terminal record is the truncation report.
-        let (texts, saw_error, saw_terminal, stream) = collect(sse(&[SILENT])).await;
+        // The same undelivered bytes on the streamed path end the same way.
+        let (texts, _, finished) = collect(sse(&[SILENT])).await;
         assert!(texts.is_empty());
-        assert!(!saw_error, "a stream that delivered nothing is truncation");
-        assert!(!saw_terminal);
-        assert!(stream.folded().terminal().is_none());
+        assert!(matches!(
+            finished,
+            Err(crate::error::ProviderError::Truncated)
+        ));
     }
 }
 
 /// Open a `streamGenerateContent` stream over the given SSE frames and
-/// collect every item the consumer sees.
+/// collect every item the consumer sees, and whether the reply ended.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 async fn collect_stream(
     frames: &[&str],
 ) -> (
-    Vec<Result<crate::streaming::StreamEvent, crate::error::ErrorReport>>,
+    Vec<Result<crate::streaming::Item<crate::streaming::StreamEvent>, crate::error::ErrorReport>>,
     bool,
 ) {
     use futures::StreamExt;
@@ -920,9 +876,9 @@ async fn collect_stream(
         .expect("stream should open");
     let mut items = Vec::new();
     while let Some(item) = stream.next().await {
-        items.push(item);
+        items.push(item.map_err(|error| crate::error::ErrorReport::from(&error)));
     }
-    let finished = stream.folded().terminal().is_some();
+    let finished = stream.finish().await.is_ok();
     (items, finished)
 }
 

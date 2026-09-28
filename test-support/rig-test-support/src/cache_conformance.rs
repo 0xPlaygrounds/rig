@@ -306,7 +306,9 @@ impl CacheProbe {
         CompletionRequest {
             chat_history: std::iter::once(Message::system(self.preamble.clone()))
                 .chain(chat_history)
-                .collect(),
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("non-empty"),
             documents: vec![],
             tools: self.tools.clone(),
             temperature: Some(0.0),
@@ -434,7 +436,7 @@ pub async fn run_cache_probe(
 ) -> CacheObservation {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let opening = Message::User {
-        content: vec![UserContent::text(probe.prompt)],
+        content: rig_core::NonEmpty::new(UserContent::text(probe.prompt)),
     };
 
     let first = send(&model, probe, vec![opening.clone()], "turn 1 (warm)").await;
@@ -442,10 +444,10 @@ pub async fn run_cache_probe(
 
     let assistant = Message::Assistant {
         id: second.message_id.clone(),
-        content: second.choice.clone(),
+        content: rig_core::NonEmpty::from_vec(second.choice.clone()).expect("non-empty"),
     };
     let follow_up = Message::User {
-        content: vec![UserContent::text(probe.follow_up)],
+        content: rig_core::NonEmpty::new(UserContent::text(probe.follow_up)),
     };
     let third = send(
         &model,
@@ -488,7 +490,7 @@ pub async fn run_cache_probe_streaming(
 ) -> CacheObservation {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let opening = Message::User {
-        content: vec![UserContent::text(probe.prompt)],
+        content: rig_core::NonEmpty::new(UserContent::text(probe.prompt)),
     };
 
     let (first_usage, _, _) =
@@ -509,10 +511,12 @@ pub async fn run_cache_probe_streaming(
     };
     let assistant = Message::Assistant {
         id: message_id,
-        content: vec![rig_core::message::AssistantContent::text(&assistant_text)],
+        content: rig_core::NonEmpty::new(rig_core::message::AssistantContent::text(
+            &assistant_text,
+        )),
     };
     let follow_up = Message::User {
-        content: vec![UserContent::text(probe.follow_up)],
+        content: rig_core::NonEmpty::new(UserContent::text(probe.follow_up)),
     };
     let (third_usage, _, _) = stream_turn(
         &model,
@@ -537,37 +541,26 @@ async fn stream_turn(
 ) -> (Usage, String, Option<String>) {
     use futures::StreamExt;
 
-    use rig_core::streaming::Delta;
-
-    use rig_core::streaming::StreamEvent;
+    use rig_core::streaming::{Item, StreamEvent};
 
     let mut stream = model
         .stream(probe.request(chat_history))
         .unwrap_or_else(|error| panic!("streamed cache probe {label} should start: {error}"));
 
     let mut text = String::new();
-    let mut usage = None;
-
     while let Some(item) = stream.next().await {
-        match item
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) = item
             .unwrap_or_else(|error| panic!("streamed cache probe {label} should succeed: {error}"))
         {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: delta },
-                ..
-            } => text.push_str(&delta),
-            StreamEvent::Final(response) => usage = Some(response.usage),
-            _ => {}
+            text.push_str(&delta);
         }
     }
 
-    let usage = usage.unwrap_or_else(|| {
-        panic!(
-            "streamed cache probe {label} produced no final usage — the accumulator dropped it, \
-             which is exactly the streaming-path bug class this probe exists to catch"
-        )
-    });
-    (usage, text, stream.folded().message_id().map(str::to_owned))
+    let response = stream
+        .finish()
+        .await
+        .unwrap_or_else(|error| panic!("streamed cache probe {label} should finish: {error}"));
+    (response.usage, text, response.message_id)
 }
 
 /// Turn 1 must create a cache entry, or read one that was already warm.

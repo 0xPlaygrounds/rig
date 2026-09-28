@@ -8,12 +8,7 @@ fn voyage() -> VoyageAiConfig {
 }
 
 fn body_of(encoded: &Encoded) -> serde_json::Value {
-    let [request] = encoded.requests.as_slice() else {
-        panic!(
-            "expected exactly one request, got {}",
-            encoded.requests.len()
-        );
-    };
+    let request = &encoded.request;
     match request.body() {
         Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
         Body::Multipart(_) => panic!("neither Voyage wire sends a multipart body"),

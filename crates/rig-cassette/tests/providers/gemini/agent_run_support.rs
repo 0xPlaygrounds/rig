@@ -202,11 +202,10 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
                 &call.tool_call.function.arguments,
             );
             let content = vec![ToolResultContent::json(serde_json::json!(output))];
-            UserContent::tool_result_for(
+            UserContent::tool_result(
                 call.tool_call.id.clone(),
-                call.tool_call.provider.clone(),
                 call.tool_call.function.name.clone(),
-                content,
+                rig_core::NonEmpty::from_vec(content).expect("non-empty"),
             )
         })
         .collect()
@@ -245,6 +244,7 @@ pub(crate) fn assistant_tool_call_names(message: &Message) -> Vec<String> {
                 AssistantContent::ToolCall(tool_call) => Some(tool_call.function.name.clone()),
                 _ => None,
             })
+            .map(String::from)
             .collect(),
         _ => Vec::new(),
     }

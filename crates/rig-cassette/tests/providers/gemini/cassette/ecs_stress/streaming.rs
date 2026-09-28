@@ -5,7 +5,7 @@ use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
 use rig::{
     effect::{EffectKind, Outcome},
-    streaming::{Delta, StreamEvent},
+    streaming::StreamEvent,
     tool::ToolResult,
 };
 use rig_ecs::{
@@ -96,7 +96,7 @@ fn observe_publication(world: &mut World) {
                 entity,
                 stream
                     .events
-                    .iter()
+                    .events()
                     .skip(read.map_or(0, |r| r.0))
                     .cloned()
                     .collect::<Vec<_>>(),
@@ -106,13 +106,7 @@ fn observe_publication(world: &mut World) {
         .collect();
     for (effect, events, len) in events {
         for event in events {
-            if matches!(
-                event,
-                StreamEvent::BlockDelta {
-                    delta: Delta::Text { .. },
-                    ..
-                }
-            ) {
+            if matches!(event, StreamEvent::Text { .. }) {
                 emit(world, run_for(world, effect), "TextDelta");
             }
         }

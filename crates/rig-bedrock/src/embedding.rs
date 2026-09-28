@@ -9,14 +9,10 @@
 //! ```
 
 use aws_smithy_types::Blob;
-use rig_core::driver::{Exchange, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::embeddings::{self, Embedding};
 use rig_core::error::{EncodeError, ProviderError};
-
-use rig_core::providers::internal::wire;
-use rig_core::wire::{
-    Capabilities, Decoder, Descriptor, End, Mode, Out, TypedEvent, Wire, WireEvent,
-};
+use rig_core::wire::{Capabilities, Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
 use serde::{Deserialize, Serialize};
 
 use crate::client::BedrockRuntime;
@@ -82,7 +78,7 @@ impl Wire for Embeddings {
     type Op = rig_core::operation::Embedding;
     type Payload = EmbeddingBatch;
     type Frame = EmbeddingFrame;
-    type Decoder = EmbeddingsDecoder;
+    type Decoder<'id> = EmbeddingsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -111,22 +107,18 @@ impl Wire for Embeddings {
         })
     }
 
-    fn decoder(&self, _mode: Mode) -> EmbeddingsDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         EmbeddingsDecoder::default()
     }
 }
 
 impl Transport<Embeddings> for BedrockRuntime {
-    fn send(
-        &self,
-        batch: EmbeddingBatch,
-        _exchange: Exchange,
-    ) -> Result<Sending<EmbeddingFrame>, ProviderError> {
+    fn send(&self, batch: EmbeddingBatch, _exchange: Exchange) -> Opening<EmbeddingFrame> {
         let runtime = self.clone();
         // Every call completes inside the send, so the calls run under the
         // attempt's span; sequential requests limit load against account
         // quotas.
-        Ok(Sending::later(async move {
+        Opening::new(async move {
             let client = runtime.inner().await.clone();
             let mut frames = Vec::with_capacity(batch.texts.len());
             for (document, body) in batch.texts {
@@ -144,19 +136,20 @@ impl Transport<Embeddings> for BedrockRuntime {
                         String::from_utf8(response.body.into_inner())
                             .map_err(|error| ProviderError::Response(error.to_string()))
                     })
-                    .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::Json));
+                    .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::from));
                 frames.push(Ok(match reply {
                     Ok(response) => EmbeddingFrame::Embedded { document, response },
                     Err(error) => EmbeddingFrame::Failed(error),
                 }));
             }
-            Opened::new(futures::stream::iter(frames))
-        }))
+            Ok(Opened::new(futures::stream::iter(frames)))
+        })
     }
 }
 
 /// Collects every text's reply into one response; the first failure fails
-/// the batch once every text was sent.
+/// the batch once every text was sent. The transport sends every text before
+/// its frames end, so the batch ends there.
 #[derive(Default)]
 pub struct EmbeddingsDecoder {
     embeddings: Vec<Embedding>,
@@ -165,23 +158,24 @@ pub struct EmbeddingsDecoder {
     failure: Option<ProviderError>,
 }
 
-impl Decoder<rig_core::operation::Embedding, EmbeddingFrame> for EmbeddingsDecoder {
+impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for EmbeddingsDecoder {
     type Event = EmbeddingFrame;
 
     fn classify(&self, frame: EmbeddingFrame) -> WireEvent<EmbeddingFrame> {
-        wire::classify_typed_event(TypedEvent::Modeled(frame))
+        WireEvent::Known(frame)
     }
 
-    fn interpret(
+    fn decode(
         &mut self,
         frame: EmbeddingFrame,
-        out: &mut Out<'_, rig_core::operation::Embedding>,
-    ) {
-        let EmbeddingFrame::Embedded { document, response } = frame else {
-            if let EmbeddingFrame::Failed(error) = frame {
+        _out: Out<'id, rig_core::operation::Embedding>,
+    ) -> Result<Flow, ProviderError> {
+        let (document, response) = match frame {
+            EmbeddingFrame::Embedded { document, response } => (document, response),
+            EmbeddingFrame::Failed(error) => {
                 self.failure.get_or_insert(error);
+                return Ok(Flow::More);
             }
-            return;
         };
         let tokens = response.input_text_token_count as u64;
         self.usage += rig_core::completion::Usage {
@@ -189,28 +183,25 @@ impl Decoder<rig_core::operation::Embedding, EmbeddingFrame> for EmbeddingsDecod
             total_tokens: Some(tokens),
             ..Default::default()
         };
-        match serde_json::to_value(&response) {
-            Ok(raw) => self.raw.push(raw),
-            Err(error) => out.push(Err(error.into())),
-        }
+        self.raw.push(serde_json::to_value(&response)?);
         self.embeddings.push(Embedding {
             document,
             vec: response.embedding,
         });
+        Ok(Flow::More)
     }
 
-    fn end(&mut self, out: &mut Out<'_, rig_core::operation::Embedding>, end: End) {
-        if end != End::Eof {
-            return;
+    fn eof(
+        &mut self,
+        mut out: Out<'id, rig_core::operation::Embedding>,
+    ) -> Result<Flow, ProviderError> {
+        if let Some(error) = self.failure.take() {
+            return Err(ProviderError::Response(error.to_string()));
         }
-        out.push(match self.failure.take() {
-            None => Ok(embeddings::EmbeddingResponse::new(
-                std::mem::take(&mut self.embeddings),
-                PROVIDER_NAME,
-            )
-            .with_usage(self.usage)
-            .with_raw(serde_json::Value::Array(std::mem::take(&mut self.raw)))),
-            Some(error) => Err(ProviderError::Response(error.to_string())),
-        });
+        out.raw(serde_json::Value::Array(std::mem::take(&mut self.raw)));
+        Ok(out.end(
+            embeddings::EmbeddingResponse::new(std::mem::take(&mut self.embeddings), PROVIDER_NAME)
+                .with_usage(self.usage),
+        ))
     }
 }

@@ -20,7 +20,7 @@ use crate::{
     error::ErrorReport,
     id::ConversationId,
     rerank::RerankResponse,
-    streaming::StreamEvent,
+    streaming::Transcript,
     tool::ToolResult,
     vector_store::request::{Filter, VectorSearchRequest},
     wasm_compat::WasmCompatSend,
@@ -973,13 +973,13 @@ pub struct EffectRecord {
     pub kind: EffectKind,
     /// The answer.
     pub outcome: Result<Outcome, ErrorReport>,
-    /// A streamed dispatch's events, verbatim, when the recorder was asked
+    /// A streamed dispatch's items, verbatim, when the recorder was asked
     /// to keep them (`EffectLogRecorder::keeping_stream_events`); `None`
     /// otherwise, and the answer is the fold. A replayer re-emits these
-    /// when present, so a replayed consumer sees the original delta
-    /// boundaries.
+    /// when present, so a replayed consumer sees the original fragment
+    /// boundaries. They read back through [`Transcript::parse_prefix`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub events: Option<Vec<StreamEvent>>,
+    pub events: Option<Transcript>,
     /// Parent dispatch for a nested handler call, or `None` for a root dispatch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<EffectId>,
@@ -1207,7 +1207,7 @@ const _: fn() = || {
     assert_wire::<RetrievedDocuments>();
     assert_wire::<EffectRecord>();
     assert_wire::<EffectRow>();
-    assert_wire::<StreamEvent>();
+    assert_wire::<Transcript>();
 };
 
 #[cfg(test)]

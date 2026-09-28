@@ -154,7 +154,9 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     for report in &drained.errors {
         assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
         assert!(
-            report.message.contains("terminal record"),
+            report
+                .message
+                .contains("ended before the provider ended it"),
             "a truncation, by name: {report:?}"
         );
     }

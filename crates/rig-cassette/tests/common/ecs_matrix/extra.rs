@@ -20,8 +20,6 @@ use rig_core::observe::AdapterErrorBoundary;
 
 use rig_core::observe::AdapterEvent;
 
-use rig_core::streaming::Delta;
-
 use rig_core::streaming::StreamEvent;
 
 use rig_cassette::ecs::identity::stamp_run;
@@ -423,18 +421,15 @@ fn cancel_at_cut(
     }
     for (parent, stream, outcome) in &streams {
         let reached = match at.cut {
-            Cut::FirstTextDelta => stream.events.iter().any(|event| {
+            Cut::FirstTextDelta => stream.events.events().any(|event| {
                 matches!(
                     event,
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } if !text.is_empty()
+                    StreamEvent::Text { text, .. } if !text.is_empty()
                 )
             }),
             Cut::FirstToolCallDelta => stream
                 .events
-                .iter()
+                .events()
                 .any(super::world::is_tool_call_progress),
             // A folded terminal can precede EOF. This cut promises no live
             // stream, so wait for the collector's completed effect outcome.

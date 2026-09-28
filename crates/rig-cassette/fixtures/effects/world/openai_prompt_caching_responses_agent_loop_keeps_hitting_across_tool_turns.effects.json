@@ -138,12 +138,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_T8nV84wy8khgTx1vDqfFjD2o"
-              },
-              "provider": {
-                "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
-                "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
+                "provider": {
+                  "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
+                  "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
+                }
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -157,12 +155,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_ihdmd9ekwkyz5sKY8xqXrQY0"
-              },
-              "provider": {
-                "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
-                "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
+                "provider": {
+                  "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
+                  "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
+                }
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -384,12 +380,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_T8nV84wy8khgTx1vDqfFjD2o"
-                  },
-                  "provider": {
-                    "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
-                    "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
+                    "provider": {
+                      "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
+                      "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
+                    }
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -403,12 +397,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_ihdmd9ekwkyz5sKY8xqXrQY0"
-                  },
-                  "provider": {
-                    "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
-                    "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
+                    "provider": {
+                      "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
+                      "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
+                    }
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -427,12 +419,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_T8nV84wy8khgTx1vDqfFjD2o"
-                  },
-                  "provider": {
-                    "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
-                    "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
+                    "provider": {
+                      "call_id": "call_T8nV84wy8khgTx1vDqfFjD2o",
+                      "item_id": "fc_0503a7b952dd8323006ab2ba99a58c87d0b90eaac490ff4085"
+                    }
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -445,12 +435,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_ihdmd9ekwkyz5sKY8xqXrQY0"
-                  },
-                  "provider": {
-                    "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
-                    "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
+                    "provider": {
+                      "call_id": "call_ihdmd9ekwkyz5sKY8xqXrQY0",
+                      "item_id": "fc_0503a7b952dd8323006ab2ba99a5a487d08aedffda27bf8e9e"
+                    }
                   },
                   "name": "lookup_cache_policy",
                   "content": [

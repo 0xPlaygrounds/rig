@@ -12,6 +12,7 @@ use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::{Embedding, Rerank as RerankOp, RerankRequest};
 use crate::rerank::{RerankResponse, RerankResult};
+use crate::wire::Flow;
 use crate::wire::{
     Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
     WireFrame,
@@ -160,7 +161,7 @@ impl Wire for Embeddings {
     type Op = Embedding;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = EmbeddingsDecoder;
+    type Decoder<'id> = EmbeddingsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -191,7 +192,7 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         EmbeddingsDecoder
     }
 }
@@ -199,19 +200,22 @@ impl Wire for Embeddings {
 /// Decodes one `/embeddings` reply.
 pub struct EmbeddingsDecoder;
 
-impl Decoder<Embedding> for EmbeddingsDecoder {
+impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
     type Event = VoyageEmbeddingResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["data"])
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, Embedding>) {
+    fn decode(
+        &mut self,
+        reply: Self::Event,
+        out: Out<'id, Embedding>,
+    ) -> Result<Flow, ProviderError> {
         let raw = match serde_json::to_value(&reply) {
             Ok(raw) => raw,
             Err(error) => {
-                out.push(Err(error.into()));
-                return;
+                return Err(error.into());
             }
         };
         // Voyage reports one count; every token of an embedding is input.
@@ -230,13 +234,12 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
                 vec: embedding.embedding,
             })
             .collect();
-        out.push(Ok(crate::embeddings::EmbeddingResponse::new(
-            vectors,
-            PROVIDER_NAME,
-        )
-        .with_model(reply.model)
-        .with_usage(usage)
-        .with_raw(raw)));
+        Ok(out.end(
+            crate::embeddings::EmbeddingResponse::new(vectors, PROVIDER_NAME)
+                .with_model(reply.model)
+                .with_usage(usage)
+                .with_raw(raw),
+        ))
     }
 }
 
@@ -281,7 +284,7 @@ impl Wire for Rerank {
     type Op = RerankOp;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = RerankDecoder;
+    type Decoder<'id> = RerankDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -311,7 +314,7 @@ impl Wire for Rerank {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         RerankDecoder
     }
 }
@@ -335,7 +338,7 @@ pub enum RerankReply {
 /// Decodes one `/rerank` reply.
 pub struct RerankDecoder;
 
-impl Decoder<RerankOp> for RerankDecoder {
+impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
     type Event = RerankReply;
 
     /// Decode a ranking, then an error envelope if ranking decoding fails.
@@ -361,20 +364,22 @@ impl Decoder<RerankOp> for RerankDecoder {
         )
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, RerankOp>) {
+    fn decode(
+        &mut self,
+        reply: Self::Event,
+        out: Out<'id, RerankOp>,
+    ) -> Result<Flow, ProviderError> {
         let reply = match reply {
             RerankReply::Reply(reply) => reply,
             // Preserve the provider body; the driver adds the actual HTTP status.
             RerankReply::Failure(body) => {
-                out.push(Err(ProviderError::from_provider_body(body)));
-                return;
+                return Err(ProviderError::from_provider_body(body));
             }
         };
         let raw = match serde_json::to_value(&reply) {
             Ok(raw) => raw,
             Err(error) => {
-                out.push(Err(error.into()));
-                return;
+                return Err(error.into());
             }
         };
         // Voyage reports one count; every token of a rerank is input.
@@ -392,10 +397,12 @@ impl Decoder<RerankOp> for RerankDecoder {
                 relevance_score: result.relevance_score,
             })
             .collect();
-        out.push(Ok(RerankResponse::new(results, PROVIDER_NAME)
-            .with_model(reply.model)
-            .with_usage(usage)
-            .with_raw(raw)));
+        Ok(out.end(
+            RerankResponse::new(results, PROVIDER_NAME)
+                .with_model(reply.model)
+                .with_usage(usage)
+                .with_raw(raw),
+        ))
     }
 }
 

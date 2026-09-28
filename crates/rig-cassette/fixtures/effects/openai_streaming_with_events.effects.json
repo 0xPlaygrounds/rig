@@ -163,12 +163,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
-              },
-              "provider": {
-                "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                "provider": {
+                  "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                  "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                }
               },
               "function": {
                 "name": "subtract",
@@ -195,6 +193,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a calculator. Use the provided tools before answering arithmetic questions.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 120,
               "input_tokens_details": {
@@ -206,175 +218,121 @@
               },
               "total_tokens": 138
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
+                "arguments": "{\"x\":2,\"y\":5}",
+                "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                "name": "subtract",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "add",
+                "parameters": {
+                  "properties": {
+                    "x": {
+                      "description": "The first number to add",
+                      "type": "number"
+                    },
+                    "y": {
+                      "description": "The second number to add",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Add x and y together",
+                "output_schema": null
+              },
+              {
+                "type": "function",
+                "name": "subtract",
+                "parameters": {
+                  "properties": {
+                    "x": {
+                      "description": "The number to subtract from",
+                      "type": "number"
+                    },
+                    "y": {
+                      "description": "The number to subtract",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Subtract y from x (i.e.: x - y)",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_name",
-            "name": "subtract"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\":2,\"y\":5}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "x"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "2"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "y"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "5"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
-            "name": "subtract",
-            "arguments": {
-              "x": 2,
-              "y": 5
-            },
-            "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
-            },
-            "provider": {
-              "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-              "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
-            },
-            "function": {
-              "name": "subtract",
-              "arguments": {
-                "x": 2,
-                "y": 5
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 120,
-            "output_tokens": 18,
-            "total_tokens": 138,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
-          "provider_request_id": "req_86e2b3d19c0e4103b70c474cdbf6328b",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 120,
-              "input_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                  "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                }
               },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "subtract",
+                "arguments": {
+                  "x": 2,
+                  "y": 5
+                }
               },
-              "total_tokens": 138
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
-            "model": "gpt-4o-2024-08-06"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]
@@ -432,12 +390,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
-                  },
-                  "provider": {
-                    "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                    "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                    "provider": {
+                      "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                      "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                    }
                   },
                   "function": {
                     "name": "subtract",
@@ -457,12 +413,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_oGgQAeg7HiDegO9MUuOvJexg"
-                  },
-                  "provider": {
-                    "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                    "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                    "provider": {
+                      "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                      "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
+                    }
                   },
                   "name": "subtract",
                   "content": [
@@ -551,6 +505,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a calculator. Use the provided tools before answering arithmetic questions.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 147,
               "input_tokens_details": {
@@ -562,208 +530,233 @@
               },
               "total_tokens": 165
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "add",
+                "parameters": {
+                  "properties": {
+                    "x": {
+                      "description": "The first number to add",
+                      "type": "number"
+                    },
+                    "y": {
+                      "description": "The second number to add",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Add x and y together",
+                "output_schema": null
+              },
+              {
+                "type": "function",
+                "name": "subtract",
+                "parameters": {
+                  "properties": {
+                    "x": {
+                      "description": "The number to subtract from",
+                      "type": "number"
+                    },
+                    "y": {
+                      "description": "The number to subtract",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Subtract y from x (i.e.: x - y)",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-            "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " result"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \\("
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " -"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "5"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "\\"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ")"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \\"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "(-"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "3"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "\\"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ")."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The result of \\(2 - 5\\) is \\(-3\\)."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 147,
-            "output_tokens": 18,
-            "total_tokens": 165,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
-          "provider_request_id": "req_3d19b4030b74421d8625892d31d8160c",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 147,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 165
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-            "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
-            "model": "gpt-4o-2024-08-06"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The result of \\(2 - 5\\) is \\(-3\\)."
+            }
           }
         }
       ]

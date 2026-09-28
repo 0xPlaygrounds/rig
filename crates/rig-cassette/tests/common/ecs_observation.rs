@@ -6,7 +6,7 @@ mod tests;
 
 use crate::{ecs_agent::EcsAgent, support::StreamObservation};
 use bevy_ecs::prelude::*;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig_ecs::{
     agent::{RunResult, Settled, ToolCallSlot},
     bus::{BusSet, EffectOutcome, RigSchedule, Seq, Streamed},
@@ -44,12 +44,8 @@ fn observe_streams(streams: Query<(Entity, &Seq, &Streamed)>, mut seen: ResMut<S
     streams.sort_by_key(|(_, seq, _)| seq.0);
     for (entity, _, stream) in streams {
         let offset = seen.offsets.get(&entity).copied().unwrap_or(0);
-        for event in stream.events.iter().skip(offset) {
-            if let StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } = event
-            {
+        for event in stream.events.events().skip(offset) {
+            if let StreamEvent::Text { text, .. } = event {
                 seen.observation.all_streamed_text.push_str(text);
                 seen.observation.final_turn_text.push_str(text);
                 seen.observation.events.push("text");
@@ -74,7 +70,7 @@ fn observe_calls(
     }
     calls.sort_by_key(|(_, call)| call.index);
     for (_, call) in calls {
-        seen.observation.tool_calls.push(call.name.clone());
+        seen.observation.tool_calls.push(call.name.clone().into());
         // The reused assertion consumes names and order, not signature or
         // additional-params records. Leave those unobserved fields empty.
         seen.observation.events.push("tool_call");

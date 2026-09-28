@@ -11,7 +11,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     id::ConversationId,
     message::AssistantContent,
-    streaming::{Delta, StreamEvent},
+    streaming::StreamEvent,
     tool::ToolOutput,
 };
 use rig_ecs::{
@@ -30,9 +30,8 @@ use super::{
     Hook, LOOKUP_ARGS, LOOKUP_KEY, NOTE_KEY, Note, PATCHED_ARGS, Program, REPLACED_ANSWER,
     REPLACED_RESULT, RERANK_KEY, SKIP_REASON, STOP_AFTER_TURN, STOP_AT_ANSWER,
     STOP_AT_COMPLETION_CALL, STOP_AT_MODEL_SELECT, STOP_AT_START, STOP_ON_REASONING_DELTA,
-    STOP_ON_TEXT_DELTA, STOP_ON_TOOL_ARGUMENTS_DELTA, STOP_ON_TOOL_CALL_DELTA,
-    STOP_ON_TOOL_NAME_DELTA, Unserializable, hook_patch_with_thinking, rerank_request,
-    retry_feedback, stop_after_turn_reason,
+    STOP_ON_TEXT_DELTA, STOP_ON_TOOL_ARGUMENTS_DELTA, STOP_ON_TOOL_CALL_DELTA, Unserializable,
+    hook_patch_with_thinking, rerank_request, retry_feedback, stop_after_turn_reason,
 };
 
 /// The program's hooks, in registration order, and what the systems need
@@ -533,34 +532,24 @@ fn after_fold(
             continue;
         };
         let mut stop: Option<&str> = None;
-        for event in &streamed.events {
-            let StreamEvent::BlockDelta { delta, .. } = event else {
-                continue;
-            };
-            stop = match delta {
-                Delta::ToolName { .. } if hooks.has(Hook::StopOnToolCallDelta) => {
+        for event in streamed.events.events() {
+            stop = match event {
+                // A call's one arguments delta; its name is known with it.
+                StreamEvent::Arguments { .. } if hooks.has(Hook::StopOnToolCallDelta) => {
                     Some(STOP_ON_TOOL_CALL_DELTA)
                 }
-                Delta::ToolArguments { .. } if hooks.has(Hook::StopOnToolCallDelta) => {
-                    Some(STOP_ON_TOOL_CALL_DELTA)
-                }
-                Delta::ToolName { .. } if hooks.has(Hook::StopOnToolNameDelta) => {
-                    Some(STOP_ON_TOOL_NAME_DELTA)
-                }
-                Delta::ToolArguments { arguments }
-                    if hooks.has(Hook::StopOnToolArgumentsDelta) && !arguments.is_empty() =>
+                StreamEvent::Arguments { json, .. }
+                    if hooks.has(Hook::StopOnToolArgumentsDelta) && !json.is_empty() =>
                 {
                     Some(STOP_ON_TOOL_ARGUMENTS_DELTA)
                 }
-                Delta::Reasoning { .. } if hooks.has(Hook::StopOnReasoningDelta) => {
+                StreamEvent::Reasoning { .. } if hooks.has(Hook::StopOnReasoningDelta) => {
                     Some(STOP_ON_REASONING_DELTA)
                 }
-                Delta::Text { .. } if hooks.has(Hook::StopOnTextDelta) => Some(STOP_ON_TEXT_DELTA),
-                Delta::Text { .. }
-                | Delta::TextMeta { .. }
-                | Delta::Reasoning { .. }
-                | Delta::ToolName { .. }
-                | Delta::ToolArguments { .. } => None,
+                StreamEvent::Text { .. } if hooks.has(Hook::StopOnTextDelta) => {
+                    Some(STOP_ON_TEXT_DELTA)
+                }
+                _ => None,
             };
             if stop.is_some() {
                 break;

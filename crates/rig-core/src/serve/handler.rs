@@ -17,10 +17,8 @@ use futures::{StreamExt, channel::oneshot};
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
-    operation::CompletionFold,
-    streaming::{StreamEvent, StreamEvents},
+    streaming::{Item, Relayed, StreamEvent, StreamEvents},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
-    wire::Fold,
 };
 
 #[cfg(test)]
@@ -198,24 +196,25 @@ pub trait Observe: Send + Sync {
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>);
-    /// Whether streamed events are wanted verbatim ([`Self::event`]).
+    /// Whether streamed items are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
-    /// One event pulled from the original handler stream. This is recording
+    /// One item pulled from the original handler stream. This is recording
     /// evidence, not acknowledgement that a consumer received the item.
-    fn event(&mut self, event: &StreamEvent);
-    /// An error item in a kept stream, including errors after `Final`.
+    fn event(&mut self, item: &Item<StreamEvent>);
+    /// An error item in a kept stream.
     fn stream_error(&mut self, _error: &ErrorReport) {}
     /// Observe one stream item together with its first folded outcome, if any.
     /// Drivers that snapshot recording concurrently with cancellation can override
     /// this operation to make the item and its answer one observation boundary.
     fn stream_item(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
+        item: &Result<Relayed, ErrorReport>,
         outcome: Option<&Result<Outcome, ErrorReport>>,
     ) {
         if self.keep_events() {
             match item {
-                Ok(event) => self.event(event),
+                Ok(Relayed::Item(item)) => self.event(item),
+                Ok(Relayed::Done(_)) => {}
                 Err(error) => self.stream_error(error),
             }
         }
@@ -232,98 +231,45 @@ pub trait Observe: Send + Sync {
     fn patch(&mut self, kind: &EffectKind);
 }
 
-/// The one fold of a stream into the completion a unary consumer, or the
-/// record, holds: what a unary consumer runs over a streaming handler's
-/// events, what the driver's observer runs over a streaming dispatch, what
-/// a layer runs for its verdict. The events pass the completion sink first,
-/// so a handler's stream folds the same whether its handler wrote it through
-/// the sink or not.
+/// What a unary consumer, the record, or a layer's verdict takes from a
+/// stream: its outcome, the response the stream ends with or the first
+/// error item. The origin folded the response; the tap only watches for it.
+#[derive(Default)]
 pub struct StreamTap {
-    canonical: crate::operation::Canonical,
-    fold: CompletionFold,
     /// The tap yielded its outcome.
     finished: bool,
 }
 
-impl Default for StreamTap {
-    fn default() -> Self {
-        Self {
-            canonical: crate::operation::Canonical::default(),
-            fold: CompletionFold::relayed(""),
-            finished: false,
-        }
-    }
-}
-
 impl StreamTap {
-    /// A new stream fold.
+    /// A new stream tap.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Folds an event and returns the stream's outcome once: the response on
-    /// the terminal record, or the first error item, including a defect the
-    /// sink finds in an event. Every later call returns `None`, so an error
-    /// item needs no canonicalizing.
+    /// Returns the stream's outcome once: the response it ends with, or the
+    /// first error item. Every later call returns `None`.
     pub fn observe(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
+        item: &Result<Relayed, ErrorReport>,
     ) -> Option<Result<Outcome, ErrorReport>> {
         if self.finished {
             return None;
         }
-        let outcome = self.fold_item(item);
+        let outcome = match item {
+            Ok(Relayed::Item(_)) => None,
+            Ok(Relayed::Done(response)) => Some(Ok(Outcome::Completion((**response).clone()))),
+            Err(report) => Some(Err(report.clone())),
+        };
         self.finished = outcome.is_some();
         outcome
     }
-
-    fn fold_item(
-        &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
-    ) -> Option<Result<Outcome, ErrorReport>> {
-        let event = match item {
-            Err(report) => return Some(Err(report.clone())),
-            Ok(event) => event.clone(),
-        };
-        let mut canonical = Vec::new();
-        self.canonical
-            .push(Ok(event), &mut |item, _| canonical.push(item));
-        for item in canonical {
-            let event = match item {
-                Ok(event) => event,
-                Err(error) => return Some(Err(ErrorReport::from(&error))),
-            };
-            if let Err(error) = self.fold.absorb(&event) {
-                return Some(Err(ErrorReport::from(&error)));
-            }
-            if matches!(event, StreamEvent::Final(_)) {
-                // A relayed stream's reply is its terminal record; the tap saw
-                // no transport.
-                let reply = crate::wire::Reply {
-                    provider: String::new(),
-                    raw: serde_json::Value::Null,
-                    provider_request_id: None,
-                };
-                let fold = std::mem::replace(&mut self.fold, CompletionFold::relayed(""));
-                return Some(
-                    fold.finish(reply)
-                        .map(Outcome::Completion)
-                        .map_err(|error| ErrorReport::from(&error)),
-                );
-            }
-        }
-        None
-    }
 }
 
-/// Returns a retryable response error for a stream that ended before its terminal
-/// record. Retryability does not guarantee a subsequent attempt will succeed.
+/// The retryable report of a reply that ended before the provider ended it
+/// ([`ProviderError::Truncated`](crate::error::ProviderError::Truncated)).
+/// Retryability does not guarantee a subsequent attempt will succeed.
 pub fn stream_truncated() -> ErrorReport {
-    ErrorReport::new(
-        ErrorKind::Response,
-        "the stream ended before its terminal record",
-    )
-    .with_retryable(true)
+    ErrorReport::from(&crate::error::ProviderError::Truncated)
 }
 
 /// An answer, or an owned stream whose execution belongs to the driver.
@@ -362,19 +308,21 @@ impl Reply {
         }
     }
 
-    /// Convert a completion into events; incompatible outcomes become errors.
+    /// Convert a completion into its events, then the response;
+    /// incompatible outcomes become errors.
     pub fn into_stream(self) -> StreamEvents {
         match self {
             Self::Stream(stream) => stream,
             Self::Outcome(outcome) => Box::pin(futures::stream::iter(match outcome {
                 Ok(Outcome::Completion(response)) => {
-                    let mut out = crate::operation::AdapterOutput::new();
-                    out.response(&response, crate::operation::ImagePart::Unknown);
-                    // An item that failed to re-emit (an image that did not
-                    // serialize) is delivered as the error it is, not dropped.
-                    out.drain()
-                        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
-                        .collect()
+                    match crate::operation::completion::events_of(&response) {
+                        Ok(items) => items
+                            .into_iter()
+                            .map(|item| Ok(Relayed::Item(item)))
+                            .chain(std::iter::once(Ok(Relayed::Done(Box::new(response)))))
+                            .collect(),
+                        Err(error) => vec![Err(ErrorReport::from(&error))],
+                    }
                 }
                 Ok(other) => vec![Err(wrong_stream_answer(&other))],
                 Err(report) => vec![Err(report)],
@@ -414,7 +362,7 @@ impl Reply {
                 let outcome = if finished { None } else { fold.observe(item) };
                 if let Some(seen) = &mut seen {
                     let recorded = outcome.as_ref().map(|outcome| {
-                        if matches!(item, Ok(StreamEvent::Final(_))) {
+                        if matches!(item, Ok(Relayed::Done(_))) {
                             original.as_ref().unwrap_or(outcome)
                         } else {
                             outcome
@@ -620,7 +568,7 @@ impl Observed {
 
     fn item(
         &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
+        item: &Result<Relayed, ErrorReport>,
         outcome: Option<&Result<Outcome, ErrorReport>>,
     ) {
         let outcome = outcome.filter(|_| !self.told);

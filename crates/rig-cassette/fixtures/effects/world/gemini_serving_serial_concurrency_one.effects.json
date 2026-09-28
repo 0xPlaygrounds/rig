@@ -186,11 +186,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_64668"
-              },
-              "provider": {
-                "call_id": "call_64668"
+                "provider": {
+                  "call_id": "call_64668"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -202,11 +200,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_64670"
-              },
-              "provider": {
-                "call_id": "call_64670"
+                "provider": {
+                  "call_id": "call_64670"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -327,11 +323,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_64668"
-                  },
-                  "provider": {
-                    "call_id": "call_64668"
+                    "provider": {
+                      "call_id": "call_64668"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -343,11 +337,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_64670"
-                  },
-                  "provider": {
-                    "call_id": "call_64670"
+                    "provider": {
+                      "call_id": "call_64670"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -364,11 +356,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_64668"
-                  },
-                  "provider": {
-                    "call_id": "call_64668"
+                    "provider": {
+                      "call_id": "call_64668"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -381,11 +371,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_64670"
-                  },
-                  "provider": {
-                    "call_id": "call_64670"
+                    "provider": {
+                      "call_id": "call_64670"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [

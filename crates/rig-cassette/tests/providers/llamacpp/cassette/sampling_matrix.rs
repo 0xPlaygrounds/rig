@@ -421,9 +421,9 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
 
     let request = rig::completion::CompletionRequest {
         model: None,
-        chat_history: vec![rig::message::Message::User {
-            content: vec![rig::message::UserContent::text("hi")],
-        }],
+        chat_history: rig_core::NonEmpty::new(rig::message::Message::User {
+            content: rig_core::NonEmpty::new(rig::message::UserContent::text("hi")),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.0),
@@ -437,7 +437,7 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
     let encoded = Chat::new(OpenAIConfig::with_key(&LLAMACPP, ""), "m")
         .encode(request, Mode::Unary)
         .expect("the request should encode");
-    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+    let Body::Bytes(bytes) = encoded.request.body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")
     };
     let body: Value = serde_json::from_slice(bytes).expect("the chat body is JSON");

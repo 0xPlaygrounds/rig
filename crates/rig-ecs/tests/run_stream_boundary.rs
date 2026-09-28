@@ -1,10 +1,6 @@
 //! A delivered invalid name must be actionable before the producer finishes.
 //! The producer gate prevents EOF from masquerading as a midstream boundary.
 // Test assertions and the shared run_support fixtures intentionally panic.
-#[path = "run_stream_boundary/errors.rs"]
-mod errors;
-#[path = "run_stream_boundary/multiple.rs"]
-mod multiple;
 use crate::run_support;
 
 use futures::channel::oneshot;
@@ -12,7 +8,7 @@ use rig_core::{
     completion::{ModelRef, ProviderCapabilities},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
     serve::{Dispatch, Reply, Serve},
-    streaming::{BlockId, BlockKind, Delta, StreamEvent},
+    streaming::StreamEvent,
 };
 use rig_ecs::{
     agent::{Failed, Failure, InvalidCall},
@@ -26,8 +22,7 @@ use bevy_ecs::prelude::*;
 use rig_core::{
     completion::{CompletionResponse, Usage as ProviderUsage},
     effect::Outcome,
-    message::{AssistantContent, ToolCallId},
-    streaming::{BlockClose, StreamFinal, ToolCallEnd},
+    message::AssistantContent,
 };
 use rig_ecs::{
     agent::{Grant, MessageParts, Resolution, RunResult, Settled, Usage},
@@ -59,43 +54,19 @@ impl Serve for FinishingName {
         };
 
         Reply::written(move |mut writer| async move {
-            let id = BlockId::Wire("assembly-block".into());
-            for event in [
-                StreamEvent::BlockStart {
-                    id: id.clone(),
-                    kind: BlockKind::ToolCall,
-                },
-                StreamEvent::BlockDelta {
-                    id: id.clone(),
-                    delta: Delta::ToolName {
-                        name: "wrong".into(),
-                    },
-                },
-            ] {
-                writer.event(event).await.expect("stream open");
-            }
-            gate.await.expect("test releases producer");
             writer
-                .event(StreamEvent::BlockEnd {
-                    id,
-                    end: BlockClose::ToolCall(
-                        ToolCallEnd::whole("wrong", serde_json::json!({"x": 2, "y": 3}))
-                            .with_tool_id("provider-tool")
-                            .with_call_id("provider-call"),
-                    ),
-                    block: None,
-                })
+                .tool_call("wrong", serde_json::json!({"x": 2, "y": 3}))
                 .await
                 .expect("stream open");
+            gate.await.expect("test releases producer");
             writer
-                .event(StreamEvent::Final(StreamFinal::new(
+                .finish(
                     "boundary",
-                    ProviderUsage {
+                    rig_core::operation::Finish::new(ProviderUsage {
                         total_tokens: Some(7),
                         ..ProviderUsage::default()
-                    },
-                    serde_json::json!({}),
-                )))
+                    }),
+                )
                 .await
                 .expect("stream open");
         })
@@ -223,16 +194,13 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
         })
         .collect();
     assert_eq!(calls.len(), 1);
-    assert_eq!(
-        calls[0].id,
-        ToolCallId::from_block(&BlockId::Wire("assembly-block".into()))
-    );
-    assert!(calls[0].provider.is_none());
+    // The call surfaced when it ended, whole, under the id the writer issued.
+    assert!(calls[0].id.is_local());
     assert_eq!(calls[0].function.name, "wrong");
     assert_eq!(
         calls[0].function.arguments,
-        serde_json::Value::Null,
-        "future arguments must not enter the retained prefix"
+        serde_json::json!({"x": 2, "y": 3}),
+        "the retained prefix holds the call as it ended"
     );
 }
 
@@ -243,10 +211,7 @@ fn repair_name(
 ) {
     for (entity, call) in &invalid {
         assert_eq!(call.name, "wrong");
-        assert_eq!(
-            call.id,
-            ToolCallId::from_block(&BlockId::Wire("assembly-block".into()))
-        );
+        assert!(call.id.is_local());
         assert_eq!(call.prefix.len(), 1);
         count.0 += 1;
         commands
@@ -256,7 +221,7 @@ fn repair_name(
 }
 
 #[test]
-fn early_repair_survives_raw_block_completion_and_provider_identity() {
+fn early_repair_survives_the_calls_completion() {
     let mut app = app();
     app.init_resource::<RepairCount>();
     app.world_mut()
@@ -329,10 +294,7 @@ fn early_repair_survives_raw_block_completion_and_provider_identity() {
         })
         .collect();
     assert_eq!(calls.len(), 1);
-    assert_eq!(
-        calls[0].id,
-        ToolCallId::new("provider-call").expect("valid id")
-    );
+    assert!(calls[0].id.is_local(), "the writer issues the call's id");
     assert_eq!(calls[0].function.name, "add");
     assert_eq!(
         calls[0].function.arguments,
@@ -363,21 +325,8 @@ impl Serve for NameThenGate {
             .expect("one request");
 
         Reply::written(move |mut writer| async move {
-            let id = BlockId::Wire("invalid-call".into());
             writer
-                .event(StreamEvent::BlockStart {
-                    id: id.clone(),
-                    kind: BlockKind::ToolCall,
-                })
-                .await
-                .expect("stream open");
-            writer
-                .event(StreamEvent::BlockDelta {
-                    id,
-                    delta: Delta::ToolName {
-                        name: "unavailable_tool".into(),
-                    },
-                })
+                .tool_call("unavailable_tool", serde_json::json!({}))
                 .await
                 .expect("stream open");
             let _ = gate.await;
@@ -402,7 +351,12 @@ fn invalid_tool_name_is_actionable_before_completion_outcome() {
         &mut app,
         "tool name delivered while producer is gated",
         |world| {
-            world.query::<&Streamed>().iter(world).any(|stream| stream.events.iter().any(|event| matches!(event, StreamEvent::BlockDelta { delta: Delta::ToolName { name }, .. } if name == "unavailable_tool")))
+            world.query::<&Streamed>().iter(world).any(|stream| {
+                stream.events.events().any(|event| {
+                    matches!(event, StreamEvent::End { content: AssistantContent::ToolCall(call), .. }
+                        if call.function.name == "unavailable_tool")
+                })
+            })
         },
     );
     // Give the native policy a complete subsequent schedule pass, while the

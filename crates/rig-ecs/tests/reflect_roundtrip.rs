@@ -25,7 +25,7 @@ use bevy_reflect::{
     serde::{ReflectDeserializer, ReflectSerializer},
 };
 use rig_core::{
-    completion::message::{Message, ToolCallId, ToolChoice},
+    completion::message::{CallId, Message, ToolChoice},
     effect::{EffectId, HandlerKey},
     error::{ErrorKind, ErrorReport},
 };
@@ -106,8 +106,10 @@ fn populated() -> bevy_app::App {
         },
         Reprompt(Message::user("again")),
         InvalidCall {
-            id: ToolCallId::new("i").unwrap(),
-            name: "nope".to_owned(),
+            id: CallId::from_wire("i"),
+            name: rig_core::message::ToolName::new("nope")
+                .expect("tool name")
+                .into(),
             arguments: serde_json::json!({"z": true}),
             prefix: vec![
                 AssistantContent::text("delivered prefix"),
@@ -163,7 +165,7 @@ fn populated() -> bevy_app::App {
             rig_ecs::agent::Role::User,
             Streamed {
                 errors: vec![(0, ErrorReport::new(ErrorKind::Cancelled, "stopped"))],
-                events: Vec::new(),
+                events: Default::default(),
                 text: "so far".to_owned(),
                 outcome: Some(Err(ErrorReport::new(ErrorKind::Cancelled, "stopped"))),
             },
@@ -171,9 +173,8 @@ fn populated() -> bevy_app::App {
             rig_ecs::agent::Retry { feedback: None },
             rig_ecs::agent::ToolCallSlot {
                 index: 0,
-                id: ToolCallId::new("c9").expect("an id"),
-                provider: None,
-                name: "add".to_owned(),
+                id: CallId::from_wire("c9"),
+                name: rig_core::message::ToolName::new("add".to_owned()).expect("tool name"),
             },
             rig_ecs::systems::Fresh,
             rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
@@ -193,7 +194,7 @@ fn populated() -> bevy_app::App {
         app.world_mut(),
         utterance,
         MessageParts::User {
-            content: vec![rig_core::message::UserContent::text("u")],
+            content: rig_core::NonEmpty::new(rig_core::message::UserContent::text("u")),
         },
     )
     .expect("valid reflected content");
@@ -203,16 +204,20 @@ fn populated() -> bevy_app::App {
     };
     for parts in [
         MessageParts::User {
-            content: vec![
+            content: rig_core::NonEmpty::with_rest(
                 UserContent::Image(Image::default()),
-                UserContent::Audio(Audio::default()),
-                UserContent::Video(Video::default()),
-                UserContent::Document(Document::default()),
-            ],
+                [
+                    UserContent::Audio(Audio::default()),
+                    UserContent::Video(Video::default()),
+                    UserContent::Document(Document::default()),
+                ],
+            ),
         },
         MessageParts::Assistant {
             id: Some("message".into()),
-            content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
+            content: rig_core::NonEmpty::new(AssistantContent::Reasoning(
+                Reasoning::new("thought").sealed("test"),
+            )),
         },
     ] {
         let entity = app.world_mut().spawn(Utterance).id();

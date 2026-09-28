@@ -6,16 +6,14 @@ use std::sync::Mutex;
 use crate::completion::{ModelRef, ProviderCapabilities};
 use crate::effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, family};
 use crate::error::{ErrorKind, ErrorReport};
-use crate::operation::AdapterOutput;
 use crate::serve::{Dispatch, Reply, Serve};
-use crate::streaming::SyntheticIds;
 
-use super::MockStreamEvent;
+use super::{MockFrame, MockScript, MockStreamEvent};
 
-/// A completion handler under `label` that relays each scripted turn's
-/// events verbatim, items past the terminal included, as a host's handler
-/// may. A wire's driver stops at the terminal; a relay does not. Each
-/// dispatch consumes one turn; a unary dispatch folds it.
+/// A completion handler under `label` that relays each scripted turn as a
+/// host's handler may: decoded by the scripted wire, its items, then the
+/// response. Each dispatch consumes one turn; a unary dispatch takes the
+/// response.
 pub struct MockRelay {
     label: ModelRef,
     turns: Mutex<VecDeque<Vec<MockStreamEvent>>>,
@@ -75,17 +73,10 @@ impl Serve for MockRelay {
                 "mock relay has no scripted turn",
             )));
         };
-        let mut out = AdapterOutput::new();
-        let mut tool_ids = SyntheticIds::tool();
-        for event in turn {
-            if let Err(error) = event.emit(&mut out, &mut tool_ids) {
-                out.error(error);
-            }
-        }
-        let items: Vec<_> = out
-            .drain()
-            .map(|item| item.map_err(|error| ErrorReport::from(&error)))
-            .collect();
-        Reply::Stream(Box::pin(futures::stream::iter(items)))
+        let frames = turn.into_iter().map(MockFrame::Event);
+        Reply::Stream(crate::driver::relay_frames(
+            &MockScript::new(self.label.as_str()),
+            frames,
+        ))
     }
 }

@@ -204,29 +204,6 @@ fn marker_keyed_invalid_json_is_corrupt() {
 }
 
 #[test]
-fn typed_event_triage_maps_onto_the_shared_policy() {
-    // Modeled variants pass through as Known.
-    let event = super::classify_typed_event(super::TypedEvent::Modeled(7u8));
-    assert!(matches!(event, WireEvent::Known(7)));
-
-    // The SDK's unknown-variant signal (aws-sdk `Unknown`, prost oneof
-    // `None`) is Unknown, carrying the debug payload for the warn log.
-    let event = super::classify_typed_event::<u8>(super::TypedEvent::Unrecognized {
-        event_type: "unknown".to_string(),
-        detail: "FutureEvent".to_string(),
-    });
-    assert!(matches!(
-        event,
-        WireEvent::Unknown { event_type, value }
-            if event_type == "unknown" && value.value() == &serde_json::Value::String("FutureEvent".into())
-    ));
-
-    // An SDK decode error for a modeled event is Corrupt, never Unknown.
-    let event = super::classify_typed_event::<u8>(super::TypedEvent::Malformed("bad frame".into()));
-    assert!(matches!(event, WireEvent::Corrupt(error) if error.to_string().contains("bad frame")));
-}
-
-#[test]
 fn untyped_line_is_known_or_corrupt() {
     assert!(matches!(
         super::classify_untyped_line::<TestChunk>(br#"{"choices":[]}"#),

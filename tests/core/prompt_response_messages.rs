@@ -90,7 +90,7 @@ async fn prompt_response_populates_messages() {
     // First message: User
     match &messages[0] {
         Message::User { content } => match content.first() {
-            Some(UserContent::Text(t)) => assert_eq!(t.text, "hi"),
+            UserContent::Text(t) => assert_eq!(t.text, "hi"),
             other => panic!("expected text user content, got: {other:?}"),
         },
         other => panic!("expected User message, got: {other:?}"),
@@ -99,7 +99,7 @@ async fn prompt_response_populates_messages() {
     // Second message: Assistant
     match &messages[1] {
         Message::Assistant { content, .. } => match content.first() {
-            Some(AssistantContent::Text(t)) => assert_eq!(t.text, "hello from mock"),
+            AssistantContent::Text(t) => assert_eq!(t.text, "hello from mock"),
             other => panic!("expected text assistant content, got: {other:?}"),
         },
         other => panic!("expected Assistant message, got: {other:?}"),
@@ -190,7 +190,7 @@ async fn multi_turn_messages_include_tool_calls() {
     match &messages[1] {
         Message::Assistant { content, .. } => {
             assert!(
-                matches!(content.first(), Some(AssistantContent::ToolCall(_))),
+                matches!(content.first(), AssistantContent::ToolCall(_)),
                 "expected tool call, got: {content:?}"
             );
         }
@@ -201,7 +201,7 @@ async fn multi_turn_messages_include_tool_calls() {
     match &messages[2] {
         Message::User { content } => {
             assert!(
-                matches!(content.first(), Some(UserContent::ToolResult(_))),
+                matches!(content.first(), UserContent::ToolResult(_)),
                 "expected tool result, got: {content:?}"
             );
         }
@@ -211,7 +211,7 @@ async fn multi_turn_messages_include_tool_calls() {
     // [3] Assistant with text
     match &messages[3] {
         Message::Assistant { content, .. } => match content.first() {
-            Some(AssistantContent::Text(t)) => assert_eq!(t.text, "The answer is 5"),
+            AssistantContent::Text(t) => assert_eq!(t.text, "The answer is 5"),
             other => panic!("expected text, got: {other:?}"),
         },
         other => panic!("expected Assistant with text, got: {other:?}"),
@@ -347,7 +347,7 @@ async fn chat_appends_prompt_and_assistant_to_history() {
 
     match &history[0] {
         Message::User { content } => match content.first() {
-            Some(UserContent::Text(text)) => assert_eq!(text.text, "hi"),
+            UserContent::Text(text) => assert_eq!(text.text, "hi"),
             other => panic!("expected text user content, got: {other:?}"),
         },
         other => panic!("expected User message, got: {other:?}"),
@@ -355,7 +355,7 @@ async fn chat_appends_prompt_and_assistant_to_history() {
 
     match &history[1] {
         Message::Assistant { content, .. } => match content.first() {
-            Some(AssistantContent::Text(text)) => assert_eq!(text.text, "hello from mock"),
+            AssistantContent::Text(text) => assert_eq!(text.text, "hello from mock"),
             other => panic!("expected text assistant content, got: {other:?}"),
         },
         other => panic!("expected Assistant message, got: {other:?}"),
@@ -418,7 +418,7 @@ async fn chat_appends_tool_roundtrip_to_history() {
 
     match &history[3] {
         Message::Assistant { content, .. } => match content.first() {
-            Some(AssistantContent::Text(text)) => assert_eq!(text.text, "The answer is 5"),
+            AssistantContent::Text(text) => assert_eq!(text.text, "The answer is 5"),
             other => panic!("expected final assistant text, got: {other:?}"),
         },
         other => panic!("expected final Assistant, got: {other:?}"),
@@ -450,7 +450,7 @@ async fn sequential_prompts_have_independent_histories() {
     // First prompt's user message should be "first"
     match &msgs1[0] {
         Message::User { content } => match content.first() {
-            Some(UserContent::Text(t)) => assert_eq!(t.text, "first"),
+            UserContent::Text(t) => assert_eq!(t.text, "first"),
             other => panic!("unexpected: {other:?}"),
         },
         other => panic!("unexpected: {other:?}"),
@@ -459,7 +459,7 @@ async fn sequential_prompts_have_independent_histories() {
     // Second prompt's user message should be "second"
     match &msgs2[0] {
         Message::User { content } => match content.first() {
-            Some(UserContent::Text(t)) => assert_eq!(t.text, "second"),
+            UserContent::Text(t) => assert_eq!(t.text, "second"),
             other => panic!("unexpected: {other:?}"),
         },
         other => panic!("unexpected: {other:?}"),

@@ -87,7 +87,7 @@ fn terminal_response_body(sse: &str) -> String {
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("say hi")],
+        chat_history: crate::NonEmpty::new(Message::user("say hi")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -121,6 +121,7 @@ async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionRes
     while response.next().await.is_some() {}
     response
         .finish()
+        .await
         .expect("the stream produced a terminal record")
 }
 
@@ -218,11 +219,7 @@ fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
 /// One request's body, for a turn other than the bare [`prompt`].
 fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> serde_json::Value {
     let encoded = wire.encode(request, mode).expect("the request encodes");
-    let request = encoded
-        .requests
-        .first()
-        .expect("a Responses request is one request");
-    let Body::Bytes(body) = request.body() else {
+    let Body::Bytes(body) = encoded.request.body() else {
         panic!("a Responses body is bytes");
     };
     serde_json::from_slice(body).expect("the body is JSON")
@@ -231,7 +228,7 @@ fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> 
 /// The bare [`prompt`] with a history of its own.
 fn turn(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
-        chat_history,
+        chat_history: crate::NonEmpty::from_vec(chat_history).expect("non-empty"),
         ..prompt()
     }
 }
@@ -432,10 +429,7 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
     let encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
-    assert_eq!(
-        encoded.requests.first().expect("one request").uri(),
-        "https://api.x.ai/v1/responses"
-    );
+    assert_eq!(encoded.request.uri(), "https://api.x.ai/v1/responses");
 
     let body = encoded_body_of(
         &wire,
@@ -485,18 +479,19 @@ fn the_xai_dialect_folds_tool_results_between_user_text_in_order() {
     let body = encoded_body_of(
         &xai(),
         turn(vec![Message::User {
-            content: vec![
+            content: crate::NonEmpty::with_rest(
                 message::UserContent::text("before"),
-                message::UserContent::tool_result_with_call_id(
-                    "result-id",
-                    "call-id".to_owned(),
-                    "tool",
-                    vec![message::ToolResultContent::json(
-                        serde_json::json!({ "ok": true }),
-                    )],
-                ),
-                message::UserContent::text("after"),
-            ],
+                [
+                    message::UserContent::tool_result(
+                        crate::message::CallId::from_dual_wire("result-id", "call-id".to_owned()),
+                        crate::message::ToolName::new("tool").expect("tool name"),
+                        crate::NonEmpty::new(message::ToolResultContent::json(
+                            serde_json::json!({ "ok": true }),
+                        )),
+                    ),
+                    message::UserContent::text("after"),
+                ],
+            ),
         }]),
         Mode::Unary,
     );
@@ -524,23 +519,25 @@ fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
             Message::user("Use the tool."),
             Message::Assistant {
                 id: Some("msg_1".to_owned()),
-                content: vec![
-                    message::AssistantContent::Reasoning(message::Reasoning {
-                        provider: None,
-                        id: Some("rs_1".to_owned()),
-                        content: vec![
-                            message::ReasoningContent::Summary("explain".to_owned()),
-                            message::ReasoningContent::Redacted {
-                                data: "opaque-redacted".to_owned(),
-                            },
-                        ],
-                    }),
-                    message::AssistantContent::tool_call(
-                        "call_1",
-                        "my_tool",
-                        serde_json::json!({"arg": "value"}),
+                content: crate::NonEmpty::with_rest(
+                    message::AssistantContent::Reasoning(
+                        message::Reasoning {
+                            id: Some("rs_1".to_owned()),
+                            content: vec![
+                                message::ReasoningContent::Summary("explain".to_owned()),
+                                message::ReasoningContent::Redacted {
+                                    data: "opaque-redacted".to_owned(),
+                                },
+                            ],
+                        }
+                        .sealed("xai"),
                     ),
-                ],
+                    [message::AssistantContent::tool_call(
+                        "call_1",
+                        crate::message::ToolName::new("my_tool").expect("tool name"),
+                        serde_json::json!({"arg": "value"}),
+                    )],
+                ),
             },
         ]),
         Mode::Unary,

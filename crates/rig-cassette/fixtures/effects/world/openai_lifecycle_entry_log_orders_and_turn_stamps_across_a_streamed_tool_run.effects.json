@@ -2,37 +2,29 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 11
+          "items": 3
         }
       },
       {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 10,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 28,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 44,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +32,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 52,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -48,15 +40,7 @@
         }
       },
       {
-        "batch": 27,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 27,
+        "batch": 52,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -179,12 +163,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_Zp38uddUnG24W519w6jMn4CB"
-              },
-              "provider": {
-                "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                "provider": {
+                  "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                  "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                }
               },
               "function": {
                 "name": "add",
@@ -211,6 +193,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a calculator. Use the add tool for arithmetic.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 89,
               "input_tokens_details": {
@@ -222,175 +218,97 @@
               },
               "total_tokens": 107
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
+                "arguments": "{\"x\":9,\"y\":16}",
+                "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                "name": "add",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "add",
+                "parameters": {
+                  "properties": {
+                    "x": {
+                      "description": "The first number to add",
+                      "type": "number"
+                    },
+                    "y": {
+                      "description": "The second number to add",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Add x and y together",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\":9,\"y\":16}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "x"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "9"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ",\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "y"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "16"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537",
-            "name": "add",
-            "arguments": {
-              "x": 9,
-              "y": 16
-            },
-            "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_Zp38uddUnG24W519w6jMn4CB"
-            },
-            "provider": {
-              "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-              "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 9,
-                "y": 16
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 89,
-            "output_tokens": 18,
-            "total_tokens": 107,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc",
-          "provider_request_id": "req_6c5028d7d7a24813ba8619ebd8b7406c",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 89,
-              "input_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                  "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                }
               },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 9,
+                  "y": 16
+                }
               },
-              "total_tokens": 107
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_0ae556d915a54b9c006ab3969b9d1c87d09395efb8a3a6b3fc",
-            "model": "gpt-4o-2024-08-06"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -450,12 +368,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_Zp38uddUnG24W519w6jMn4CB"
-                  },
-                  "provider": {
-                    "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                    "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                    "provider": {
+                      "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                      "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -475,12 +391,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_Zp38uddUnG24W519w6jMn4CB"
-                  },
-                  "provider": {
-                    "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
-                    "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                    "provider": {
+                      "call_id": "call_Zp38uddUnG24W519w6jMn4CB",
+                      "item_id": "fc_0ae556d915a54b9c006ab3969c713487d092294d701873c537"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -548,6 +462,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_0ae556d915a54b9c006ab3969d17b487d09082c801dc685536",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a calculator. Use the add tool for arithmetic.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 115,
               "input_tokens_details": {
@@ -559,88 +487,89 @@
               },
               "total_tokens": 118
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "25",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "add",
+                "parameters": {
+                  "properties": {
+                    "x": {
+                      "description": "The first number to add",
+                      "type": "number"
+                    },
+                    "y": {
+                      "description": "The second number to add",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Add x and y together",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
-            "response_id": "resp_0ae556d915a54b9c006ab3969d17b487d09082c801dc685536",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "25"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "25"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 115,
-            "output_tokens": 3,
-            "total_tokens": 118,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
-          "response_id": "resp_0ae556d915a54b9c006ab3969d17b487d09082c801dc685536",
-          "provider_request_id": "req_4a7d63ae58114738845b9df64df92779",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 115,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 3,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 118
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_0ae556d915a54b9c006ab3969d9ef487d09a105a4c94de2d8d",
-            "response_id": "resp_0ae556d915a54b9c006ab3969d17b487d09082c801dc685536",
-            "model": "gpt-4o-2024-08-06"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "25"
+            }
           }
         }
       ],

@@ -4,12 +4,11 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. The provider populates `CompletionResponse::raw` /
-//! `StreamFinal::raw` on every response, and the agent exposes that payload —
+//! Capture is always on. The provider populates `CompletionResponse::raw`
+//! on every response, and the agent exposes that payload —
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse` and `ModelTurnFinished` hook events, on each
-//! `CompletionCall` the run records, and on the streamed
-//! `StreamEvent::Final`. `raw` is `Value::Null` only on a value
+//! `CompletionCall` the run records, streamed or not. `raw` is `Value::Null` only on a value
 //! built by hand, with no provider response behind it; `Value::Null` never
 //! means "not requested".
 //!
@@ -21,7 +20,7 @@
 //! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["id"]`s equal to the interactions' ids in order | recorded |
 //! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
-//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.prompt(..).stream()` | the last `StreamEvent::Final.raw["message_id"]` is the last interaction's id | recorded |
+//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.prompt(..).stream()` | the run's final response `raw["message_id"]` is the last interaction's id | recorded |
 //! | 6 | `retried_turn_records_retried_attempt_raw_blocking` | `ModelTurnFinished` → `Retry` once, `agent.prompt` | second recorded call / second event carry the second interaction's `id` | recorded |
 //! | 7 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.prompt(..).stream()` | same, by `message_id` | recorded |
 //!
@@ -49,7 +48,6 @@ use rig::agent::{
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::providers::anthropic::completion::CLAUDE_HAIKU_4_5;
-use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde_json::Value;
 
@@ -160,7 +158,6 @@ impl AgentHook for RawProbe {
 #[derive(Default)]
 struct StreamedRun {
     completion_calls: Vec<rig::agent::CompletionCall>,
-    finals: Vec<rig::streaming::StreamFinal>,
     output: Option<String>,
 }
 
@@ -169,9 +166,6 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
             MultiTurnStreamItem::CompletionCall(call) => run.completion_calls.push(call),
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_)) => {
-                run.finals.push(final_);
-            }
             MultiTurnStreamItem::FinalResponse(response) => {
                 run.output = Some(response.output().to_owned());
             }
@@ -315,11 +309,6 @@ async fn hooks_observe_raw_streamed() {
                 .build();
             let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
             assert!(run.output.is_some(), "the run finished");
-            assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
-            assert!(
-                !run.finals[0].raw.is_null(),
-                "the streamed terminal carries raw"
-            );
         },
     )
     .await;
@@ -484,12 +473,7 @@ async fn streamed_final_carries_final_turn_raw() {
                 2,
                 "a tool turn then a text turn"
             );
-            assert!(!run.finals.is_empty(), "the stream yields terminal records");
-            let last = run.finals.last().expect("terminal");
-            // The last terminal record is the final turn's, and its payload is
-            // the one the final call recorded.
-            assert_eq!(last.raw, run.completion_calls[1].raw);
-            *sink.lock().expect("sink") = vec![last.raw.clone()];
+            *sink.lock().expect("sink") = vec![run.completion_calls[1].raw.clone()];
         },
     )
     .await;

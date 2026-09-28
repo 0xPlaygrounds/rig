@@ -1,9 +1,9 @@
 use super::*;
 use crate::completion::tests::{complete, stream_from_events};
-use base64::Engine as _;
 use futures::StreamExt;
+use rig_core::completion::CompletionResponse;
 use rig_core::message::{AssistantContent, Reasoning, ReasoningContent};
-use rig_core::streaming::{Delta, StreamEvent};
+use rig_core::streaming::{Item, StreamEvent};
 
 fn thought_part(text: &str, signature: &[u8]) -> proto::Part {
     proto::Part {
@@ -34,12 +34,12 @@ async fn reasoning_blocks(events: Vec<proto::GenerateContentResponse>) -> Vec<Re
     let mut stream = stream_from_events(events.into_iter().map(Ok).collect());
     let mut blocks = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamEvent::BlockEnd {
-            block: Some(AssistantContent::Reasoning(reasoning)),
+        if let Item::Event(StreamEvent::End {
+            content: AssistantContent::Reasoning(reasoning),
             ..
-        } = item.expect("stream item should be ok")
+        }) = item.expect("stream item should be ok")
         {
-            blocks.push(reasoning);
+            blocks.push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
         }
     }
     blocks
@@ -159,10 +159,10 @@ async fn two_id_less_function_calls_stay_distinct() {
     let mut stream = stream_from_events(events.into_iter().map(Ok).collect());
     let mut correlators = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamEvent::BlockEnd {
-            block: Some(AssistantContent::ToolCall(tool_call)),
+        if let Item::Event(StreamEvent::End {
+            content: AssistantContent::ToolCall(tool_call),
             ..
-        } = item.expect("stream item should be ok")
+        }) = item.expect("stream item should be ok")
         {
             assert_eq!(tool_call.function.name, "get_weather");
             correlators.push(tool_call.id.clone());
@@ -213,15 +213,12 @@ async fn drain(events: Vec<proto::GenerateContentResponse>) -> Drained {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamEvent::Final(_)) => drained.reached_terminal = true,
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => drained.text.push_str(&text),
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => drained.text.push_str(&text),
             Ok(_) => {}
             Err(error) => drained.errors.push(error.to_string()),
         }
     }
+    drained.reached_terminal = stream.finish().await.is_ok();
 
     drained
 }
@@ -267,9 +264,8 @@ async fn unexpected_and_too_many_tool_calls_also_fail_the_stream() {
     }
 }
 
-// Everything after the in-band failure is dead: the adapter latches
-// `failed` and reports `is_finished`, so a later genuine terminal cannot
-// dress the aborted turn up as complete.
+// Everything after the in-band failure is dead: an error ends the reply,
+// so a later genuine terminal cannot dress the aborted turn up as complete.
 #[tokio::test]
 async fn frames_after_a_tool_protocol_failure_are_not_interpreted() {
     let drained = drain(vec![
@@ -378,22 +374,13 @@ fn terminal_frame() -> proto::GenerateContentResponse {
 }
 
 /// Drive protobuf events through the pipeline the `Model` seam
-/// uses, returning the terminal record.
-async fn normalized_terminal(
-    events: Vec<proto::GenerateContentResponse>,
-) -> streaming::StreamFinal {
-    collect_terminal(stream_from_events(events.into_iter().map(Ok).collect())).await
-}
-
-async fn collect_terminal(mut stream: streaming::CompletionStream) -> streaming::StreamFinal {
+/// uses, returning the finished response.
+async fn normalized_terminal(events: Vec<proto::GenerateContentResponse>) -> CompletionResponse {
+    let mut stream = stream_from_events(events.into_iter().map(Ok).collect());
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    stream
-        .folded()
-        .terminal()
-        .cloned()
-        .expect("the stream must end with a terminal record")
+    stream.finish().await.expect("the stream must end")
 }
 
 /// The events-first seam captures like the request-driven one: its
@@ -411,11 +398,7 @@ async fn stream_from_events_terminal_carries_raw() {
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let terminal = stream
-        .folded()
-        .terminal()
-        .cloned()
-        .expect("terminal record");
+    let terminal = stream.finish().await.expect("the stream ends");
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =
@@ -456,11 +439,11 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
     // story as the terminal the stream produced.
     let renormalized = normalized_terminal(vec![typed]).await;
     assert_eq!(terminal.identity(), renormalized.identity());
-    assert_eq!(terminal.finish_reason, renormalized.finish_reason);
+    assert_eq!(terminal.finish_reason(), renormalized.finish_reason());
     assert_eq!(terminal.model, renormalized.model);
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(
-        terminal.finish_reason,
+        terminal.finish_reason(),
         Some(rig_core::completion::FinishReason::Stop)
     );
     assert_eq!(terminal.model.as_deref(), Some("gemini-2.5-flash"));
@@ -473,11 +456,17 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 /// Streamed reasoning names the Gemini service, as unary reasoning does.
 #[tokio::test]
 async fn the_stream_names_the_gemini_service_as_reasoning_issuer() {
-    let terminal =
-        normalized_terminal(vec![response(vec![text_part("hi")], 0), terminal_frame()]).await;
+    let terminal = normalized_terminal(vec![
+        response(vec![thought_part("hmm", b"sig")], 0),
+        terminal_frame(),
+    ])
+    .await;
     assert_eq!(terminal.provider, super::super::completion::PROVIDER_NAME);
+    let Some(AssistantContent::Reasoning(reasoning)) = terminal.choice.first() else {
+        panic!("reasoning first: {:?}", terminal.choice);
+    };
     assert_eq!(
-        terminal.issuer(),
+        reasoning.issuer().as_str(),
         super::super::completion::REASONING_ISSUER
     );
 }
@@ -501,7 +490,7 @@ async fn a_trailing_signed_part_keeps_its_signature_on_its_own_text() {
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
-    let choice = stream.finish().expect("terminal").choice;
+    let choice = stream.finish().await.expect("terminal").choice;
     let texts: Vec<(String, bool)> = choice
         .iter()
         .map(|part| match part {

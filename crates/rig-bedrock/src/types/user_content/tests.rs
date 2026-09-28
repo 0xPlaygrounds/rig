@@ -1,7 +1,7 @@
 use crate::types::{converse_output::ContentBlock, user_content::RigUserContent};
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::error::ProviderError;
-use rig_core::message::{ToolResultContent, UserContent};
+use rig_core::message::UserContent;
 
 /// The inbound path reads the mirror, but what Bedrock sends is the SDK
 /// block, so the tests still start there and mirror it first.
@@ -22,8 +22,10 @@ fn aws_content_block_to_user_content() {
     assert_eq!(content.unwrap().text, "42");
 }
 
+/// Bedrock's tool-result block carries no tool name, and a rig tool result
+/// needs one, so an inbound tool result cannot become rig content.
 #[test]
-fn aws_content_block_tool_to_user_content() {
+fn aws_content_block_tool_to_user_content_needs_a_tool_name() {
     let cb = mirrored(aws_bedrock::ContentBlock::ToolResult(
         aws_bedrock::ToolResultBlock::builder()
             .tool_use_id("123")
@@ -32,25 +34,7 @@ fn aws_content_block_tool_to_user_content() {
             .unwrap(),
     ));
     let user_content: Result<RigUserContent, _> = cb.try_into();
-    assert!(user_content.is_ok());
-    let content = match user_content.unwrap().0 {
-        rig_core::message::UserContent::ToolResult(tool_result) => Ok(tool_result),
-        _ => Err("Invalid content type"),
-    };
-    assert!(content.is_ok());
-    let content = content.unwrap();
-    // Bedrock's wire id becomes the provider call id (and rig's id adopts
-    // it); the wire carries no tool name, so the conversion is lossy there.
-    assert_eq!(content.call.explicit(), Some("123"));
-    assert_eq!(
-        content.provider.as_ref().map(|p| p.call_id.as_str()),
-        Some("123")
-    );
-    assert_eq!(content.name, "");
-    assert_eq!(
-        content.content,
-        vec![ToolResultContent::Text("content".into())]
-    );
+    assert!(user_content.is_err());
 }
 
 #[test]

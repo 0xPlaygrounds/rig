@@ -3,6 +3,7 @@
 use futures::StreamExt;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::chatgpt;
+use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use serde_json::json;
 
@@ -94,26 +95,23 @@ async fn stream_tool_call_completed_response_without_output() {
 
             let mut stream = model.stream(request).expect("stream should start");
             let mut saw_ping_tool_call = false;
-            let mut final_usage = None;
 
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream item should be ok") {
-                    StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::ToolCall(tool_call)),
-                        ..
-                    } if tool_call.function.name == "ping" => {
+                    Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) if tool_call.function.name == "ping" => {
                         assert_eq!(tool_call.function.arguments, json!({}));
                         saw_ping_tool_call = true;
-                    }
-                    StreamEvent::Final(response) => {
-                        final_usage = Some(response.usage);
                     }
                     _ => {}
                 }
             }
+            let response = stream
+                .finish()
+                .await
+                .expect("stream should emit terminal usage");
 
             assert!(saw_ping_tool_call, "stream should emit the ping tool call");
-            let usage = final_usage.expect("stream should emit terminal usage");
+            let usage = response.usage;
             assert!(usage.input_tokens.is_some_and(|n| n > 0), "usae should have input tokens");
             assert!(usage.output_tokens.is_some_and(|n| n > 0), "usae should have output tokens");
         },

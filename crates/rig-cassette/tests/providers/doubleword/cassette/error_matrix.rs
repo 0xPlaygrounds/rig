@@ -118,7 +118,7 @@ async fn unknown_model_streaming_body(client: OpenAiModels) {
             None => panic!("unknown-model stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error_report(&error, 404);
+    assert_preserved_client_error_report(&rig::ErrorReport::from(&error), 404);
 }
 
 async fn invalid_key_blocking_body(client: OpenAiModels) {
@@ -141,7 +141,7 @@ async fn invalid_key_streaming_body(client: OpenAiModels) {
             None => panic!("invalid-key stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error_report(&error, 403);
+    assert_preserved_client_error_report(&rig::ErrorReport::from(&error), 403);
 }
 
 async fn invalid_temperature_blocking_body(client: OpenAiModels) {
@@ -172,7 +172,7 @@ async fn invalid_temperature_streaming_body(client: OpenAiModels) {
             None => panic!("invalid-temperature stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error_report(&error, 400);
+    assert_preserved_client_error_report(&rig::ErrorReport::from(&error), 400);
 }
 
 #[tokio::test]

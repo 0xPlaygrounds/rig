@@ -51,9 +51,9 @@ fn cohere() -> CohereConfig {
 fn recorded_request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user(
+        chat_history: crate::NonEmpty::new(crate::message::Message::user(
             "Write a detailed fifty-word description of the ocean.",
-        )],
+        )),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -66,12 +66,7 @@ fn recorded_request() -> CompletionRequest {
 }
 
 fn body_of(encoded: &Encoded) -> serde_json::Value {
-    let [request] = encoded.requests.as_slice() else {
-        panic!(
-            "expected exactly one request, got {}",
-            encoded.requests.len()
-        );
-    };
+    let request = &encoded.request;
     match request.body() {
         Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
         Body::Multipart(_) => panic!("the chat wire sends no multipart body"),
@@ -110,6 +105,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
     while response.next().await.is_some() {}
     let streamed = response
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     assert_eq!(text_of(&buffered.choice), "The ocean,");
@@ -227,34 +223,26 @@ fn png(tail: &[u8]) -> Vec<u8> {
     bytes
 }
 
-/// Cohere embeds ONE image per call, so a batch is a batch of requests.
+/// Cohere embeds ONE image per call: a larger batch is the caller's to
+/// split, and the one image travels as a data URL.
 #[test]
-fn an_image_batch_encodes_one_request_per_image_in_input_order() {
-    let encoded = cohere()
-        .image_embedding()
-        .encode(vec![png(b"first"), png(b"second")], Mode::Unary)
-        .expect("both images are PNGs");
+fn an_image_request_carries_exactly_one_image() {
+    let wire = cohere().image_embedding();
+    let refused = wire.encode(vec![png(b"first"), png(b"second")], Mode::Unary);
+    assert!(refused.is_err(), "two images are two calls");
 
-    assert_eq!(encoded.requests.len(), 2);
-    let images = encoded
-        .requests
-        .iter()
-        .map(|request| match request.body() {
-            Body::Bytes(bytes) => {
-                let body: serde_json::Value =
-                    serde_json::from_slice(bytes).expect("the body is JSON");
-                body["images"][0].as_str().unwrap_or_default().to_owned()
-            }
-            Body::Multipart(_) => panic!("the image wire sends no multipart body"),
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(images.len(), 2);
+    let encoded = wire
+        .encode(vec![png(b"first")], Mode::Unary)
+        .expect("the image is a PNG");
+    let Body::Bytes(bytes) = encoded.request.body() else {
+        panic!("the image wire sends no multipart body");
+    };
+    let body: serde_json::Value = serde_json::from_slice(bytes).expect("the body is JSON");
     assert!(
-        images
-            .iter()
-            .all(|url| url.starts_with("data:image/png;base64,"))
+        body["images"][0]
+            .as_str()
+            .is_some_and(|url| url.starts_with("data:image/png;base64,"))
     );
-    assert_ne!(images[0], images[1], "each request carries its own image");
 }
 
 #[test]
@@ -277,55 +265,6 @@ fn image_reply(first: f64) -> MockHttpResponse {
     MockHttpResponse::success(format!(
         r#"{{"id":"img-{first}","embeddings":{{"float":[[{first},1.0]]}},"meta":{{"api_version":{{"version":"1"}},"billed_units":{{"search_units":0,"classifications":0,"images":1}}}}}}"#
     ))
-}
-
-#[tokio::test]
-async fn an_image_batch_folds_its_replies_in_input_order() {
-    let http = SequencedHttpClient::new([image_reply(0.5), image_reply(0.75)]);
-    let response = crate::driver::Model::new(cohere().image_embedding(), http.clone())
-        .call(vec![png(b"first"), png(b"second")])
-        .await
-        .expect("both replies decode");
-
-    assert_eq!(http.requests().len(), 2);
-    assert_eq!(
-        response
-            .embeddings
-            .iter()
-            .map(|embedding| embedding.vec.as_slice())
-            .collect::<Vec<_>>(),
-        vec![[0.5, 1.0].as_slice(), [0.75, 1.0].as_slice()]
-    );
-    // An image has no text to name it: the identity is a digest of its
-    // bytes, and the bytes themselves never travel back.
-    assert_eq!(
-        response.embeddings[0].document,
-        crate::embeddings::image_document(&png(b"first"))
-    );
-    assert_ne!(
-        response.embeddings[0].document,
-        response.embeddings[1].document
-    );
-    // Both replies billed one image each.
-    assert_eq!(response.usage.input_tokens, None);
-    // The per-image sequence, in input order: Cohere bills an image embed in
-    // images, not tokens, so `meta.billed_units.images` on each page is the
-    // only route to an image count and every page has to be reachable.
-    let pages: Vec<super::super::embeddings::ImageEmbeddingResponse> =
-        serde_json::from_value(response.raw.clone()).expect("raw is the per-image array");
-    assert_eq!(pages.len(), 2);
-    assert_eq!(
-        pages
-            .iter()
-            .map(|page| page.id.as_deref())
-            .collect::<Vec<_>>(),
-        vec![Some("img-0.5"), Some("img-0.75")]
-    );
-    assert!(
-        pages
-            .iter()
-            .all(|page| page.meta.as_ref().map(|meta| meta.billed_units.images) == Some(1))
-    );
 }
 
 #[tokio::test]

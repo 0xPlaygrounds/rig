@@ -146,12 +146,13 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
             // The conversation is plain values: the recorded follow-up sent
             // the preamble, the first turn's reply and the tool result (the
             // prompt was not repeated), so that is the history here.
-            let mut history = vec![Message::system(TERMINAL_NOTIFY_PREAMBLE)];
+            let mut history = rig::NonEmpty::new(Message::system(TERMINAL_NOTIFY_PREAMBLE));
             let first_turn = model
                 .call(
-                    CompletionRequest::from(
-                        [history.clone(), vec![Message::user(TERMINAL_NOTIFY_PROMPT)]].concat(),
-                    )
+                    CompletionRequest::from(rig::NonEmpty::with_rest(
+                        Message::system(TERMINAL_NOTIFY_PREAMBLE),
+                        [Message::user(TERMINAL_NOTIFY_PROMPT)],
+                    ))
                     .max_tokens(1024)
                     .tool(notify_tool_definition()),
                 )
@@ -163,10 +164,10 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
                 .next()
                 .cloned()
                 .expect("first Anthropic turn should emit a notify tool call");
-            history.push(first_turn.into());
+            history.extend(first_turn.message());
             history.push(Message::tool_result(
-                tool_call.id.wire_hint(),
-                &tool_call.function.name,
+                tool_call.id.clone(),
+                tool_call.function.name.clone(),
                 "sent: deploy finished",
             ));
 

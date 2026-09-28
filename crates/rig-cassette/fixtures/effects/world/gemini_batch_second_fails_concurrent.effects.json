@@ -2,44 +2,44 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
         "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 12,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -47,15 +47,7 @@
         }
       },
       {
-        "batch": 16,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 17,
+        "batch": 21,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -63,7 +55,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 21,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -186,11 +178,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_95302"
-              },
-              "provider": {
-                "call_id": "call_95302"
+                "provider": {
+                  "call_id": "call_95302"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -202,11 +192,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_95303"
-              },
-              "provider": {
-                "call_id": "call_95303"
+                "provider": {
+                  "call_id": "call_95303"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -248,103 +236,77 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:call_95302",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call_95302",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_95302",
-            "name": "lookup_harbor_label",
-            "arguments": {},
-            "signature": "ErIECq8EAWkUfRP+q39hATpPnPeL8FWpKFDnPbMm7306CC+8/q5tIbelecV4pQaX/sfFizeJjKMWTw35o5G9owJ8Zja70gGrPUoOfjiaD9Is8ojamP5rZM01edjQEY8j9H8a3GlQ1DI3Jz2tkwD5ttLBdNhDvAK+jbR4rScXFKYQXxubYGICie5dprKnEjZJ39O1r71TYnl4UBBTN9GhJ9RQfBC0yIgUFETUeNBhx7F2jLjtuAi6pThdbrm20O8sQ2QxHUvgDYkEeAud1PU0afIazUNq0Qe3oOySi6kAN63L42O3MRLb1FD4LvH8PmPqpyE7O8a6nVPSZGvG7J8zgMpOUC8pcqBod9AOvPCFTll05entQRE1U1NibzJe8Pv0DfJD4m7n86byVTJmNtpfgFzAdkaVRUQqY3L2woatRqXPO1Qz872DI5ZTqMBCsU8nazYFnkvS5Vol8W57K+9r59Cg3RotrwZptaCgEQVFTmgkOCoLIfh23sJqlq/XG+Y8ahM+wCYWyQrn+kOOg+7xbPrOQm29MMHvTOcxoF/3XrKrZaoW8ShbJFzcOCfvKc7GYCMJNkSo7P0l+C3ViucfhbHTpxwY0VYqipgl9jgbMjkfkJbmXeXHCoLsHX5mGwdzuOiN/WYR/yHNlyexUokgMIm/jCUE6XtmsuWqqqcPWFUTVjKyRba2Twy5bbRry11oWrSI7ZCbVaOJT5v0mcIHU7yGjvXNunBBqVpXAINuh3MAljrxtQ==",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_95302"
-            },
-            "provider": {
-              "call_id": "call_95302"
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": "ErIECq8EAWkUfRP+q39hATpPnPeL8FWpKFDnPbMm7306CC+8/q5tIbelecV4pQaX/sfFizeJjKMWTw35o5G9owJ8Zja70gGrPUoOfjiaD9Is8ojamP5rZM01edjQEY8j9H8a3GlQ1DI3Jz2tkwD5ttLBdNhDvAK+jbR4rScXFKYQXxubYGICie5dprKnEjZJ39O1r71TYnl4UBBTN9GhJ9RQfBC0yIgUFETUeNBhx7F2jLjtuAi6pThdbrm20O8sQ2QxHUvgDYkEeAud1PU0afIazUNq0Qe3oOySi6kAN63L42O3MRLb1FD4LvH8PmPqpyE7O8a6nVPSZGvG7J8zgMpOUC8pcqBod9AOvPCFTll05entQRE1U1NibzJe8Pv0DfJD4m7n86byVTJmNtpfgFzAdkaVRUQqY3L2woatRqXPO1Qz872DI5ZTqMBCsU8nazYFnkvS5Vol8W57K+9r59Cg3RotrwZptaCgEQVFTmgkOCoLIfh23sJqlq/XG+Y8ahM+wCYWyQrn+kOOg+7xbPrOQm29MMHvTOcxoF/3XrKrZaoW8ShbJFzcOCfvKc7GYCMJNkSo7P0l+C3ViucfhbHTpxwY0VYqipgl9jgbMjkfkJbmXeXHCoLsHX5mGwdzuOiN/WYR/yHNlyexUokgMIm/jCUE6XtmsuWqqqcPWFUTVjKyRba2Twy5bbRry11oWrSI7ZCbVaOJT5v0mcIHU7yGjvXNunBBqVpXAINuh3MAljrxtQ==",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:call_95303",
-          "kind": {
-            "kind": "tool_call"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_95303",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_95303",
-            "name": "lookup_orchard_label",
-            "arguments": {},
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_95303"
-            },
-            "provider": {
-              "call_id": "call_95303"
-            },
-            "function": {
-              "name": "lookup_orchard_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 181,
-            "output_tokens": 26,
-            "total_tokens": 312,
-            "reasoning_tokens": 105
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "MKyyaoj5Jt2iqtsP2ojWwAI",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 181,
-              "candidatesTokenCount": 26,
-              "totalTokenCount": 312,
-              "thoughtsTokenCount": 105,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 181
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_95302"
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "MKyyaoj5Jt2iqtsP2ojWwAI"
+              },
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": "ErIECq8EAWkUfRP+q39hATpPnPeL8FWpKFDnPbMm7306CC+8/q5tIbelecV4pQaX/sfFizeJjKMWTw35o5G9owJ8Zja70gGrPUoOfjiaD9Is8ojamP5rZM01edjQEY8j9H8a3GlQ1DI3Jz2tkwD5ttLBdNhDvAK+jbR4rScXFKYQXxubYGICie5dprKnEjZJ39O1r71TYnl4UBBTN9GhJ9RQfBC0yIgUFETUeNBhx7F2jLjtuAi6pThdbrm20O8sQ2QxHUvgDYkEeAud1PU0afIazUNq0Qe3oOySi6kAN63L42O3MRLb1FD4LvH8PmPqpyE7O8a6nVPSZGvG7J8zgMpOUC8pcqBod9AOvPCFTll05entQRE1U1NibzJe8Pv0DfJD4m7n86byVTJmNtpfgFzAdkaVRUQqY3L2woatRqXPO1Qz872DI5ZTqMBCsU8nazYFnkvS5Vol8W57K+9r59Cg3RotrwZptaCgEQVFTmgkOCoLIfh23sJqlq/XG+Y8ahM+wCYWyQrn+kOOg+7xbPrOQm29MMHvTOcxoF/3XrKrZaoW8ShbJFzcOCfvKc7GYCMJNkSo7P0l+C3ViucfhbHTpxwY0VYqipgl9jgbMjkfkJbmXeXHCoLsHX5mGwdzuOiN/WYR/yHNlyexUokgMIm/jCUE6XtmsuWqqqcPWFUTVjKyRba2Twy5bbRry11oWrSI7ZCbVaOJT5v0mcIHU7yGjvXNunBBqVpXAINuh3MAljrxtQ==",
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_95303"
+                }
+              },
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -437,11 +399,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_95302"
-                  },
-                  "provider": {
-                    "call_id": "call_95302"
+                    "provider": {
+                      "call_id": "call_95302"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -453,11 +413,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_95303"
-                  },
-                  "provider": {
-                    "call_id": "call_95303"
+                    "provider": {
+                      "call_id": "call_95303"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -474,11 +432,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_95302"
-                  },
-                  "provider": {
-                    "call_id": "call_95302"
+                    "provider": {
+                      "call_id": "call_95302"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -491,11 +447,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_95303"
-                  },
-                  "provider": {
-                    "call_id": "call_95303"
+                    "provider": {
+                      "call_id": "call_95303"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -587,95 +541,54 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The harbor label is crimson-harbor, but the orchard lookup is broken."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The harbor label is crimson-harbor, but the orchard lookup is broken."
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The harbor label is crimson-harbor, but the orchard lookup is broken."
+            }
           }
         },
         {
-          "event": "block_start",
-          "id": "minted:text:1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:1",
-          "delta": {
-            "delta": "text_meta",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "Eq0ECqoEAWkUfRPLQGONceQj2SbUxGi9lVrOauKEk3vPXylsiwUgC4j4dzf82c+bej1GnRojBXxWLtdFg7dMwLwr6Cewl1VswRPQTFEmmFH3laU01cytaOktotqFvDO5gzpKTImd/gNfSDvTJKa89nzWSakk+LE65cUNcTdyzUGWXKmRkyJ5WqYRneVruQV+X6MDYa/dzkdVTcfAfgkL58bu4Th4PQf09iV9H9lqtoRXKXUuQskRW4sAffsp8MQaIvFa38uR7qzFK4XVbfvNCZakBRJcH5a3g8q/mzOP7BikVKHQbFSV3ywUQsHuoACdcOBkvnKi1BIZfXJA3QBOXDuOR1CKOlaoNDKLuxZvu5pb5CaA4jzN2t5kFUbwhpsawIB0nXDAOKGcFhHYWWoy4lBhunFWtWmY/L6WgcvspLt20vVNlmE/oFUpM5a8wqt8sBne2BMLpJWoY++qPKDGsgrkbrpV3uZ9kQu577QsyYcFaBkWG/YLHjl/DfJB1zNxpvqhtE0yZVTEOTcyqBgakfOOBHu6YkVCjfFSSx1vaWtuZb7a7PLAh/kAUgMXgDpfcPahS+QzcSW0njxU5Rlsjwc5M9dKjjqMfGDp/dKK81KJ+o45PwtaCqgIK6Blb+0qd1y4M3Xs6VHILpHq6p8IdXQ6L3fd8AH8/srudFQaBALPlkUVNIFtS6/zhYV6D5vjI1R6KEU30yWxBtbCH/ngmwrfJ59dUjgyo9zYhR9dTZM="
-              }
-            }
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:text:1",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "Eq0ECqoEAWkUfRPLQGONceQj2SbUxGi9lVrOauKEk3vPXylsiwUgC4j4dzf82c+bej1GnRojBXxWLtdFg7dMwLwr6Cewl1VswRPQTFEmmFH3laU01cytaOktotqFvDO5gzpKTImd/gNfSDvTJKa89nzWSakk+LE65cUNcTdyzUGWXKmRkyJ5WqYRneVruQV+X6MDYa/dzkdVTcfAfgkL58bu4Th4PQf09iV9H9lqtoRXKXUuQskRW4sAffsp8MQaIvFa38uR7qzFK4XVbfvNCZakBRJcH5a3g8q/mzOP7BikVKHQbFSV3ywUQsHuoACdcOBkvnKi1BIZfXJA3QBOXDuOR1CKOlaoNDKLuxZvu5pb5CaA4jzN2t5kFUbwhpsawIB0nXDAOKGcFhHYWWoy4lBhunFWtWmY/L6WgcvspLt20vVNlmE/oFUpM5a8wqt8sBne2BMLpJWoY++qPKDGsgrkbrpV3uZ9kQu577QsyYcFaBkWG/YLHjl/DfJB1zNxpvqhtE0yZVTEOTcyqBgakfOOBHu6YkVCjfFSSx1vaWtuZb7a7PLAh/kAUgMXgDpfcPahS+QzcSW0njxU5Rlsjwc5M9dKjjqMfGDp/dKK81KJ+o45PwtaCqgIK6Blb+0qd1y4M3Xs6VHILpHq6p8IdXQ6L3fd8AH8/srudFQaBALPlkUVNIFtS6/zhYV6D5vjI1R6KEU30yWxBtbCH/ngmwrfJ59dUjgyo9zYhR9dTZM="
-              }
-            }
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 352,
-            "output_tokens": 16,
-            "total_tokens": 460,
-            "reasoning_tokens": 92
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "MayyasmXOePkqtsPqIKmgAk",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 352,
-              "candidatesTokenCount": 16,
-              "totalTokenCount": 460,
-              "thoughtsTokenCount": 92,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 352
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "Eq0ECqoEAWkUfRPLQGONceQj2SbUxGi9lVrOauKEk3vPXylsiwUgC4j4dzf82c+bej1GnRojBXxWLtdFg7dMwLwr6Cewl1VswRPQTFEmmFH3laU01cytaOktotqFvDO5gzpKTImd/gNfSDvTJKa89nzWSakk+LE65cUNcTdyzUGWXKmRkyJ5WqYRneVruQV+X6MDYa/dzkdVTcfAfgkL58bu4Th4PQf09iV9H9lqtoRXKXUuQskRW4sAffsp8MQaIvFa38uR7qzFK4XVbfvNCZakBRJcH5a3g8q/mzOP7BikVKHQbFSV3ywUQsHuoACdcOBkvnKi1BIZfXJA3QBOXDuOR1CKOlaoNDKLuxZvu5pb5CaA4jzN2t5kFUbwhpsawIB0nXDAOKGcFhHYWWoy4lBhunFWtWmY/L6WgcvspLt20vVNlmE/oFUpM5a8wqt8sBne2BMLpJWoY++qPKDGsgrkbrpV3uZ9kQu577QsyYcFaBkWG/YLHjl/DfJB1zNxpvqhtE0yZVTEOTcyqBgakfOOBHu6YkVCjfFSSx1vaWtuZb7a7PLAh/kAUgMXgDpfcPahS+QzcSW0njxU5Rlsjwc5M9dKjjqMfGDp/dKK81KJ+o45PwtaCqgIK6Blb+0qd1y4M3Xs6VHILpHq6p8IdXQ6L3fd8AH8/srudFQaBALPlkUVNIFtS6/zhYV6D5vjI1R6KEU30yWxBtbCH/ngmwrfJ59dUjgyo9zYhR9dTZM="
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-3-flash-preview",
-            "response_id": "MayyasmXOePkqtsPqIKmgAk"
+              }
+            }
           }
         }
       ],

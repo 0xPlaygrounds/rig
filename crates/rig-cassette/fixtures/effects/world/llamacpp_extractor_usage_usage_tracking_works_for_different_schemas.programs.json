@@ -227,6 +227,7 @@
             "content": [
               {
                 "type": "reasoning",
+                "issuer": "llamacpp",
                 "id": null,
                 "content": [
                   {
@@ -235,17 +236,14 @@
                       "text": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
                     }
                   }
-                ],
-                "provider": "llamacpp"
+                ]
               },
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
-                },
-                "provider": {
-                  "call_id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
+                  "provider": {
+                    "call_id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
+                  }
                 },
                 "function": {
                   "name": "submit",
@@ -280,6 +278,7 @@
               "choice": [
                 {
                   "type": "reasoning",
+                  "issuer": "llamacpp",
                   "id": null,
                   "content": [
                     {
@@ -288,17 +287,14 @@
                         "text": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
                       }
                     }
-                  ],
-                  "provider": "llamacpp"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
-                  },
-                  "provider": {
-                    "call_id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
+                    "provider": {
+                      "call_id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g"
+                    }
                   },
                   "function": {
                     "name": "submit",
@@ -386,6 +382,7 @@
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
+              "issuer": "llamacpp",
               "id": null,
               "content": [
                 {
@@ -394,8 +391,7 @@
                     "text": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
                   }
                 }
-              ],
-              "provider": "llamacpp"
+              ]
             }
           }
         },

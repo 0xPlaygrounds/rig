@@ -120,114 +120,158 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "I"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "'ll"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " write"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " essay"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " save"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " it"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " as"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " note"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_00_UT5eA5ZdA3XggHCk8jE91324",
-          "delta": {
-            "delta": "tool_name",
-            "name": "write_note"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'll write the essay and save it as a note."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"title\": \"Rust\", \"body\": \"Rust began as a personal project. In 2006, Graydon Hoare, then an engineer at Mozilla, started tinkering with a small programming language while frustrated by a broken elevator in his apartment building—software crashes, he reasoned, were a problem of memory management, and memory management was a problem of language design. He named the language after rust fungi, a nod to the robustness and resilience he hoped to build in. By 2009 Mozilla had adopted the project, and in 2010 the first public announcement arrived, positioning Rust as a systems language that could offer the speed of C and C++ without their notorious memory-safety pitfalls.\\n\\nThe early years were turbulent. Rust's compiler was originally written in OCaml, and the language's semantics shifted repeatedly as the team experimented with garbage collection, green threads, and a sprawling type system. Each release broke code, and the community grew accustomed to rewrites. A turning point came around 2014–2015, when the team stripped away runtime features, settled on ownership and borrowing as the core mechanism for memory safety, and committed to stability. Rust 1.0 shipped on May 15, 2015, promising backward compatibility from that point forward.\\n\\nOwnership was the language's defining idea: every value has a single owner, references are checked at compile time, and the borrow checker rejects programs that would dangle pointers or race threads. This eliminated whole categories of bugs without a garbage collector, and it made Rust attractive for embedded systems, operating systems, and performance-critical services. Mozilla used it in Firefox's Servo rendering engine, and later in components of the browser itself.\\n\\nInstitutional support shifted over time. Mozilla laid off much of its Rust team in 2020, and in 2021 the Rust Foundation formed with backing from AWS, Google, Huawei, Microsoft, and Mozilla to steward the language and its trademark. Governance matured through RFCs, teams, and an annual survey that shaped the roadmap.\\n\\nAdoption accelerated through the 2020s. The Linux kernel accepted Rust in 2022, Microsoft and Google reported growing internal use, and the language topped Stack Overflow's \\\"most loved\\\" list for years running. Rust's async ecosystem, its package manager Cargo, and its documentation culture became models for other languages. What started as one engineer's frustration became a serious contender for the systems software of the next few decades.\"}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_00_UT5eA5ZdA3XggHCk8jE91324"
+                }
+              },
+              "function": {
+                "name": "write_note",
+                "arguments": {
+                  "title": "Rust",
+                  "body": "Rust began as a personal project. In 2006, Graydon Hoare, then an engineer at Mozilla, started tinkering with a small programming language while frustrated by a broken elevator in his apartment building—software crashes, he reasoned, were a problem of memory management, and memory management was a problem of language design. He named the language after rust fungi, a nod to the robustness and resilience he hoped to build in. By 2009 Mozilla had adopted the project, and in 2010 the first public announcement arrived, positioning Rust as a systems language that could offer the speed of C and C++ without their notorious memory-safety pitfalls.\n\nThe early years were turbulent. Rust's compiler was originally written in OCaml, and the language's semantics shifted repeatedly as the team experimented with garbage collection, green threads, and a sprawling type system. Each release broke code, and the community grew accustomed to rewrites. A turning point came around 2014–2015, when the team stripped away runtime features, settled on ownership and borrowing as the core mechanism for memory safety, and committed to stability. Rust 1.0 shipped on May 15, 2015, promising backward compatibility from that point forward.\n\nOwnership was the language's defining idea: every value has a single owner, references are checked at compile time, and the borrow checker rejects programs that would dangle pointers or race threads. This eliminated whole categories of bugs without a garbage collector, and it made Rust attractive for embedded systems, operating systems, and performance-critical services. Mozilla used it in Firefox's Servo rendering engine, and later in components of the browser itself.\n\nInstitutional support shifted over time. Mozilla laid off much of its Rust team in 2020, and in 2021 the Rust Foundation formed with backing from AWS, Google, Huawei, Microsoft, and Mozilla to steward the language and its trademark. Governance matured through RFCs, teams, and an annual survey that shaped the roadmap.\n\nAdoption accelerated through the 2020s. The Linux kernel accepted Rust in 2022, Microsoft and Google reported growing internal use, and the language topped Stack Overflow's \"most loved\" list for years running. Rust's async ecosystem, its package manager Cargo, and its documentation culture became models for other languages. What started as one engineer's frustration became a serious contender for the systems software of the next few decades."
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ]

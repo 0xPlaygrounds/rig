@@ -1,1586 +1,227 @@
-use std::time::Duration;
-
 use super::*;
-use crate::completion::FinishReason;
-use crate::message::{Reasoning, ReasoningContent, Text, ToolCall};
-use crate::operation::AdapterOutput;
-use async_stream::stream;
+use crate::completion::{FinishReason, Usage};
+use crate::error::ErrorKind;
+use crate::message::{AssistantContent, ReasoningContent};
+use crate::operation::Finish;
+use crate::test_utils::{MockCompletionModel, MockStreamEvent};
 use futures::StreamExt;
-use tokio::time::sleep;
 
-/// Provider descriptor used by the mock streams in this module.
-const TEST_PROVIDER: &str = "test-provider";
-
-/// Fixture params: the JSON literal is always a non-empty object.
-fn fixture_params(value: serde_json::Value) -> crate::message::AdditionalParams {
-    crate::message::AdditionalParams::try_from_value(value)
-        .expect("fixture params must be a JSON object")
-        .expect("fixture params must carry data")
+/// The stream a scripted reply opens.
+fn stream_of(events: Vec<MockStreamEvent>) -> CompletionStream {
+    MockCompletionModel::from_stream_turns([events])
+        .stream("hi")
+        .expect("the stream opens")
 }
 
-/// Terminal record with a known total-token count.
-fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
-    let usage = Usage {
-        total_tokens: Some(total_tokens),
+/// Every item of `stream`, read to its end.
+async fn items_of(stream: &mut CompletionStream) -> Vec<Result<Item<StreamEvent>, ProviderError>> {
+    let mut items = Vec::new();
+    while let Some(item) = stream.next().await {
+        items.push(item);
+    }
+    items
+}
+
+fn usage(total: u64) -> Usage {
+    Usage {
+        total_tokens: Some(total),
         ..Usage::default()
-    };
-    StreamFinal::new(TEST_PROVIDER, usage, serde_json::json!({}))
-}
-
-/// A stream a provider opened over `events`, its errors converted as the
-/// driver converts them.
-fn opened(
-    provider: &str,
-    events: impl futures::Stream<Item = Result<StreamEvent, ProviderError>> + Send + 'static,
-) -> CompletionStream {
-    crate::test_utils::scripted_stream(provider, None, events)
-}
-
-/// Script a provider's output through the same helpers adapters use, so
-/// the scripted events speak exactly the grammar a wire would, ended as
-/// the driver ends a reply.
-fn script(build: impl FnOnce(&mut AdapterOutput)) -> Vec<Result<StreamEvent, ProviderError>> {
-    let mut out = AdapterOutput::new();
-    build(&mut out);
-    out.finish();
-    out.into_items()
-}
-
-/// A stream over a scripted event sequence.
-fn scripted(build: impl FnOnce(&mut AdapterOutput)) -> CompletionStream {
-    opened(TEST_PROVIDER, futures::stream::iter(script(build)))
-}
-
-/// A whole tool call under a wire key, the key doubling as the tool id.
-fn whole_call(id: &str, name: &str, arguments: serde_json::Value) -> (BlockId, ToolCallEnd) {
-    (
-        BlockId::wire(id),
-        ToolCallEnd::whole(name, arguments).with_tool_id(id),
-    )
-}
-
-/// The text a delta carries, if the event is a text delta.
-fn text_of(event: &StreamEvent) -> Option<&str> {
-    match event {
-        StreamEvent::BlockDelta {
-            delta: Delta::Text { text },
-            ..
-        } => Some(text),
-        _ => None,
     }
 }
 
-/// The completed reasoning block an end published, with its block id.
-fn completed_reasoning(event: &StreamEvent) -> Option<(BlockId, Reasoning)> {
-    match event {
-        StreamEvent::BlockEnd {
-            id,
-            block: Some(AssistantContent::Reasoning(reasoning)),
-            ..
-        } => Some((id.clone(), reasoning.clone())),
-        _ => None,
-    }
-}
-
-/// The reasoning delta's block id, if the event is one.
-fn reasoning_delta_id(event: &StreamEvent) -> Option<BlockId> {
-    match event {
-        StreamEvent::BlockDelta {
-            id,
-            delta: Delta::Reasoning { .. },
-        } => Some(id.clone()),
-        _ => None,
-    }
-}
-
-fn create_mock_stream() -> CompletionStream {
-    let items = script(|out| {
-        out.text("hello 1");
-        out.text("hello 2");
-        out.text("hello 3");
-        out.final_record(mock_final_with_total_tokens(15));
-    });
-    let stream = stream! {
-        for item in items {
-            yield item;
-            sleep(Duration::from_millis(50)).await;
-        }
-    };
-
-    opened(TEST_PROVIDER, stream)
-}
-
-/// A second terminal record is a provider defect: the sink drops every
-/// terminal after the first, so a stream carries one and the fold keeps the
-/// first. Every message id the wire announced still reaches the fold.
 #[tokio::test]
-async fn the_sink_keeps_the_first_of_many_terminals() {
-    let items = script(|out| {
-        for n in 0..1_000u32 {
-            out.message_id(format!("msg_{n}"));
-        }
-        out.text("done");
-        out.final_record(mock_final_with_total_tokens(1));
-        for _ in 0..1_000u32 {
-            out.final_record(mock_final_with_total_tokens(99));
-        }
-    });
-    let mut stream = opened(TEST_PROVIDER, futures::stream::iter(items));
-
-    let mut texts = Vec::new();
-    let mut terminals = 0;
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item") {
-            event @ StreamEvent::BlockDelta { .. } => {
-                texts.extend(text_of(&event).map(str::to_owned));
-            }
-            StreamEvent::Final(_) => terminals += 1,
-            _ => {}
-        }
-    }
-    assert_eq!(texts, vec!["done".to_string()]);
-    assert_eq!(
-        terminals, 1,
-        "the first terminal stands; later ones never leave the sink"
-    );
-    assert_eq!(stream.folded().usage().total_tokens, Some(1));
-    // The last id recorded wins.
-    assert_eq!(
-        stream.folded().message_id().map(str::to_owned).as_deref(),
-        Some("msg_999")
-    );
-}
-
-/// A stream that never saw a message-id block takes all three identity
-/// axes from the terminal record.
-#[tokio::test]
-async fn stream_identity_falls_back_to_the_terminal_records_ids() {
-    let mut stream = scripted(|out| {
-        out.text("done");
-        out.final_record(
-            mock_final_with_total_tokens(1)
-                .with_message_id("msg_terminal")
-                .with_response_id("resp_1")
-                .with_provider_request_id("req_1"),
-        );
-    });
-    while stream.next().await.is_some() {}
-
-    assert_eq!(
-        stream.folded().identity(),
-        crate::completion::ResponseIdentity {
-            message_id: Some("msg_terminal".to_string()),
-            response_id: Some("resp_1".to_string()),
-            provider_request_id: Some("req_1".to_string()),
-        }
-    );
-}
-
-/// An explicit message-id block outranks the terminal record's message
-/// id; the response-scoped and transport ids still come from the terminal.
-#[tokio::test]
-async fn stream_identity_prefers_an_explicit_message_id_event() {
-    let mut stream = scripted(|out| {
-        out.message_id("msg_event");
-        out.text("done");
-        out.final_record(
-            mock_final_with_total_tokens(1)
-                .with_message_id("msg_terminal")
-                .with_response_id("resp_1"),
-        );
-    });
-    while stream.next().await.is_some() {}
-
-    assert_eq!(
-        stream.folded().identity(),
-        crate::completion::ResponseIdentity {
-            message_id: Some("msg_event".to_string()),
-            response_id: Some("resp_1".to_string()),
-            provider_request_id: None,
-        }
-    );
-}
-
-fn create_reasoning_stream() -> CompletionStream {
-    scripted(|out| {
-        out.reasoning_block(
-            BlockId::wire("rs_1"),
-            non_empty_id("rs_1"),
-            ReasoningContent::Text {
-                text: "step one".to_string(),
-                signature: Some("sig_1".to_string()),
-            },
-        );
-        out.text("final answer");
-        out.final_record(mock_final_with_total_tokens(5));
-    })
-}
-
-fn create_reasoning_only_stream() -> CompletionStream {
-    scripted(|out| {
-        out.reasoning_block(
-            BlockId::wire("rs_only"),
-            non_empty_id("rs_only"),
-            ReasoningContent::Summary("hidden summary".to_string()),
-        );
-        out.final_record(mock_final_with_total_tokens(2));
-    })
-}
-
-fn create_interleaved_stream() -> CompletionStream {
-    scripted(|out| {
-        out.reasoning_block(
-            BlockId::wire("rs_interleaved"),
-            non_empty_id("rs_interleaved"),
-            ReasoningContent::Text {
-                text: "chain-of-thought".to_string(),
-                signature: None,
-            },
-        );
-        out.text("final-text");
-        let (id, end) = whole_call("tool_1", "mock_tool", serde_json::json!({"arg": 1}));
-        out.tool_end(id, end);
-        out.final_record(mock_final_with_total_tokens(3));
-    })
-}
-
-fn create_text_tool_text_stream() -> CompletionStream {
-    scripted(|out| {
-        out.text("first");
-        let (id, end) = whole_call("tool_split", "mock_tool", serde_json::json!({"arg": "x"}));
-        out.tool_end(id, end);
-        out.text("second");
-        out.final_record(mock_final_with_total_tokens(3));
-    })
-}
-
-fn create_text_metadata_stream() -> CompletionStream {
-    scripted(|out| {
-        out.text_start(BlockId::wire("block-0"), None);
-        out.text("first");
-        out.text_meta(fixture_params(serde_json::json!({
-            "citations": [{
-                "type": "char_location",
-                "cited_text": "First citation.",
-                "document_index": 0,
-                "start_char_index": 0,
-                "end_char_index": 15
-            }]
-        })));
-        out.text_meta(fixture_params(serde_json::json!({
-            "citations": [{
-                "type": "char_location",
-                "cited_text": "Second citation.",
-                "document_index": 0,
-                "start_char_index": 16,
-                "end_char_index": 32
-            }]
-        })));
-        out.text_start(
-            BlockId::wire("block-1"),
-            crate::message::AdditionalParams::try_from_value(serde_json::json!({
-                "block": 2
-            }))
-            .expect("object params"),
-        );
-        out.text("second");
-        out.final_record(mock_final_with_total_tokens(3));
-    })
-}
-
-#[tokio::test]
-async fn finish_derives_usage_from_final_response() {
-    let mut stream = create_mock_stream();
-
-    // Drain the stream so the final response (and its usage) is captured.
-    while stream.next().await.is_some() {}
-
-    // usage() surfaces the final response's token usage...
-    assert_eq!(stream.folded().usage().total_tokens, Some(15));
-
-    // ...and finishing carries it instead of a zero sentinel.
-    let response: CompletionResponse = stream
-        .finish()
-        .expect("the stream produced a terminal record");
-    assert_eq!(response.usage.total_tokens, Some(15));
-    assert_eq!(response.provider, TEST_PROVIDER);
-}
-
-/// Regression (rig#2265): the transport request id captured on the
-/// terminal record must survive stream→`CompletionResponse` conversion,
-/// exactly like the response id, usage, finish reason, and model do.
-#[tokio::test]
-async fn finish_carries_the_terminal_request_id() {
-    let mut stream = scripted(|out| {
-        out.text("hi");
-        out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
-                .with_response_id("resp_1")
-                .with_provider_request_id("req_transport_1"),
-        );
-    });
-    while stream.next().await.is_some() {}
-
-    let response: CompletionResponse = stream
-        .finish()
-        .expect("the stream produced a terminal record");
-    assert_eq!(response.response_id.as_deref(), Some("resp_1"));
-    assert_eq!(
-        response.provider_request_id.as_deref(),
-        Some("req_transport_1")
-    );
-}
-
-#[tokio::test]
-async fn a_stream_without_a_terminal_record_names_its_provider_and_refuses_to_fold() {
-    // The provider is known when the stream is opened, so a stream that
-    // errors or is truncated before its terminal record still names it.
-    // Folding it into a response is refused: the response carries the
-    // provider's document, and there is none.
-    let mut stream = scripted(|out| {
-        out.text("truncated");
-    });
-    while stream.next().await.is_some() {}
-
-    // No terminal record was ever yielded, so none may be synthesized.
-    assert!(stream.folded().terminal().is_none());
-    assert_eq!(stream.folded().provider(), TEST_PROVIDER);
-    assert_eq!(stream.folded().usage(), Usage::default());
-
-    let error = stream
-        .finish()
-        .expect_err("a stream without a terminal record has no response to fold");
-    assert!(error.to_string().contains("truncated"), "{error}");
-}
-
-#[tokio::test]
-async fn a_stream_that_errors_mid_stream_keeps_content_and_omits_the_terminal() {
-    // A transport error after some content must forward the error, keep
-    // the content already aggregated, and never fabricate a terminal
-    // record the provider did not send.
-    let mut stream = scripted(|out| {
-        out.text("partial");
-        out.error(ProviderError::Provider("connection reset".to_string()));
-    });
-
-    let mut saw_error = false;
-    while let Some(item) = stream.next().await {
-        if item.is_err() {
-            saw_error = true;
-        }
-    }
-    assert!(saw_error, "the mid-stream error must be forwarded");
-
-    // No StreamFinal may be synthesized for the aborted stream...
-    assert!(stream.folded().terminal().is_none());
-
-    // ...but the content delivered before the error is preserved.
-    assert_eq!(
-        stream.folded().snapshot().first(),
-        Some(&AssistantContent::text("partial".to_string())),
-    );
-}
-
-#[tokio::test]
-async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
-    // Several gateways report a plain `stop` on a tool-calling turn. The
-    // streaming path must reconcile it exactly as the unary path does.
-    let mut stream = scripted(|out| {
-        let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
-        out.tool_end(id, end);
-        out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
-                .with_finish_reason(FinishReason::Stop),
-        );
-    });
-    while stream.next().await.is_some() {}
-
-    assert_eq!(
-        stream
-            .folded()
-            .terminal()
-            .cloned()
-            .as_ref()
-            .and_then(|final_record| final_record.finish_reason.clone()),
-        Some(FinishReason::ToolCalls),
-    );
-}
-
-#[tokio::test]
-async fn a_stop_without_tool_calls_is_left_alone() {
-    let mut stream = scripted(|out| {
-        out.text("done");
-        out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
-                .with_finish_reason(FinishReason::Stop),
-        );
-    });
-    while stream.next().await.is_some() {}
-
-    assert_eq!(
-        stream
-            .folded()
-            .terminal()
-            .cloned()
-            .as_ref()
-            .and_then(|final_record| final_record.finish_reason.clone()),
-        Some(FinishReason::Stop),
-    );
-}
-
-#[test]
-fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
-    let final_record = StreamFinal::new(
-        "example",
-        Usage {
-            input_tokens: Some(4),
-            output_tokens: Some(6),
-            total_tokens: Some(10),
-            cached_input_tokens: Some(1),
-            cache_creation_input_tokens: Some(2),
-            tool_use_prompt_tokens: Some(3),
-            reasoning_tokens: Some(4),
-        },
-        serde_json::json!({}),
-    )
-    .with_finish_reason(FinishReason::Other("future_reason".to_owned()))
-    .with_message_id("msg_123")
-    .with_model("provider-model-v2");
-
-    let encoded = serde_json::to_value(StreamEvent::Final(final_record.clone()))
-        .expect("serialize final item");
-    assert_eq!(encoded["event"], serde_json::json!("final"));
-
-    let decoded = serde_json::from_value::<StreamEvent>(encoded).expect("deserialize final item");
-    assert_eq!(decoded, StreamEvent::Final(final_record));
-
-    // An unmodeled provider item lands in `Unknown` and round-trips as
-    // such — it is never mistaken for a terminal record, and a bare
-    // provider payload without the event tag does not decode as one.
-    let provider_item = serde_json::json!({
-        "provider_native_event": "future_terminal",
-        "usage": {"total_tokens": 10}
-    });
-    let unknown = StreamEvent::Unknown(provider_item.clone().into());
-    let encoded = serde_json::to_value(&unknown).expect("serialize unknown item");
-    assert_eq!(encoded["event"], serde_json::json!("unknown"));
-    let decoded = serde_json::from_value::<StreamEvent>(encoded).expect("deserialize unknown item");
-    assert_eq!(decoded, unknown);
-    assert!(
-        serde_json::from_value::<StreamEvent>(provider_item).is_err(),
-        "an untagged provider payload is not a stream event"
-    );
-}
-
-/// Deserialization funnels through `new` + the setters, so the invariants
-/// hold on persisted values too: a `""` identifier comes back as `None`.
-#[test]
-fn deserializing_stream_final_filters_empty_identifiers() {
-    let decoded = serde_json::from_value::<StreamFinal>(serde_json::json!({
-        "usage": Usage::default(),
-        "message_id": "",
-        "response_id": "",
-        "model": "",
-        "provider": "example",
-        "raw": {},
-    }))
-    .expect("deserialize terminal record");
-
-    assert_eq!(decoded.message_id, None);
-    assert_eq!(decoded.response_id, None);
-    assert_eq!(decoded.model, None);
-}
-
-/// A provider-native terminal type standing in for the real ones: it
-/// carries a field the normalized record does not model, so the test can
-/// tell "the raw payload is the terminal record" from "some value was
-/// attached".
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct ProviderTerminal {
-    usage: Usage,
-    provider_only: String,
-}
-
-/// What an adapter does with its native terminal: map the normalized
-/// fields and serialize the record onto `raw`.
-fn provider_terminal_stream() -> Vec<Result<StreamEvent, ProviderError>> {
-    let terminal = ProviderTerminal {
-        usage: Usage {
-            input_tokens: Some(3),
-            output_tokens: Some(5),
-            total_tokens: Some(8),
-            ..Usage::default()
-        },
-        provider_only: "kept".to_string(),
-    };
-    script(|out| {
-        out.text("done");
-        let raw = serde_json::to_value(&terminal).expect("serialize terminal");
-        out.final_record(StreamFinal::new(TEST_PROVIDER, terminal.usage, raw));
-    })
-}
-
-async fn drain(events: Vec<Result<StreamEvent, ProviderError>>) -> StreamFinal {
-    let mut stream = opened(TEST_PROVIDER, futures::stream::iter(events));
-    while stream.next().await.is_some() {}
-    stream
-        .folded()
-        .terminal()
-        .cloned()
-        .expect("stream should end with a terminal record")
-}
-
-/// The load-bearing streaming test: `raw` is the provider's terminal
-/// record serialized — it deserializes back into the provider's own type
-/// and re-serializes equal — and the normalized fields are what the
-/// adapter produced.
-#[tokio::test]
-async fn the_terminal_record_captures_the_providers_raw_terminal() {
-    let final_record = drain(provider_terminal_stream()).await;
-    let raw = &final_record.raw;
-
-    let typed = ProviderTerminal::deserialize(raw).expect("raw is the provider's terminal");
-    assert_eq!(typed.provider_only, "kept");
-    assert_eq!(&serde_json::to_value(&typed).expect("re-serialize"), raw);
-
-    assert_eq!(final_record.usage.total_tokens, Some(8));
-    assert_eq!(final_record.provider, TEST_PROVIDER);
-    assert_eq!(final_record.finish_reason, None);
-}
-
-/// Finish-reason reconciliation is unchanged by capture: a `stop` that
-/// carried a tool call is still upgraded, with `raw` attached.
-#[tokio::test]
-async fn finish_reason_is_reconciled_with_raw_attached() {
-    let events = script(|out| {
-        let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
-        out.tool_end(id, end);
-        let usage = Usage::default();
-        let raw = serde_json::to_value(usage).expect("serialize usage");
-        out.final_record(
-            StreamFinal::new(TEST_PROVIDER, usage, raw.clone())
-                .with_finish_reason(FinishReason::Stop),
-        );
-    });
-    let final_record = drain(events).await;
-    assert_eq!(final_record.finish_reason, Some(FinishReason::ToolCalls));
-    assert_eq!(
-        final_record.raw,
-        serde_json::to_value(Usage::default()).expect("serialize usage")
-    );
-}
-
-/// The deserialization mirror carries `raw`: a terminal record with a
-/// captured payload survives serialize → deserialize with the payload
-/// intact, both bare and wrapped in `StreamEvent::Final` (the shape the
-/// agent forwards). A record written without the field is refused rather
-/// than loaded with `raw` invented.
-#[test]
-fn stream_final_raw_round_trips_through_serde_mirror() {
-    let payload = serde_json::json!({
-        "usage": {"total_tokens": 8},
-        "provider_only": "kept"
-    });
-    let final_record =
-        StreamFinal::new("example", Usage::default(), payload.clone()).with_message_id("msg_123");
-
-    let encoded = serde_json::to_value(&final_record).expect("serialize");
-    assert_eq!(encoded["raw"], payload);
-    let decoded = serde_json::from_value::<StreamFinal>(encoded.clone()).expect("deserialize");
-    assert_eq!(decoded.raw, payload);
-    assert_eq!(decoded, final_record);
-    assert_eq!(
-        serde_json::to_value(&decoded).expect("re-serialize"),
-        encoded
-    );
-
-    let wrapped = StreamEvent::Final(final_record);
-    let encoded = serde_json::to_value(&wrapped).expect("serialize wrapped");
-    let decoded = serde_json::from_value::<StreamEvent>(encoded).expect("deserialize wrapped");
-    assert_eq!(decoded, wrapped);
-
-    // No `raw` key: refused, never loaded with a document invented.
-    let without_raw = serde_json::json!({
-        "usage": serde_json::to_value(Usage::default()).unwrap(),
-        "provider": "example"
-    });
-    let error = serde_json::from_value::<StreamFinal>(without_raw)
-        .expect_err("a terminal record without `raw` is refused");
-    assert!(error.to_string().contains("raw"), "{error}");
-}
-
-/// The deserialization mirror must not change the wire format: a fully
-/// populated terminal record round-trips to byte-identical JSON.
-#[test]
-fn stream_final_serde_round_trip_is_identity() {
-    let final_record = StreamFinal::new(
-        "example",
-        Usage {
-            input_tokens: Some(4),
-            output_tokens: Some(6),
-            total_tokens: Some(10),
-            cached_input_tokens: Some(1),
-            cache_creation_input_tokens: Some(2),
-            tool_use_prompt_tokens: Some(3),
-            reasoning_tokens: Some(4),
-        },
-        serde_json::json!({}),
-    )
-    .with_finish_reason(FinishReason::Stop)
-    .with_message_id("msg_123")
-    .with_response_id("resp_456")
-    .with_model("provider-model-v2");
-
-    let encoded = serde_json::to_value(&final_record).expect("serialize terminal record");
-
-    let decoded = serde_json::from_value::<StreamFinal>(encoded.clone()).expect("deserialize");
-    assert_eq!(decoded, final_record);
-    assert_eq!(
-        serde_json::to_value(&decoded).expect("re-serialize"),
-        encoded
-    );
-}
-
-#[tokio::test]
-async fn usage_is_unreported_before_final_response() {
-    // A stream that never yields a FinalResponse reports no usage at all.
-    let stream = scripted(|out| {
-        out.text("no final response");
-    });
-    assert!(!stream.folded().usage().is_reported());
-}
-
-/// #2258 H6: a second poll of a drained stream must not disturb the
-/// aggregated choice — pre-fix the re-poll re-ran the destructive
-/// accumulator finish and replaced a fully aggregated choice with the
-/// empty-text fallback.
-///
-/// Not inducible from a recorded provider turn: re-polling a terminated
-/// stream is consumer behavior (`Stream` permits it, and combinators do
-/// it), independent of any wire.
-#[tokio::test]
-async fn re_polling_a_drained_stream_preserves_the_aggregated_choice() {
-    let mut stream = create_mock_stream();
-    while stream.next().await.is_some() {}
-
-    let drained = stream.folded().snapshot();
-    assert_eq!(
-        drained,
-        vec![AssistantContent::text("hello 1hello 2hello 3")]
-    );
-
-    for _ in 0..3 {
-        assert!(
-            stream.next().await.is_none(),
-            "a drained stream stays drained"
-        );
-    }
-    assert_eq!(
-        stream.folded().snapshot(),
-        drained,
-        "re-polling must not disturb the aggregated choice"
-    );
-
-    // Finishing into a unary response still carries the content.
-    let response: CompletionResponse = stream
-        .finish()
-        .expect("the stream produced a terminal record");
-    assert_eq!(response.choice.into_iter().collect::<Vec<_>>(), drained);
-}
-
-/// #2258 H8: a `ProviderError` whose text happens to contain "aborted"
-/// is an error like any other. It used to be swallowed as clean EOF,
-/// discarding both the failure and the content streamed before it.
-///
-/// Not inducible from a recorded provider turn: no in-tree provider emits
-/// this sentinel, and a consumer cancels by dropping the stream rather than
-/// through an error item.
-#[tokio::test]
-async fn a_provider_error_mentioning_aborted_reaches_the_consumer() {
-    let mut stream = scripted(|out| {
-        out.text("partial");
-        out.error(ProviderError::Provider(
-            "upstream aborted the request".to_string(),
-        ));
-    });
-
-    let mut errors = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let Err(err) = item {
-            errors.push(err.to_string());
-        }
-    }
-    assert_eq!(errors.len(), 1, "the error must not be swallowed");
-    assert!(errors[0].contains("upstream aborted the request"));
-
-    // The content streamed before the failure is still aggregated.
-    assert_eq!(
-        stream.folded().snapshot().first(),
-        Some(&AssistantContent::text("partial".to_string()))
-    );
-    assert!(stream.folded().terminal().is_none());
-}
-
-/// #2258 F1, at the stream boundary: a wire that fragments a call's input
-/// and then restates it as one complete block must publish the completed
-/// call under the id its deltas already published — the correlation
-/// contract on a `BlockEnd` carrying a completed call. Pre-fix the
-/// completed call carried a fresh id no delta ever mentioned.
-///
-/// Not inducible from a recorded provider turn: no in-tree wire mixes the
-/// two shapes for one call, though out-of-tree adapters can.
-#[tokio::test]
-async fn a_full_tool_call_correlates_with_the_deltas_of_the_same_id() {
-    let mut stream = scripted(|out| {
-        out.tool_name(&BlockId::wire("tc1"), "add");
-        out.tool_arguments(&BlockId::wire("tc1"), "{\"x\":1}");
-        let (id, end) = whole_call("tc1", "add", serde_json::json!({"x": 1}));
-        out.tool_end(id, end);
-        // The trailing end event for a call the full block already delivered.
-        out.push(Ok(StreamEvent::BlockEnd {
-            id: BlockId::wire("tc1"),
-            end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Drop)),
-            block: None,
-        }));
-        out.final_record(mock_final_with_total_tokens(1));
-    });
-
-    let mut delta_ids = Vec::new();
-    let mut completed_ids = Vec::new();
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::BlockDelta {
-                id,
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-            } => delta_ids.push(id),
-            StreamEvent::BlockEnd {
-                id,
-                block: Some(AssistantContent::ToolCall(_)),
-                ..
-            } => completed_ids.push(id),
-            _ => {}
-        }
-    }
-
-    assert_eq!(delta_ids.len(), 2);
-    assert_eq!(delta_ids[0], delta_ids[1], "one call, one block id");
-    assert_eq!(
-        completed_ids,
-        vec![delta_ids[0].clone()],
-        "the completed call must carry the id its deltas published"
-    );
-
-    // The trailing end event for a call a full block already delivered
-    // finalizes nothing: exactly one tool call reaches the choice.
-    let choice = stream.folded().snapshot();
-    let tool_calls: Vec<&ToolCall> = choice
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::ToolCall(tool_call) => Some(tool_call),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(tool_calls.len(), 1, "got {choice:?}");
-}
-
-#[tokio::test]
-async fn test_stream_aggregates_reasoning_content() {
-    let mut stream = create_reasoning_stream();
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-
-    assert!(choice_items.iter().any(|item| matches!(
-        item,
-        AssistantContent::Reasoning(Reasoning {
-            id: Some(id),
-            content, .. }) if id == "rs_1"
-            && matches!(
-                content.first(),
-                Some(ReasoningContent::Text {
-                    text,
-                    signature: Some(signature)
-                }) if text == "step one" && signature == "sig_1"
-            )
-    )));
-}
-
-/// A full reasoning block replaces its own delta accumulation, so the
-/// aggregated choice matches unary normalization of the same turn: one
-/// reasoning item carrying the completed block, not delta-plus-duplicate.
-#[tokio::test]
-async fn full_reasoning_block_supersedes_its_accumulated_deltas() {
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(&BlockId::wire("rs_1"), non_empty_id("rs_1"), "partial ");
-        out.reasoning_block(
-            BlockId::wire("rs_1"),
-            non_empty_id("rs_1"),
-            ReasoningContent::Text {
-                text: "the complete chain".to_string(),
-                signature: Some("sig_1".to_string()),
-            },
-        );
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-    let reasoning_items: Vec<&Reasoning> = choice_items
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
-            _ => None,
-        })
-        .collect();
-
-    assert_eq!(reasoning_items.len(), 1, "got {choice_items:?}");
-    let reasoning = reasoning_items.first().expect("one reasoning item");
-    assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
-    assert!(matches!(
-        reasoning.content.first(),
-        Some(ReasoningContent::Text { text, signature: Some(signature) })
-            if text == "the complete chain" && signature == "sig_1"
-    ));
-}
-
-/// A full block whose ID differs from the accumulating item's ID is a
-/// distinct reasoning item and is appended, not a replacement.
-#[tokio::test]
-async fn full_reasoning_block_with_a_different_id_appends() {
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(
-            &BlockId::wire("rs_1"),
-            non_empty_id("rs_1"),
-            "first item deltas",
-        );
-        out.reasoning_block(
-            BlockId::wire("rs_2"),
-            non_empty_id("rs_2"),
-            ReasoningContent::Text {
-                text: "a different item".to_string(),
-                signature: None,
-            },
-        );
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-    let reasoning_ids: Vec<Option<&str>> = choice_items
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.id.as_deref()),
-            _ => None,
-        })
-        .collect();
-
-    assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("rs_2")]);
-}
-
-/// Every end of an open reasoning block yields the completed block, whether
-/// the wire sent it (anthropic's `content_block_stop` on an unsigned
-/// thinking block) or an adapter synthesized it at a boundary: the fold
-/// collects blocks from their ends, so a silent end would lose the part.
-#[tokio::test]
-async fn a_bare_end_yields_the_completed_block_wire_sent_or_synthesized() {
-    let run = |wire_sent: bool| async move {
-        let mut stream = scripted(|out| {
-            let key = BlockId::minted(MintKind::Block, 0);
-            out.reasoning_delta(&key, None, "unsigned thoughts");
-            out.reasoning_end(key, None, None, wire_sent);
-            out.final_record(mock_final_with_total_tokens(2));
-        });
-        let mut completed = Vec::new();
-        while let Some(item) = stream.next().await {
-            if let Some((_, reasoning)) = completed_reasoning(&item.expect("stream item")) {
-                completed.push(reasoning);
-            }
-        }
-        (completed, stream.folded().snapshot())
-    };
-
-    for wire_sent in [true, false] {
-        let (completed, snapshot) = run(wire_sent).await;
-        assert_eq!(
-            completed.len(),
-            1,
-            "wire_sent {wire_sent}: one completed block"
-        );
-        assert!(matches!(
-            completed[0].content.first(),
-            Some(ReasoningContent::Text { text, signature: None }) if text == "unsigned thoughts"
-        ));
-        assert_eq!(
-            snapshot,
-            vec![AssistantContent::Reasoning(completed[0].clone())]
-        );
-    }
-}
-
-/// The completed reasoning event restates the block id its deltas
-/// carried (the anthropic shape: id-less deltas, wire-sent bare stop),
-/// keeping it distinct from the durable provider handle, which stays
-/// absent.
-#[tokio::test]
-async fn completed_reasoning_restates_the_delta_block_id() {
-    let key = || BlockId::minted(MintKind::Block, 0);
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(&key(), None, "unsigned thoughts");
-        out.reasoning_end(key(), None, None, true);
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-
-    let mut delta_ids = Vec::new();
-    let mut completed = Vec::new();
-    while let Some(item) = stream.next().await {
-        let event = item.expect("stream item");
-        delta_ids.extend(reasoning_delta_id(&event));
-        completed.extend(completed_reasoning(&event));
-    }
-
-    let (block, reasoning) = completed.first().expect("one completed block");
-    assert_eq!(
-        Some(block),
-        delta_ids.first(),
-        "the completed block restates its deltas' block id"
-    );
-    assert_eq!(
-        reasoning.id, None,
-        "no provider handle exists on this wire; the block id must not leak into it"
-    );
-}
-
-/// On a signed end (the gemini shape) the completed event carries BOTH
-/// identities as distinct values: the block id matching the deltas, and
-/// the durable provider handle in `reasoning.id`.
-#[tokio::test]
-async fn completed_reasoning_keeps_block_id_and_provider_handle_distinct() {
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(
-            &BlockId::wire("rs_1"),
-            non_empty_id("rs_1"),
-            "signed thoughts",
-        );
-        out.reasoning_end(BlockId::wire("rs_1"), None, Some("sig_1".to_string()), true);
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-
-    let mut delta_ids = Vec::new();
-    let mut completed = Vec::new();
-    while let Some(item) = stream.next().await {
-        let event = item.expect("stream item");
-        delta_ids.extend(reasoning_delta_id(&event));
-        completed.extend(completed_reasoning(&event));
-    }
-
-    let (block, reasoning) = completed.first().expect("one completed block");
-    assert_eq!(Some(block), delta_ids.first());
-    assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
-    assert_eq!(
-        *block,
-        BlockId::wire("rs_1"),
-        "the block id is the wire id the deltas streamed under"
-    );
-}
-
-/// A trailing signature after a synthesized silent end restates the
-/// deltas' block id (the gemini shape: thought deltas, visible text
-/// forcing a synthesized boundary, then a bare `thoughtSignature`
-/// frame). The suppressed end must not discard the part's identity —
-/// a fresh id here strands the signed completion where the
-/// streamed-turn assembler cannot match it, duplicating the part.
-#[tokio::test]
-async fn late_signature_after_synthesized_end_restates_the_delta_block_id() {
-    let key = || BlockId::minted(MintKind::Reasoning, 0);
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(&key(), None, "hidden thoughts");
-        // The adapter saw visible text begin and synthesized a
-        // silent boundary the wire never sent.
-        out.reasoning_end(key(), None, None, false);
-        out.text("visible");
-        // The trailing signature frame closes the same part.
-        out.reasoning_end(key(), None, Some("sig_late".to_string()), true);
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-
-    let mut delta_ids = Vec::new();
-    let mut completed = Vec::new();
-    while let Some(item) = stream.next().await {
-        let event = item.expect("stream item");
-        delta_ids.extend(reasoning_delta_id(&event));
-        completed.extend(completed_reasoning(&event));
-    }
-
-    assert_eq!(
-        completed.len(),
-        2,
-        "the synthesized end completes the part; the signature restates it"
-    );
-    for (block, _) in &completed {
-        assert_eq!(
-            Some(block),
-            delta_ids.first(),
-            "each completion restates the block id its deltas carried"
-        );
-    }
-    let (_, reasoning) = completed.last().expect("the signed restatement");
-    assert!(
-        reasoning.content.iter().any(|content| matches!(
-            content,
-            ReasoningContent::Text { signature: Some(sig), .. } if sig == "sig_late"
-        )),
-        "the trailing signature landed on the completed part"
-    );
-    let reasoning_parts: Vec<_> = stream
-        .folded()
-        .snapshot()
-        .into_iter()
-        .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
-        .collect();
-    assert_eq!(
-        reasoning_parts,
-        vec![AssistantContent::Reasoning(reasoning.clone())],
-        "the restatement replaces the part; it never duplicates it"
-    );
-}
-
-/// A delta-less reasoning start under a reused key opens a NEW part
-/// (sequence O9: the finished map must never leak the previous part
-/// onto a distinct part) — even when that part closes with a
-/// signature-only end. Both parts publish under the key they streamed
-/// under.
-#[tokio::test]
-async fn a_delta_less_start_under_a_reused_key_opens_a_new_part() {
-    let key = || BlockId::minted(MintKind::Reasoning, 0);
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(&key(), None, "part one");
-        out.reasoning_end(key(), None, None, true);
-        out.reasoning_start(&key(), None);
-        out.reasoning_end(key(), None, Some("sig2".to_string()), true);
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-
-    let mut completed_ids = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let Some((id, _)) = completed_reasoning(&item.expect("stream item")) {
-            completed_ids.push(id);
-        }
-    }
-
-    assert_eq!(completed_ids.len(), 2, "two distinct parts complete");
-    assert_eq!(
-        completed_ids.first(),
-        completed_ids.get(1),
-        "both parts carry the key they streamed under; a wire that wants distinct \
-         ids mints one per block at the adapter (MintedReasoningLifecycle)"
-    );
-}
-
-/// Ending a part and streaming new deltas under the same accumulation
-/// key opens a NEW part, published under the same key.
-#[tokio::test]
-async fn reused_accumulation_key_opens_a_new_part_after_an_end() {
-    let key = || BlockId::minted(MintKind::Reasoning, 0);
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(&key(), None, "first part");
-        out.reasoning_end(key(), None, None, true);
-        out.reasoning_delta(&key(), None, "second part");
-        out.reasoning_end(key(), None, None, true);
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-
-    let mut completed_ids = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let Some((id, _)) = completed_reasoning(&item.expect("stream item")) {
-            completed_ids.push(id);
-        }
-    }
-
-    assert_eq!(completed_ids.len(), 2, "two parts under the reused key");
-    assert_eq!(
-        completed_ids.first(),
-        completed_ids.get(1),
-        "a reused key opens a new part under the same key"
-    );
-    assert_eq!(
-        stream.folded().snapshot().len(),
-        2,
-        "two distinct parts in the choice"
-    );
-}
-
-/// A whole-block reasoning event with no prior deltas still carries its
-/// wire id as the block id, and two such parts never share one.
-#[tokio::test]
-async fn whole_block_reasoning_carries_its_wire_id() {
-    let mut stream = scripted(|out| {
-        out.reasoning_block(
-            BlockId::wire("rs_1"),
-            non_empty_id("rs_1"),
-            ReasoningContent::Text {
-                text: "first".to_string(),
-                signature: None,
-            },
-        );
-        out.reasoning_block(
-            BlockId::wire("rs_2"),
-            non_empty_id("rs_2"),
-            ReasoningContent::Text {
-                text: "second".to_string(),
-                signature: None,
-            },
-        );
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-
-    let mut block_ids = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let Some((id, _)) = completed_reasoning(&item.expect("stream item")) {
-            block_ids.push(id);
-        }
-    }
-
-    assert_eq!(
-        block_ids,
-        vec![BlockId::wire("rs_1"), BlockId::wire("rs_2")],
-        "distinct parts must not share a block id"
-    );
-}
-
-#[tokio::test]
-async fn full_reasoning_block_supersedes_deltas_across_interleaved_output() {
-    // Providers may emit the completed reasoning item after other output
-    // (reasoning -> tool call -> completed block). The tool call clears
-    // the active reasoning index, so replacement must fall back to the
-    // by-ID scan rather than appending a duplicate.
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(&BlockId::wire("rs_1"), non_empty_id("rs_1"), "partial ");
-        let (id, end) = whole_call("call_1", "probe", serde_json::json!({}));
-        out.tool_end(id, end);
-        out.reasoning_block(
-            BlockId::wire("rs_1"),
-            non_empty_id("rs_1"),
-            ReasoningContent::Text {
-                text: "the full block".to_string(),
-                signature: None,
-            },
-        );
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-    let reasoning_items: Vec<&Reasoning> = choice_items
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
-            _ => None,
-        })
-        .collect();
-
-    assert_eq!(
-        reasoning_items.len(),
-        1,
-        "the full block must replace the delta-built item, not join it"
-    );
-    let only = reasoning_items.first().expect("one reasoning item");
-    assert_eq!(only.id.as_deref(), Some("rs_1"));
-    assert!(
-        only.content.iter().any(|content| matches!(
-            content,
-            ReasoningContent::Text { text, .. } if text == "the full block"
-        )),
-        "the surviving item must carry the full block's content"
-    );
-}
-
-#[tokio::test]
-async fn minted_id_full_reasoning_block_does_not_clobber_a_wire_id_item() {
-    // Ids are mandatory on the grammar; a provider-minted id (the
-    // "reasoning-0"-style boundary fallback) is a distinct identity from
-    // a wire-supplied one, so the block appends rather than overwriting
-    // an unrelated item's deltas.
-    let mut stream = scripted(|out| {
-        out.reasoning_delta(
-            &BlockId::wire("rs_1"),
-            non_empty_id("rs_1"),
-            "identified deltas",
-        );
-        out.reasoning_block(
-            BlockId::wire("reasoning-0"),
-            non_empty_id("reasoning-0"),
-            ReasoningContent::Text {
-                text: "anonymous block".to_string(),
-                signature: None,
-            },
-        );
-        out.final_record(mock_final_with_total_tokens(2));
-    });
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-    let reasoning_ids: Vec<Option<&str>> = choice_items
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.id.as_deref()),
-            _ => None,
-        })
-        .collect();
-
-    assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("reasoning-0")]);
-}
-
-#[tokio::test]
-async fn test_stream_reasoning_only_does_not_inject_empty_text() {
-    let mut stream = create_reasoning_only_stream();
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-    assert_eq!(choice_items.len(), 1);
-    assert!(matches!(
-        choice_items.first(),
-        Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_only"
-    ));
-}
-
-#[tokio::test]
-async fn test_stream_aggregates_assistant_items_in_arrival_order() {
-    let mut stream = create_interleaved_stream();
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-    assert_eq!(choice_items.len(), 3);
-    assert!(matches!(
-        choice_items.first(),
-        Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_interleaved"
-    ));
-    assert!(matches!(
-        choice_items.get(1),
-        Some(AssistantContent::Text(Text { text, .. })) if text == "final-text"
-    ));
-    assert!(matches!(
-        choice_items.get(2),
-        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id.explicit() == Some("tool_1")
-    ));
-}
-
-#[tokio::test]
-async fn unknown_choice_reaches_consumer_but_not_aggregated_choice() {
-    let unknown = serde_json::json!({
-        "type": "web_search_call",
-        "id": "ws_1",
-        "status": "completed",
-    });
-    let yielded = unknown.clone();
-    let mut stream = scripted(move |out| {
-        out.unknown(yielded.into());
-        out.text("done");
-        out.final_record(mock_final_with_total_tokens(1));
-    });
-
-    let mut consumer_unknown = None;
-    let mut consumer_text = String::new();
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::Unknown(value) => consumer_unknown = Some(value),
-            event => consumer_text.extend(text_of(&event)),
-        }
-    }
-
-    // The consumer receives the unmodeled item verbatim ...
-    assert_eq!(consumer_unknown.as_ref(), Some(&unknown.into()));
-    assert_eq!(consumer_text, "done");
-
-    // ... but it is structurally absent from the aggregated assistant choice
-    // (the sole source of persisted history): only the text item remains.
-    let choice_items = stream.folded().snapshot();
-    assert_eq!(choice_items.len(), 1);
-    assert!(matches!(
-        choice_items.first(),
-        Some(AssistantContent::Text(Text { text, .. })) if text == "done"
-    ));
-}
-
-#[tokio::test]
-async fn test_stream_keeps_non_contiguous_text_chunks_split_by_tool_call() {
-    let mut stream = create_text_tool_text_stream();
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-    assert_eq!(choice_items.len(), 3);
-    assert!(matches!(
-        choice_items.first(),
-        Some(AssistantContent::Text(Text { text, .. })) if text == "first"
-    ));
-    assert!(matches!(
-        choice_items.get(1),
-        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id.explicit() == Some("tool_split")
-    ));
-    assert!(matches!(
-        choice_items.get(2),
-        Some(AssistantContent::Text(Text { text, .. })) if text == "second"
-    ));
-}
-
-#[tokio::test]
-async fn test_stream_preserves_text_additional_params() {
-    let mut stream = create_text_metadata_stream();
-    while stream.next().await.is_some() {}
-
-    let choice_items = stream.folded().snapshot();
-    assert_eq!(choice_items.len(), 2);
-
-    let Some(AssistantContent::Text(Text {
-        text,
-        additional_params: Some(additional_params),
-    })) = choice_items.first()
-    else {
-        panic!("expected first text item with metadata");
-    };
-    assert_eq!(text, "first");
-    assert_eq!(
-        additional_params["citations"]
-            .as_array()
-            .expect("citations should be an array")
-            .len(),
-        2
-    );
-
-    let Some(AssistantContent::Text(Text {
-        text,
-        additional_params: Some(additional_params),
-    })) = choice_items.get(1)
-    else {
-        panic!("expected second text item with metadata");
-    };
-    assert_eq!(text, "second");
-    assert_eq!(additional_params["block"], 2);
-}
-
-/// The public stream fills `block` on the end that finalized a call, and
-/// leaves it `None` on an end that dropped one.
-#[tokio::test]
-async fn a_tool_end_carries_the_completed_call_or_nothing_when_dropped() {
-    let mut stream = scripted(|out| {
-        out.tool_name(&BlockId::wire("ok"), "add");
-        out.tool_arguments(&BlockId::wire("ok"), "{\"x\":1}");
-        out.tool_end(
-            BlockId::wire("ok"),
-            ToolCallEnd::new(UnparseableToolInput::Drop),
-        );
-        out.tool_name(&BlockId::wire("truncated"), "add");
-        out.tool_arguments(&BlockId::wire("truncated"), "{\"x\":");
-        out.tool_end(
-            BlockId::wire("truncated"),
-            ToolCallEnd::new(UnparseableToolInput::Drop),
-        );
-        out.final_record(mock_final_with_total_tokens(1));
-    });
-
-    let mut ends = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::BlockEnd { id, block, .. } = item.expect("stream item") {
-            ends.push((id, block));
-        }
-    }
-    assert_eq!(ends.len(), 2);
-    assert!(matches!(
-        &ends[0],
-        (id, Some(AssistantContent::ToolCall(call)))
-            if *id == BlockId::wire("ok") && call.function.arguments == serde_json::json!({"x": 1})
-    ));
-    assert_eq!(ends[1], (BlockId::wire("truncated"), None));
-    assert_eq!(
-        stream.folded().snapshot().len(),
-        1,
-        "only the completed call is in the choice"
-    );
-}
-
-/// Synthetic identity law: future explicit IDs cannot alias generated IDs or
-/// force buffering. Provider serialization is tested at its request boundary.
-#[tokio::test]
-async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
-    use crate::message::ToolCallId;
-    use futures::FutureExt;
-    for explicit_first in [false, true] {
-        let (sender, receiver) = futures::channel::mpsc::unbounded();
-        let mut response = opened(TEST_PROVIDER, receiver);
-        let mut generated = SyntheticIds::tool();
-        let key = generated.mint();
-        for (position, explicit) in [explicit_first, !explicit_first].into_iter().enumerate() {
-            let mut out = AdapterOutput::new();
-            if explicit {
-                out.tool_end(
-                    BlockId::wire("tool-0"),
-                    ToolCallEnd::whole("explicit", serde_json::json!({})).with_tool_id("tool-0"),
-                );
-            } else {
-                out.tool_end(
-                    key.clone(),
-                    ToolCallEnd::whole("generated", serde_json::json!({})),
-                );
-            }
-            for event in out.into_items() {
-                sender.unbounded_send(event).expect("send frame");
-            }
-            let completed = tokio::time::timeout(Duration::from_secs(1), async {
-                loop {
-                    let event = response
-                        .next()
-                        .await
-                        .expect("event before EOF")
-                        .expect("valid event");
-                    let encoded = serde_json::to_string(&event).expect("serialize event");
-                    let decoded: StreamEvent =
-                        serde_json::from_str(&encoded).expect("deserialize event");
-                    if let StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::ToolCall(call)),
-                        ..
-                    } = decoded
-                    {
-                        break call;
-                    }
-                }
-            })
-            .await
-            .expect("completed call must not wait for later frames");
-            let expected = if explicit {
-                ToolCallId::new("tool-0").expect("explicit")
-            } else {
-                ToolCallId::from_block(&key)
-            };
-            assert_eq!(completed.id, expected);
-            assert_eq!(completed.provider.is_some(), explicit);
-            assert_eq!(
-                response.folded().snapshot().len(),
-                position + 1,
-                "partial snapshot retains each completed call"
-            );
-            assert!(
-                response.next().now_or_never().is_none(),
-                "no extra provider frames exist"
-            );
-            sender
-                .unbounded_send(Err(ProviderError::Response("recoverable probe".into())))
-                .expect("send error");
-            assert!(
-                matches!(response.next().now_or_never(), Some(Some(Err(_)))),
-                "error delivery must not wait for EOF"
-            );
-        }
-        sender
-            .unbounded_send(Ok(StreamEvent::Final(mock_final_with_total_tokens(1))))
-            .expect("send final");
-        drop(sender);
-        while let Some(event) = response.next().await {
-            event.expect("remaining event");
-        }
-        let calls: Vec<_> = response
-            .folded()
-            .snapshot()
-            .into_iter()
-            .filter_map(|item| match item {
-                AssistantContent::ToolCall(call) => Some(call),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(calls.len(), 2);
-        assert_ne!(calls[0].id, calls[1].id);
-    }
-}
-
-/// A relayed stream passes the completion sink: a stream that is not
-/// canonical (text left open, a second terminal) comes out canonical, and
-/// content after the terminal still reaches the consumer.
-#[tokio::test]
-async fn a_relayed_stream_comes_out_canonical() {
-    let text = BlockId::minted(MintKind::Text, 0);
-    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
-        Ok(StreamEvent::BlockStart {
-            id: text.clone(),
-            kind: BlockKind::Text {
-                additional_params: None,
-            },
-        }),
-        Ok(StreamEvent::text(text.clone(), "hi")),
-        Ok(StreamEvent::Final(mock_final_with_total_tokens(1))),
-        Ok(StreamEvent::Final(mock_final_with_total_tokens(2))),
-        Ok(StreamEvent::Unknown(
-            serde_json::json!({"after": true}).into(),
-        )),
-    ];
-    let mut stream = CompletionStream::relay("label", Box::pin(futures::stream::iter(raw)));
-    let mut items = Vec::new();
-    while let Some(item) = stream.next().await {
-        items.push(item.expect("no error"));
-    }
-    assert!(
-        matches!(
-            items.get(2),
-            Some(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Text(Text { text, .. })),
-                ..
-            }) if text == "hi"
+async fn finish_folds_the_parts_with_the_providers_end() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("Hello"),
+        MockStreamEvent::text(" world"),
+        MockStreamEvent::FinalResponse(
+            Finish::new(usage(7))
+                .with_reason(FinishReason::Stop)
+                .with_optional_provider_request_id(Some("req-1".to_owned())),
         ),
-        "the open text closes before the terminal, carrying its block: {items:?}"
-    );
-    assert_eq!(
-        items
-            .iter()
-            .filter(|item| matches!(item, StreamEvent::Final(_)))
-            .count(),
-        1,
-        "the second terminal is dropped"
-    );
-    assert!(matches!(items.last(), Some(StreamEvent::Unknown(_))));
-    assert_eq!(
-        stream.finish().expect("a terminal record").choice,
-        vec![AssistantContent::text("hi")]
-    );
+    ]);
+    let items = items_of(&mut stream).await;
+    assert!(items.iter().all(Result::is_ok), "{items:?}");
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.text(), "Hello world");
+    assert_eq!(response.usage.total_tokens, Some(7));
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.provider_request_id.as_deref(), Some("req-1"));
 }
 
-/// A truncated relayed stream is ended as the driver ends a reply: its open
-/// text closes at EOF, and the stream still refuses to finish.
 #[tokio::test]
-async fn a_truncated_relayed_stream_closes_its_open_text() {
-    let text = BlockId::minted(MintKind::Text, 0);
-    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![Ok(StreamEvent::text(text, "partial"))];
-    let mut stream = CompletionStream::relay("label", Box::pin(futures::stream::iter(raw)));
-    let mut items = Vec::new();
-    while let Some(item) = stream.next().await {
-        items.push(item.expect("no error"));
-    }
+async fn a_reply_without_its_end_is_truncated() {
+    let mut stream = stream_of(vec![MockStreamEvent::text("cut")]);
+    let items = items_of(&mut stream).await;
+    assert!(
+        matches!(items.last(), Some(Err(ProviderError::Truncated))),
+        "the truncation is the last item: {items:?}"
+    );
     assert!(matches!(
-        items.last(),
-        Some(StreamEvent::BlockEnd { block: Some(_), .. })
+        stream.finish().await,
+        Err(ProviderError::Truncated)
     ));
-    assert_eq!(
-        stream.folded().snapshot(),
-        vec![AssistantContent::text("partial")]
-    );
-    assert!(stream.finish().is_err(), "no terminal record, truncated");
 }
 
-/// A relayed end that carries its block without the events that assemble
-/// it keeps the block: canonicalizing never loses content an end carried.
 #[tokio::test]
-async fn a_relayed_end_that_carries_its_block_keeps_it() {
-    let text = BlockId::minted(MintKind::Text, 0);
-    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
-        Ok(StreamEvent::BlockEnd {
-            id: text,
-            end: BlockClose::Text,
-            block: Some(AssistantContent::text("whole")),
-        }),
-        Ok(StreamEvent::Final(mock_final_with_total_tokens(1))),
-    ];
-    let mut stream = CompletionStream::relay("label", Box::pin(futures::stream::iter(raw)));
-    while let Some(item) = stream.next().await {
-        item.expect("no error");
-    }
-    assert_eq!(
-        stream.finish().expect("a terminal record").choice,
-        vec![AssistantContent::text("whole")]
+async fn an_error_is_the_last_item_and_finish_returns_it() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("kept"),
+        MockStreamEvent::error("aborted by the provider"),
+        MockStreamEvent::text("never read"),
+    ]);
+    let items = items_of(&mut stream).await;
+    let Some(Err(yielded)) = items.last() else {
+        panic!("the error is the last item: {items:?}");
+    };
+    assert!(yielded.to_string().contains("aborted"), "{yielded}");
+    let partial = stream.partial();
+    assert_eq!(partial.text(), "kept", "the text taken so far stays");
+    let finished = stream.finish().await.expect_err("the error stands");
+    assert_eq!(finished.to_string(), yielded.to_string());
+}
+
+#[tokio::test]
+async fn partial_keeps_the_parts_that_ended_before_an_error() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("answer"),
+        MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({"q": 1})),
+        MockStreamEvent::error("mid-stream failure"),
+    ]);
+    let _ = items_of(&mut stream).await;
+    let partial = stream.partial();
+    assert_eq!(partial.choice.len(), 2, "{:?}", partial.choice);
+    assert_eq!(partial.text(), "answer");
+}
+
+#[tokio::test]
+async fn usage_the_provider_did_not_report_stays_unreported() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("hi"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]);
+    let _ = items_of(&mut stream).await;
+    let response = stream.finish().await.expect("the reply ended");
+    assert!(!response.usage.is_reported(), "{:?}", response.usage);
+}
+
+#[tokio::test]
+async fn an_unmodeled_payload_reaches_the_consumer_but_not_the_choice() {
+    let payload = serde_json::json!({"type": "web_search_call", "id": "ws_1"});
+    let mut stream = stream_of(vec![
+        MockStreamEvent::unknown(payload.clone()),
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]);
+    let items = items_of(&mut stream).await;
+    assert!(
+        items.iter().any(|item| matches!(
+            item,
+            Ok(Item::Unknown(unknown)) if unknown.value() == &payload
+        )),
+        "{items:?}"
     );
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.choice, vec![AssistantContent::text("done")]);
+}
+
+#[tokio::test]
+async fn the_choice_is_in_the_order_its_parts_started() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("before"),
+        MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({})),
+        MockStreamEvent::reasoning_delta("thinking"),
+        MockStreamEvent::text("after"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]);
+    let _ = items_of(&mut stream).await;
+    let response = stream.finish().await.expect("the reply ended");
+    let kinds: Vec<&str> = response
+        .choice
+        .iter()
+        .map(|part| match part {
+            AssistantContent::Text(_) => "text",
+            AssistantContent::ToolCall(_) => "call",
+            AssistantContent::Reasoning(_) => "reasoning",
+            AssistantContent::Image(_) => "image",
+        })
+        .collect();
+    assert_eq!(kinds, ["text", "call", "reasoning", "text"]);
+    let reasoning = response
+        .choice
+        .iter()
+        .find_map(|part| match part {
+            AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()).cloned(),
+            _ => None,
+        })
+        .expect("the reasoning opens for its issuer");
+    assert_eq!(
+        reasoning.content,
+        vec![ReasoningContent::Text {
+            text: "thinking".to_owned(),
+            signature: None,
+        }]
+    );
+}
+
+#[tokio::test]
+async fn a_stop_that_carried_a_tool_call_is_reported_as_tool_calls() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({})),
+        MockStreamEvent::FinalResponse(
+            Finish::new(Usage::default()).with_reason(FinishReason::Stop),
+        ),
+    ]);
+    let _ = items_of(&mut stream).await;
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+}
+
+#[tokio::test]
+async fn polling_a_drained_stream_again_yields_nothing() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("once"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]);
+    let _ = items_of(&mut stream).await;
+    assert!(stream.next().await.is_none());
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.text(), "once");
+}
+
+#[tokio::test]
+async fn a_relayed_stream_finishes_with_the_origins_response() {
+    let origin = stream_of(vec![
+        MockStreamEvent::text("relayed"),
+        MockStreamEvent::final_response(usage(3)),
+    ]);
+    let mut relayed = Streamed::relay("mock", origin.into_relay());
+    let items = items_of(&mut relayed).await;
+    assert!(items.iter().all(Result::is_ok), "{items:?}");
+    let response = relayed.finish().await.expect("the origin ended");
+    assert_eq!(response.text(), "relayed");
+    assert_eq!(response.usage.total_tokens, Some(3));
+}
+
+#[tokio::test]
+async fn a_relay_cut_short_is_truncated() {
+    let origin = stream_of(vec![MockStreamEvent::text("cut")]);
+    let events = origin
+        .into_relay()
+        .filter(|item| futures::future::ready(matches!(item, Ok(Relayed::Item(_)))));
+    let mut relayed = Streamed::relay("mock", Box::pin(events));
+    let _ = items_of(&mut relayed).await;
+    let error = relayed.finish().await.expect_err("no response arrived");
+    assert!(matches!(error, ProviderError::Truncated), "{error:?}");
+}
+
+#[tokio::test]
+async fn a_relayed_error_keeps_its_kind() {
+    let origin = stream_of(vec![MockStreamEvent::error("provider down")]);
+    let mut relayed = Streamed::relay("mock", origin.into_relay());
+    let items = items_of(&mut relayed).await;
+    let Some(Err(error)) = items.last() else {
+        panic!("the error is relayed: {items:?}");
+    };
+    assert_eq!(error.kind(), ErrorKind::Provider);
 }

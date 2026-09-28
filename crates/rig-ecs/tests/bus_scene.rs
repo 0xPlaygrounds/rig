@@ -53,7 +53,8 @@ fn completed_stream_survives_json_checkpoint_without_serving_again() {
         world.get::<EffectOutcome>(effect).is_some()
     });
     let before = serde_json::to_value(live.world().get::<Streamed>(effect).unwrap()).unwrap();
-    assert_eq!(before["events"].as_array().unwrap().len(), STREAM_CAP + 3);
+    // The text part's start, a fragment per send, and its end.
+    assert_eq!(before["events"].as_array().unwrap().len(), STREAM_CAP + 2);
     let saved = checkpoint(&mut live);
     let (mut restored, _, counters) = served();
     let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();

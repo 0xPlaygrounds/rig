@@ -3,8 +3,23 @@ use rig::error::ProviderError;
 use rig::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig::providers::openai::responses_api::{
     CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Output, ReasoningSummary,
+    ResponsesRequestParams,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
+
+/// `message` as the input items of a request that replays OpenAI's
+/// reasoning.
+fn replayed_for_openai(
+    message: CompletionMessage,
+) -> Result<Vec<InputItem>, rig::error::EncodeError> {
+    OpenAIResponsesRequest::try_from(ResponsesRequestParams {
+        model: "gpt-5".to_owned(),
+        request: rig::completion::CompletionRequest::from(rig::NonEmpty::new(message)),
+        system_instructions_placement: Default::default(),
+        issuers: vec!["openai".into()],
+    })
+    .map(|request| request.input)
+}
 
 #[test]
 fn test_input_item_serialization_avoids_duplicate_role() {
@@ -24,7 +39,9 @@ fn test_input_item_serialization_avoids_duplicate_role() {
 fn assistant_reasoning_without_id_is_omitted() {
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
+        content: rig_core::NonEmpty::new(AssistantContent::Reasoning(
+            Reasoning::new("thought").sealed("openai"),
+        )),
     };
 
     let items: Vec<InputItem> = message
@@ -38,12 +55,11 @@ fn assistant_reasoning_encrypted_only_serializes_encrypted_content() {
     let reasoning = Reasoning::encrypted("encrypted_blob").with_id("rs_1".to_string());
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: vec![AssistantContent::Reasoning(reasoning)],
+        content: rig_core::NonEmpty::new(AssistantContent::Reasoning(reasoning.sealed("openai"))),
     };
 
-    let items: Vec<InputItem> = message
-        .try_into()
-        .expect("assistant reasoning should convert to InputItem");
+    let items: Vec<InputItem> =
+        replayed_for_openai(message).expect("assistant reasoning should convert to InputItem");
     assert_eq!(items.len(), 1);
 
     let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
@@ -87,12 +103,11 @@ fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
 
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: vec![AssistantContent::Reasoning(reasoning)],
+        content: rig_core::NonEmpty::new(AssistantContent::Reasoning(reasoning.sealed("openai"))),
     };
 
-    let items: Vec<InputItem> = message
-        .try_into()
-        .expect("assistant reasoning should convert to InputItem");
+    let items: Vec<InputItem> =
+        replayed_for_openai(message).expect("assistant reasoning should convert to InputItem");
     assert_eq!(items.len(), 1);
 
     let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
@@ -127,7 +142,7 @@ fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
 #[test]
 fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
     let core_request = rig::completion::CompletionRequest {
-        chat_history: vec![CompletionMessage::user("hello")],
+        chat_history: rig_core::NonEmpty::new(CompletionMessage::user("hello")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -256,18 +271,16 @@ fn openai_empty_reasoning_content_roundtrips_to_request_item() {
     // reasoning block with no content still converts to an input item rather
     // than being dropped or erroring.
     let reasoning = Reasoning {
-        provider: None,
         id: Some("rs_roundtrip_empty".to_string()),
         content: Vec::new(),
     };
 
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: vec![AssistantContent::Reasoning(reasoning)],
+        content: rig_core::NonEmpty::new(AssistantContent::Reasoning(reasoning.sealed("openai"))),
     };
-    let items: Vec<InputItem> = message
-        .try_into()
-        .expect("empty reasoning content should still convert");
+    let items: Vec<InputItem> =
+        replayed_for_openai(message).expect("empty reasoning content should still convert");
 
     assert_eq!(items.len(), 1);
     let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
@@ -294,12 +307,11 @@ fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
     let reasoning = Reasoning::redacted("opaque-redacted").with_id("rs_redacted".to_string());
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: vec![AssistantContent::Reasoning(reasoning)],
+        content: rig_core::NonEmpty::new(AssistantContent::Reasoning(reasoning.sealed("openai"))),
     };
 
-    let items: Vec<InputItem> = message
-        .try_into()
-        .expect("assistant reasoning should convert to InputItem");
+    let items: Vec<InputItem> =
+        replayed_for_openai(message).expect("assistant reasoning should convert to InputItem");
     assert_eq!(items.len(), 1);
 
     let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
@@ -322,10 +334,12 @@ fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
 fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
-            chat_history: vec![CompletionMessage::Assistant {
+            chat_history: rig_core::NonEmpty::new(CompletionMessage::Assistant {
                 id: Some("assistant_message_id".to_string()),
-                content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
-            }],
+                content: rig_core::NonEmpty::new(AssistantContent::Reasoning(
+                    Reasoning::new("thought").sealed("openai"),
+                )),
+            }),
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -353,12 +367,12 @@ fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() 
 fn assistant_tool_call_with_local_id_omits_function_call_item_id() {
     let message = CompletionMessage::Assistant {
         id: None,
-        content: vec![AssistantContent::tool_call_with_call_id(
+        content: rig_core::NonEmpty::new(AssistantContent::tool_call_with_call_id(
             "history_tool_1",
             "call_local_1".to_string(),
-            "my_tool",
+            rig_core::message::ToolName::new("my_tool").expect("tool name"),
             serde_json::json!({}),
-        )],
+        )),
     };
 
     let items: Vec<InputItem> = message
@@ -385,12 +399,12 @@ fn assistant_tool_call_with_local_id_omits_function_call_item_id() {
 fn assistant_tool_call_with_local_fc_prefix_without_separator_omits_function_call_item_id() {
     let message = CompletionMessage::Assistant {
         id: None,
-        content: vec![AssistantContent::tool_call_with_call_id(
+        content: rig_core::NonEmpty::new(AssistantContent::tool_call_with_call_id(
             "fclocal_1",
             "call_local_1".to_string(),
-            "my_tool",
+            rig_core::message::ToolName::new("my_tool").expect("tool name"),
             serde_json::json!({}),
-        )],
+        )),
     };
 
     let items: Vec<InputItem> = message
@@ -407,12 +421,12 @@ fn assistant_tool_call_with_local_fc_prefix_without_separator_omits_function_cal
 fn assistant_tool_call_with_provider_item_id_keeps_it() {
     let message = CompletionMessage::Assistant {
         id: None,
-        content: vec![AssistantContent::tool_call_with_call_id(
+        content: rig_core::NonEmpty::new(AssistantContent::tool_call_with_call_id(
             "fc_native_1",
             "call_native_1".to_string(),
-            "my_tool",
+            rig_core::message::ToolName::new("my_tool").expect("tool name"),
             serde_json::json!({}),
-        )],
+        )),
     };
 
     let items: Vec<InputItem> = message
@@ -433,11 +447,11 @@ fn assistant_tool_call_without_provider_id_serializes_the_minted_call_id() {
     // sent instead of the old "`call_id` is required" request error.
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: vec![AssistantContent::tool_call(
+        content: rig_core::NonEmpty::new(AssistantContent::tool_call(
             "",
-            "my_tool",
+            rig_core::message::ToolName::new("my_tool").expect("tool name"),
             serde_json::json!({"arg":"value"}),
-        )],
+        )),
     };
 
     let items: Vec<InputItem> = message
@@ -463,7 +477,11 @@ fn user_tool_result_without_provider_id_serializes_the_minted_call_id() {
     // An empty provider call id mints rig's correlation handle; the
     // Responses wire requires a `call_id`, so the minted id is sent instead
     // of the old "`call_id` is required" request error.
-    let message = CompletionMessage::tool_result("", "my_tool", "result payload");
+    let message = CompletionMessage::tool_result(
+        rig_core::message::CallId::from_wire(""),
+        rig_core::message::ToolName::new("my_tool").expect("tool name"),
+        "result payload",
+    );
 
     let items: Vec<InputItem> = message
         .try_into()
@@ -488,7 +506,7 @@ fn user_tool_result_without_provider_id_serializes_the_minted_call_id() {
 fn openai_responses_invalid_additional_params_returns_error_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
-            chat_history: vec![CompletionMessage::user("hello")],
+            chat_history: rig_core::NonEmpty::new(CompletionMessage::user("hello")),
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -515,7 +533,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
 #[test]
 fn openai_responses_request_preserves_prompt_cache_parameters() {
     let request = rig::completion::CompletionRequest {
-        chat_history: vec![CompletionMessage::user("hello")],
+        chat_history: rig_core::NonEmpty::new(CompletionMessage::user("hello")),
         documents: vec![],
         tools: vec![],
         temperature: None,

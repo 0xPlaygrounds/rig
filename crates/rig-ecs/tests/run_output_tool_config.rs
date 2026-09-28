@@ -87,17 +87,19 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
     use rig_core::message::{Reasoning, ReasoningContent};
     use rig_ecs::agent::{MessageParts, Utterance};
 
-    let reasoning = AssistantContent::Reasoning(Reasoning {
-        provider: None,
-        id: Some("reasoning-id".into()),
-        content: vec![
-            ReasoningContent::Text {
-                text: "private reasoning".into(),
-                signature: Some("signature".into()),
-            },
-            ReasoningContent::Encrypted("encrypted".into()),
-        ],
-    });
+    let reasoning = AssistantContent::Reasoning(
+        Reasoning {
+            id: Some("reasoning-id".into()),
+            content: vec![
+                ReasoningContent::Text {
+                    text: "private reasoning".into(),
+                    signature: Some("signature".into()),
+                },
+                ReasoningContent::Encrypted("encrypted".into()),
+            ],
+        }
+        .sealed("test"),
+    );
     let mut app = app();
     let (agent, _) = scripted_agent(
         &mut app,
@@ -132,7 +134,10 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
         .collect();
     assert_eq!(
         assistant,
-        [vec![reasoning, AssistantContent::text("{\"answer\":42}")]]
+        [rig_core::NonEmpty::with_rest(
+            reasoning,
+            [AssistantContent::text("{\"answer\":42}")]
+        )]
     );
 }
 

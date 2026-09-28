@@ -130,62 +130,29 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ready"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "ready"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 22,
-            "output_tokens": 1,
-            "total_tokens": 23,
-            "cached_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "6360de96-3a43-448b-ac1f-bcf718774a0a",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 22,
-              "completion_tokens": 1,
-              "total_tokens": 23,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 22
-            },
-            "finish_reason": "stop",
-            "response_id": "6360de96-3a43-448b-ac1f-bcf718774a0a",
-            "model": "deepseek-flash",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "ready"
             }
           }
         }

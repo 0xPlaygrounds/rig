@@ -303,11 +303,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_619641"
-                },
-                "provider": {
-                  "call_id": "call_619641"
+                  "provider": {
+                    "call_id": "call_619641"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -356,11 +354,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_619641"
-                  },
-                  "provider": {
-                    "call_id": "call_619641"
+                    "provider": {
+                      "call_id": "call_619641"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -437,11 +433,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_619641"
-            },
-            "provider": {
-              "call_id": "call_619641"
+              "provider": {
+                "call_id": "call_619641"
+              }
             },
             "name": "task_operation"
           },
@@ -486,11 +480,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_619641"
-              },
-              "provider": {
-                "call_id": "call_619641"
+                "provider": {
+                  "call_id": "call_619641"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -515,11 +507,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_619641"
-              },
-              "provider": {
-                "call_id": "call_619641"
+                "provider": {
+                  "call_id": "call_619641"
+                }
               },
               "name": "task_operation"
             }
@@ -549,11 +539,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_754123"
-                },
-                "provider": {
-                  "call_id": "call_754123"
+                  "provider": {
+                    "call_id": "call_754123"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -602,11 +590,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_754123"
-                  },
-                  "provider": {
-                    "call_id": "call_754123"
+                    "provider": {
+                      "call_id": "call_754123"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -683,11 +669,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_754123"
-            },
-            "provider": {
-              "call_id": "call_754123"
+              "provider": {
+                "call_id": "call_754123"
+              }
             },
             "name": "task_operation"
           },
@@ -728,11 +712,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_754123"
-              },
-              "provider": {
-                "call_id": "call_754123"
+                "provider": {
+                  "call_id": "call_754123"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -757,11 +739,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_754123"
-              },
-              "provider": {
-                "call_id": "call_754123"
+                "provider": {
+                  "call_id": "call_754123"
+                }
               },
               "name": "task_operation"
             }
@@ -787,11 +767,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_537261"
-                },
-                "provider": {
-                  "call_id": "call_537261"
+                  "provider": {
+                    "call_id": "call_537261"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -840,11 +818,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_537261"
-                  },
-                  "provider": {
-                    "call_id": "call_537261"
+                    "provider": {
+                      "call_id": "call_537261"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -921,11 +897,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_537261"
-            },
-            "provider": {
-              "call_id": "call_537261"
+              "provider": {
+                "call_id": "call_537261"
+              }
             },
             "name": "task_operation"
           },
@@ -966,11 +940,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_537261"
-              },
-              "provider": {
-                "call_id": "call_537261"
+                "provider": {
+                  "call_id": "call_537261"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -995,11 +967,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_537261"
-              },
-              "provider": {
-                "call_id": "call_537261"
+                "provider": {
+                  "call_id": "call_537261"
+                }
               },
               "name": "task_operation"
             }
@@ -1025,11 +995,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_612583"
-                },
-                "provider": {
-                  "call_id": "call_612583"
+                  "provider": {
+                    "call_id": "call_612583"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1078,11 +1046,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_612583"
-                  },
-                  "provider": {
-                    "call_id": "call_612583"
+                    "provider": {
+                      "call_id": "call_612583"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1159,11 +1125,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_612583"
-            },
-            "provider": {
-              "call_id": "call_612583"
+              "provider": {
+                "call_id": "call_612583"
+              }
             },
             "name": "task_operation"
           },
@@ -1204,11 +1168,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_612583"
-              },
-              "provider": {
-                "call_id": "call_612583"
+                "provider": {
+                  "call_id": "call_612583"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1233,11 +1195,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_612583"
-              },
-              "provider": {
-                "call_id": "call_612583"
+                "provider": {
+                  "call_id": "call_612583"
+                }
               },
               "name": "task_operation"
             }
@@ -1263,11 +1223,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_469728"
-                },
-                "provider": {
-                  "call_id": "call_469728"
+                  "provider": {
+                    "call_id": "call_469728"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1316,11 +1274,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_469728"
-                  },
-                  "provider": {
-                    "call_id": "call_469728"
+                    "provider": {
+                      "call_id": "call_469728"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1397,11 +1353,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_469728"
-            },
-            "provider": {
-              "call_id": "call_469728"
+              "provider": {
+                "call_id": "call_469728"
+              }
             },
             "name": "task_operation"
           },
@@ -1442,11 +1396,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_469728"
-              },
-              "provider": {
-                "call_id": "call_469728"
+                "provider": {
+                  "call_id": "call_469728"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1471,11 +1423,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_469728"
-              },
-              "provider": {
-                "call_id": "call_469728"
+                "provider": {
+                  "call_id": "call_469728"
+                }
               },
               "name": "task_operation"
             }
@@ -1501,11 +1451,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_531596"
-                },
-                "provider": {
-                  "call_id": "call_531596"
+                  "provider": {
+                    "call_id": "call_531596"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1554,11 +1502,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_531596"
-                  },
-                  "provider": {
-                    "call_id": "call_531596"
+                    "provider": {
+                      "call_id": "call_531596"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1635,11 +1581,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_531596"
-            },
-            "provider": {
-              "call_id": "call_531596"
+              "provider": {
+                "call_id": "call_531596"
+              }
             },
             "name": "task_operation"
           },
@@ -1680,11 +1624,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_531596"
-              },
-              "provider": {
-                "call_id": "call_531596"
+                "provider": {
+                  "call_id": "call_531596"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1709,11 +1651,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_531596"
-              },
-              "provider": {
-                "call_id": "call_531596"
+                "provider": {
+                  "call_id": "call_531596"
+                }
               },
               "name": "task_operation"
             }
@@ -1739,11 +1679,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_451867"
-                },
-                "provider": {
-                  "call_id": "call_451867"
+                  "provider": {
+                    "call_id": "call_451867"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1792,11 +1730,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_451867"
-                  },
-                  "provider": {
-                    "call_id": "call_451867"
+                    "provider": {
+                      "call_id": "call_451867"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -1873,11 +1809,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_451867"
-            },
-            "provider": {
-              "call_id": "call_451867"
+              "provider": {
+                "call_id": "call_451867"
+              }
             },
             "name": "task_operation"
           },
@@ -1918,11 +1852,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_451867"
-              },
-              "provider": {
-                "call_id": "call_451867"
+                "provider": {
+                  "call_id": "call_451867"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -1947,11 +1879,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_451867"
-              },
-              "provider": {
-                "call_id": "call_451867"
+                "provider": {
+                  "call_id": "call_451867"
+                }
               },
               "name": "task_operation"
             }
@@ -1977,11 +1907,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_417435"
-                },
-                "provider": {
-                  "call_id": "call_417435"
+                  "provider": {
+                    "call_id": "call_417435"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -1997,11 +1925,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_417436"
-                },
-                "provider": {
-                  "call_id": "call_417436"
+                  "provider": {
+                    "call_id": "call_417436"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2050,11 +1976,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_417435"
-                  },
-                  "provider": {
-                    "call_id": "call_417435"
+                    "provider": {
+                      "call_id": "call_417435"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2070,11 +1994,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_417436"
-                  },
-                  "provider": {
-                    "call_id": "call_417436"
+                    "provider": {
+                      "call_id": "call_417436"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2162,11 +2084,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_417435"
-            },
-            "provider": {
-              "call_id": "call_417435"
+              "provider": {
+                "call_id": "call_417435"
+              }
             },
             "name": "task_operation"
           },
@@ -2198,11 +2118,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 1,
             "id": {
-              "origin": "explicit",
-              "id": "call_417436"
-            },
-            "provider": {
-              "call_id": "call_417436"
+              "provider": {
+                "call_id": "call_417436"
+              }
             },
             "name": "task_operation"
           },
@@ -2240,11 +2158,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_417435"
-              },
-              "provider": {
-                "call_id": "call_417435"
+                "provider": {
+                  "call_id": "call_417435"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -2264,11 +2180,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_417436"
-              },
-              "provider": {
-                "call_id": "call_417436"
+                "provider": {
+                  "call_id": "call_417436"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -2293,11 +2207,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_417435"
-              },
-              "provider": {
-                "call_id": "call_417435"
+                "provider": {
+                  "call_id": "call_417435"
+                }
               },
               "name": "task_operation"
             }
@@ -2318,11 +2230,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_417436"
-              },
-              "provider": {
-                "call_id": "call_417436"
+                "provider": {
+                  "call_id": "call_417436"
+                }
               },
               "name": "task_operation"
             }
@@ -2345,11 +2255,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_464011"
-                },
-                "provider": {
-                  "call_id": "call_464011"
+                  "provider": {
+                    "call_id": "call_464011"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2365,11 +2273,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_464012"
-                },
-                "provider": {
-                  "call_id": "call_464012"
+                  "provider": {
+                    "call_id": "call_464012"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2418,11 +2324,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_464011"
-                  },
-                  "provider": {
-                    "call_id": "call_464011"
+                    "provider": {
+                      "call_id": "call_464011"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2438,11 +2342,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_464012"
-                  },
-                  "provider": {
-                    "call_id": "call_464012"
+                    "provider": {
+                      "call_id": "call_464012"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2530,11 +2432,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_464011"
-            },
-            "provider": {
-              "call_id": "call_464011"
+              "provider": {
+                "call_id": "call_464011"
+              }
             },
             "name": "task_operation"
           },
@@ -2566,11 +2466,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 1,
             "id": {
-              "origin": "explicit",
-              "id": "call_464012"
-            },
-            "provider": {
-              "call_id": "call_464012"
+              "provider": {
+                "call_id": "call_464012"
+              }
             },
             "name": "task_operation"
           },
@@ -2608,11 +2506,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_464011"
-              },
-              "provider": {
-                "call_id": "call_464011"
+                "provider": {
+                  "call_id": "call_464011"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -2632,11 +2528,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_464012"
-              },
-              "provider": {
-                "call_id": "call_464012"
+                "provider": {
+                  "call_id": "call_464012"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -2661,11 +2555,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_464011"
-              },
-              "provider": {
-                "call_id": "call_464011"
+                "provider": {
+                  "call_id": "call_464011"
+                }
               },
               "name": "task_operation"
             }
@@ -2686,11 +2578,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_464012"
-              },
-              "provider": {
-                "call_id": "call_464012"
+                "provider": {
+                  "call_id": "call_464012"
+                }
               },
               "name": "task_operation"
             }
@@ -2713,11 +2603,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_386313"
-                },
-                "provider": {
-                  "call_id": "call_386313"
+                  "provider": {
+                    "call_id": "call_386313"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2733,11 +2621,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_386314"
-                },
-                "provider": {
-                  "call_id": "call_386314"
+                  "provider": {
+                    "call_id": "call_386314"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -2786,11 +2672,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_386313"
-                  },
-                  "provider": {
-                    "call_id": "call_386313"
+                    "provider": {
+                      "call_id": "call_386313"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2806,11 +2690,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_386314"
-                  },
-                  "provider": {
-                    "call_id": "call_386314"
+                    "provider": {
+                      "call_id": "call_386314"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -2898,11 +2780,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_386313"
-            },
-            "provider": {
-              "call_id": "call_386313"
+              "provider": {
+                "call_id": "call_386313"
+              }
             },
             "name": "task_operation"
           },
@@ -2934,11 +2814,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 1,
             "id": {
-              "origin": "explicit",
-              "id": "call_386314"
-            },
-            "provider": {
-              "call_id": "call_386314"
+              "provider": {
+                "call_id": "call_386314"
+              }
             },
             "name": "task_operation"
           },
@@ -2976,11 +2854,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_386313"
-              },
-              "provider": {
-                "call_id": "call_386313"
+                "provider": {
+                  "call_id": "call_386313"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3000,11 +2876,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_386314"
-              },
-              "provider": {
-                "call_id": "call_386314"
+                "provider": {
+                  "call_id": "call_386314"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3029,11 +2903,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_386313"
-              },
-              "provider": {
-                "call_id": "call_386313"
+                "provider": {
+                  "call_id": "call_386313"
+                }
               },
               "name": "task_operation"
             }
@@ -3054,11 +2926,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_386314"
-              },
-              "provider": {
-                "call_id": "call_386314"
+                "provider": {
+                  "call_id": "call_386314"
+                }
               },
               "name": "task_operation"
             }
@@ -3081,11 +2951,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_556749"
-                },
-                "provider": {
-                  "call_id": "call_556749"
+                  "provider": {
+                    "call_id": "call_556749"
+                  }
                 },
                 "function": {
                   "name": "task_operation",
@@ -3134,11 +3002,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_556749"
-                  },
-                  "provider": {
-                    "call_id": "call_556749"
+                    "provider": {
+                      "call_id": "call_556749"
+                    }
                   },
                   "function": {
                     "name": "task_operation",
@@ -3215,11 +3081,9 @@
           "rig_ecs::agent::ToolCallSlot": {
             "index": 0,
             "id": {
-              "origin": "explicit",
-              "id": "call_556749"
-            },
-            "provider": {
-              "call_id": "call_556749"
+              "provider": {
+                "call_id": "call_556749"
+              }
             },
             "name": "task_operation"
           },
@@ -3258,11 +3122,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_556749"
-              },
-              "provider": {
-                "call_id": "call_556749"
+                "provider": {
+                  "call_id": "call_556749"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3287,11 +3149,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_556749"
-              },
-              "provider": {
-                "call_id": "call_556749"
+                "provider": {
+                  "call_id": "call_556749"
+                }
               },
               "name": "task_operation"
             }
@@ -3472,11 +3332,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_619641"
-              },
-              "provider": {
-                "call_id": "call_619641"
+                "provider": {
+                  "call_id": "call_619641"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3501,11 +3359,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_619641"
-              },
-              "provider": {
-                "call_id": "call_619641"
+                "provider": {
+                  "call_id": "call_619641"
+                }
               },
               "name": "task_operation"
             }
@@ -3538,11 +3394,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_754123"
-              },
-              "provider": {
-                "call_id": "call_754123"
+                "provider": {
+                  "call_id": "call_754123"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3567,11 +3421,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_754123"
-              },
-              "provider": {
-                "call_id": "call_754123"
+                "provider": {
+                  "call_id": "call_754123"
+                }
               },
               "name": "task_operation"
             }
@@ -3600,11 +3452,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_537261"
-              },
-              "provider": {
-                "call_id": "call_537261"
+                "provider": {
+                  "call_id": "call_537261"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3629,11 +3479,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_537261"
-              },
-              "provider": {
-                "call_id": "call_537261"
+                "provider": {
+                  "call_id": "call_537261"
+                }
               },
               "name": "task_operation"
             }
@@ -3662,11 +3510,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_612583"
-              },
-              "provider": {
-                "call_id": "call_612583"
+                "provider": {
+                  "call_id": "call_612583"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3691,11 +3537,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_612583"
-              },
-              "provider": {
-                "call_id": "call_612583"
+                "provider": {
+                  "call_id": "call_612583"
+                }
               },
               "name": "task_operation"
             }
@@ -3724,11 +3568,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_469728"
-              },
-              "provider": {
-                "call_id": "call_469728"
+                "provider": {
+                  "call_id": "call_469728"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3753,11 +3595,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_469728"
-              },
-              "provider": {
-                "call_id": "call_469728"
+                "provider": {
+                  "call_id": "call_469728"
+                }
               },
               "name": "task_operation"
             }
@@ -3786,11 +3626,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_531596"
-              },
-              "provider": {
-                "call_id": "call_531596"
+                "provider": {
+                  "call_id": "call_531596"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3815,11 +3653,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_531596"
-              },
-              "provider": {
-                "call_id": "call_531596"
+                "provider": {
+                  "call_id": "call_531596"
+                }
               },
               "name": "task_operation"
             }
@@ -3848,11 +3684,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_451867"
-              },
-              "provider": {
-                "call_id": "call_451867"
+                "provider": {
+                  "call_id": "call_451867"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3877,11 +3711,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_451867"
-              },
-              "provider": {
-                "call_id": "call_451867"
+                "provider": {
+                  "call_id": "call_451867"
+                }
               },
               "name": "task_operation"
             }
@@ -3910,11 +3742,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_417435"
-              },
-              "provider": {
-                "call_id": "call_417435"
+                "provider": {
+                  "call_id": "call_417435"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3934,11 +3764,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_417436"
-              },
-              "provider": {
-                "call_id": "call_417436"
+                "provider": {
+                  "call_id": "call_417436"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -3963,11 +3791,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_417435"
-              },
-              "provider": {
-                "call_id": "call_417435"
+                "provider": {
+                  "call_id": "call_417435"
+                }
               },
               "name": "task_operation"
             }
@@ -3987,11 +3813,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_417436"
-              },
-              "provider": {
-                "call_id": "call_417436"
+                "provider": {
+                  "call_id": "call_417436"
+                }
               },
               "name": "task_operation"
             }
@@ -4017,11 +3841,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_464011"
-              },
-              "provider": {
-                "call_id": "call_464011"
+                "provider": {
+                  "call_id": "call_464011"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4041,11 +3863,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_464012"
-              },
-              "provider": {
-                "call_id": "call_464012"
+                "provider": {
+                  "call_id": "call_464012"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4070,11 +3890,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_464011"
-              },
-              "provider": {
-                "call_id": "call_464011"
+                "provider": {
+                  "call_id": "call_464011"
+                }
               },
               "name": "task_operation"
             }
@@ -4094,11 +3912,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_464012"
-              },
-              "provider": {
-                "call_id": "call_464012"
+                "provider": {
+                  "call_id": "call_464012"
+                }
               },
               "name": "task_operation"
             }
@@ -4124,11 +3940,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_386313"
-              },
-              "provider": {
-                "call_id": "call_386313"
+                "provider": {
+                  "call_id": "call_386313"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4148,11 +3962,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_386314"
-              },
-              "provider": {
-                "call_id": "call_386314"
+                "provider": {
+                  "call_id": "call_386314"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4177,11 +3989,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_386313"
-              },
-              "provider": {
-                "call_id": "call_386313"
+                "provider": {
+                  "call_id": "call_386313"
+                }
               },
               "name": "task_operation"
             }
@@ -4201,11 +4011,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_386314"
-              },
-              "provider": {
-                "call_id": "call_386314"
+                "provider": {
+                  "call_id": "call_386314"
+                }
               },
               "name": "task_operation"
             }
@@ -4231,11 +4039,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolCall": {
               "id": {
-                "origin": "explicit",
-                "id": "call_556749"
-              },
-              "provider": {
-                "call_id": "call_556749"
+                "provider": {
+                  "call_id": "call_556749"
+                }
               },
               "function": {
                 "name": "task_operation",
@@ -4260,11 +4066,9 @@
           "rig_ecs::agent::content::parts::ContentPart": {
             "ToolResult": {
               "call": {
-                "origin": "explicit",
-                "id": "call_556749"
-              },
-              "provider": {
-                "call_id": "call_556749"
+                "provider": {
+                  "call_id": "call_556749"
+                }
               },
               "name": "task_operation"
             }

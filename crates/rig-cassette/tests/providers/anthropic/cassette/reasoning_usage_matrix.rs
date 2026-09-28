@@ -104,7 +104,6 @@ use rig::completion::{CompletionRequest, ToolDefinition, Usage};
 use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Messages;
-use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_reasoning_usage_cassette};
@@ -341,13 +340,12 @@ async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> U
 /// Drain a provider-native stream and return its terminal record's usage.
 async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> Usage {
     let mut stream = model.stream(request).expect("stream should open");
-    let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item should not error") {
-            terminal = Some(record);
-        }
+        item.expect("stream item should not error");
     }
-    terminal
+    stream
+        .finish()
+        .await
         .expect("stream should yield a terminal record")
         .usage
 }
@@ -948,7 +946,7 @@ async fn normalized_stream_budget_thinking() {
                 .stream(request(THINKING_PROMPT, budget_thinking(1024), 2048))
                 .expect("stream should open");
             while stream.next().await.is_some() {}
-            slot.record(stream.folded().usage());
+            slot.record(stream.partial().usage);
         },
     )
     .await;

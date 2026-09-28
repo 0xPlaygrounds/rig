@@ -12,7 +12,8 @@ use futures::StreamExt;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::providers::anthropic;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_anthropic_cassette;
@@ -37,7 +38,7 @@ fn has_redacted_reasoning(content: &AssistantContent) -> bool {
         content,
         AssistantContent::Reasoning(reasoning)
             if reasoning
-                .content
+                .open(reasoning.issuer()).expect("sealed reasoning").content
                 .iter()
                 .any(|item| matches!(item, ReasoningContent::Redacted { .. }))
     )
@@ -73,7 +74,8 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                     .message(Message::user(redacted_thinking_prompt()))
                     .message(Message::Assistant {
                         id: first_response.message_id.clone(),
-                        content: first_response.choice.clone(),
+                        content: rig_core::NonEmpty::from_vec(first_response.choice.clone())
+                            .expect("non-empty"),
                     });
 
             let second_response = model
@@ -161,20 +163,19 @@ async fn redacted_thinking_streaming() {
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::Reasoning(reasoning)),
+                    Item::Event(StreamEvent::End {
+                        content: AssistantContent::Reasoning(reasoning),
                         ..
-                    } if reasoning
+                    }) if reasoning
+                        .open(reasoning.issuer())
+                        .expect("sealed reasoning")
                         .content
                         .iter()
                         .any(|item| matches!(item, ReasoningContent::Redacted { .. })) =>
                     {
                         saw_redacted_reasoning = true;
                     }
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => streamed_text.push_str(&text),
+                    Item::Event(StreamEvent::Text { text, .. }) => streamed_text.push_str(&text),
                     _ => {}
                 }
             }

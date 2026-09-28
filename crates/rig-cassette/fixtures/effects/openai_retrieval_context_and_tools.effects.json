@@ -232,12 +232,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw"
-              },
-              "provider": {
-                "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
-                "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
+                "provider": {
+                  "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
+                  "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
+                }
               },
               "function": {
                 "name": "subtract",
@@ -490,12 +488,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw"
-                  },
-                  "provider": {
-                    "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
-                    "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
+                    "provider": {
+                      "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
+                      "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
+                    }
                   },
                   "function": {
                     "name": "subtract",
@@ -515,12 +511,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw"
-                  },
-                  "provider": {
-                    "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
-                    "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
+                    "provider": {
+                      "call_id": "call_OvkQ4w4wlz6iO3CPXqBHCUdw",
+                      "item_id": "fc_056d9046a86e73f7006ab39690494487d0a5395614e51c015c"
+                    }
                   },
                   "name": "subtract",
                   "content": [

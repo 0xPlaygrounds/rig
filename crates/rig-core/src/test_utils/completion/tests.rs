@@ -2,14 +2,15 @@ use super::*;
 use crate::{
     error::ErrorKind,
     message::Message,
-    streaming::{Delta, StreamEvent, StreamFinal},
+    operation::Finish,
+    streaming::{Item, StreamEvent},
 };
 use futures::StreamExt;
 
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user(prompt)],
+        chat_history: crate::NonEmpty::new(Message::user(prompt)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -46,11 +47,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     assert!(matches!(
         second.choice.first(),
         Some(AssistantContent::ToolCall(tool_call))
-            if tool_call.id.explicit() == Some("tool_1")
-                && tool_call
-                    .provider
-                    .as_ref()
-                    .is_some_and(|provider| provider.call_id == "call_1")
+            if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
     ));
 
     assert_eq!(model.request_count(), 2);
@@ -93,10 +90,8 @@ async fn completion_attaches_scripted_raw_and_its_own_turn_when_unscripted() {
     assert_eq!(model.requests().len(), 2);
 }
 
-/// The streaming half of the same contract: the mock's adapter maps the
-/// scripted terminal onto the `Final` record, so the terminal's `raw` is
-/// the scripted terminal record serialized (the mock's own terminal type is
-/// `StreamFinal`).
+/// The streaming half of the same contract: the mock's document is its
+/// scripted end, so the response's `raw` is that end serialized.
 #[tokio::test]
 async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
     let model = MockCompletionModel::from_stream_turns([vec![
@@ -111,25 +106,14 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
 
     let mut stream = model.stream(request("hello")).expect("stream should open");
     while stream.next().await.is_some() {}
-    let terminal = stream
-        .folded()
-        .terminal()
-        .cloned()
-        .expect("terminal record");
-    let raw = &terminal.raw;
-    let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
-    assert_eq!(typed.usage.total_tokens, Some(3));
+    let response = stream.finish().await.expect("the reply ended");
+    let typed: Finish = serde_json::from_value(response.raw.clone()).expect("the end");
     assert_eq!(
         typed,
         super::super::streaming::mock_final(typed.usage),
-        "the capture is the scripted terminal, origin document included"
+        "the capture is the scripted end"
     );
-    assert_eq!(
-        serde_json::to_value(&typed).expect("re-serialize"),
-        *raw,
-        "the capture must be exactly what the scripted terminal serializes to"
-    );
-    assert_eq!(terminal.usage.total_tokens, Some(3));
+    assert_eq!(response.usage.total_tokens, Some(3));
 }
 
 #[tokio::test]
@@ -154,10 +138,9 @@ async fn stream_yields_scripted_events_and_records_requests() {
         MockStreamEvent::message_id("msg_stream"),
         MockStreamEvent::text("hel"),
         MockStreamEvent::text("lo"),
-        MockStreamEvent::tool_call_name_delta("tool_1", "calculator"),
-        MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
-        MockStreamEvent::tool_call("tool_1", "calculator", serde_json::json!({"x": 1}))
-            .with_call_id("call_1"),
+        MockStreamEvent::tool_call_name_delta("call_1", "calculator"),
+        MockStreamEvent::tool_call_arguments_delta("call_1", "{\"x\":1}"),
+        MockStreamEvent::tool_call_end("call_1"),
         MockStreamEvent::final_response_with_total_tokens(7),
     ]]);
 
@@ -166,60 +149,29 @@ async fn stream_yields_scripted_events_and_records_requests() {
         .expect("stream should be created");
 
     let mut text = String::new();
-    let mut saw_name_delta = false;
-    let mut saw_arguments_delta = false;
-    let mut saw_tool_call = false;
-    let mut saw_final = false;
-
+    let mut arguments = None;
+    let mut call = None;
     while let Some(item) = stream.next().await {
         match item.expect("stream event should succeed") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: chunk },
+            Item::Event(StreamEvent::Text { text: chunk, .. }) => text.push_str(&chunk),
+            Item::Event(StreamEvent::Arguments { json, .. }) => arguments = Some(json),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
                 ..
-            } => text.push_str(&chunk),
-            StreamEvent::BlockDelta {
-                delta: Delta::ToolName { name },
-                ..
-            } => {
-                saw_name_delta = name == "calculator";
-            }
-            StreamEvent::BlockDelta {
-                delta: Delta::ToolArguments { arguments },
-                ..
-            } => {
-                saw_arguments_delta = arguments == "{\"x\":1}";
-            }
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
-                ..
-            } => {
-                saw_tool_call = tool_call
-                    .provider
-                    .as_ref()
-                    .is_some_and(|provider| provider.call_id == "call_1");
-            }
-            StreamEvent::Final(response) => {
-                saw_final = matches!(
-                    response.usage,
-                    Usage {
-                        total_tokens: Some(7),
-                        ..
-                    }
-                );
-            }
+            }) => call = Some(tool_call),
             _ => {}
         }
     }
 
     assert_eq!(text, "hello");
-    assert!(saw_name_delta);
-    assert!(saw_arguments_delta);
-    assert!(saw_tool_call);
-    assert!(saw_final);
-    assert_eq!(
-        stream.folded().message_id().map(str::to_owned).as_deref(),
-        Some("msg_stream")
-    );
+    assert_eq!(arguments.as_deref(), Some("{\"x\":1}"));
+    let call = call.expect("the call ended");
+    assert_eq!(call.id.to_string(), "call_1");
+    assert_eq!(call.function.name, "calculator");
+    assert_eq!(call.function.arguments, serde_json::json!({"x": 1}));
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.usage.total_tokens, Some(7));
+    assert_eq!(response.message_id.as_deref(), Some("msg_stream"));
     assert_eq!(model.request_count(), 1);
 }
 
@@ -236,8 +188,8 @@ async fn stream_error_event_is_returned() {
         .expect("stream should yield one event")
         .expect_err("scripted event should error");
 
-    assert_eq!(err.kind, ErrorKind::Provider);
-    assert_eq!(err.message, "ProviderError: boom");
+    assert_eq!(err.kind(), ErrorKind::Provider);
+    assert_eq!(err.to_string(), "ProviderError: boom");
 }
 
 #[test]

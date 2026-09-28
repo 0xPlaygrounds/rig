@@ -213,12 +213,9 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
     let mut texts = String::new();
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                rig::streaming::StreamEvent::BlockDelta {
-                    delta: rig::streaming::Delta::Text { text },
-                    ..
-                },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(rig::streaming::Item::Event(
+                rig::streaming::StreamEvent::Text { text, .. },
+            ))) => {
                 texts.push_str(&text);
             }
             Ok(_) => {}

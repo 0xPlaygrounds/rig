@@ -12,7 +12,7 @@ use rig::Model;
 use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
 use rig::providers::openai::{self, GPT_4O};
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use rig_cassette::effect_log::EffectLog;
 use rig_ecs::{
     agent::{Failure, MaxTokens, Preamble, Role},
@@ -254,8 +254,8 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
             assert!(
                 run.stream()
                     .events
-                    .iter()
-                    .any(|event| matches!(event, StreamEvent::BlockEnd { .. })),
+                    .events()
+                    .any(|event| matches!(event, StreamEvent::End { .. })),
                 "the call streamed to its end before the cut: {:?}",
                 run.stream().events
             );
@@ -445,17 +445,11 @@ fn log_json_through_the_first_text_delta(log: &EffectLog) -> String {
     };
     let events = record.events.as_mut().expect("the recorder keeps events");
     let first_text = events
+        .items()
         .iter()
-        .position(|event| {
-            matches!(
-                event,
-                StreamEvent::BlockDelta {
-                    delta: Delta::Text { .. },
-                    ..
-                }
-            )
-        })
+        .position(|item| matches!(item, rig::streaming::Item::Event(StreamEvent::Text { .. })))
         .expect("the despawn waited for a text delta");
-    events.truncate(first_text + 1);
+    *events = rig::streaming::Transcript::from_items(events.items()[..=first_text].to_vec())
+        .expect("a prefix of a transcript");
     log_json_without_deliveries(&log)
 }

@@ -1,6 +1,7 @@
 use anyhow::Context;
 use futures::StreamExt;
 use rig::candle::pose::{BodyPart, CandlePoseModel, ImageFrame, PoseRequest};
+use rig::streaming::Item;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -32,8 +33,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Each frame's poses arrive as soon as that frame is estimated.
     let mut stream = model.stream(frames)?;
-    while let Some(frame) = stream.next().await {
-        let frame = frame?;
+    while let Some(item) = stream.next().await {
+        let Item::Event(frame) = item? else {
+            continue;
+        };
         println!(
             "frame {} of {}: {} people in {} ms",
             frame.frame + 1,

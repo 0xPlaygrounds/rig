@@ -111,11 +111,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_SSWJVJ2NLnSCyNhOnxA8di4J"
-              },
-              "provider": {
-                "call_id": "call_SSWJVJ2NLnSCyNhOnxA8di4J"
+                "provider": {
+                  "call_id": "call_SSWJVJ2NLnSCyNhOnxA8di4J"
+                }
               },
               "function": {
                 "name": "ping",

@@ -13,12 +13,11 @@ use crate::types::assistant_content::PROVIDER_NAME;
 use crate::types::errors::AwsSdkInvokeModelError;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
-use rig_core::driver::{Exchange, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
 use rig_core::operation::ImageGeneration;
-use rig_core::providers::internal::wire;
-use rig_core::wire::{Decoder, Descriptor, Mode, Out, TypedEvent, Wire, WireEvent};
+use rig_core::wire::{Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
 
 pub use crate::completion::{
     AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,
@@ -49,7 +48,7 @@ impl Wire for Images {
     type Op = ImageGeneration;
     type Payload = InvokeModel;
     type Frame = Vec<u8>;
-    type Decoder = ImagesDecoder;
+    type Decoder<'id> = ImagesDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
@@ -69,19 +68,15 @@ impl Wire for Images {
         })
     }
 
-    fn decoder(&self, _mode: Mode) -> ImagesDecoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ImagesDecoder
     }
 }
 
 impl Transport<Images> for BedrockRuntime {
-    fn send(
-        &self,
-        payload: InvokeModel,
-        _exchange: Exchange,
-    ) -> Result<Sending<Vec<u8>>, ProviderError> {
+    fn send(&self, payload: InvokeModel, _exchange: Exchange) -> Opening<Vec<u8>> {
         let runtime = self.clone();
-        Ok(Sending::later(async move {
+        Opening::new(async move {
             let sent = runtime
                 .inner()
                 .await
@@ -92,7 +87,7 @@ impl Transport<Images> for BedrockRuntime {
                 .body(Blob::new(payload.body))
                 .send()
                 .await;
-            match sent {
+            Ok(match sent {
                 Ok(response) => {
                     let request_id =
                         aws_sdk_bedrockruntime::operation::RequestId::request_id(&response)
@@ -101,32 +96,31 @@ impl Transport<Images> for BedrockRuntime {
                         .with_request_id(request_id)
                 }
                 Err(sdk_error) => Opened::failed(AwsSdkInvokeModelError(sdk_error).into()),
-            }
-        }))
+            })
+        })
     }
 }
 
 /// Decodes the one `TextToImageResponse` an image request returns.
 pub struct ImagesDecoder;
 
-impl Decoder<ImageGeneration, Vec<u8>> for ImagesDecoder {
+impl<'id> Decoder<'id, ImageGeneration, Vec<u8>> for ImagesDecoder {
     type Event = Vec<u8>;
 
     fn classify(&self, body: Vec<u8>) -> WireEvent<Vec<u8>> {
-        wire::classify_typed_event(TypedEvent::Modeled(body))
+        WireEvent::Known(body)
     }
 
-    fn interpret(&mut self, body: Vec<u8>, out: &mut Out<'_, ImageGeneration>) {
-        let decoded = String::from_utf8(body)
-            .map_err(|error| ProviderError::Response(error.to_string()))
-            .and_then(|body| {
-                serde_json::from_str::<TextToImageResponse>(&body)
-                    .map_err(|error| ProviderError::Response(error.to_string()))
-            })
-            .and_then(|response| {
-                out.document(serde_json::to_value(&response)?);
-                response.normalize(PROVIDER_NAME)
-            });
-        out.push(decoded);
+    fn decode(
+        &mut self,
+        body: Vec<u8>,
+        mut out: Out<'id, ImageGeneration>,
+    ) -> Result<Flow, ProviderError> {
+        let body =
+            String::from_utf8(body).map_err(|error| ProviderError::Response(error.to_string()))?;
+        let response = serde_json::from_str::<TextToImageResponse>(&body)
+            .map_err(|error| ProviderError::Response(error.to_string()))?;
+        out.raw(serde_json::to_value(&response)?);
+        Ok(out.end(response.normalize(PROVIDER_NAME)?))
     }
 }

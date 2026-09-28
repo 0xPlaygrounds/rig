@@ -14,6 +14,55 @@ fn cohere_model<H: Clone>(
     )
 }
 
+/// What one streamed reply over `events` yielded, and what it finished
+/// with.
+struct Replied {
+    items: Vec<Result<crate::streaming::Item<crate::streaming::StreamEvent>, ProviderError>>,
+    outcome: Result<crate::completion::CompletionResponse, ProviderError>,
+}
+
+impl Replied {
+    fn texts(&self) -> Vec<&str> {
+        self.items
+            .iter()
+            .filter_map(|item| match item {
+                Ok(crate::streaming::Item::Event(crate::streaming::StreamEvent::Text {
+                    text,
+                    ..
+                })) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn error(&self) -> Option<&ProviderError> {
+        self.items.iter().find_map(|item| item.as_ref().err())
+    }
+}
+
+async fn replied(events: &[&str]) -> Replied {
+    use futures::StreamExt;
+
+    let sse_bytes = bytes::Bytes::from(
+        events
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+    );
+    let model = cohere_model(crate::test_utils::MockStreamingClient { sse_bytes });
+    let mut stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
+    let mut items = Vec::new();
+    while let Some(item) = stream.next().await {
+        items.push(item);
+    }
+    Replied {
+        items,
+        outcome: stream.finish().await,
+    }
+}
+
 fn classify(data: &str) -> crate::wire::WireEvent<StreamingEvent> {
     wire::classify_tagged_frame(data, "type", |event_type| {
         KNOWN_EVENT_TYPES.contains(&event_type)
@@ -61,325 +110,155 @@ fn classify_known_event_with_defective_payload_is_corrupt() {
 
 #[tokio::test]
 async fn stream_terminal_record_is_normalized() {
-    use crate::streaming::StreamEvent;
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
-
-    let sse_bytes = bytes::Bytes::from(
-        [
-            r#"{"type":"message-start","id":"msg_1"}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
-            r#"{"type":"message-end","delta":{"finish_reason":"MAX_TOKENS","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
-        ]
-        .iter()
-        .map(|event| format!("data: {event}\n\n"))
-        .collect::<String>(),
-    );
-
-    let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(final_response) = item.expect("stream item should be Ok") {
-            terminal = Some(final_response);
-        }
-    }
-
-    let terminal = terminal.expect("stream should yield a terminal record");
-    assert_eq!(terminal.provider, PROVIDER_NAME);
-    assert_eq!(terminal.response_id.as_deref(), Some("msg_1"));
-    assert_eq!(terminal.message_id, None);
+    let replied = replied(&[
+        r#"{"type":"message-start","id":"msg_1"}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+        r#"{"type":"message-end","delta":{"finish_reason":"MAX_TOKENS","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+    ])
+    .await;
+    let response = replied.outcome.expect("the reply ended");
     assert_eq!(
-        terminal.finish_reason,
+        response.provider,
+        crate::providers::cohere::completion::PROVIDER_NAME
+    );
+    assert_eq!(response.response_id.as_deref(), Some("msg_1"));
+    assert_eq!(response.message_id, None);
+    assert_eq!(
+        response.finish_reason(),
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
-    assert_eq!(terminal.usage.total_tokens, Some(14));
+    assert_eq!(response.usage.input_tokens, Some(10));
+    assert_eq!(response.usage.output_tokens, Some(4));
+    assert_eq!(response.usage.total_tokens, Some(14));
     // Cohere's stream never names the model.
-    assert_eq!(terminal.model, None);
+    assert_eq!(response.model, None);
 }
 
 #[tokio::test]
-async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::streaming::{Delta, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
-
+async fn truncated_stream_does_not_synthesize_an_end() {
     // No `message-end`: the stream was cut off mid-response.
-    let sse_bytes = bytes::Bytes::from(
-        [
-            r#"{"type":"message-start","id":"msg_1"}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
-        ]
-        .iter()
-        .map(|event| format!("data: {event}\n\n"))
-        .collect::<String>(),
-    );
-
-    let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut saw_terminal = false;
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => texts.push(text),
-            StreamEvent::Final(_) => saw_terminal = true,
-            _ => {}
-        }
-    }
-
-    assert_eq!(texts, ["hi"]);
+    let replied = replied(&[
+        r#"{"type":"message-start","id":"msg_1"}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+    ])
+    .await;
+    assert_eq!(replied.texts(), ["hi"]);
     assert!(
-        !saw_terminal,
-        "EOF without message-end must not synthesize a terminal record"
+        matches!(replied.outcome, Err(ProviderError::Truncated)),
+        "EOF without message-end is truncation: {:?}",
+        replied.outcome
     );
-    assert!(stream.folded().terminal().is_none());
 }
 
 #[tokio::test]
-async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
-    use crate::streaming::{Delta, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
-
-    // A malformed frame between valid content and the genuine terminal
-    // must surface as an `Err` item without derailing the rest of the
-    // stream.
-    let sse_bytes = bytes::Bytes::from(
-        [
-            r#"{"type":"message-start","id":"msg_1"}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
-            "{not json",
-            r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
-        ]
-        .iter()
-        .map(|event| format!("data: {event}\n\n"))
-        .collect::<String>(),
+async fn a_malformed_frame_ends_the_reply() {
+    // A malformed frame between valid content and the genuine end ends the
+    // reply with its error: the later end is never read.
+    let replied = replied(&[
+        r#"{"type":"message-start","id":"msg_1"}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+        "{not json",
+        r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+    ])
+    .await;
+    assert_eq!(replied.texts(), ["hi"]);
+    assert!(
+        replied.error().is_some(),
+        "the malformed frame reaches the consumer"
     );
-
-    let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut saw_error = false;
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => texts.push(text),
-            Ok(StreamEvent::Final(final_response)) => {
-                terminal = Some(final_response);
-            }
-            Ok(_) => {}
-            Err(_) => saw_error = true,
-        }
-    }
-
-    assert_eq!(texts, ["hi"]);
-    assert!(saw_error, "the malformed frame must reach the consumer");
-    let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    assert!(replied.outcome.is_err());
 }
 
 #[tokio::test]
 async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
-    use crate::streaming::StreamEvent;
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
-
     // A known `type` whose payload fails the full parse (text should be a
     // string) is a data-level defect, not a forward-compatibility event.
-    let sse_bytes = bytes::Bytes::from(
-        [
-            r#"{"type":"message-start","id":"msg_1"}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"text":42}}}}"#,
-            r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
-        ]
-        .iter()
-        .map(|event| format!("data: {event}\n\n"))
-        .collect::<String>(),
-    );
-
-    let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut saw_error = false;
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(StreamEvent::Final(final_response)) => {
-                terminal = Some(final_response);
-            }
-            Ok(_) => {}
-            Err(err) => {
-                assert!(
-                    err.kind == crate::error::ErrorKind::Json,
-                    "expected a JSON parse error item, got {err:?}"
-                );
-                saw_error = true;
-            }
-        }
-    }
-
-    assert!(
-        saw_error,
-        "a known event with a malformed field must surface an error item"
-    );
-    let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
+    let replied = replied(&[
+        r#"{"type":"message-start","id":"msg_1"}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"text":42}}}}"#,
+        r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+    ])
+    .await;
+    let error = replied.error().expect("the defect is an error item");
+    assert_eq!(error.kind(), crate::error::ErrorKind::Json, "{error:?}");
+    assert!(replied.outcome.is_err(), "the defect ended the reply");
 }
 
 #[tokio::test]
-async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
-    use crate::streaming::{Delta, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
-
+async fn unknown_event_type_is_skipped_and_the_end_still_arrives() {
     // An invented `type` is an event this client doesn't know yet: it is
-    // skipped for forward compatibility, not surfaced as an error.
-    let sse_bytes = bytes::Bytes::from(
-        [
-            r#"{"type":"message-start","id":"msg_1"}"#,
-            r#"{"type":"citation-start","delta":{"whatever":true}}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
-            r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
-        ]
-        .iter()
-        .map(|event| format!("data: {event}\n\n"))
-        .collect::<String>(),
+    // passed through for forward compatibility, not surfaced as an error.
+    let replied = replied(&[
+        r#"{"type":"message-start","id":"msg_1"}"#,
+        r#"{"type":"citation-start","delta":{"whatever":true}}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+        r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+    ])
+    .await;
+    assert!(replied.error().is_none(), "{:?}", replied.items);
+    assert_eq!(replied.texts(), ["hi"]);
+    assert_eq!(
+        replied
+            .outcome
+            .expect("the reply ended")
+            .usage
+            .output_tokens,
+        Some(4)
     );
-
-    let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        match item.expect("unknown event types must not surface errors") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => texts.push(text),
-            StreamEvent::Final(final_response) => terminal = Some(final_response),
-            _ => {}
-        }
-    }
-
-    assert_eq!(texts, ["hi"]);
-    let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.output_tokens, Some(4));
 }
 
 #[tokio::test]
-async fn message_end_without_delta_still_emits_the_terminal_record() {
-    use crate::streaming::{Delta, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
-
+async fn message_end_without_delta_still_ends_the_reply() {
     // `message-end` with no payload is still the provider completing the
-    // turn; the terminal record arrives with default usage.
-    let sse_bytes = bytes::Bytes::from(
-        [
-            r#"{"type":"message-start","id":"msg_1"}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
-            r#"{"type":"message-end"}"#,
-        ]
-        .iter()
-        .map(|event| format!("data: {event}\n\n"))
-        .collect::<String>(),
-    );
-
-    let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => texts.push(text),
-            StreamEvent::Final(final_response) => terminal = Some(final_response),
-            _ => {}
-        }
-    }
-
-    assert_eq!(texts, ["hi"]);
-    let terminal = terminal.expect("message-end without a delta is still the terminal");
-    assert_eq!(terminal.usage, crate::completion::Usage::default());
-    assert_eq!(terminal.finish_reason, None);
-    assert_eq!(terminal.response_id.as_deref(), Some("msg_1"));
+    // turn; the reply ends with unreported usage.
+    let replied = replied(&[
+        r#"{"type":"message-start","id":"msg_1"}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+        r#"{"type":"message-end"}"#,
+    ])
+    .await;
+    assert_eq!(replied.texts(), ["hi"]);
+    let response = replied
+        .outcome
+        .expect("message-end without a delta is still the end");
+    assert_eq!(response.usage, crate::completion::Usage::default());
+    assert_eq!(response.finish_reason(), None);
+    assert_eq!(response.response_id.as_deref(), Some("msg_1"));
 }
 
 #[tokio::test]
 async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
     use crate::message::AssistantContent;
-    use crate::streaming::{Delta, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
+    use crate::streaming::{Item, StreamEvent};
 
     // Cohere v2 reasoning models stream `content-delta` frames carrying
     // `thinking` before the answer's `text` frames (documented `thinking`
     // deltas; #2258 F8 — previously these fell through the `text` guard
     // and the thought text was lost).
-    let sse_bytes = bytes::Bytes::from(
-        [
-            r#"{"type":"message-start","id":"msg_1"}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"thinking":"step one, "}}}}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"thinking":"step two"}}}}"#,
-            r#"{"type":"content-delta","delta":{"message":{"content":{"text":"answer"}}}}"#,
-            r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
-        ]
+    let replied = replied(&[
+        r#"{"type":"message-start","id":"msg_1"}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"thinking":"step one, "}}}}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"thinking":"step two"}}}}"#,
+        r#"{"type":"content-delta","delta":{"message":{"content":{"text":"answer"}}}}"#,
+        r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+    ])
+    .await;
+    let reasoning_deltas: Vec<&str> = replied
+        .items
         .iter()
-        .map(|event| format!("data: {event}\n\n"))
-        .collect::<String>(),
-    );
-
-    let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut reasoning_deltas = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::BlockDelta {
-            delta: Delta::Reasoning { text },
-            ..
-        } = item.expect("stream item should be Ok")
-        {
-            reasoning_deltas.push(text);
-        }
-    }
+        .filter_map(|item| match item {
+            Ok(Item::Event(StreamEvent::Reasoning { text, .. })) => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
     assert_eq!(reasoning_deltas, ["step one, ", "step two"]);
 
-    let parts = stream.folded().snapshot();
+    let parts = replied.outcome.expect("the reply ended").choice;
     assert_eq!(parts.len(), 2, "one reasoning part, one text part");
     assert!(matches!(
         parts.first(),
         Some(AssistantContent::Reasoning(reasoning))
-            if reasoning.content.iter().any(|content| matches!(
+            if reasoning.value().content.iter().any(|content| matches!(
                 content,
                 crate::message::ReasoningContent::Text { text, .. }
                     if text == "step one, step two"
@@ -392,8 +271,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
 }
 
 #[tokio::test]
-async fn errored_stream_does_not_synthesize_a_terminal_record() {
-    use crate::streaming::StreamEvent;
+async fn errored_stream_does_not_synthesize_an_end() {
     use crate::test_utils::HttpErrorStreamingClient;
     use futures::StreamExt;
 
@@ -401,26 +279,18 @@ async fn errored_stream_does_not_synthesize_a_terminal_record() {
         http::StatusCode::TOO_MANY_REQUESTS,
         r#"{"message":"slow down"}"#,
     ));
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
+    let mut stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
     let mut saw_error = false;
-    let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
-        match item {
-            Ok(StreamEvent::Final(_)) => saw_terminal = true,
-            Ok(_) => {}
-            Err(_) => saw_error = true,
-        }
+        saw_error |= item.is_err();
     }
-
     assert!(saw_error, "the transport failure must reach the consumer");
     assert!(
-        !saw_terminal,
+        stream.finish().await.is_err(),
         "a failed stream must not be reported as a successful, zero-usage completion"
     );
-    assert!(stream.folded().terminal().is_none());
 }
 
 #[test]
@@ -640,16 +510,10 @@ fn test_streaming_event_order() {
     }
 }
 
-/// A `tool-call-start` whose id is empty is keyed by a minted key, not the
-/// empty string: two such calls in one stream stay distinct, their deltas
-/// and ends follow the same key, and nothing panics on the empty-id
-/// assertion.
+/// A `tool-call-start` whose id is empty gets an id rig issues: two such
+/// calls in one stream stay distinct calls, each with its own arguments.
 #[tokio::test]
 async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
-    use crate::streaming::{BlockId, BlockKind, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
-
     let call = |n: u32| {
         [
             r#"{"type":"tool-call-start","delta":{"message":{"tool_calls":{"id":"","function":{"name":"add","arguments":""}}}}}"#.to_owned(),
@@ -659,39 +523,25 @@ async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
             r#"{"type":"tool-call-end"}"#.to_owned(),
         ]
     };
-    let sse_bytes = bytes::Bytes::from(
-        std::iter::once(r#"{"type":"message-start","id":"msg_1"}"#.to_owned())
-            .chain(call(1))
-            .chain(call(2))
-            .chain(std::iter::once(
-                r#"{"type":"message-end","delta":{"finish_reason":"TOOL_CALL","usage":{"tokens":{"input_tokens":1,"output_tokens":1}}}}"#.to_owned(),
-            ))
-            .map(|event| format!("data: {event}\n\n"))
-            .collect::<String>(),
+    let events: Vec<String> = std::iter::once(r#"{"type":"message-start","id":"msg_1"}"#.to_owned())
+        .chain(call(1))
+        .chain(call(2))
+        .chain(std::iter::once(
+            r#"{"type":"message-end","delta":{"finish_reason":"TOOL_CALL","usage":{"tokens":{"input_tokens":1,"output_tokens":1}}}}"#.to_owned(),
+        ))
+        .collect();
+    let events: Vec<&str> = events.iter().map(String::as_str).collect();
+    let response = replied(&events).await.outcome.expect("the reply ended");
+    let calls: Vec<_> = response.tool_calls().collect();
+    assert_eq!(calls.len(), 2, "two calls: {calls:?}");
+    assert_ne!(
+        calls[0].id, calls[1].id,
+        "each id-less call is its own call"
     );
-    let model = cohere_model(MockStreamingClient { sse_bytes });
-    let request = CompletionRequest::new("add twice");
-    let mut stream = model.stream(request).expect("stream should open");
-    let mut starts = Vec::new();
-    let mut ends = Vec::new();
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::BlockStart {
-                id,
-                kind: BlockKind::ToolCall,
-                ..
-            } => starts.push(id),
-            StreamEvent::BlockEnd { id, .. } => ends.push(id),
-            _ => {}
-        }
-    }
-    assert_eq!(starts.len(), 2, "two calls: {starts:?}");
-    assert_ne!(starts[0], starts[1], "each id-less call is its own block");
-    assert!(starts.iter().all(BlockId::is_minted), "{starts:?}");
-    for start in &starts {
-        assert!(
-            ends.contains(start),
-            "each call ends under its key: {ends:?}"
-        );
-    }
+    assert!(
+        calls.iter().all(|call| call.id.provider().is_none()),
+        "{calls:?}"
+    );
+    assert_eq!(calls[0].function.arguments, json!({"n": 1}));
+    assert_eq!(calls[1].function.arguments, json!({"n": 2}));
 }

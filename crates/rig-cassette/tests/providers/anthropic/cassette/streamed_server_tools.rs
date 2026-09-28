@@ -19,7 +19,8 @@ use futures::StreamExt;
 use rig::completion::ProviderToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
-use rig::streaming::{BlockKind, StreamEvent};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -78,24 +79,25 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
                 .expect("streaming web-search request should open");
 
             let mut raw_types = Vec::new();
-            let mut terminal_seen = false;
             while let Some(item) = stream.next().await {
-                match item.expect("stream item should not error") {
-                    StreamEvent::BlockStart { kind: BlockKind::Text { additional_params: Some(params) }, .. } => {
-                        if let Some(raw) = params
-                            .get("anthropic_content")
-                            .and_then(|raw| raw.get("type"))
-                            .and_then(|value| value.as_str())
-                        {
-                            raw_types.push(raw.to_string());
-                        }
-                    }
-                    StreamEvent::Final(_) => terminal_seen = true,
-                    _ => {}
+                if let Item::Event(StreamEvent::End {
+                    content: rig::message::AssistantContent::Text(text),
+                    ..
+                }) = item.expect("stream item should not error")
+                    && let Some(raw) = text
+                        .additional_params
+                        .as_ref()
+                        .and_then(|params| params.get("anthropic_content"))
+                        .and_then(|raw| raw.get("type"))
+                        .and_then(|value| value.as_str())
+                {
+                    raw_types.push(raw.to_string());
                 }
             }
-
-            assert!(terminal_seen, "the stream must produce a terminal record");
+            stream
+                .finish()
+                .await
+                .expect("the stream must produce a terminal record");
             assert!(
                 raw_types.iter().any(|kind| kind == "server_tool_use"),
                 "the streamed turn must surface its server_tool_use block, got {raw_types:?}",

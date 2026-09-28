@@ -13,14 +13,13 @@
 use rig_core::completion::{CompletionResponse, FinishReason};
 use rig_core::providers::openai;
 use rig_core::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-use rig_core::streaming::StreamFinal;
 use serde::Deserialize as _;
 use serde_json::Value;
 
 use crate::support::{assert_matches_recorded_token, assistant_text};
 
 /// The provider-native terminal record a chat-completions stream's
-/// [`StreamFinal::raw`] holds, over the dialect-tolerant accounting.
+/// `raw` holds, over the dialect-tolerant accounting.
 pub type Terminal = StreamingCompletionResponse<ChatUsage>;
 
 /// The finish reason a recorded chat-completions body reports.
@@ -154,7 +153,7 @@ pub fn assert_native_matches_normalized(
 /// As with [`assert_reproduces_body`], the transport id contract is the
 /// cell's to state.
 pub fn assert_terminal_reproduces_frame(
-    terminal: &StreamFinal,
+    terminal: &CompletionResponse,
     provider: &str,
     frame: &Value,
     context: &str,
@@ -193,7 +192,7 @@ pub fn assert_terminal_reproduces_frame(
 /// exact typed round trip the right claim here, unlike the blocking path
 /// where `raw` is the reply *document*. The returned typed record is the
 /// cell's handle on whatever its dialect keeps beside the shared fields.
-pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
+pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
     let raw = &terminal.raw;
     let typed = Terminal::deserialize(raw)
         .expect("raw is the chat-completions terminal record, serialized");
@@ -204,7 +203,11 @@ pub fn assert_terminal_round_trips(terminal: &StreamFinal) -> Terminal {
     );
     assert_eq!(typed.response_id, terminal.response_id, "response id");
     assert_eq!(typed.model, terminal.model, "model");
-    assert_eq!(typed.finish_reason, terminal.finish_reason, "finish reason");
+    assert_eq!(
+        typed.finish_reason,
+        terminal.finish_reason(),
+        "finish reason"
+    );
     let usage = typed
         .usage
         .as_ref()

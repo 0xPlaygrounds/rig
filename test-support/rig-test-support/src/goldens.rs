@@ -77,7 +77,10 @@ pub fn golden_effects(name: &str, log: &EffectLog) {
         );
         return;
     }
-    let rendered = serde_json::to_string_pretty(log).expect("the log serializes");
+    let rendered = serde_json::to_string_pretty(&rig_cassette::effect_log::canonical_local_ids(
+        serde_json::to_value(log).expect("the log serializes"),
+    ))
+    .expect("the log serializes");
     let path = golden_path(name);
     if std::env::var_os("RIG_REGENERATE_GOLDEN").is_some() {
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("fixtures dir");
@@ -122,10 +125,13 @@ pub fn world_golden_effects(name: &str, log: &EffectLog) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/rig-cassette/fixtures/effects/world")
         .join(format!("{name}.effects.json"));
+    let value = rig_cassette::effect_log::canonical_local_ids(
+        serde_json::to_value(log).expect("the world log serializes"),
+    );
     if std::env::var_os("RIG_REGENERATE_GOLDEN").is_some() {
         std::fs::create_dir_all(path.parent().expect("world corpus directory"))
             .expect("create world corpus directory");
-        let rendered = serde_json::to_string_pretty(log).expect("the world log serializes");
+        let rendered = serde_json::to_string_pretty(&value).expect("the world log serializes");
         std::fs::write(&path, format!("{rendered}\n")).expect("write world golden");
         world::programs(
             &path.with_file_name(format!("{name}.programs.json")),
@@ -147,10 +153,8 @@ pub fn world_golden_effects(name: &str, log: &EffectLog) {
     );
     let expected: serde_json::Value = serde_json::from_str(&committed).expect("world golden JSON");
     assert_eq!(
-        world::without_delivery_boundaries(expected),
-        world::without_delivery_boundaries(
-            serde_json::to_value(log).expect("the world log serializes")
-        ),
+        world::without_delivery_boundaries(rig_cassette::effect_log::canonical_local_ids(expected)),
+        world::without_delivery_boundaries(value),
         "the world's effects diverged from world golden `{name}`"
     );
 }
@@ -1271,28 +1275,8 @@ impl rig_core::memory::ConversationMemory for FailingMemory {
 // Matrix K: the delta wire.
 
 #[allow(dead_code)]
-/// Expected stop reason for a tool-name delta.
-pub const STOP_ON_TOOL_NAME_DELTA: &str = "stop on the tool's name delta";
-#[allow(dead_code)]
 /// Expected stop reason for a tool-arguments delta.
 pub const STOP_ON_TOOL_ARGUMENTS_DELTA: &str = "stop on the tool's arguments delta";
-
-/// `on_tool_call_delta` → `Stop` on the delta that names the tool.
-#[allow(dead_code)]
-pub struct StopOnToolNameDelta;
-impl rig_agent::agent::AgentHook for StopOnToolNameDelta {
-    async fn on_tool_call_delta(
-        &self,
-        _ctx: &rig_agent::agent::HookContext,
-        event: rig_agent::agent::ToolCallDelta<'_>,
-    ) -> rig_agent::agent::ObservationAction {
-        if event.tool_name.is_some() {
-            rig_agent::agent::ObservationAction::stop(STOP_ON_TOOL_NAME_DELTA)
-        } else {
-            rig_agent::agent::ObservationAction::continue_run()
-        }
-    }
-}
 
 /// `on_tool_call_delta` → `Stop` on the first arguments delta.
 #[allow(dead_code)]
@@ -1303,7 +1287,7 @@ impl rig_agent::agent::AgentHook for StopOnToolArgumentsDelta {
         _ctx: &rig_agent::agent::HookContext,
         event: rig_agent::agent::ToolCallDelta<'_>,
     ) -> rig_agent::agent::ObservationAction {
-        if event.tool_name.is_none() && !event.delta.is_empty() {
+        if !event.delta.is_empty() {
             rig_agent::agent::ObservationAction::stop(STOP_ON_TOOL_ARGUMENTS_DELTA)
         } else {
             rig_agent::agent::ObservationAction::continue_run()
@@ -1507,12 +1491,7 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
         &self,
         request: rig_core::operation::RerankRequest,
         _exchange: rig_core::driver::Exchange,
-    ) -> Result<
-        rig_core::driver::Sending<
-            Result<rig_core::rerank::RerankResponse, rig_core::error::ProviderError>,
-        >,
-        rig_core::error::ProviderError,
-    > {
+    ) -> rig_core::driver::Opening<rig_core::driver::Step<rig_core::operation::Rerank>> {
         let mut results: Vec<rig_core::rerank::RerankResult> = request
             .documents
             .iter()
@@ -1526,9 +1505,9 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Re
         results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
         let mut response = rig_core::rerank::RerankResponse::new(results, "mock");
         response.model = Some("mock-rerank".to_owned());
-        Ok(rig_core::driver::Sending::later(async move {
-            rig_core::driver::Opened::new(futures::stream::iter([Ok(Ok(response))]))
-        }))
+        rig_core::driver::Opening::ready(rig_core::driver::Opened::new(futures::stream::iter([
+            Ok(rig_core::driver::Step::End(response)),
+        ])))
     }
 }
 

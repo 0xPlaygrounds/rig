@@ -235,11 +235,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call_REDACTED_1"
-                },
-                "provider": {
-                  "call_id": "call_REDACTED_1"
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  }
                 },
                 "function": {
                   "name": "submit",
@@ -275,11 +273,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_REDACTED_1"
-                  },
-                  "provider": {
-                    "call_id": "call_REDACTED_1"
+                    "provider": {
+                      "call_id": "call_REDACTED_1"
+                    }
                   },
                   "function": {
                     "name": "submit",

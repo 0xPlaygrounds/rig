@@ -174,7 +174,7 @@ impl AgentHook for ForceSystemProbeOnFirstTurn {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct FailureRecord {
-    block_id: rig::streaming::BlockId,
+    call_id: rig::message::CallId,
     tool_name: String,
     kind: ToolErrorKind,
     code: Option<String>,
@@ -188,7 +188,7 @@ struct FailureLedger(Vec<FailureRecord>);
 struct FailureRecorder;
 
 fn failure_record(
-    block_id: &rig::streaming::BlockId,
+    call_id: &rig::message::CallId,
     tool_name: &str,
     result: &ToolResult,
     tool_context: &ToolContext,
@@ -199,7 +199,7 @@ fn failure_record(
     };
 
     Some(FailureRecord {
-        block_id: block_id.clone(),
+        call_id: call_id.clone(),
         tool_name: tool_name.to_string(),
         kind: error.kind(),
         code: error.code().map(str::to_string),
@@ -211,15 +211,15 @@ fn failure_record(
 impl AgentHook for FailureRecorder {
     async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         // `on_outcome` fires for every effect family; only tool results matter here.
-        let (Some(block_id), Some(tool_name), Some(result), Some(tool_context)) = (
-            event.block_id,
+        let (Some(call_id), Some(tool_name), Some(result), Some(tool_context)) = (
+            event.call_id,
             event.tool_name(),
             event.tool_result(),
             event.tool_context(),
         ) else {
             return OutcomeAction::proceed();
         };
-        let Some(record) = failure_record(block_id, tool_name, result, tool_context) else {
+        let Some(record) = failure_record(call_id, tool_name, result, tool_context) else {
             return OutcomeAction::proceed();
         };
         println!(
@@ -253,17 +253,14 @@ fn decide(record: &FailureRecord) -> PolicyDecision {
     }
 }
 
-fn policy_action(
-    ledger: Option<&FailureLedger>,
-    block_id: &rig::streaming::BlockId,
-) -> OutcomeAction {
+fn policy_action(ledger: Option<&FailureLedger>, call_id: &rig::message::CallId) -> OutcomeAction {
     let decision = ledger
         .and_then(|ledger| {
             ledger
                 .0
                 .iter()
                 .rev()
-                .find(|record| record.block_id == *block_id)
+                .find(|record| record.call_id == *call_id)
         })
         .map(decide);
 
@@ -281,7 +278,7 @@ struct FatalFailurePolicy;
 
 impl AgentHook for FatalFailurePolicy {
     async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
-        let (Some(block_id), Some(result)) = (event.block_id, event.tool_result()) else {
+        let (Some(call_id), Some(result)) = (event.call_id, event.tool_result()) else {
             return OutcomeAction::proceed();
         };
         if result.error().is_none() {
@@ -289,7 +286,7 @@ impl AgentHook for FatalFailurePolicy {
         }
 
         let ledger = ctx.scratchpad().get::<FailureLedger>();
-        policy_action(ledger.as_ref(), block_id)
+        policy_action(ledger.as_ref(), call_id)
     }
 }
 
@@ -412,9 +409,9 @@ mod tests {
             structured_failure(Operation::ConnectNetwork).await;
 
         let mut ledger = FailureLedger::default();
-        let fatal_call = rig::streaming::BlockId::wire("fatal");
-        let recoverable_call = rig::streaming::BlockId::wire("recoverable");
-        let missing_call = rig::streaming::BlockId::wire("missing");
+        let fatal_call = rig::message::CallId::from_wire("fatal");
+        let recoverable_call = rig::message::CallId::from_wire("recoverable");
+        let missing_call = rig::message::CallId::from_wire("missing");
         let fatal_record = failure_record(
             &fatal_call,
             SystemProbe::NAME,
@@ -457,7 +454,7 @@ mod tests {
         let (result, _context) = structured_failure(Operation::ReadDisk).await;
         assert!(
             failure_record(
-                &rig::streaming::BlockId::wire("other"),
+                &rig::message::CallId::from_wire("other"),
                 SystemProbe::NAME,
                 &result,
                 &ToolContext::new(),
@@ -466,7 +463,7 @@ mod tests {
         );
 
         let stale = FailureLedger(vec![FailureRecord {
-            block_id: rig::streaming::BlockId::wire("stale"),
+            call_id: rig::message::CallId::from_wire("stale"),
             tool_name: SystemProbe::NAME.to_string(),
             kind: ToolErrorKind::Other,
             code: Some("EIO".to_string()),
@@ -474,7 +471,7 @@ mod tests {
             resource: "/stale".to_string(),
         }]);
         assert!(matches!(
-            policy_action(Some(&stale), &rig::streaming::BlockId::wire("fresh")),
+            policy_action(Some(&stale), &rig::message::CallId::from_wire("fresh")),
             OutcomeAction::Proceed
         ));
     }

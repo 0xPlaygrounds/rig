@@ -15,18 +15,20 @@ use super::{Model, Transport};
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
+use crate::message::{CallId, ToolName};
 use crate::model::{ModelInfo, ModelList};
 use crate::observe::{
     AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
-use crate::operation::{AdapterOutput, Completion, ModelListing, ModelPage};
-use crate::streaming::{StreamEvent, StreamFinal};
+use crate::operation::{Completion, Finish, ModelListing, ModelPage, TextPart};
+use crate::streaming::Streamed;
 use crate::test_utils::{
     HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient,
     RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
 };
 use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, End, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
+    Body, Decoder, Descriptor, Encoded, Flow, Mode, ObservationSink, Out, Wire, WireEvent,
+    WireFrame,
 };
 
 /// Fold one reply of `wire` over `http`.
@@ -47,24 +49,22 @@ where
     }
 }
 
-/// The items of one streamed reply of `wire` over `http`, as the driver
-/// yields them.
+/// One streamed reply of `wire` over `http`.
 pub(crate) fn stream<W, H>(
     wire: &W,
     http: &H,
     request: crate::wire::Request<W>,
     context: Option<AdapterContext>,
-) -> Result<
-    impl futures::Stream<Item = Result<crate::wire::Event<W>, ProviderError>> + use<W, H>,
-    ProviderError,
->
+) -> Result<Streamed<W::Op>, ProviderError>
 where
     W: Wire,
     H: Transport<W>,
 {
-    let mut streamed =
-        Model::new(wire.clone(), http.clone()).open(request, Mode::Streaming, context)?;
-    Ok(futures::stream::poll_fn(move |cx| streamed.poll_step(cx)))
+    let model = Model::new(wire.clone(), http.clone());
+    match context {
+        Some(context) => model.stream_observed(request, context),
+        None => model.stream(request),
+    }
 }
 
 // ── the fake completion wire ────────────────────────────────────────────
@@ -132,9 +132,11 @@ struct Usage {
 }
 
 #[derive(Default)]
-struct EchoDecoder;
+struct EchoDecoder<'id> {
+    text: Option<TextPart<'id>>,
+}
 
-impl Decoder<Completion> for EchoDecoder {
+impl<'id> Decoder<'id, Completion> for EchoDecoder<'id> {
     type Event = Frame;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -143,39 +145,62 @@ impl Decoder<Completion> for EchoDecoder {
         })
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Completion>) {
+    fn decode(
+        &mut self,
+        event: Frame,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         match event {
-            // The unary shape synthesizes the stream's events rather than
-            // carrying a second content mapping.
+            // A whole message is the stream's text and end in one frame.
             Frame::Message { text, usage } => {
-                out.text(text);
-                terminal(out, usage);
+                self.push_text(&mut out, &text);
+                return Ok(self.end(out, usage));
             }
-            Frame::Delta { text } => out.text(text),
-            Frame::Stop { usage } => terminal(out, usage),
+            Frame::Delta { text } => self.push_text(&mut out, &text),
+            Frame::Stop { usage } => return Ok(self.end(out, usage)),
             Frame::Tool {
                 name,
                 arguments,
                 usage,
             } => {
-                let id = crate::streaming::BlockId::wire("call_1");
-                out.tool_name(&id, name);
-                out.tool_arguments(&id, arguments);
-                out.tool_end(
-                    id,
-                    crate::streaming::ToolCallEnd::new(
-                        crate::streaming::UnparseableToolInput::Error,
-                    ),
-                );
+                if let Some(part) = self.text.take() {
+                    out.close_text(part);
+                }
+                let name = ToolName::new(name)
+                    .map_err(|error| ProviderError::Response(error.to_string()))?;
+                let part = out.call(CallId::from_wire("call_1"), name)?;
+                out.push_arguments(&part, &arguments);
+                out.close_call(part)?;
                 if let Some(usage) = usage {
-                    terminal(out, usage);
+                    return Ok(self.end(out, usage));
                 }
             }
         }
+        Ok(Flow::More)
     }
 }
 
-impl EchoDecoder {
+impl<'id> EchoDecoder<'id> {
+    fn push_text(&mut self, out: &mut Out<'id, Completion>, text: &str) {
+        let part = self.text.get_or_insert_with(|| out.text());
+        out.push_text(part, text);
+    }
+
+    fn end(&mut self, mut out: Out<'id, Completion>, usage: Usage) -> Flow {
+        if let Some(part) = self.text.take() {
+            out.close_text(part);
+        }
+        out.end(
+            Finish::new(crate::completion::Usage {
+                output_tokens: Some(usage.output_tokens),
+                ..crate::completion::Usage::default()
+            })
+            .with_optional_model(Some("echo-1".to_owned())),
+        )
+    }
+}
+
+impl EchoDecoder<'_> {
     fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(value) = serde_json::from_slice::<serde_json::Value>(payload) else {
             return;
@@ -201,26 +226,11 @@ impl EchoDecoder {
     }
 }
 
-fn terminal(out: &mut AdapterOutput, usage: Usage) {
-    out.close_active_blocks();
-    out.final_record(
-        StreamFinal::new(
-            "echo",
-            crate::completion::Usage {
-                output_tokens: Some(usage.output_tokens),
-                ..crate::completion::Usage::default()
-            },
-            serde_json::json!({}),
-        )
-        .with_model("echo-1"),
-    );
-}
-
 impl Wire for Echo {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = WireFrame;
-    type Decoder = EchoDecoder;
+    type Decoder<'id> = EchoDecoder<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("echo").model("echo-1")
@@ -242,15 +252,15 @@ impl Wire for Echo {
         })
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        EchoDecoder
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        EchoDecoder::default()
     }
 }
 
 fn prompt() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("say hi")],
+        chat_history: crate::NonEmpty::new(crate::message::Message::user("say hi")),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -284,9 +294,7 @@ async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_response() {
     );
     let mut response = streaming.stream(prompt()).expect("the stream opens");
     while response.next().await.is_some() {}
-    let streamed = response
-        .finish()
-        .expect("the stream produced a terminal record");
+    let streamed = response.finish().await.expect("the stream ended");
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
@@ -451,20 +459,15 @@ async fn an_undecodable_body_fails_the_call_as_a_json_error() {
     );
 }
 
-/// The driver itself has no empty-turn policy: a reply that framed to
-/// nothing folds to a response with nothing in it. Whether that is an
-/// answer or a defect is the decoder's to say, from the [`Mode`] it was
-/// built for — see
-/// [`the_mode_a_decoder_is_built_for_decides_what_its_eof_means`].
+/// A reply that framed to nothing never reached the provider's end: it is
+/// truncated, never an empty answer.
 #[tokio::test]
-async fn a_reply_with_no_frames_folds_to_an_empty_response_with_no_terminal() {
+async fn a_reply_with_no_frames_is_truncated() {
     let http = RecordingHttpClient::new("");
-    let response = call(&Echo::unary(), &http, prompt(), None)
+    let error = call(&Echo::unary(), &http, prompt(), None)
         .await
-        .expect("an empty body yields an empty choice");
-    assert!(response.choice.is_empty());
-    assert_eq!(response.finish_reason(), None);
-    assert_eq!(response.usage, crate::completion::Usage::default());
+        .expect_err("an empty body is not an answer");
+    assert!(matches!(error, ProviderError::Truncated), "{error:?}");
 }
 
 // ── streaming semantics ─────────────────────────────────────────────────
@@ -536,21 +539,20 @@ async fn a_transport_failure_mid_stream_ends_it_without_a_terminal() {
         )),
         Err(crate::http_client::Error::StreamEnded),
     ]);
-    let frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
-    let items: Vec<_> = frames.collect().await;
-    let terminals = items
-        .iter()
-        .filter(|item| matches!(item, Ok(StreamEvent::Final(_))))
-        .count();
-    assert_eq!(terminals, 0, "truncation never fabricates a terminal");
+    let mut frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
+    let items: Vec<_> = (&mut frames).collect().await;
     assert!(
         items.last().is_some_and(|item| item.is_err()),
         "the transport error is the last item"
     );
+    assert!(
+        frames.finish().await.is_err(),
+        "truncation never fabricates an end"
+    );
 }
 
 #[tokio::test]
-async fn a_corrupt_frame_surfaces_in_band_and_the_stream_keeps_consuming() {
+async fn a_corrupt_frame_ends_the_reply() {
     let body = concat!(
         "data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n",
         "data: {\"type\":\"delta\"}\n\n",
@@ -562,13 +564,9 @@ async fn a_corrupt_frame_surfaces_in_band_and_the_stream_keeps_consuming() {
     let frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
     let items: Vec<_> = frames.collect().await;
     assert_eq!(items.iter().filter(|item| item.is_err()).count(), 1);
-    assert_eq!(
-        items
-            .iter()
-            .filter(|item| matches!(item, Ok(StreamEvent::Final(_))))
-            .count(),
-        1,
-        "a genuine terminal after a corrupt frame still completes the stream"
+    assert!(
+        items.last().is_some_and(Result::is_err),
+        "nothing follows the corrupt frame: {items:?}"
     );
 }
 
@@ -582,10 +580,10 @@ async fn a_heartbeat_frame_never_reaches_the_decoder() {
     let http = MockStreamingClient {
         sse_bytes: Bytes::from(body),
     };
-    let frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
-    let items: Vec<_> = frames.collect().await;
-    assert!(items.iter().all(|item| item.is_ok()));
-    assert_eq!(items.len(), 1, "only the terminal is a frame");
+    let mut frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
+    let items: Vec<_> = (&mut frames).collect().await;
+    assert!(items.is_empty(), "only the end is a frame: {items:?}");
+    frames.finish().await.expect("the end still ends the reply");
 }
 
 #[tokio::test]
@@ -595,16 +593,10 @@ async fn a_streams_terminal_carries_the_transport_request_id() {
     };
     // `MockStreamingClient` reports no request-id header, so a wire that
     // names one still yields `None` rather than failing.
-    let frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
-    let items: Vec<_> = frames.collect().await;
-    let terminal = items.iter().find_map(|item| match item {
-        Ok(StreamEvent::Final(terminal)) => Some(terminal),
-        _ => None,
-    });
-    assert_eq!(
-        terminal.and_then(|terminal| terminal.provider_request_id.as_deref()),
-        None
-    );
+    let mut frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
+    while frames.next().await.is_some() {}
+    let response = frames.finish().await.expect("the stream ended");
+    assert_eq!(response.provider_request_id, None);
 }
 
 // ── observation ────────────────────────────────────────────────────────
@@ -680,10 +672,8 @@ fn ending(log: &ObservationLog) -> Option<AdapterEvent> {
         })
 }
 
-/// A malformed complete tool input is a decode defect the sink reports
-/// in-band, where the decoder's observation sees it, so the attempt ends as
-/// a decode error in both modes although the stream still reaches its
-/// terminal.
+/// A malformed complete tool input is a decode defect that ends the reply,
+/// so the attempt ends as a decode error in both modes.
 #[tokio::test]
 async fn a_malformed_tool_input_ends_the_attempt_as_a_decode_error() {
     let decode_error = AdapterEvent::Finished {
@@ -721,12 +711,12 @@ async fn a_malformed_tool_input_ends_the_attempt_as_a_decode_error() {
         .collect()
         .await;
     assert!(
-        items
-            .iter()
-            .any(|item| matches!(item, Err(report) if report.detail.is_some())),
-        "the defect is in-band: {items:?}"
+        matches!(
+            items.last(),
+            Some(Err(ProviderError::MalformedToolInput(_)))
+        ),
+        "the defect ends the stream: {items:?}"
     );
-    assert!(matches!(items.last(), Some(Ok(StreamEvent::Final(_)))));
     assert_eq!(ending(&log), Some(decode_error));
 }
 
@@ -764,7 +754,7 @@ struct Page {
     next: Option<String>,
 }
 
-impl Decoder<ModelListing> for CatalogueDecoder {
+impl<'id> Decoder<'id, ModelListing> for CatalogueDecoder {
     type Event = Page;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -774,11 +764,11 @@ impl Decoder<ModelListing> for CatalogueDecoder {
         }
     }
 
-    fn interpret(&mut self, page: Self::Event, out: &mut Out<'_, ModelListing>) {
-        out.push(Ok(ModelPage {
+    fn decode(&mut self, page: Page, out: Out<'id, ModelListing>) -> Result<Flow, ProviderError> {
+        Ok(out.end(ModelPage {
             models: ModelList::new(page.data.into_iter().map(ModelInfo::from_id).collect()),
             next: page.next,
-        }));
+        }))
     }
 }
 
@@ -786,7 +776,7 @@ impl Wire for Catalogue {
     type Op = ModelListing;
     type Payload = Encoded;
     type Frame = WireFrame;
-    type Decoder = CatalogueDecoder;
+    type Decoder<'id> = CatalogueDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("echo")
@@ -801,7 +791,7 @@ impl Wire for Catalogue {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         CatalogueDecoder
     }
 }
@@ -963,10 +953,10 @@ fn a_listing_warns_when_a_cursor_guard_stops_it() {
     );
 }
 
-/// An embedding reply over HTTP streams as the one event its decoder
-/// yields, and finishes to what a call folds.
+/// An embedding reply over HTTP streams no events, and finishes to what a
+/// call folds.
 #[tokio::test]
-async fn a_streamed_embedding_yields_one_event_and_finishes_to_the_call() {
+async fn a_streamed_embedding_finishes_to_the_call() {
     const REPLY: &str = r#"{"object":"list","model":"text-embedding-3-small","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]},{"object":"embedding","index":1,"embedding":[0.3,0.4]}],"usage":{"prompt_tokens":4,"total_tokens":4}}"#;
     let wire = crate::providers::openai::wire::OpenAIConfig::new("sk-test")
         .embedding("text-embedding-3-small", None);
@@ -984,8 +974,8 @@ async fn a_streamed_embedding_yields_one_event_and_finishes_to_the_call() {
     while let Some(event) = stream.next().await {
         events.push(event.expect("the reply decodes"));
     }
-    assert_eq!(events.len(), 1, "one reply, one event");
-    let streamed = stream.finish().expect("the reply folds");
+    assert!(events.is_empty(), "the reply's end is the response");
+    let streamed = stream.finish().await.expect("the reply folds");
     assert_eq!(
         serde_json::to_value(&streamed).expect("json"),
         serde_json::to_value(&called).expect("json")
@@ -1065,8 +1055,8 @@ async fn the_driver_records_the_folded_responses_metadata() {
     );
 }
 
-/// A streamed embedding records its response on the span as it passes,
-/// as a call records it when it finishes.
+/// A streamed embedding records its response on the span when it
+/// finishes, as a call does.
 #[test]
 fn a_streamed_embedding_records_its_response_on_the_span() {
     use tracing::subscriber::with_default;
@@ -1088,7 +1078,7 @@ fn a_streamed_embedding_records_its_response_on_the_span() {
         let stream = model
             .stream(vec!["a".to_owned()])
             .expect("the embedding opens");
-        futures::executor::block_on(stream.collect::<Vec<_>>())
+        futures::executor::block_on(stream.finish()).expect("the reply folds")
     });
     let recorded = recorded.lock().expect("no panic held the lock").clone();
     assert!(
@@ -1185,132 +1175,18 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<&str> {
     })
 }
 
-// ── the mode a decoder is built for ─────────────────────────────────────
-
-/// A wire whose decoder runs the whole-reply guard the two real ones run
-/// (`providers::openai::wire::chat`, `providers::gemini::streaming`): a
-/// reply that delivered no content and named no terminal is the provider
-/// answering with nothing when it arrived whole, and truncation when it was
-/// streamed. The [`Mode`] it was built for is the only thing that tells the
-/// two apart, so this wire is what pins that `call` and `stream` each hand
-/// [`Wire::decoder`] the mode they actually are.
-#[derive(Clone, Debug, PartialEq)]
-struct Guarded(Framing);
-
-struct GuardedDecoder {
-    /// This reply arrives whole, so its EOF ends an answer.
-    whole: bool,
-}
-
-impl Decoder<Completion> for GuardedDecoder {
-    type Event = ();
-
-    fn classify(&self, _frame: WireFrame) -> WireEvent<()> {
-        WireEvent::Known(())
-    }
-
-    /// Every frame decodes and none of them delivers content: the state the
-    /// guard exists for, reached without a second frame vocabulary.
-    fn interpret(&mut self, _event: (), _out: &mut Out<'_, Completion>) {}
-
-    fn end(&mut self, out: &mut Out<'_, Completion>, end: End) {
-        if self.whole && end == End::Eof {
-            out.error(ProviderError::Response(
-                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
-            ));
-        }
-    }
-}
-
-impl Wire for Guarded {
-    type Op = Completion;
-    type Payload = Encoded;
-    type Frame = WireFrame;
-    type Decoder = GuardedDecoder;
-
-    fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new("guarded")
-    }
-
-    fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = http::Request::post("https://echo.invalid/v1/messages")
-            .body(Body::Bytes(Vec::new()))?;
-        Ok(Encoded::new(request, self.0))
-    }
-
-    fn decoder(&self, mode: Mode) -> Self::Decoder {
-        GuardedDecoder {
-            whole: mode == Mode::Unary,
-        }
-    }
-}
-
-#[tokio::test]
-async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
-    let unary = Model::new(Guarded(Framing::Whole), RecordingHttpClient::new("{}"));
-    let error = unary
-        .call(prompt())
-        .await
-        .expect_err("a whole reply that delivered nothing is not an answer");
-    assert!(
-        matches!(&error, ProviderError::Response(message)
-            if message == crate::message::EMPTY_RESPONSE_ERROR),
-        "expected the empty-reply error, got {error:?}"
-    );
-
-    let streaming = Model::new(
-        Guarded(Framing::Sse),
-        MockStreamingClient {
-            sse_bytes: Bytes::from_static(b"data: {}\n\n"),
-        },
-    );
-    let mut response = streaming.stream(prompt()).expect("the stream opens");
-    let mut errors = Vec::new();
-    while let Some(item) = response.next().await {
-        if let Err(error) = item {
-            errors.push(error);
-        }
-    }
-    assert!(
-        errors.is_empty(),
-        "a streamed reply's EOF is truncation — reported by carrying no \
-         terminal record, not by an error: {errors:?}"
-    );
-}
-
-/// A stream opens one byte-body request. A wire that encodes a batch or a
-/// multipart body for a stream fails before anything is sent, as a request
-/// that could not be built.
+/// A stream opens one byte-body request. A wire that encodes a multipart
+/// body for a stream fails before anything is sent, as a request that could
+/// not be built: the stream's only item.
 #[test]
 fn a_stream_the_driver_cannot_send_is_a_request_failure() {
-    #[derive(Clone)]
-    struct Batch;
-    impl Wire for Batch {
-        type Op = Completion;
-        type Payload = Encoded;
-        type Frame = WireFrame;
-        type Decoder = EchoDecoder;
-        fn describe(&self) -> Descriptor<'_> {
-            Descriptor::new("echo")
-        }
-        fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
-            let one =
-                || http::Request::post("https://echo.invalid/a").body(Body::Bytes(Vec::new()));
-            let mut encoded = Encoded::new(one()?, Framing::Sse);
-            encoded.requests.push(one()?);
-            Ok(encoded)
-        }
-        fn decoder(&self, _mode: Mode) -> Self::Decoder {
-            EchoDecoder
-        }
-    }
     #[derive(Clone)]
     struct Multipart;
     impl Wire for Multipart {
         type Op = Completion;
         type Payload = Encoded;
         type Frame = WireFrame;
-        type Decoder = EchoDecoder;
+        type Decoder<'id> = EchoDecoder<'id>;
         fn describe(&self) -> Descriptor<'_> {
             Descriptor::new("echo")
         }
@@ -1319,29 +1195,29 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
                 .body(Body::Multipart(crate::http_client::MultipartForm::new()))?;
             Ok(Encoded::new(request, Framing::Sse))
         }
-        fn decoder(&self, _mode: Mode) -> Self::Decoder {
-            EchoDecoder
+        fn decoder<'id>(&self) -> Self::Decoder<'id> {
+            EchoDecoder::default()
         }
     }
 
     let http = crate::test_utils::RecordingHttpClient::new("");
-    for (error, message) in [
-        (
-            stream(&Batch, &http, prompt(), None).err(),
-            "RequestError: a streamed reply takes exactly one request, not 2",
-        ),
-        (
-            stream(&Multipart, &http, prompt(), None).err(),
-            "RequestError: a multipart request cannot open a streamed reply",
-        ),
-    ] {
-        let error = error.expect("the stream must not open");
-        assert_eq!(error.to_string(), message);
-        assert_eq!(error.kind(), crate::error::ErrorKind::Request);
-        assert_eq!(
-            error.boundary(),
-            crate::observe::AdapterErrorBoundary::Request
-        );
-        assert!(!error.is_retryable());
-    }
+    let items: Vec<_> = futures::executor::block_on(
+        stream(&Multipart, &http, prompt(), None)
+            .expect("the request encodes")
+            .collect::<Vec<_>>(),
+    );
+    let [Err(error)] = items.as_slice() else {
+        panic!("the failure is the stream's only item: {items:?}");
+    };
+    assert_eq!(
+        error.to_string(),
+        "RequestError: a multipart request cannot open a streamed reply"
+    );
+    assert_eq!(error.kind(), crate::error::ErrorKind::Request);
+    assert_eq!(
+        error.boundary(),
+        crate::observe::AdapterErrorBoundary::Request
+    );
+    assert!(!error.is_retryable());
+    assert!(http.requests().is_empty(), "nothing was sent");
 }

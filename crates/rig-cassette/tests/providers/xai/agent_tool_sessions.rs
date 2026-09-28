@@ -337,7 +337,7 @@ pub(super) fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
                         message_index,
-                        name: tool_call.function.name.clone(),
+                        name: tool_call.function.name.clone().into(),
                     });
                 }
             }
@@ -354,7 +354,7 @@ pub(super) fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
                 if let UserContent::ToolResult(tool_result) = item {
                     results.push(ToolEvent {
                         message_index,
-                        name: tool_result.name.clone(),
+                        name: tool_result.name.clone().into(),
                     });
                 }
             }
@@ -575,18 +575,14 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::tool_call_with_call_id(
+                    content: rig_core::NonEmpty::new(AssistantContent::tool_call_with_call_id(
                         "call_REDACTED_1",
                         "call_REDACTED_1".to_string(),
-                        AlphaSignal::NAME,
+                        rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                         json!({}),
-                    )],
+                    )),
                 })
-                .message(Message::tool_result(
-                    "call_REDACTED_1",
-                    AlphaSignal::NAME,
-                    ALPHA_SIGNAL_OUTPUT,
-                ))
+                .message(Message::tool_result(rig_core::message::CallId::from_wire("call_REDACTED_1"), rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"), ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None);
@@ -830,13 +826,9 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
 
             let response = agent
                 .prompt(Message::User {
-                    content: vec![
-                        UserContent::text("First, note this is an image-analysis cassette test."),
-                        image_content(),
-                        UserContent::text(
+                    content: rig_core::NonEmpty::with_rest(UserContent::text("First, note this is an image-analysis cassette test."), [image_content(), UserContent::text(
                             "Then answer in one short sentence naming the main visible subject.",
-                        ),
-                    ],
+                        )]),
                 })
                 .await?;
 

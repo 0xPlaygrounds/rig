@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,22 +10,22 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 17,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
-        "batch": 12,
+        "batch": 17,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -147,8 +147,7 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "generated",
-                "id": "minted:tool:0"
+                "local": "00000000-0000-4000-8000-000000000000"
               },
               "function": {
                 "name": "add",
@@ -194,72 +193,41 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:tool:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:tool:0",
-          "end": {
-            "close": "tool_call",
-            "name": "add",
-            "arguments": {
-              "x": 21,
-              "y": 21
-            },
-            "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "generated",
-              "id": "minted:tool:0"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 21,
-                "y": 21
-              }
-            },
-            "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\":21,\"y\":21}"
           }
         },
         {
-          "event": "final",
-          "usage": {
-            "input_tokens": 109,
-            "output_tokens": 20,
-            "total_tokens": 176,
-            "reasoning_tokens": 47
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "AKyyatr5MIHAz7IPp-fGkQU",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 109,
-              "candidatesTokenCount": 20,
-              "totalTokenCount": 176,
-              "thoughtsTokenCount": 47,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 109
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "local": "00000000-0000-4000-8000-000000000000"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 21,
+                  "y": 21
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "finish_message": "Model generated function call(s).",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "AKyyatr5MIHAz7IPp-fGkQU"
+              },
+              "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
+              "additional_params": null
+            }
           }
         }
       ],
@@ -294,8 +262,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "function": {
                     "name": "add",
@@ -315,8 +282,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "generated",
-                    "id": "minted:tool:0"
+                    "local": "00000000-0000-4000-8000-000000000000"
                   },
                   "name": "add",
                   "content": [
@@ -407,77 +373,35 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "I'm sorry, the add tool is currently disabled. I cannot calculate 21 + 21."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text_meta",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "CmYBaRR9E4F+3KJpL+cI9vVTGF7GSv+a8n8DokeeiyHmIjVf0viOtDCby2nWHb96qWHNqE8ermEVrXtujnGU+Hh79PsLudPt/lzSUSlZo5Pc+sYo6s196QG1xrPRZMMd3ipvRvjRrvwKdQFpFH0Thl7Fo7Dnr0PSTzzgxYg/V36JX9WVXukt34y9eAbHtG739CBPA4jf1Ua3sRPoETcgekRWzttXIIDmFELeDOAb/l7xDGwKCT7Mcx2S5WrKuUM69WVKzPw187N7e4y9/h2UWF5THB8IoNrxWPGkNogiwA=="
-              }
-            }
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "I'm sorry, the add tool is currently disabled. I cannot calculate 21 + 21.",
-            "additional_params": {
-              "gemini": {
-                "thoughtSignature": "CmYBaRR9E4F+3KJpL+cI9vVTGF7GSv+a8n8DokeeiyHmIjVf0viOtDCby2nWHb96qWHNqE8ermEVrXtujnGU+Hh79PsLudPt/lzSUSlZo5Pc+sYo6s196QG1xrPRZMMd3ipvRvjRrvwKdQFpFH0Thl7Fo7Dnr0PSTzzgxYg/V36JX9WVXukt34y9eAbHtG739CBPA4jf1Ua3sRPoETcgekRWzttXIIDmFELeDOAb/l7xDGwKCT7Mcx2S5WrKuUM69WVKzPw187N7e4y9/h2UWF5THB8IoNrxWPGkNogiwA=="
-              }
-            }
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 197,
-            "output_tokens": 23,
-            "total_tokens": 251,
-            "reasoning_tokens": 31
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "Aayyaq6yHMvVz7IPwYepGQ",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 197,
-              "candidatesTokenCount": 23,
-              "totalTokenCount": 251,
-              "thoughtsTokenCount": 31,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 197
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'm sorry, the add tool is currently disabled. I cannot calculate 21 + 21.",
+              "additional_params": {
+                "gemini": {
+                  "thoughtSignature": "CmYBaRR9E4F+3KJpL+cI9vVTGF7GSv+a8n8DokeeiyHmIjVf0viOtDCby2nWHb96qWHNqE8ermEVrXtujnGU+Hh79PsLudPt/lzSUSlZo5Pc+sYo6s196QG1xrPRZMMd3ipvRvjRrvwKdQFpFH0Thl7Fo7Dnr0PSTzzgxYg/V36JX9WVXukt34y9eAbHtG739CBPA4jf1Ua3sRPoETcgekRWzttXIIDmFELeDOAb/l7xDGwKCT7Mcx2S5WrKuUM69WVKzPw187N7e4y9/h2UWF5THB8IoNrxWPGkNogiwA=="
                 }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "Aayyaq6yHMvVz7IPwYepGQ"
+              }
+            }
           }
         }
       ],

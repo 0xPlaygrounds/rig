@@ -24,7 +24,7 @@ use crate::{
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::completion::CompletionRequest;
-use rig_core::driver::{Exchange, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
 use rig_core::wire::{Descriptor, Mode, Wire};
@@ -207,7 +207,7 @@ impl Wire for Converse {
     type Op = Completion;
     type Payload = ConverseRequest;
     type Frame = ConverseFrame;
-    type Decoder = StreamState;
+    type Decoder<'id> = StreamState<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
@@ -218,46 +218,48 @@ impl Wire for Converse {
     /// signed.
     fn encode(
         &self,
-        mut request: CompletionRequest,
+        request: CompletionRequest,
         _mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = self.request_model(request.model.as_deref()).to_owned();
-        rig_core::message::retain_replayable_reasoning(
-            &mut request.chat_history,
-            &[reasoning_issuer(&model)],
-        );
+        let issuer = rig_core::message::Issuer::from(reasoning_issuer(&model));
+        let request = request.replayable_to(std::slice::from_ref(&issuer))?;
         Ok(ConverseRequest {
-            request: AwsCompletionRequest::new(request, self.prompt_caching),
+            request: AwsCompletionRequest::new(request, issuer, self.prompt_caching),
             model,
             guardrail: self.guardrail.clone(),
         })
     }
 
-    fn decoder(&self, _mode: Mode) -> StreamState {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         StreamState::default()
     }
 }
 
 impl Transport<Converse> for BedrockRuntime {
-    fn send(
-        &self,
-        payload: ConverseRequest,
-        exchange: Exchange,
-    ) -> Result<Sending<ConverseFrame>, ProviderError> {
+    fn send(&self, payload: ConverseRequest, exchange: Exchange) -> Opening<ConverseFrame> {
         let mode = exchange.mode;
         let ConverseRequest {
             model,
             request,
             guardrail,
         } = payload;
-        let tool_config = request.tools_config()?;
-        let output_config = request.output_config()?;
         let additional_params = request.additional_params();
         let inference_config = request.inference_config();
-        let system_prompt = request.system_prompt()?;
-        let messages = request.messages()?;
+        let prepared = (|| {
+            Ok::<_, ProviderError>((
+                request.tools_config()?,
+                request.output_config()?,
+                request.system_prompt()?,
+                request.messages()?,
+            ))
+        })();
+        let (tool_config, output_config, system_prompt, messages) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => return Opening::failed(error),
+        };
         let runtime = self.clone();
-        Ok(Sending::later(async move {
+        Opening::new(async move {
             let client = runtime.inner().await;
             match mode {
                 Mode::Unary => {
@@ -279,7 +281,7 @@ impl Transport<Converse> for BedrockRuntime {
                                 ProviderError::Provider(format!("Type conversion error: {error}"))
                             })
                         });
-                    match sent {
+                    Ok(match sent {
                         Ok(output) => {
                             let request_id = output.request_id().map(str::to_owned);
                             Opened::new(futures::stream::iter([
@@ -292,7 +294,7 @@ impl Transport<Converse> for BedrockRuntime {
                             .with_request_id(request_id)
                         }
                         Err(error) => Opened::failed(error),
-                    }
+                    })
                 }
                 Mode::Streaming => {
                     let sent = client
@@ -309,7 +311,7 @@ impl Transport<Converse> for BedrockRuntime {
                     let response = match sent {
                         Ok(response) => response,
                         Err(sdk_error) => {
-                            return Opened::failed(AwsSdkConverseStreamError(sdk_error).into());
+                            return Ok(Opened::failed(AwsSdkConverseStreamError(sdk_error).into()));
                         }
                     };
                     // Events do not carry the request id the terminal record
@@ -337,9 +339,9 @@ impl Transport<Converse> for BedrockRuntime {
                             }
                         }
                     };
-                    Opened::new(frames).with_request_id(request_id)
+                    Ok(Opened::new(frames).with_request_id(request_id))
                 }
             }
-        }))
+        })
     }
 }

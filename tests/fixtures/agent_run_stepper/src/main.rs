@@ -24,13 +24,14 @@ use std::{
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
-use rig_core::completion::{AssistantContent, CompletionRequest, ModelRef, Usage};
-use rig_core::driver::{Exchange, Local, Model, Opened, Sending, Transport};
+use rig_core::completion::{
+    AssistantContent, CompletionRequest, CompletionResponse, ModelRef, Usage,
+};
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::effect::HandlerKey;
-use rig_core::message::{Message, ToolCall, ToolFunction};
+use rig_core::message::{Message, ToolCall, ToolFunction, ToolName};
 use rig_core::serve::adapters::ModelAdapter;
-use rig_core::operation::{AdapterOutput, Completion, ImagePart};
-use rig_core::streaming::{StreamEvent, StreamFinal};
+use rig_core::test_utils::{MockFrame, MockScript};
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::error::ProviderError;
@@ -62,21 +63,17 @@ fn drive<F: Future + Unpin>(mut future: F, driver: &mut BusDriver) -> F::Output 
 }
 
 /// Calls `add(2, 3)` on its first turn, answers "done" on its second: the
-/// runtime behind a local completion wire, answering with stream events.
+/// runtime behind a scripted completion wire, answering with a whole
+/// response.
 #[derive(Clone, Default)]
 struct Scripted {
     calls: Arc<AtomicUsize>,
 }
 
-impl Transport<Local<Completion>> for Scripted {
-    fn send(
-        &self,
-        request: CompletionRequest,
-        exchange: Exchange,
-    ) -> Result<Sending<Result<StreamEvent, ProviderError>>, ProviderError> {
-        let mode = exchange.mode;
-        if mode == Mode::Streaming {
-            return Err(ProviderError::Provider(
+impl Transport<MockScript> for Scripted {
+    fn send(&self, request: CompletionRequest, exchange: Exchange) -> Opening<MockFrame> {
+        if exchange.mode == Mode::Streaming {
+            return Opening::failed(ProviderError::Provider(
                 "fixture drives unary completions only".to_string(),
             ));
         }
@@ -90,24 +87,26 @@ impl Transport<Local<Completion>> for Scripted {
             assert!(
                 matches!(
                     request.chat_history.first(),
-                    Some(Message::System { content }) if content == "be brief"
+                    Message::System { content } if content == "be brief"
                 ),
                 "the spec's preamble leads the prepared history"
             );
             vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 "call-1",
-                ToolFunction::new("add".to_string(), serde_json::json!({"x": 2, "y": 3})),
+                ToolFunction::new(
+                    ToolName::new("add").expect("tool name"),
+                    serde_json::json!({"x": 2, "y": 3}),
+                ),
             ))]
         } else {
             vec![AssistantContent::text("done")]
         };
-        let mut out = AdapterOutput::new();
-        out.content(&choice, ImagePart::Block);
-        out.final_record(StreamFinal::new("fixture", Usage::default(), serde_json::Value::Null));
-        Ok(Sending::opened(
-            Opened::new(futures::stream::iter(out.into_items().into_iter().map(Ok)))
-                .with_document(serde_json::json!({ "provider": "fixture" })),
-        ))
+        let document = serde_json::json!({ "provider": "fixture" });
+        let response = CompletionResponse::new(choice, Usage::default(), "fixture", document.clone());
+        Opening::ready(
+            Opened::new(futures::stream::iter([Ok(MockFrame::Response(Box::new(response)))]))
+                .with_document(document),
+        )
     }
 }
 
@@ -139,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "model",
         ModelAdapter::new(
             ModelRef::new("fixture"),
-            Model::new(Local::new("fixture"), Scripted::default()),
+            Model::new(MockScript::new("fixture"), Scripted::default()),
         ),
     )?;
     let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;
@@ -204,7 +203,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     tool_calls += 1;
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
-                        call.tool_call.provider.clone(),
                         name,
                         result.output().clone(),
                     ));

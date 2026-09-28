@@ -121,6 +121,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -129,17 +130,14 @@
                     "text": "Extract: name Bob Johnson, age 55, profession retired teacher."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
-              },
-              "provider": {
-                "call_id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
+                "provider": {
+                  "call_id": "call_00_XBVPxYePeGjQsBWmwIFL4951"
+                }
               },
               "function": {
                 "name": "submit",
@@ -284,6 +282,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -292,17 +291,14 @@
                     "text": "The user provided text: \"Bob Johnson is a 55 year old retired teacher.\"\n\nExtract: name = Bob Johnson, age = 55, profession = retired teacher."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_OfRYult9tHWb6aarmSLj5473"
-              },
-              "provider": {
-                "call_id": "call_00_OfRYult9tHWb6aarmSLj5473"
+                "provider": {
+                  "call_id": "call_00_OfRYult9tHWb6aarmSLj5473"
+                }
               },
               "function": {
                 "name": "submit",

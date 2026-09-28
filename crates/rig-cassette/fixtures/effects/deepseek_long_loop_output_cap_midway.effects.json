@@ -212,11 +212,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-              },
-              "provider": {
-                "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                "provider": {
+                  "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                }
               },
               "function": {
                 "name": "list_files",
@@ -336,11 +334,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                  },
-                  "provider": {
-                    "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                    "provider": {
+                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -357,11 +353,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                  },
-                  "provider": {
-                    "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                    "provider": {
+                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -453,11 +447,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-              },
-              "provider": {
-                "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
+                "provider": {
+                  "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
+                }
               },
               "function": {
                 "name": "read_file",
@@ -579,11 +571,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                  },
-                  "provider": {
-                    "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                    "provider": {
+                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                    }
                   },
                   "function": {
                     "name": "list_files",
@@ -600,11 +590,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                  },
-                  "provider": {
-                    "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                    "provider": {
+                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
+                    }
                   },
                   "name": "list_files",
                   "content": [
@@ -623,11 +611,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-                  },
-                  "provider": {
-                    "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
+                    "provider": {
+                      "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
+                    }
                   },
                   "function": {
                     "name": "read_file",
@@ -646,11 +632,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-                  },
-                  "provider": {
-                    "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
+                    "provider": {
+                      "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
+                    }
                   },
                   "name": "read_file",
                   "content": [

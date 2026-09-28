@@ -4,17 +4,15 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, GenerateContentResponse, Part, PartKind, UsageMetadata,
     map_finish_reason,
 };
-use super::completion::{
-    PROVIDER_NAME, blocked_prompt_error, function_call_finish_reason_error, part_kind_name,
-};
+use super::completion::{blocked_prompt_error, function_call_finish_reason_error, part_kind_name};
 use crate::error::ProviderError;
 use crate::observe::ObservedError;
-use crate::operation::{AdapterOutput, Completion};
+use crate::operation::{Completion, Finish, TextPart};
+use crate::providers::internal::thoughts::Thoughts;
 use crate::providers::internal::wire;
-use crate::streaming;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, End, Mode, ObservationSink, Out,
-    WireEvent, WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
+    WireFrame,
 };
 
 /// Part-kind interpretation shared by the Gemini wires whose payloads
@@ -23,36 +21,33 @@ use crate::wire::{
 pub(crate) mod shared_parts {
     use serde_json::Value;
 
-    use crate::streaming::{BlockClose, BlockId, BlockKind, StreamEvent, ToolCallEnd};
+    use crate::error::ProviderError;
+    use crate::message::{CallId, ToolCall, ToolFunction, ToolName};
+    use crate::operation::Completion;
+    use crate::wire::Out;
 
-    /// Convert a whole function call into canonical start and end events.
+    /// Write a whole function call. An id-less call gets an id rig issues,
+    /// never a fabricated provider id, even when it shares a tool name; a
+    /// nameless one is dropped.
     pub(crate) fn function_call(
+        out: &mut Out<'_, Completion>,
         name: String,
         args: Value,
         wire_id: Option<String>,
         signature: Option<String>,
-        tool_ids: &mut crate::streaming::SyntheticIds,
-    ) -> Vec<StreamEvent> {
-        // Id-less calls need distinct local block keys, but must replay without
-        // fabricated provider identifiers, even when they share a tool name.
-        let tool_id = wire_id.and_then(crate::streaming::non_empty_id);
-        let id = tool_id
-            .as_ref()
-            .map_or_else(|| tool_ids.mint(), |id| BlockId::wire(id.as_str()));
-        let mut end = ToolCallEnd::whole(name, args).with_signature(signature);
-        // Setting call_id as well would invent a second provider identity.
-        end.tool_id = tool_id;
-        vec![
-            StreamEvent::BlockStart {
-                id: id.clone(),
-                kind: BlockKind::ToolCall,
+    ) -> Result<(), ProviderError> {
+        let Ok(name) = ToolName::new(name) else {
+            return Ok(());
+        };
+        out.tool_call(ToolCall {
+            id: CallId::from_wire(wire_id.unwrap_or_default()),
+            function: ToolFunction {
+                name,
+                arguments: args,
             },
-            StreamEvent::BlockEnd {
-                id,
-                end: BlockClose::ToolCall(end),
-                block: None,
-            },
-        ]
+            signature,
+            additional_params: None,
+        })
     }
 }
 
@@ -95,18 +90,15 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Provid
 const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
     &["candidates", "usageMetadata", "promptFeedback", "error"];
 
-/// Decode unary and streamed GenerateContent replies into canonical events.
-/// Hold terminal metadata until EOF because hosted-tool rounds can report
-/// intermediate finish reasons. Unary replies without assistant content fail
-/// unless a truncating finish reason permits empty output.
-pub struct GenerateContentDecoder {
+/// Decode GenerateContent replies, a whole body or a stream of chunks.
+/// The provider's end is held until EOF because hosted-tool rounds can
+/// report intermediate finish reasons. A reply without assistant content
+/// fails unless a truncating finish reason permits empty output.
+pub struct GenerateContentDecoder<'id> {
     /// Thought boundaries inferred from content transitions and signatures.
-    reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Distinct local block keys for calls without provider identifiers.
-    tool_ids: crate::streaming::SyntheticIds,
-    /// Per-reply minter for the raw-content blocks a part the stream
-    /// vocabulary cannot express rides on (see `GEMINI_RAW_CONTENT_KEY`).
-    raw_ids: crate::streaming::SyntheticIds,
+    thoughts: Thoughts<'id>,
+    /// The answer text part text chunks extend.
+    text: Option<TextPart<'id>>,
     final_usage: Option<UsageMetadata>,
     final_finish_reason: Option<FinishReason>,
     final_finish_message: Option<String>,
@@ -116,21 +108,14 @@ pub struct GenerateContentDecoder {
     saw_finish_reason: bool,
     /// At least one part mapped to assistant content.
     delivered: bool,
-    /// Unary mode, where EOF completes the whole response document.
-    whole: bool,
-    /// A terminal error was emitted; subsequent frames must not produce output.
-    failed: bool,
 }
 
-impl GenerateContentDecoder {
-    /// A decoder for one reply read in `mode`.
-    pub(super) fn new(mode: Mode) -> Self {
+impl GenerateContentDecoder<'_> {
+    /// A decoder for one reply.
+    pub(super) fn new() -> Self {
         Self {
-            reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                crate::streaming::MintKind::Reasoning,
-            ),
-            tool_ids: crate::streaming::SyntheticIds::tool(),
-            raw_ids: crate::streaming::SyntheticIds::new(crate::streaming::MintKind::Block),
+            thoughts: Thoughts::new(),
+            text: None,
             final_usage: None,
             final_finish_reason: None,
             final_finish_message: None,
@@ -138,24 +123,26 @@ impl GenerateContentDecoder {
             final_response_id: None,
             saw_finish_reason: false,
             delivered: false,
-            whole: mode == Mode::Unary,
-            failed: false,
         }
     }
 }
 
-impl Decoder<Completion> for GenerateContentDecoder {
+impl<'id> Decoder<'id, Completion> for GenerateContentDecoder<'id> {
     type Event = GenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<GenerateContentResponse> {
         // ID-only metadata must not create an unknown-content truncation tail.
-        if Self::is_analysis_only(&frame) {
+        if GenerateContentDecoder::is_analysis_only(&frame) {
             return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
         }
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
     }
 
-    fn interpret(&mut self, data: GenerateContentResponse, out: &mut Out<'_, Completion>) {
+    fn decode(
+        &mut self,
+        data: GenerateContentResponse,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         let span = tracing::Span::current();
         // The document defaults an absent id to the empty string, which is
         // the same "not reported" the normalized record's setter filters.
@@ -168,8 +155,6 @@ impl Decoder<Completion> for GenerateContentDecoder {
             self.final_model_version = Some(model_version.clone());
         }
         if let Some(usage) = data.usage_metadata.as_ref() {
-            // Carried for the terminal record only: the driver records usage
-            // off the folded response, so the decoder states it once.
             self.final_usage = Some(usage.clone());
         }
 
@@ -184,25 +169,20 @@ impl Decoder<Completion> for GenerateContentDecoder {
                 .and_then(|code| http::StatusCode::from_u16(code).ok())
                 .filter(|status| status.is_client_error() || status.is_server_error());
             let body = serde_json::json!({ "error": error }).to_string();
-            let error = match status {
+            return Err(match status {
                 Some(status) => ProviderError::from_http_response(status, body),
                 None => crate::error::ProviderError::from_provider_body(body),
-            };
-            out.push(Err(error));
-            out.end_reply();
-            return;
+            });
         }
 
         if let Some(blocked) = data.prompt_feedback.as_ref().and_then(blocked_prompt_error) {
             // Preserve the refusal reason rather than reporting an unexplained truncation.
-            out.push(Err(blocked));
-            out.end_reply();
-            return;
+            return Err(blocked);
         }
 
         let Some(choice) = data.candidates.into_iter().next() else {
             tracing::debug!("There is no content candidate");
-            return;
+            return Ok(Flow::More);
         };
 
         if let Some(finish_reason) = &choice.finish_reason {
@@ -216,9 +196,7 @@ impl Decoder<Completion> for GenerateContentDecoder {
         }
 
         if let Some(err) = tool_protocol_finish_reason_error(&choice) {
-            out.push(Err(err));
-            out.end_reply();
-            return;
+            return Err(err);
         }
 
         match choice.content {
@@ -232,10 +210,10 @@ impl Decoder<Completion> for GenerateContentDecoder {
                 for part in content.parts {
                     let text = matches!(part.part, PartKind::Text(_)) && part.thought != Some(true);
                     if text && previous_text {
-                        out.end_active_text();
+                        self.close_text(&mut out);
                     }
                     previous_text = text;
-                    self.interpret_part(part, out);
+                    self.interpret_part(part, &mut out)?;
                 }
             }
             None => {
@@ -243,37 +221,29 @@ impl Decoder<Completion> for GenerateContentDecoder {
                 tracing::debug!(finish_reason = ?self.final_finish_reason, "Streaming candidate missing content");
             }
         }
-        // An unexpected part fails the turn; later frames cannot report it
-        // complete.
-        if self.failed {
-            out.end_reply();
-        }
+        Ok(Flow::More)
     }
 
-    fn end(&mut self, out: &mut Out<'_, Completion>, end: End) {
-        if end == End::Failed {
-            return;
+    /// Gemini ends a reply at EOF, not at its first finish reason: a
+    /// hosted-tool round can report one before more content arrives.
+    fn eof(&mut self, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        // Without a provider finish reason, the reply did not end.
+        if !self.saw_finish_reason {
+            return Err(ProviderError::Truncated);
         }
-        // Empty unary replies require a truncating finish reason; stream truncation
-        // is represented by an absent terminal record instead.
+        // An empty reply needs a truncating finish reason to explain it.
         let cut_short = self
             .final_finish_reason
             .as_ref()
             .and_then(map_finish_reason)
             .is_some_and(|reason| reason.truncated_output());
-        if self.whole && !self.delivered && !cut_short {
-            out.error(ProviderError::Response(
+        if !self.delivered && !cut_short {
+            return Err(ProviderError::Response(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
-            return;
         }
-
-        // Without a provider finish reason, a terminal would falsely report completion.
-        if !self.saw_finish_reason {
-            return;
-        }
-
-        // Deferred completion retains the final hosted-tool round and its metadata.
+        self.close_text(&mut out);
+        self.thoughts.close(&mut out, None);
         // Defaulting the raw usage shape does not imply reported usage.
         let usage = self
             .final_usage
@@ -287,24 +257,18 @@ impl Decoder<Completion> for GenerateContentDecoder {
             model_version: self.final_model_version.take(),
             response_id: self.final_response_id.take(),
         };
-        let raw = match serde_json::to_value(&native) {
-            Ok(raw) => raw,
-            Err(err) => {
-                out.error(err.into());
-                return;
-            }
-        };
+        out.raw(serde_json::to_value(&native)?);
         let finish_reason = native.finish_reason.as_ref().and_then(map_finish_reason);
-        out.final_record(
-            streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
-                .with_optional_finish_reason(finish_reason)
+        Ok(out.end(
+            Finish::new(usage)
+                .with_optional_reason(finish_reason)
                 .with_optional_response_id(native.response_id)
                 .with_optional_model(native.model_version),
-        );
+        ))
     }
 }
 
-impl GenerateContentDecoder {
+impl GenerateContentDecoder<'_> {
     pub(crate) fn is_analysis_only(frame: &WireFrame) -> bool {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
@@ -413,8 +377,18 @@ struct ObservedFeedback {
     block_reason: Option<String>,
 }
 
-impl GenerateContentDecoder {
-    fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput) {
+impl<'id> GenerateContentDecoder<'id> {
+    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
+        if let Some(part) = self.text.take() {
+            out.close_text(part);
+        }
+    }
+
+    fn interpret_part(
+        &mut self,
+        part: Part,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), ProviderError> {
         // Hosted code-execution parts alone do not constitute an assistant answer.
         if !matches!(
             part.part,
@@ -429,17 +403,14 @@ impl GenerateContentDecoder {
                 thought_signature,
                 ..
             } => {
-                // A signature closes accumulated reasoning or forms a signature-only block.
-                self.reasoning.emit_chunk(
-                    crate::providers::internal::chunk_lifecycle::ChunkParts {
-                        reasoning: Some(text),
-                        reasoning_signature: thought_signature,
-                        text: None,
-                        text_meta: None,
-                        tool_events: Vec::new(),
-                    },
-                    out,
-                );
+                // A signature closes accumulated reasoning or forms a signature-only part.
+                if !text.is_empty() {
+                    self.close_text(out);
+                }
+                self.thoughts.fragment(out, &text);
+                if let Some(signature) = thought_signature {
+                    self.thoughts.signature(out, signature);
+                }
             }
             Part {
                 part: PartKind::Text(text),
@@ -447,27 +418,26 @@ impl GenerateContentDecoder {
                 ..
             } => {
                 // A signature on answer text belongs to that text part, and
-                // must return on it: it rides on the text block's extras. A
+                // must return on it: it rides on the part's extras. A
                 // signature on its own empty part keeps its own part, and a
                 // signed part ends there.
                 let signed = thought_signature.is_some();
                 if signed && text.is_empty() {
-                    out.end_active_text();
+                    self.close_text(out);
                 }
-                self.reasoning.emit_chunk(
-                    crate::providers::internal::chunk_lifecycle::ChunkParts {
-                        reasoning: None,
-                        reasoning_signature: None,
-                        text: Some(text),
-                        text_meta: thought_signature.and_then(|signature| {
-                            super::text_signature_extras(super::GEMINI_TEXT_EXTRAS_KEY, signature)
-                        }),
-                        tool_events: Vec::new(),
-                    },
-                    out,
-                );
+                let params = thought_signature.and_then(|signature| {
+                    super::text_signature_extras(super::GEMINI_TEXT_EXTRAS_KEY, signature)
+                });
+                if !text.is_empty() || params.is_some() {
+                    self.thoughts.boundary();
+                    let part = self.text.get_or_insert_with(|| out.text());
+                    out.push_text(part, &text);
+                    if let Some(params) = params {
+                        out.text_params(part, params);
+                    }
+                }
                 if signed {
-                    out.end_active_text();
+                    self.close_text(out);
                 }
             }
             Part {
@@ -475,71 +445,40 @@ impl GenerateContentDecoder {
                 thought_signature,
                 ..
             } => {
-                // Tool content interleaving an open thought block: the
-                // shared lifecycle synthesizes the boundary end.
-                self.reasoning.emit_chunk(
-                    crate::providers::internal::chunk_lifecycle::ChunkParts {
-                        reasoning: None,
-                        reasoning_signature: None,
-                        text: None,
-                        text_meta: None,
-                        tool_events: shared_parts::function_call(
-                            function_call.name,
-                            function_call.args,
-                            function_call.id,
-                            thought_signature,
-                            &mut self.tool_ids,
-                        ),
-                    },
+                // Tool content interleaving an open thought part stops it.
+                self.thoughts.boundary();
+                self.close_text(out);
+                shared_parts::function_call(
                     out,
-                );
+                    function_call.name,
+                    function_call.args,
+                    function_call.id,
+                    thought_signature,
+                )?;
             }
             Part {
                 part: part @ PartKind::InlineData(_),
                 thought_signature,
                 ..
             } => {
-                // Preserve inline media in metadata because canonical stream blocks
-                // cannot represent image content.
+                // Inline media rides on a text part's metadata: the choice
+                // has no part for it.
+                self.thoughts.boundary();
+                self.close_text(out);
                 let raw = Part {
                     thought: None,
                     thought_signature,
                     part,
                     additional_params: None,
                 };
-                let events = match crate::message::AdditionalParams::from_entries([(
+                if let Some(params) = crate::message::AdditionalParams::from_entries([(
                     super::GEMINI_RAW_CONTENT_KEY,
                     serde_json::json!(raw),
                 )]) {
-                    Some(params) => {
-                        let id = self.raw_ids.mint();
-                        vec![
-                            streaming::StreamEvent::BlockStart {
-                                id: id.clone(),
-                                kind: streaming::BlockKind::Text {
-                                    additional_params: Some(params),
-                                },
-                            },
-                            streaming::StreamEvent::BlockEnd {
-                                id,
-                                end: streaming::BlockClose::Text,
-                                block: None,
-                            },
-                        ]
-                    }
-                    None => Vec::new(),
-                };
-                // Raw media closes any open thought block before its own events.
-                self.reasoning.emit_chunk(
-                    crate::providers::internal::chunk_lifecycle::ChunkParts {
-                        reasoning: None,
-                        reasoning_signature: None,
-                        text: None,
-                        text_meta: None,
-                        tool_events: events,
-                    },
-                    out,
-                );
+                    let part = out.text();
+                    out.text_params(&part, params);
+                    out.close_text(part);
+                }
             }
             Part {
                 part: part @ (PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_)),
@@ -550,13 +489,13 @@ impl GenerateContentDecoder {
             }
             Part { part, .. } => {
                 // Unexpected response parts must fail rather than silently discard content.
-                out.error(ProviderError::Response(format!(
+                return Err(ProviderError::Response(format!(
                     "Gemini response part kind {} carries no assistant content rig can account for",
                     part_kind_name(&part)
                 )));
-                self.failed = true;
             }
         }
+        Ok(())
     }
 }
 

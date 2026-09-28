@@ -31,6 +31,7 @@
 
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
+use rig::streaming::Item;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_sse_json_frames, recorded_statuses_and_bodies};
@@ -156,22 +157,17 @@ async fn the_streaming_path_drops_the_same_cut_call() {
                 .expect("stream should start");
 
             let mut completed_calls = 0usize;
-            let mut terminated = false;
             while let Some(item) = stream.next().await {
-                match item.expect("no stream item may be an error") {
-                    StreamEvent::BlockEnd {
-                        block: Some(AssistantContent::ToolCall(_)),
-                        ..
-                    } => completed_calls += 1,
-                    StreamEvent::Final(_) => terminated = true,
-                    _ => {}
+                if let Item::Event(StreamEvent::End {
+                    content: AssistantContent::ToolCall(_),
+                    ..
+                }) = item.expect("no stream item may be an error")
+                {
+                    completed_calls += 1
                 }
             }
-
-            assert!(
-                terminated,
-                "the stream must terminate cleanly even though its only tool call was \
-                 unusable"
+            stream.finish().await.expect(
+                "the stream must terminate cleanly even though its only tool call was unusable",
             );
             assert_eq!(
                 completed_calls, 0,

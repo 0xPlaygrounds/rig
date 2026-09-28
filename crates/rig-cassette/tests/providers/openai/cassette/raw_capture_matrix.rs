@@ -529,7 +529,13 @@ async fn responses_reasoning_raw_round_trips_typed() {
             AssistantContent::Reasoning(reasoning) => Some(reasoning),
             _ => None,
         })
-        .flat_map(|reasoning| reasoning.content.iter())
+        .flat_map(|reasoning| {
+            reasoning
+                .open(reasoning.issuer())
+                .expect("sealed reasoning")
+                .content
+                .iter()
+        })
         .filter_map(|block| match block {
             rig::message::ReasoningContent::Encrypted(data) => Some(data.as_str()),
             _ => None,

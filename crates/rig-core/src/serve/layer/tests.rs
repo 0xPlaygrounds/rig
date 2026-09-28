@@ -8,9 +8,9 @@ use serde_json::json;
 
 use super::*;
 use crate::{
-    completion::Usage,
     effect::{FamilyDescriptor, HandlerKey},
-    streaming::{StreamEvent, StreamFinal},
+    operation::Finish,
+    streaming::{Item, StreamEvent},
 };
 
 fn custom(payload: serde_json::Value) -> EffectKind {
@@ -72,11 +72,7 @@ impl Serve for Streamer {
             writer.text("hel").await.expect("open");
             writer.text("lo").await.expect("open");
             writer
-                .finish(StreamFinal::new(
-                    "test",
-                    Usage::default(),
-                    serde_json::json!({}),
-                ))
+                .finish("test", Finish::default())
                 .await
                 .expect("open");
         })
@@ -137,7 +133,7 @@ impl Intercept for Policy {
 #[derive(Default)]
 struct Tapped {
     outcomes: Mutex<Vec<Result<Outcome, ErrorReport>>>,
-    events: Mutex<Vec<StreamEvent>>,
+    events: Mutex<Vec<Item<StreamEvent>>>,
     discarded: AtomicUsize,
     patched: Mutex<Vec<EffectKind>>,
 }
@@ -154,7 +150,7 @@ impl super::super::Observe for Arc<Tapped> {
         true
     }
 
-    fn event(&mut self, event: &StreamEvent) {
+    fn event(&mut self, event: &Item<StreamEvent>) {
         self.events.lock().expect("events").push(event.clone());
     }
 
@@ -354,7 +350,7 @@ async fn a_layer_over_a_streaming_handler_sees_the_folded_outcome_in_after() {
     assert_eq!(
         items.len(),
         5,
-        "a block start, two deltas, a block end, a final: {items:?}"
+        "a start, two fragments, an end, the response: {items:?}"
     );
     let folded = folded.lock().expect("folded").clone().expect("after ran");
     let Ok(Outcome::Completion(response)) = folded else {
@@ -367,7 +363,7 @@ async fn a_layer_over_a_streaming_handler_sees_the_folded_outcome_in_after() {
     // The record holds the fold and the events, tapped on the inner hop.
     let outcomes = tap.outcomes.lock().expect("outcomes");
     assert!(matches!(&outcomes[0], Ok(Outcome::Completion(_))));
-    assert_eq!(tap.events.lock().expect("events").len(), items.len());
+    assert_eq!(tap.events.lock().expect("events").len(), items.len() - 1);
 }
 
 #[tokio::test]

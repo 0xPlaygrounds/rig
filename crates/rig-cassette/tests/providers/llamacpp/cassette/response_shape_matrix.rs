@@ -35,6 +35,7 @@
 
 use rig::message::AssistantContent;
 use rig::providers::llamacpp;
+use rig::streaming::Item;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -68,7 +69,7 @@ const TWO_CANDIDATE_PROMPT: &str =
 #[tokio::test]
 async fn reasoning_content_reaches_the_caller_on_both_transports() {
     use futures::StreamExt as _;
-    use rig::streaming::{Delta, StreamEvent};
+    use rig::streaming::StreamEvent;
 
     with_llamacpp_cassette(
         "response_shape_matrix/reasoning_blocking",
@@ -93,6 +94,8 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                     )
                 });
             let reasoning_text = reasoning
+                .open(reasoning.issuer())
+                .expect("sealed reasoning")
                 .content
                 .iter()
                 .filter_map(|block| match block {
@@ -136,24 +139,17 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                     // Streaming delivers reasoning incrementally, as deltas
                     // sharing one rig-generated correlator, and may close them
                     // with a complete block. Both are reasoning; text is not.
-                    StreamEvent::BlockDelta {
-                        id,
-                        delta: Delta::Reasoning { text: delta },
-                    } => {
-                        correlators.insert(id);
+                    Item::Event(StreamEvent::Reasoning { part, text: delta }) => {
+                        correlators.insert(part);
                         reasoning.push_str(&delta);
                     }
-                    StreamEvent::BlockEnd {
-                        id,
-                        block: Some(AssistantContent::Reasoning(_)),
-                        ..
-                    } => {
-                        correlators.insert(id);
+                    Item::Event(StreamEvent::End {
+                        part,
+                        content: AssistantContent::Reasoning(_),
+                    }) => {
+                        correlators.insert(part);
                     }
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text: chunk },
-                        ..
-                    } => text.push_str(&chunk),
+                    Item::Event(StreamEvent::Text { text: chunk, .. }) => text.push_str(&chunk),
                     _ => {}
                 }
             }
@@ -217,7 +213,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
 #[tokio::test]
 async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
     use futures::StreamExt as _;
-    use rig::streaming::{Delta, StreamEvent};
+    use rig::streaming::StreamEvent;
 
     let blocking_answer = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     let blocking_sink = std::sync::Arc::clone(&blocking_answer);
@@ -256,10 +252,8 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
 
             let mut text = String::new();
             while let Some(item) = stream.next().await {
-                if let StreamEvent::BlockDelta {
-                    delta: Delta::Text { text: chunk },
-                    ..
-                } = item.expect("stream item should be ok")
+                if let Item::Event(StreamEvent::Text { text: chunk, .. }) =
+                    item.expect("stream item should be ok")
                 {
                     text.push_str(&chunk);
                 }

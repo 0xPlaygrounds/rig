@@ -26,10 +26,10 @@ use candle_core::{DType, IndexOp, Module, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::object_detection::{Bbox, non_maximum_suppression};
 use rig_core::Model;
-use rig_core::driver::{Exchange, Local, Opened, Sending, Transport};
+use rig_core::driver::{Exchange, Local, Opened, Opening, Step, Transport};
 use rig_core::error::ProviderError;
 use rig_core::wasm_compat::WasmBoxedStream;
-use rig_core::wire::{Call, Fold, Operation, Reply};
+use rig_core::wire::{Call, Fold, Free, Operation, Reply};
 use safetensors::SafeTensors;
 use serde::{Deserialize, Serialize};
 
@@ -42,21 +42,19 @@ use network::{Multiples, YoloV8Pose};
 
 /// Estimating the poses of the people in a sequence of frames.
 ///
-/// Each frame is one event, in frame order; the last frame's event is the
-/// terminal. A reply that ends before every frame was answered fails the
-/// call rather than returning a shorter track.
+/// Each frame is one event, in frame order, and the runtime ends the reply
+/// once every frame was estimated. A reply that ends before every frame was
+/// answered fails the call rather than returning a shorter track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PoseEstimation;
 
 impl Operation for PoseEstimation {
     type Request = PoseRequest;
     type Event = FramePoses;
+    type End = ();
     type Response = PoseTrack;
     type Fold = PoseFold;
-
-    fn is_terminal(event: &FramePoses) -> bool {
-        event.frame + 1 >= event.frames
-    }
+    type Emit = Free;
 
     fn fold(request: &PoseRequest, _call: &mut Call<'_>) -> PoseFold {
         PoseFold {
@@ -351,7 +349,7 @@ impl Fold<PoseEstimation> for PoseFold {
         Ok(())
     }
 
-    fn finish(self, _reply: Reply) -> Result<PoseTrack, ProviderError> {
+    fn finish(self, _end: (), _reply: Reply) -> Result<PoseTrack, ProviderError> {
         let answered = self.track.frames.len();
         if answered != self.expected {
             return Err(ProviderError::Response(format!(
@@ -651,33 +649,28 @@ fn detect_size(weights: &[u8]) -> Result<PoseModelSize, CandleError> {
 }
 
 /// One item of a pose reply: a frame's event, or the failure that ends it.
-type PoseItem = Result<Result<FramePoses, ProviderError>, ProviderError>;
+type PoseItem = Result<Step<PoseEstimation>, ProviderError>;
 
 impl Transport<Local<PoseEstimation>> for CandlePoseModel {
     /// Refuses a request without frames; each frame is answered as it is
     /// estimated. Unary and streamed calls run the same inference.
-    fn send(
-        &self,
-        request: PoseRequest,
-        _exchange: Exchange,
-    ) -> Result<Sending<Result<FramePoses, ProviderError>>, ProviderError> {
+    fn send(&self, request: PoseRequest, _exchange: Exchange) -> Opening<Step<PoseEstimation>> {
         if request.frames.is_empty() {
-            return Err(CandleError::InvalidImage(
-                "a pose request needs at least one frame".into(),
-            )
-            .into());
+            return Opening::failed(
+                CandleError::InvalidImage("a pose request needs at least one frame".into()).into(),
+            );
         }
         #[cfg(not(target_family = "wasm"))]
         if self.state.concurrency.is_closed() {
-            return Err(CandleError::ConcurrencyControllerClosed.into());
+            return Opening::failed(CandleError::ConcurrencyControllerClosed.into());
         }
         let model = self.clone();
-        Ok(Sending::later(async move {
-            match model.open(request).await {
+        Opening::new(async move {
+            Ok(match model.open(request).await {
                 Ok(items) => Opened::new(items),
                 Err(error) => Opened::failed(error),
-            }
-        }))
+            })
+        })
     }
 }
 
@@ -701,13 +694,14 @@ impl CandlePoseModel {
             let result = state.runtime.device().with_context(|| {
                 state.estimate_frames(request, &producer_cancellation, |event| {
                     producer
-                        .blocking_send(Ok(Ok(event)))
+                        .blocking_send(Ok(Step::Event(event)))
                         .map_err(|_| CandleError::StreamingChannelClosed)
                 })
             });
-            if let Err(error) = result {
-                let _ = producer.blocking_send(Err(error.into()));
-            }
+            let _ = producer.blocking_send(match result {
+                Ok(()) => Ok(Step::End(())),
+                Err(error) => Err(error.into()),
+            });
             drop(permit);
         });
         tokio::spawn(async move {
@@ -731,11 +725,13 @@ impl CandlePoseModel {
         if let Err(error) = self
             .state
             .estimate_frames(request, &CancellationSignal, |event| {
-                items.push(Ok(Ok(event)));
+                items.push(Ok(Step::Event(event)));
                 Ok(())
             })
         {
             items.push(Err(error.into()));
+        } else {
+            items.push(Ok(Step::End(())));
         }
         Ok(Box::pin(futures::stream::iter(items)))
     }

@@ -33,16 +33,11 @@ fn encoded_body(message: Message) -> Result<Value, ProviderError> {
 }
 
 /// The one serialized chat body `encoded` carries, as JSON. Separate from
-/// [`encoded_body`] because these are test invariants rather than encode
-/// failures: a second request or a multipart body is a bug in the wire, not an
-/// error the refusal cells may accept as their expected `Err`.
+/// [`encoded_body`] because this is a test invariant rather than an encode
+/// failure: a multipart body is a bug in the wire, not an error the refusal
+/// cells may accept as their expected `Err`.
 fn sole_body(encoded: Encoded) -> Value {
-    assert_eq!(
-        encoded.requests.len(),
-        1,
-        "the chat wire sends exactly one request"
-    );
-    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+    let Body::Bytes(bytes) = encoded.request.body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")
     };
     serde_json::from_slice(bytes).expect("the chat body is JSON")
@@ -51,11 +46,11 @@ fn sole_body(encoded: Encoded) -> Value {
 #[test]
 fn generic_document_file_id_fails_openrouter_message_conversion() {
     let message = Message::User {
-        content: vec![RigUserContent::Document(Document {
+        content: rig_core::NonEmpty::new(RigUserContent::Document(Document {
             data: DocumentSourceKind::file_id("file_abc"),
             media_type: None,
             additional_params: None,
-        })],
+        })),
     };
 
     let result = encoded_body(message);
@@ -74,11 +69,11 @@ fn generic_document_file_id_fails_openrouter_message_conversion() {
 #[test]
 fn file_data_document_encodes_as_an_openrouter_file_part() {
     let message = Message::User {
-        content: vec![RigUserContent::Document(Document {
+        content: rig_core::NonEmpty::new(RigUserContent::Document(Document {
             data: DocumentSourceKind::Base64("AAAA".to_string()),
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
-        })],
+        })),
     };
 
     let body = encoded_body(message).expect("a file_data document should encode");

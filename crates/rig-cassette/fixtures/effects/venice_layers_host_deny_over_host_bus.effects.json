@@ -115,11 +115,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "Lcjivt26N"
-              },
-              "provider": {
-                "call_id": "Lcjivt26N"
+                "provider": {
+                  "call_id": "Lcjivt26N"
+                }
               },
               "function": {
                 "name": "add",
@@ -226,11 +224,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "Lcjivt26N"
-                  },
-                  "provider": {
-                    "call_id": "Lcjivt26N"
+                    "provider": {
+                      "call_id": "Lcjivt26N"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -250,11 +246,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "Lcjivt26N"
-                  },
-                  "provider": {
-                    "call_id": "Lcjivt26N"
+                    "provider": {
+                      "call_id": "Lcjivt26N"
+                    }
                   },
                   "name": "add",
                   "content": [

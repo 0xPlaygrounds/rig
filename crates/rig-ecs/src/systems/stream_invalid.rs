@@ -1,22 +1,8 @@
-//! Early invalid-name publication from the native bus's delivered stream.
-//!
-//! ```
-//! use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-//! use rig_ecs::systems::{RigSet, discover_streamed_invalid_calls};
-//! let mut schedule = Schedule::default();
-//! schedule.add_systems(discover_streamed_invalid_calls.in_set(RigSet::Fold));
-//! ```
-
 use super::*;
-use rig_core::{
-    message::{ToolCall, ToolCallId, ToolFunction},
-    operation::{AdapterOutput, CompletionFold},
-    streaming::{BlockId, Delta, StreamEvent},
-    wire::Fold,
-};
+use rig_core::streaming::{Item, PartKind, StreamEvent};
 
-/// Return the successful event count before the first error, or the full length.
-/// The first error's item position equals the number of preceding successful events.
+/// Return the successful item count before the first error, or the full length.
+/// The first error's item position equals the number of preceding successful items.
 pub(super) fn validation_len(stream: &BusStreamed) -> usize {
     stream
         .errors
@@ -26,61 +12,50 @@ pub(super) fn validation_len(stream: &BusStreamed) -> usize {
         })
 }
 
-/// The tool call each delivered event completes, by position, as the
-/// completion sink finalizes it. A handler need not write its stream through
-/// the sink, so an end that carries no call completes the one its events
-/// assembled; a canonical stream passes the sink unchanged.
-fn completed_calls(events: &[StreamEvent]) -> Vec<Option<(BlockId, ToolCall)>> {
-    let mut sink = AdapterOutput::new();
-    events
-        .iter()
-        .map(|event| {
-            sink.push(Ok(event.clone()));
-            sink.drain().find_map(|item| match item {
-                Ok(StreamEvent::BlockEnd {
-                    id,
-                    block: Some(AssistantContent::ToolCall(call)),
-                    ..
-                }) => Some((id, call)),
-                _ => None,
+/// The assistant content `items` delivered, in start order: every part that
+/// ended, and the text still open where the stream stands (a text part the
+/// model was writing when the prefix was cut is part of it). Open reasoning
+/// names no issuer yet, so it is left out.
+pub(super) fn delivered_prefix(items: &[Item<StreamEvent>]) -> Vec<AssistantContent> {
+    let mut parts: Vec<Option<AssistantContent>> = Vec::new();
+    let mut open_text: std::collections::BTreeMap<usize, String> = Default::default();
+    for item in items {
+        match item {
+            Item::Event(StreamEvent::Start { kind, .. }) => {
+                if *kind == PartKind::Text {
+                    open_text.insert(parts.len(), String::new());
+                }
+                parts.push(None);
+            }
+            Item::Event(StreamEvent::Text { part, text }) => {
+                if let Some(open) = open_text.get_mut(&part.index()) {
+                    open.push_str(text);
+                }
+            }
+            Item::Event(StreamEvent::End { part, content }) => {
+                open_text.remove(&part.index());
+                if let Some(slot) = parts.get_mut(part.index()) {
+                    *slot = Some(content.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    parts
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, part)| {
+            part.or_else(|| {
+                open_text
+                    .remove(&index)
+                    .filter(|text| !text.is_empty())
+                    .map(AssistantContent::text)
             })
         })
         .collect()
 }
 
-/// Resolve a delivered name's block to the final identity of the call it
-/// completed. The offset disambiguates a block identifier reused later in
-/// the stream.
-pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option<ToolCallId> {
-    let block_id = match events.get(offset)? {
-        StreamEvent::BlockDelta { id, .. } | StreamEvent::BlockEnd { id, .. } => id,
-        _ => return None,
-    };
-    completed_calls(events)
-        .into_iter()
-        .skip(offset)
-        .flatten()
-        .find_map(|(id, call)| (&id == block_id).then_some(call.id))
-}
-
-/// The assistant content `events` delivered, with the text and reasoning
-/// blocks still open closed where the stream stands: a block the model was
-/// writing when the prefix was cut is part of it. `None` when the prefix
-/// carries a defect.
-pub(super) fn delivered_prefix(events: &[StreamEvent]) -> Option<Vec<AssistantContent>> {
-    let mut sink = AdapterOutput::new();
-    for event in events {
-        sink.push(Ok(event.clone()));
-    }
-    sink.finish();
-    let mut fold = CompletionFold::default();
-    for item in sink.drain() {
-        fold.absorb(&item.ok()?).ok()?;
-    }
-    Some(fold.snapshot())
-}
-
-/// Publish invalid tool names from real delivered prefixes, before EOF.
+/// Publish invalid tool calls from real delivered prefixes, before EOF.
 ///
 /// A user system in `RigSet::Judge` may resolve the resulting `InvalidCall`.
 /// Failure takes effect immediately; other resolutions remain attached until
@@ -135,107 +110,56 @@ pub fn discover_streamed_invalid_calls(
         }
         allowed.extend(minted.0.iter().cloned());
         // Track the validated offset to avoid rescanning valid stream prefixes.
-        for (index, event) in stream
-            .events
+        let items = stream.events.items();
+        for (index, item) in items
             .iter()
             .enumerate()
             .take(validation_len(stream))
             .skip(outputs.stream_validated)
         {
             outputs.stream_validated = index + 1;
-            let (id, name, full) = match event {
-                StreamEvent::BlockDelta {
-                    id,
-                    delta: Delta::ToolName { name },
-                } => (id, name, false),
-                StreamEvent::BlockEnd {
-                    id,
-                    block: Some(AssistantContent::ToolCall(call)),
-                    ..
-                } => (id, &call.function.name, true),
-                StreamEvent::BlockEnd {
-                    id,
-                    end: rig_core::streaming::BlockClose::ToolCall(end),
-                    ..
-                } => {
-                    let Some(name) = &end.name else {
-                        continue;
-                    };
-                    (id, name, true)
-                }
-                _ => continue,
+            let Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(call),
+                ..
+            }) = item
+            else {
+                continue;
             };
-            if allowed.contains(name) {
+            let name = call.function.name.as_str();
+            if allowed.iter().any(|allowed| allowed == name) {
                 continue;
             }
-            let call_id = ToolCallId::from_block(id);
-            // Ignore applies to the whole open occurrence, not just the
-            // first name delta. An ended block may reuse the same identifier.
-            if pending.iter().any(|(_, call, resolution)| {
-                (matches!(resolution, Some(Resolution::Ignore))
-                    || (full && matches!(resolution, Some(Resolution::Repair { .. }))))
-                    && call.stream_offset.is_some_and(|offset| {
-                        stream.events.get(offset).is_some_and(|event| matches!(event,
-                            StreamEvent::BlockDelta { id: opened, .. } | StreamEvent::BlockEnd { id: opened, .. } if opened == id))
-                        && !stream.events.iter().take(index).skip(offset).any(|event| {
-                            matches!(event, StreamEvent::BlockEnd { id: closed, .. } if closed == id)
-                        })
-                    })
-            }) {
+            // A call already decided on stays decided.
+            if pending.iter().any(|(_, pending, _)| pending.id == call.id) {
                 continue;
             }
-            let Some(mut prefix) = stream.events.get(..index).and_then(delivered_prefix) else {
-                break;
-            };
-            let completed = stream
-                .events
-                .get(..=index)
-                .and_then(|events| completed_calls(events).pop().flatten())
-                .map(|(_, call)| call);
+            let mut prefix = delivered_prefix(items.get(..index).unwrap_or_default());
             // Earlier repairs/ignores already took effect in the driver's
             // view, even while native execution waits for the final outcome.
-            for (_, call, resolution) in &pending {
-                let Some(offset) = call.stream_offset else {
-                    continue;
-                };
-                let completed_id = stream
-                    .events
-                    .get(..index)
-                    .and_then(|events| completed_call_id(events, offset));
-                if let Some(completed_id) = completed_id {
-                    match resolution {
-                        Some(Resolution::Repair { to }) => {
-                            for part in &mut prefix {
-                                if let AssistantContent::ToolCall(call) = part && call.id == completed_id { call.function.name = to.clone(); }
+            for (_, pending, resolution) in &pending {
+                match resolution {
+                    Some(Resolution::Repair { to }) => {
+                        for part in &mut prefix {
+                            if let AssistantContent::ToolCall(call) = part
+                                && call.id == pending.id
+                                && let Ok(to) = rig_core::message::ToolName::new(to.clone())
+                            {
+                                call.function.name = to;
                             }
                         }
-                        Some(Resolution::Ignore) => prefix.retain(|part| !matches!(part, AssistantContent::ToolCall(call) if call.id == completed_id)),
-                        _ => {}
                     }
+                    Some(Resolution::Ignore) => prefix.retain(|part| {
+                        !matches!(part, AssistantContent::ToolCall(call) if call.id == pending.id)
+                    }),
+                    _ => {}
                 }
             }
-            let mut fragments: Vec<&str> = stream.events.iter().take(index).rev()
-                .take_while(|event| !matches!(event, StreamEvent::BlockStart { id: start, .. } if start == id))
-                .filter_map(|event| match event {
-                    StreamEvent::BlockDelta { id: other, delta: Delta::ToolArguments { arguments } } if other == id => Some(arguments.as_str()),
-                    _ => None,
-                }).collect();
-            fragments.reverse();
-            let args = serde_json::from_str(&fragments.concat()).unwrap_or(serde_json::Value::Null);
-            let diagnostic = completed.unwrap_or_else(|| {
-                ToolCall::new(
-                    call_id.clone(),
-                    ToolFunction::new(name.clone(), args.clone()),
-                )
-            });
-            let call_id = diagnostic.id.clone();
-            let args = diagnostic.function.arguments.clone();
-            prefix.push(AssistantContent::ToolCall(diagnostic));
+            prefix.push(AssistantContent::ToolCall(call.clone()));
             commands.spawn((
                 InvalidCall {
-                    id: call_id,
-                    name: name.clone(),
-                    arguments: args,
+                    id: call.id.clone(),
+                    name: name.to_owned(),
+                    arguments: call.function.arguments.clone(),
                     prefix,
                     stream_offset: Some(index),
                 },

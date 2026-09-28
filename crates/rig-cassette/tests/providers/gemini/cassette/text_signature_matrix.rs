@@ -56,7 +56,7 @@ fn params(cell: Cell) -> Value {
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -90,7 +90,12 @@ where
     while let Some(item) = stream.next().await {
         item.expect("a stream item");
     }
-    stream.finish().expect("a terminal record").choice.to_vec()
+    stream
+        .finish()
+        .await
+        .expect("a terminal record")
+        .choice
+        .to_vec()
 }
 
 fn answer(choice: &[AssistantContent]) -> String {
@@ -114,7 +119,11 @@ where
         Message::user(QUESTION),
         Message::Assistant {
             id: None,
-            content: first.into_iter().collect(),
+            content: first
+                .into_iter()
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("non-empty"),
         },
         Message::user(FOLLOW_UP),
     ];

@@ -6,7 +6,7 @@ use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
     http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
     providers::{anthropic::Anthropic, deepseek, openai::OpenAI},
-    streaming::{StreamEvent, StreamEvents},
+    streaming::StreamEvents,
     wasm_compat::WasmCompatSend,
 };
 use std::{
@@ -107,7 +107,7 @@ where
 {
     let request = CompletionRequest::new("response parsing probe").max_tokens(1024);
     if direct {
-        Box::pin(model.stream(request).unwrap())
+        model.stream(request).unwrap().into_relay()
     } else {
         let handler = rig_core::serve::ErasedHandler::new(
             rig_core::serve::adapters::ModelAdapter::new("probe", model),
@@ -196,7 +196,7 @@ fn recorded_streams_equal_async_consumption_across_chunking_and_pending() {
         assert!(
             reference
                 .iter()
-                .any(|e| matches!(e, Ok(StreamEvent::Final(_))))
+                .any(|e| matches!(e, Ok(rig::streaming::Relayed::Done(_))))
         );
         for chunk in [64, 4096, usize::MAX] {
             for yielding in [false, true] {
@@ -224,8 +224,7 @@ fn recorded_streams_equal_async_consumption_across_chunking_and_pending() {
                     }
                 }
                 assert_eq!(
-                    serde_json::to_value(&actual).unwrap(),
-                    serde_json::to_value(&reference).unwrap(),
+                    actual, reference,
                     "{path} chunk={chunk} yielding={yielding}"
                 );
                 if yielding {

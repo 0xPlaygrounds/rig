@@ -22,10 +22,13 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
             witness: None,
             observed: observed.clone(),
         };
-        let final_item = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
-            "test",
-            Default::default(),
-            serde_json::json!({}),
+        let final_item = Ok(rig_core::streaming::Relayed::Done(Box::new(
+            rig_core::completion::CompletionResponse::new(
+                Vec::new(),
+                Default::default(),
+                "test",
+                serde_json::json!({}),
+            ),
         )));
         let answer = rig_core::serve::StreamTap::new()
             .observe(&final_item)
@@ -38,7 +41,9 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
         recording.resolve(id, original.unwrap_or_else(|| Err(cancelled())));
         let closed = serde_json::to_value(recorder.log()).unwrap();
         observer.stream_item(&final_item, Some(&answer));
-        observer.event(final_item.as_ref().unwrap());
+        observer.event(&rig_core::streaming::Item::Unknown(
+            serde_json::Value::Null.into(),
+        ));
         observer.stream_error(&cancelled());
         observer.outcome(&answer);
         observer.patch(&kind);

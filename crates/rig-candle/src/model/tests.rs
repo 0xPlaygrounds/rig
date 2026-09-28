@@ -6,7 +6,7 @@ use futures::StreamExt;
 use rig_core::completion::{Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
-use rig_core::streaming::{Delta, StreamEvent};
+use rig_core::streaming::{Item, StreamEvent};
 #[cfg(not(target_family = "wasm"))]
 use safetensors::tensor::{Dtype, View, serialize};
 use std::borrow::Cow;
@@ -30,24 +30,20 @@ fn generation(model: &CandleModel) -> rig_core::Model<Generation, CandleModel> {
 struct Scripted(Arc<std::sync::Mutex<Vec<GenerationEvent>>>);
 
 impl Transport<Generation> for Scripted {
-    fn send(
-        &self,
-        _request: CompletionRequest,
-        _exchange: Exchange,
-    ) -> Result<Sending<CandleFrame>, ProviderError> {
-        let events = std::mem::take(
-            &mut *self
-                .0
-                .lock()
-                .map_err(|_| ProviderError::Provider("the script lock was poisoned".to_owned()))?,
-        );
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter(
-                events
-                    .into_iter()
-                    .map(|event| Ok(CandleFrame::Event(event))),
-            ))
-        }))
+    fn send(&self, _request: CompletionRequest, _exchange: Exchange) -> Opening<CandleFrame> {
+        let events = match self.0.lock() {
+            Ok(mut events) => std::mem::take(&mut *events),
+            Err(_) => {
+                return Opening::failed(ProviderError::Provider(
+                    "the script lock was poisoned".to_owned(),
+                ));
+            }
+        };
+        Opening::ready(Opened::new(futures::stream::iter(
+            events
+                .into_iter()
+                .map(|event| Ok(CandleFrame::Event(event))),
+        )))
     }
 }
 
@@ -282,11 +278,8 @@ fn config_with(
 fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: if messages.is_empty() {
-            vec![Message::user("hello")]
-        } else {
-            messages
-        },
+        chat_history: rig_core::NonEmpty::from_vec(messages)
+            .unwrap_or_else(|_| rig_core::NonEmpty::new(Message::user("hello"))),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -306,19 +299,11 @@ async fn collect_stream(
     let mut response = generation(model).stream(request)?;
     let mut text = String::new();
     while let Some(item) = response.next().await {
-        if let StreamEvent::BlockDelta {
-            delta: Delta::Text { text: fragment },
-            ..
-        } = item?
-        {
+        if let Item::Event(StreamEvent::Text { text: fragment, .. }) = item? {
             text.push_str(&fragment);
         }
     }
-    let terminal = response
-        .folded()
-        .terminal()
-        .cloned()
-        .ok_or("stream did not emit a final response")?;
+    let terminal = response.finish().await?;
     // The local record rides the terminal's `raw`, typed back here.
     let raw: CandleCompletionResponse = serde_json::from_value(terminal.raw)?;
     Ok((text, raw))
@@ -910,12 +895,13 @@ async fn foreign_reasoning_in_history_is_refused_not_dropped()
         Message::user("hello"),
         Message::Assistant {
             id: None,
-            content: vec![
+            content: rig_core::NonEmpty::with_rest(
                 rig_core::message::AssistantContent::Reasoning(
-                    rig_core::message::Reasoning::new("elsewhere").with_provider("anthropic"),
+                    rig_core::message::Reasoning::new("elsewhere")
+                        .sealed(String::from("anthropic")),
                 ),
-                rig_core::message::AssistantContent::text("hi"),
-            ],
+                [rig_core::message::AssistantContent::text("hi")],
+            ),
         },
         Message::user("again"),
     ];
@@ -1280,9 +1266,12 @@ async fn closed_admission_controller_fails_public_operations()
             .to_string()
             .contains("concurrency controller is closed")
     );
+    // Admission is refused as the stream's first and only item.
     let stream_error = generation(&model)
-        .stream(request(vec![Message::user("hello")]))
-        .err()
+        .stream(request(vec![Message::user("hello")]))?
+        .next()
+        .await
+        .and_then(Result::err)
         .ok_or("closed stream admission unexpectedly succeeded")?;
     assert!(
         stream_error
@@ -1528,20 +1517,24 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     override_request.model = Some("other".to_string());
     assert!(render_prompt(&override_request).is_err());
 
-    let tool_result = request(vec![Message::tool_result("id", "tool", "result")]);
+    let tool_result = request(vec![Message::tool_result(
+        rig_core::message::CallId::from_wire("id"),
+        rig_core::message::ToolName::new("tool")?,
+        "result",
+    )]);
     assert!(render_prompt(&tool_result).is_err());
 
     let image = Message::User {
-        content: vec![UserContent::image_base64(
+        content: rig_core::NonEmpty::new(UserContent::image_base64(
             "data",
             Some(ImageMediaType::PNG),
             Some(ImageDetail::Auto),
-        )],
+        )),
     };
     assert!(render_prompt(&request(vec![image])).is_err());
 
     let audio = Message::User {
-        content: vec![UserContent::audio("data", Some(AudioMediaType::WAV))],
+        content: rig_core::NonEmpty::new(UserContent::audio("data", Some(AudioMediaType::WAV))),
     };
     assert!(render_prompt(&request(vec![audio])).is_err());
     Ok(())
@@ -1625,7 +1618,7 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
 }
 
 /// The load-bearing property behind `CompletionResponse::raw` and
-/// `StreamFinal::raw` for this crate: the captured value is
+/// `CompletionResponse::raw` for this crate: the captured value is
 /// `serde_json::to_value(&CandleCompletionResponse)` — the local record
 /// `raw_completion` returns — and a consumer must be able to read it back as
 /// the same type and get the same JSON, with the local generation metrics rig
@@ -1694,11 +1687,7 @@ async fn stream_from_events_terminal_carries_raw()
     while let Some(item) = stream.next().await {
         item?;
     }
-    let terminal = stream
-        .folded()
-        .terminal()
-        .cloned()
-        .ok_or("stream did not emit a terminal record")?;
+    let terminal = stream.finish().await?;
 
     assert!(
         !terminal.raw.is_null(),
@@ -1756,7 +1745,7 @@ async fn completion_raw_round_trips_into_the_local_record()
 }
 
 /// The streaming twin through the real `Model::stream` path: the
-/// terminal `StreamFinal.raw` is the local record the generator's `Final`
+/// terminal `CompletionResponse::raw` is the local record the generator's `Final`
 /// event carries — it round-trips into `CandleCompletionResponse`, agrees
 /// with a second stream's terminal on text and token counts, and
 /// re-normalizing it through the events-first seam reproduces every
@@ -1774,11 +1763,7 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     while let Some(item) = stream.next().await {
         item?;
     }
-    let terminal = stream
-        .folded()
-        .terminal()
-        .cloned()
-        .ok_or("stream did not emit a terminal record")?;
+    let terminal = stream.finish().await?;
     let (_, streamed) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
 
     assert!(
@@ -1801,13 +1786,9 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     while let Some(item) = renormalized.next().await {
         item?;
     }
-    let renormalized = renormalized
-        .folded()
-        .terminal()
-        .cloned()
-        .ok_or("re-normalizing the capture did not emit a terminal record")?;
+    let renormalized = renormalized.finish().await?;
     assert_eq!(terminal.identity(), renormalized.identity());
-    assert_eq!(terminal.finish_reason, renormalized.finish_reason);
+    assert_eq!(terminal.finish_reason(), renormalized.finish_reason());
     assert_eq!(terminal.model, renormalized.model);
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(terminal.usage.output_tokens, Some(2));

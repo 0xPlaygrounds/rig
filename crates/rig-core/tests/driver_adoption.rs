@@ -1,7 +1,7 @@
 //! Structural guard: every streaming triage site runs on the single-policy
 //! driver.
 //!
-//! `WireDriver` (and its factored `triage_frame` helper for the one-frame
+//! The driver's read loop (and its factored `triage` helper for the one-frame
 //! surfaces) in `driver.rs` is the ONLY place allowed to decide what happens
 //! to `WireEvent::Unknown` / `WireEvent::Corrupt` frames. The websocket
 //! divergence fixed on this branch is the standing proof that hand-copied
@@ -10,7 +10,7 @@
 //! Mechanism: non-test provider source may *classify* (produce a `WireEvent`)
 //! but never *triage* it — and triage requires matching the `Unknown`/`Corrupt`
 //! variants. So any mention of `WireEvent::Unknown` or `WireEvent::Corrupt`
-//! outside the driver (`adapter.rs`), the classify layer (`wire.rs`), and test
+//! outside the driver (`driver.rs`), the classify layer (`wire.rs`), and test
 //! code is a restated policy table.
 
 #![allow(clippy::expect_used)]
@@ -23,7 +23,7 @@ use std::path::PathBuf;
 /// hand-rolls a `WireEvent` policy table is scanned like any other file
 /// instead of inheriting the core driver's exemption.
 const ALLOWED_POLICY_HOMES: &[&str] = &[
-    // The one driver: `WireDriver` is where the policy table lives now, and
+    // The one driver: its read loop is where the policy table lives, and
     // `Model::call`/`Model::stream` are the only consumers of it. The HTTP
     // transport is the driver's framing half.
     "rig-core/src/driver.rs",
@@ -476,8 +476,8 @@ fn every_triage_site_runs_on_the_single_policy_driver() {
     assert!(
         violations.is_empty(),
         "Unknown/Corrupt triage restated outside the driver (driver.rs) and \
-         classify layer (wire.rs) — route it through WireDriver / \
-         triage_frame instead:\n{}",
+         classify layer (wire.rs) — route it through the driver's read \
+         loop / `triage` instead:\n{}",
         violations.join("\n")
     );
 }
@@ -545,7 +545,7 @@ const SINGLE_FILE_STREAMING_MODULES: &[&str] = &[
 ];
 
 /// Identifiers a file cannot mention without participating in wire handling.
-const WIRE_MACHINERY_MARKERS: &[&str] = &["WireEvent", "WireDriver", "WireFrame", "triage_frame"];
+const WIRE_MACHINERY_MARKERS: &[&str] = &["WireEvent", "WireFrame", "triage("];
 
 fn is_serde_wall_target(path: &std::path::Path, shipped: &str) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
@@ -1115,12 +1115,15 @@ fn serde_wall_scopes_by_machinery_content() {
         "crates/rig-core/src/providers/internal/openai_chat_completions_compatible.rs",
     );
     assert!(
-        is_serde_wall_target(compat, "use crate::driver::WireDriver;"),
+        is_serde_wall_target(compat, "use crate::wire::WireFrame;"),
         "a compat helper referencing the machinery must be scanned"
     );
     let future_helper = std::path::Path::new("crates/rig-core/src/providers/somegateway/sse.rs");
     assert!(
-        is_serde_wall_target(future_helper, "let mut driver = WireDriver::new(decoder);"),
+        is_serde_wall_target(
+            future_helper,
+            "fn classify(&self, frame: WireFrame) -> WireEvent<Chunk> {"
+        ),
         "any future compat/sse helper opts in the moment it names the machinery"
     );
     assert!(

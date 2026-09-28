@@ -38,7 +38,6 @@ async fn blocking_response_carries_identity() -> Result<()> {
 #[tokio::test]
 async fn streaming_terminal_carries_identity() -> Result<()> {
     use futures::StreamExt;
-    use rig::streaming::StreamEvent;
 
     with_groq_cassette_result(
         "response_identity_edge/streaming_terminal_carries_identity",
@@ -47,13 +46,13 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
             let mut stream = model.stream(CompletionRequest::new(
                 "Reply with exactly: stream identity probe",
             ))?;
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item? {
-                    terminal = Some(final_record);
-                }
+                item?;
             }
-            let terminal = terminal.expect("stream should yield a terminal record");
+            let terminal = stream
+                .finish()
+                .await
+                .expect("stream should yield a terminal record");
             anyhow::ensure!(
                 terminal
                     .provider_request_id

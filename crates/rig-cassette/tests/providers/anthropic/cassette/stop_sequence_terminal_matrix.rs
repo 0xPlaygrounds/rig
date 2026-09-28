@@ -62,7 +62,7 @@
 //! witness whether `stop_sequence` is skipped when `None`.
 //!
 //! Cells 25–26 assert the adjacent surfaces that share the same terminal
-//! construction still behave: rig's normalized [`StreamFinal`] deliberately has
+//! construction still behave: rig's normalized `CompletionResponse` deliberately has
 //! no `stop_sequence` (it is provider-specific and lives on the raw record), so
 //! those cells pin the normalized shape rather than the new field.
 
@@ -72,7 +72,6 @@ use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::providers::anthropic::wire::Messages;
-use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
 use serde_json::json;
@@ -120,13 +119,13 @@ async fn raw_terminal(
     let mut stream = model
         .stream(request)
         .expect("stop-sequence stream should open");
-    let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item should not error") {
-            terminal = Some(record);
-        }
+        item.expect("stream item should not error");
     }
-    let record = terminal.expect("stream should yield a terminal record");
+    let record = stream
+        .finish()
+        .await
+        .expect("stream should yield a terminal record");
     serde_json::from_value(record.raw).expect("the terminal's raw is the provider record")
 }
 
@@ -773,14 +772,14 @@ async fn normalized_stream_single_sequence() {
             while stream.next().await.is_some() {}
 
             let final_record = stream
-                .folded()
-                .terminal()
-                .expect("normalized stream should carry a terminal");
+                .finish()
+                .await
+                .expect("normalized stream should finish");
             // rig's normalized terminal deliberately has no `stop_sequence`:
             // the field is provider-specific and lives on the raw record. What
             // must hold here is that a stop-sequence stop still normalizes as a
             // natural stop.
-            assert_eq!(final_record.finish_reason, Some(FinishReason::Stop));
+            assert_eq!(final_record.finish_reason(), Some(FinishReason::Stop));
         },
     )
     .await;
@@ -803,7 +802,7 @@ async fn agent_stream_single_sequence() {
                     .build();
 
             let mut stream = agent.prompt(LIST_PROMPT).stream();
-            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (_response, provider_final) =
                 crate::support::collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("agent stream should succeed");

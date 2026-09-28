@@ -127,6 +127,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -135,17 +136,14 @@
                     "text": "We need answer. Need use add tool. Then reply with just number. Let's call add with x 17 y 25. Then output 42 only."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
-              },
-              "provider": {
-                "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
+                "provider": {
+                  "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
+                }
               },
               "function": {
                 "name": "add",
@@ -268,6 +266,7 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "deepseek",
                   "id": null,
                   "content": [
                     {
@@ -276,17 +275,14 @@
                         "text": "We need answer. Need use add tool. Then reply with just number. Let's call add with x 17 y 25. Then output 42 only."
                       }
                     }
-                  ],
-                  "provider": "deepseek"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
-                  },
-                  "provider": {
-                    "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
+                    "provider": {
+                      "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -306,11 +302,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
-                  },
-                  "provider": {
-                    "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
+                    "provider": {
+                      "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
+                    }
                   },
                   "name": "add",
                   "content": [

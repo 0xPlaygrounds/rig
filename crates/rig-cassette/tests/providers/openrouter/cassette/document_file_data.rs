@@ -39,12 +39,12 @@ fn verifier_document() -> Document {
 
 fn document_question(page_number: u8) -> RigMessage {
     RigMessage::User {
-        content: vec![
+        content: rig_core::NonEmpty::with_rest(
             RigUserContent::Document(verifier_document()),
-            RigUserContent::Text(Text::new(format!(
+            [RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
-            ))),
-        ],
+            )))],
+        ),
     }
 }
 
@@ -73,7 +73,7 @@ fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
     let encoded = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), DOCUMENT_MODEL)
         .encode(CompletionRequest::new(message), Mode::Unary)
         .expect("a history message should encode");
-    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+    let Body::Bytes(bytes) = encoded.request.body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")
     };
     let body: Value = serde_json::from_slice(bytes).expect("the chat body is JSON");

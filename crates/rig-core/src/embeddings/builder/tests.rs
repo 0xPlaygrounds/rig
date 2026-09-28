@@ -4,8 +4,7 @@ use crate::error::ProviderError;
 use crate::test_utils::{MockMultiTextDocument, MockTextDocument};
 
 use super::EmbeddingsBuilder;
-use crate::driver::{Exchange, Local, Model, Opened, Sending, Transport};
-use crate::embeddings::EmbeddingResponse;
+use crate::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
 use crate::test_utils::MockEmbeddings;
 use crate::wire::Capabilities;
 
@@ -230,18 +229,18 @@ impl Transport<Local<crate::operation::Embedding>> for SlowFirstBatchModel {
         &self,
         documents: Vec<String>,
         _exchange: Exchange,
-    ) -> Result<Sending<Result<EmbeddingResponse, ProviderError>>, ProviderError> {
+    ) -> Opening<Step<crate::operation::Embedding>> {
         let model = self.clone();
-        Ok(Sending::later(async move {
+        Opening::new(async move {
             let this = &model;
             let nth = this.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if nth == 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
             }
-            Opened::new(futures::stream::iter([Ok(Ok(MockEmbeddings::embed(
-                documents,
-            )))]))
-        }))
+            Ok(Opened::new(futures::stream::iter([Ok(Step::End(
+                MockEmbeddings::embed(documents),
+            ))])))
+        })
     }
 }
 
@@ -269,9 +268,9 @@ impl Transport<Local<crate::operation::Embedding>> for DescendingLatencyModel {
         &self,
         documents: Vec<String>,
         _exchange: Exchange,
-    ) -> Result<Sending<Result<EmbeddingResponse, ProviderError>>, ProviderError> {
+    ) -> Opening<Step<crate::operation::Embedding>> {
         let model = self.clone();
-        Ok(Sending::later(async move {
+        Opening::new(async move {
             let this = &model;
             let nth = this
                 .batches
@@ -280,10 +279,10 @@ impl Transport<Local<crate::operation::Embedding>> for DescendingLatencyModel {
                 120u64.saturating_sub(nth * 40),
             ))
             .await;
-            Opened::new(futures::stream::iter([Ok(Ok(MockEmbeddings::embed(
-                documents,
-            )))]))
-        }))
+            Ok(Opened::new(futures::stream::iter([Ok(Step::End(
+                MockEmbeddings::embed(documents),
+            ))])))
+        })
     }
 }
 
@@ -442,7 +441,7 @@ impl Transport<Local<crate::operation::Embedding>> for OneAtATimeReversedLatency
         &self,
         documents: Vec<String>,
         _exchange: Exchange,
-    ) -> Result<Sending<Result<EmbeddingResponse, ProviderError>>, ProviderError> {
+    ) -> Opening<Step<crate::operation::Embedding>> {
         // Earlier texts wait longer, so completion order is close to the
         // reverse of submission order. Texts are named `d{doc}t{i}`, so the
         // position is what follows the last `t`; if that ever stops parsing
@@ -454,18 +453,18 @@ impl Transport<Local<crate::operation::Embedding>> for OneAtATimeReversedLatency
             .and_then(|text| text.rsplit_once('t'))
             .and_then(|(_, n)| n.parse::<u64>().ok())
         else {
-            return Err(ProviderError::Provider(format!(
+            return Opening::failed(ProviderError::Provider(format!(
                 "could not read a text position out of {documents:?}; \
                  this mock cannot invert completion order without it"
             )));
         };
         let delay = 60u64.saturating_sub(position * 10);
-        Ok(Sending::later(async move {
+        Opening::new(async move {
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-            Opened::new(futures::stream::iter([Ok(Ok(MockEmbeddings::embed(
-                documents,
-            )))]))
-        }))
+            Ok(Opened::new(futures::stream::iter([Ok(Step::End(
+                MockEmbeddings::embed(documents),
+            ))])))
+        })
     }
 }
 

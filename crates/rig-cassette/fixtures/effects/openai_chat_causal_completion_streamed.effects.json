@@ -109,11 +109,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-              },
-              "provider": {
-                "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
+                "provider": {
+                  "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
+                }
               },
               "function": {
                 "name": "lookup",
@@ -165,164 +163,41 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\""
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"q\":\"What is the capital of France?\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "q"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\":\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "What"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " is"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " the"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " capital"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " of"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": " France"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "?\""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_HlbL3YvzHa4aHg3rpP0AXmZz",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-            },
-            "provider": {
-              "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-            },
-            "function": {
-              "name": "lookup",
-              "arguments": {
-                "q": "What is the capital of France?"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 181,
-            "output_tokens": 92,
-            "total_tokens": 273,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 64
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBNoY9gsPtxo1AejsMEHB9waJP9",
-          "provider_request_id": "req_cd774cd9eb4c4a348e76e168672d1038",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 181,
-              "completion_tokens": 92,
-              "total_tokens": 273,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 64
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDBNoY9gsPtxo1AejsMEHB9waJP9",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "YSQ",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+              "function": {
+                "name": "lookup",
+                "arguments": {
+                  "q": "What is the capital of France?"
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -475,11 +350,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-                  },
-                  "provider": {
-                    "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
+                    "provider": {
+                      "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
+                    }
                   },
                   "function": {
                     "name": "lookup",
@@ -498,11 +371,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
-                  },
-                  "provider": {
-                    "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
+                    "provider": {
+                      "call_id": "call_HlbL3YvzHa4aHg3rpP0AXmZz"
+                    }
                   },
                   "name": "lookup",
                   "content": [
@@ -595,67 +466,29 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Paris"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Paris"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 214,
-            "output_tokens": 4,
-            "total_tokens": 218,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBPAfRvA5FEAHe9a6QNzzffZoWI",
-          "provider_request_id": "req_b828ad43cc3747afad6c10222056d270",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 214,
-              "completion_tokens": 4,
-              "total_tokens": 218,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDBPAfRvA5FEAHe9a6QNzzffZoWI",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "rYDAv",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Paris"
             }
           }
         }

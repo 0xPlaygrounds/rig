@@ -293,13 +293,9 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
                 agent.app.world_mut(),
                 entity,
                 MessageParts::User {
-                    content: vec![
-                        UserContent::text("First, note this is an image-analysis cassette test."),
-                        image_content(),
-                        UserContent::text(
+                    content: rig_core::NonEmpty::with_rest(UserContent::text("First, note this is an image-analysis cassette test."), [image_content(), UserContent::text(
                             "Then answer in one short sentence naming the main visible subject.",
-                        ),
-                    ],
+                        )]),
                 },
             )?;
             let output = agent

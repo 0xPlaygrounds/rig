@@ -26,7 +26,7 @@ use rig::completion::Usage;
 use rig::prelude::*;
 use rig::providers::openai::OpenAIConfig;
 use rig::providers::openai::{self, Route};
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::{Item, StreamEvent};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -120,10 +120,10 @@ async fn main() -> Result<()> {
 
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
                 ..
-            }) => {
+            })) => {
                 print!("{text}");
                 io::stdout().flush()?;
                 printed_streamed_text = true;

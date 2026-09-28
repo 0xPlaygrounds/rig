@@ -1,221 +1,228 @@
 //! Decodes Gemini protobuf replies into Rig completion events.
 //!
 //! ```
-//! use rig_core::wire::{Mode, Wire};
+//! use rig_core::wire::Wire;
 //! use rig_gemini_grpc::completion::{GEMINI_2_5_FLASH, GenerateContent};
 //!
-//! let decoder = GenerateContent::new(GEMINI_2_5_FLASH).decoder(Mode::Streaming);
+//! let decoder = GenerateContent::new(GEMINI_2_5_FLASH).decoder();
 //! # let _ = decoder;
 //! ```
 
+use base64::Engine as _;
 use serde_json::{Map, Value};
 
 use rig_core::driver::warn_unmodeled;
-use rig_core::operation::{Completion, ImagePart};
-use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
-use rig_core::providers::internal::wire;
-use rig_core::streaming;
-use rig_core::wire::{Out, TypedEvent, WireEvent};
+use rig_core::error::ProviderError;
+use rig_core::message::{self, CallId, MimeType, ToolCall, ToolFunction, ToolName};
+use rig_core::operation::{Completion, Finish, TextPart};
+use rig_core::providers::internal::thoughts::Thoughts;
+use rig_core::wire::{Flow, Out, WireEvent};
 
-use super::completion::{
-    GrpcFrame, encode_optional_base64 as encode_signature, prost_struct_to_json,
-};
+use super::completion::{encode_optional_base64 as encode_signature, prost_struct_to_json};
 use super::proto;
 
-/// The Gemini gRPC typed wire as a [`Decoder`](rig_core::wire::Decoder) over
-/// protobuf frames: the chunk carrying a finish reason is the terminal, and
-/// the per-stream state is the thought block's lifecycle plus the tool-key
-/// minter. A whole unary reply replays as the events a stream sends.
-pub struct GrpcAdapter {
-    /// Derives signed reasoning boundaries for thought parts without wire IDs.
-    reasoning: MintedReasoningLifecycle,
-    /// Mints a distinct identity for each call lacking a wire ID.
-    tool_ids: streaming::SyntheticIds,
+/// The Gemini gRPC wire's decoder over `GenerateContentResponse`s: a unary
+/// reply is one of them, a stream sends several. Like the REST wire, the
+/// reply ends at EOF once a finish reason arrived, since a hosted-tool round
+/// can report one before more content.
+pub struct GrpcAdapter<'id> {
+    /// Thought boundaries inferred from content transitions and signatures.
+    thoughts: Thoughts<'id>,
+    /// The answer text part text chunks extend.
+    text: Option<TextPart<'id>>,
+    /// The latest response carrying a finish reason: the reply's end and
+    /// its raw record.
+    last: Option<proto::GenerateContentResponse>,
+    /// At least one part mapped to assistant content.
+    delivered: bool,
 }
 
-impl Default for GrpcAdapter {
+impl Default for GrpcAdapter<'_> {
     fn default() -> Self {
         Self {
-            reasoning: MintedReasoningLifecycle::new(streaming::MintKind::Reasoning),
-            tool_ids: streaming::SyntheticIds::tool(),
+            thoughts: Thoughts::new(),
+            text: None,
+            last: None,
+            delivered: false,
         }
     }
 }
 
-/// EOF without a finish reason is truncation, so the decoder adds nothing at
-/// the end of the reply.
-impl rig_core::wire::Decoder<Completion, GrpcFrame> for GrpcAdapter {
-    type Event = GrpcFrame;
+impl<'id> rig_core::wire::Decoder<'id, Completion, proto::GenerateContentResponse>
+    for GrpcAdapter<'id>
+{
+    type Event = proto::GenerateContentResponse;
 
-    fn classify(&self, frame: GrpcFrame) -> WireEvent<Self::Event> {
+    fn classify(&self, frame: proto::GenerateContentResponse) -> WireEvent<Self::Event> {
         // Tonic handles frame decoding; unknown oneof values are handled per
-        // part during interpretation.
-        wire::classify_typed_event(TypedEvent::Modeled(frame))
+        // part.
+        WireEvent::Known(frame)
     }
 
-    fn interpret(&mut self, frame: GrpcFrame, out: &mut Out<'_, Completion>) {
-        out.reasoning_issuer(super::completion::REASONING_ISSUER);
-        let resp = match frame {
-            GrpcFrame::Chunk(chunk) => chunk,
-            GrpcFrame::Whole(response) => return self.whole(*response, out),
+    fn decode(
+        &mut self,
+        resp: proto::GenerateContentResponse,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
+        out.issued_by(super::completion::REASONING_ISSUER);
+        let Some(candidate) = resp.candidates.first() else {
+            return Ok(Flow::More);
         };
-
-        let mut is_final = false;
-
-        if let Some(candidate) = resp.candidates.first() {
-            // Enum default is 0 = FINISH_REASON_UNSPECIFIED.
-            if candidate.finish_reason != 0 {
-                is_final = true;
+        // Protocol failures must not be followed by a successful end.
+        if let Some(err) = super::completion::tool_protocol_finish_reason_error(
+            candidate.finish_reason,
+            candidate.finish_message.as_deref(),
+        ) {
+            return Err(err);
+        }
+        if let Some(content) = candidate.content.as_ref() {
+            // Parts within one response are distinct parts; text chunks
+            // across stream responses continue one part.
+            let mut previous_text = false;
+            for part in &content.parts {
+                let text = !part.thought && matches!(part.data, Some(proto::part::Data::Text(_)));
+                if text && previous_text {
+                    self.close_text(&mut out);
+                }
+                previous_text = text;
+                self.interpret_part(part, &mut out)?;
             }
+        }
+        // Enum default is 0 = FINISH_REASON_UNSPECIFIED. The last one wins.
+        if candidate.finish_reason != 0 {
+            self.last = Some(resp);
+        }
+        Ok(Flow::More)
+    }
 
-            // Protocol failures must not be followed by a successful terminal record.
-            if let Some(err) = super::completion::tool_protocol_finish_reason_error(
-                candidate.finish_reason,
-                candidate.finish_message.as_deref(),
-            ) {
-                out.push(Err(err));
-                // Stop reading rather than drain the transport.
-                out.end_reply();
-                return;
-            }
+    /// Without a provider finish reason the reply did not end; an empty
+    /// reply needs a truncating finish reason to explain it.
+    fn eof(&mut self, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        let Some(last) = self.last.take() else {
+            return Err(ProviderError::Truncated);
+        };
+        let finish_reason = last
+            .candidates
+            .first()
+            .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
+        let cut_short = finish_reason
+            .as_ref()
+            .is_some_and(rig_core::completion::FinishReason::truncated_output);
+        if !self.delivered && !cut_short {
+            return Err(ProviderError::Response(
+                rig_core::message::EMPTY_RESPONSE_ERROR.to_owned(),
+            ));
+        }
+        self.close_text(&mut out);
+        self.thoughts.close(&mut out, None);
+        out.raw(serde_json::to_value(&last)?);
+        Ok(out.end(
+            Finish::new(super::completion::map_usage(last.usage_metadata.as_ref()))
+                .with_optional_reason(finish_reason)
+                .with_optional_response_id(Some(last.response_id).filter(|id| !id.is_empty()))
+                .with_optional_model(Some(last.model_version).filter(|model| !model.is_empty())),
+        ))
+    }
+}
 
-            if let Some(content) = candidate.content.as_ref() {
-                // Parts within one response are distinct parts; text chunks
-                // across stream responses continue one part. A signed part
-                // keeps its signature on it and ends there.
-                let mut previous_text = false;
-                for part in &content.parts {
-                    let text =
-                        !part.thought && matches!(part.data, Some(proto::part::Data::Text(_)));
-                    let signed = text && !part.thought_signature.is_empty();
-                    let empty = matches!(&part.data, Some(proto::part::Data::Text(text)) if text.is_empty());
-                    if text && (previous_text || (signed && empty)) {
-                        out.end_active_text();
-                    }
-                    previous_text = text;
-                    let parts = self.interpret_part(part);
-                    self.reasoning.emit_chunk(parts, out);
-                    if signed {
-                        out.end_active_text();
-                    }
+impl<'id> GrpcAdapter<'id> {
+    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
+        if let Some(part) = self.text.take() {
+            out.close_text(part);
+        }
+    }
+
+    /// Write one protobuf part.
+    fn interpret_part(
+        &mut self,
+        part: &proto::Part,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), ProviderError> {
+        match &part.data {
+            // A thought part's signature closes the thinking block, using the
+            // same base64 encoding the request side decodes.
+            Some(proto::part::Data::Text(text)) if part.thought => {
+                self.delivered = true;
+                if !text.is_empty() {
+                    self.close_text(out);
+                }
+                self.thoughts.fragment(out, text);
+                if let Some(signature) = encode_signature(&part.thought_signature) {
+                    self.thoughts.signature(out, signature);
                 }
             }
-        }
-
-        // Only a provider finish reason establishes completion; synthesizing a
-        // terminal at EOF would hide truncation.
-        if is_final {
-            match serde_json::to_value(&resp) {
-                Ok(raw) => out.final_record(terminal_record(&resp, raw)),
-                Err(err) => out.error(err.into()),
-            }
-        }
-    }
-}
-
-impl GrpcAdapter {
-    /// Replay a whole unary reply as the events a stream sends for it.
-    fn whole(&mut self, response: proto::GenerateContentResponse, out: &mut Out<'_, Completion>) {
-        // The provider's own document, captured before the reply is consumed
-        // into normalized content.
-        match serde_json::to_value(&response) {
-            Ok(document) => out.document(document),
-            Err(error) => return out.error(error.into()),
-        }
-        match super::completion::assistant_content(&response) {
-            Ok(choice) => out.content(&choice, ImagePart::Block),
-            Err(error) => return out.error(error),
-        }
-        out.final_record(terminal_record(&response, Value::Null));
-    }
-
-    /// Converts a protobuf part into content for shared lifecycle derivation.
-    fn interpret_part(&mut self, part: &proto::Part) -> ChunkParts {
-        match &part.data {
-            // A thought part's signature closes the thinking block: the shared
-            // accumulator signs the accumulated deltas, using the same base64
-            // encoding as the unary path.
-            Some(proto::part::Data::Text(text)) if part.thought => ChunkParts {
-                reasoning: Some(text.clone()),
-                reasoning_signature: encode_signature(&part.thought_signature),
-                ..ChunkParts::default()
-            },
-            // A signature on answer text returns on that text part.
-            Some(proto::part::Data::Text(text)) => ChunkParts {
-                text: Some(text.clone()),
-                text_meta: encode_signature(&part.thought_signature).and_then(|signature| {
+            // A signature on answer text returns on that text part; a signed
+            // part ends there.
+            Some(proto::part::Data::Text(text)) => {
+                self.delivered = true;
+                let signature = encode_signature(&part.thought_signature);
+                let signed = signature.is_some();
+                if signed && text.is_empty() {
+                    self.close_text(out);
+                }
+                let params = signature.and_then(|signature| {
                     rig_core::providers::gemini::text_signature_extras(
                         rig_core::providers::gemini::GEMINI_TEXT_EXTRAS_KEY,
                         signature,
                     )
-                }),
-                ..ChunkParts::default()
-            },
+                });
+                if !text.is_empty() || params.is_some() {
+                    self.thoughts.boundary();
+                    let part = self.text.get_or_insert_with(|| out.text());
+                    out.push_text(part, text);
+                    if let Some(params) = params {
+                        out.text_params(part, params);
+                    }
+                }
+                if signed {
+                    self.close_text(out);
+                }
+            }
             Some(proto::part::Data::FunctionCall(function_call)) => {
-                let args_json = function_call
+                self.delivered = true;
+                self.thoughts.boundary();
+                self.close_text(out);
+                let name = ToolName::new(function_call.name.clone()).map_err(|error| {
+                    ProviderError::Response(format!("Gemini returned a function call: {error}"))
+                })?;
+                let arguments = function_call
                     .args
                     .as_ref()
                     .map_or_else(|| Value::Object(Map::new()), prost_struct_to_json);
-
-                // Preserve wire identity or mint a distinct local key; tool names
-                // cannot distinguish repeated calls and are never identifiers.
-                let key = match streaming::non_empty_id(function_call.id.clone()) {
-                    Some(wire_id) => streaming::BlockId::wire(wire_id),
-                    None => self.tool_ids.mint(),
+                // Rig issues an id for a call the provider sent without one.
+                out.tool_call(
+                    ToolCall::new(
+                        CallId::from_wire(function_call.id.clone()),
+                        ToolFunction::new(name, arguments),
+                    )
+                    // A signature on a function-call part belongs to the call.
+                    .with_signature(encode_signature(&part.thought_signature)),
+                )?;
+            }
+            Some(proto::part::Data::InlineData(inline_data)) => {
+                self.delivered = true;
+                self.thoughts.boundary();
+                self.close_text(out);
+                let media_type = message::MediaType::from_mime_type(&inline_data.mime_type);
+                let Some(message::MediaType::Image(media_type)) = media_type else {
+                    return Err(ProviderError::Response(format!(
+                        "Unsupported media type {media_type:?}"
+                    )));
                 };
-
-                // Keep call_id unset for this single-ID protocol so downstream
-                // normalization does not infer a separate item identity.
-                let mut end = streaming::ToolCallEnd::whole(function_call.name.clone(), args_json)
-                    // A signature on a function-call part belongs to the
-                    // call, not to the thought block.
-                    .with_signature(encode_signature(&part.thought_signature));
-                end.tool_id = key.wire_str().map(str::to_owned);
-
-                // A whole call is its start and its authoritative end.
-                ChunkParts {
-                    tool_events: vec![
-                        streaming::StreamEvent::BlockStart {
-                            id: key.clone(),
-                            kind: streaming::BlockKind::ToolCall,
-                        },
-                        streaming::StreamEvent::BlockEnd {
-                            id: key,
-                            end: streaming::BlockClose::ToolCall(end),
-                            block: None,
-                        },
-                    ],
-                    ..ChunkParts::default()
-                }
+                out.content(message::AssistantContent::image_base64(
+                    base64::engine::general_purpose::STANDARD.encode(&inline_data.data),
+                    Some(media_type),
+                    Some(message::ImageDetail::default()),
+                ))?;
             }
             None => {
                 // Missing or unknown oneof data uses the shared redacted warning policy.
                 warn_unmodeled("gemini_grpc_part", part);
-                ChunkParts::default()
             }
-            Some(_) => ChunkParts::default(),
+            Some(_) => {}
         }
+        Ok(())
     }
-}
-
-/// Map the terminal `GenerateContentResponse` onto rig's
-/// [`streaming::StreamFinal`], serializing the native record onto
-/// [`streaming::StreamFinal::raw`].
-fn terminal_record(
-    response: &proto::GenerateContentResponse,
-    raw: Value,
-) -> streaming::StreamFinal {
-    let usage = super::completion::map_usage(response.usage_metadata.as_ref());
-    let finish_reason = response
-        .candidates
-        .first()
-        .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
-
-    streaming::StreamFinal::new(super::completion::PROVIDER_NAME, usage, raw)
-        .with_optional_finish_reason(finish_reason)
-        .with_optional_response_id(Some(response.response_id.clone()).filter(|id| !id.is_empty()))
-        .with_optional_model(Some(response.model_version.clone()).filter(|model| !model.is_empty()))
-        .with_reasoning_issuer(super::completion::REASONING_ISSUER)
 }
 
 #[cfg(test)]

@@ -11,7 +11,6 @@ use rig_core::{
     completion::{ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     serve::{Dispatch, Reply, Serve},
-    streaming::StreamFinal,
 };
 use rig_ecs::bus::{
     BusSet, EffectOutcome, Handlers, InFlight, PendingEffect, RigSchedule, Streamed,
@@ -562,11 +561,10 @@ impl Serve for BatchedStream {
                         drop(writer);
                     } else {
                         writer
-                            .finish(StreamFinal::new(
+                            .finish(
                                 "batched",
-                                Usage::default(),
-                                serde_json::json!({}),
-                            ))
+                                rig_core::operation::Finish::new(Usage::default()),
+                            )
                             .await
                             .unwrap();
                     }
@@ -599,11 +597,11 @@ fn recorded_text_snapshots(log: &EffectLog) -> Vec<String> {
     let mut snapshots = Vec::new();
     for delivery in log.header.deliveries.as_ref().unwrap() {
         if let rig_core::effect::DeliveryKind::Stream { items } = delivery.kind {
-            for event in &events[position..position + items] {
-                if let rig_core::streaming::StreamEvent::BlockDelta {
-                    delta: rig_core::streaming::Delta::Text { text: delta },
+            for item in &events.items()[position..position + items] {
+                if let rig_core::streaming::Item::Event(rig_core::streaming::StreamEvent::Text {
+                    text: delta,
                     ..
-                } = event
+                }) = item
                 {
                     text.push_str(delta);
                 }
@@ -707,9 +705,9 @@ fn kept_streams_replay_single_and_multi_event_policy_batches() {
         let id = legacy.records[0].id;
         let mut deliveries = Vec::new();
         for (index, group) in groups.iter().enumerate() {
-            let items = group.len()
-                + usize::from(index == 0)
-                + if index + 1 == groups.len() { 2 } else { 0 };
+            // The first group opens the text part; the last ends it.
+            let items =
+                group.len() + usize::from(index == 0) + usize::from(index + 1 == groups.len());
             deliveries.push(rig_core::effect::Delivery {
                 batch: index as u64 + 1,
                 id,
@@ -1276,15 +1274,11 @@ impl Serve for TerminalErrors {
     }
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let error = rig_core::error::ErrorReport::new(self.error_kind, "original error");
-        let terminal = rig_core::streaming::StreamEvent::Final(StreamFinal::new(
-            "test",
-            Usage::default(),
-            serde_json::json!({}),
-        ));
+        let terminal = bus_support::done("test");
         let first = if self.error_first {
-            vec![Err(error), Ok(terminal)]
+            vec![Err(error), terminal]
         } else {
-            vec![Ok(terminal), Err(error)]
+            vec![terminal, Err(error)]
         };
         let mut items = first
             .into_iter()
@@ -1352,8 +1346,9 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
             serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
         let errors = &log.header.stream_errors[&log.records[0].id];
         assert_eq!(errors.len(), 2);
-        assert_eq!(errors[0].item, usize::from(!error_first));
-        assert_eq!(errors[1].item, 2);
+        // Positions count items and errors; the response is not one.
+        assert_eq!(errors[0].item, 0);
+        assert_eq!(errors[1].item, 1);
         // A delivery trace cannot omit either error from its item count.
         let mut short = log.clone();
         let deliveries = short.header.deliveries.as_mut().unwrap();
@@ -1377,16 +1372,17 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
             deliveries.retain(|delivery| {
                 !matches!(delivery.kind, rig_core::effect::DeliveryKind::Stream { .. })
             });
-            deliveries.insert(
-                0,
-                rig_core::effect::Delivery {
-                    batch: 0,
-                    id: missing.records[0].id,
-                    kind: rig_core::effect::DeliveryKind::Stream {
-                        items: missing.records[0].events.as_ref().unwrap().len(),
+            let events = missing.records[0].events.as_ref().unwrap().len();
+            if events != 0 {
+                deliveries.insert(
+                    0,
+                    rig_core::effect::Delivery {
+                        batch: 0,
+                        id: missing.records[0].id,
+                        kind: rig_core::effect::DeliveryKind::Stream { items: events },
                     },
-                },
-            );
+                );
+            }
             let error = rig_cassette::ecs::ReplayDelivery::new(&missing, true)
                 .err()
                 .expect("first outcome is not reconstructible");
@@ -1437,9 +1433,10 @@ fn stream_error_observation_does_not_depend_on_recording() {
             });
             let stream = live.world().get::<Streamed>(effect).unwrap();
             assert_eq!(stream.errors.len(), 2);
-            assert_eq!(stream.errors[0].0, usize::from(!error_first));
+            // Positions count items and errors; the response is not one.
+            assert_eq!(stream.errors[0].0, 0);
             assert_eq!(stream.errors[0].1.message, "original error");
-            assert_eq!(stream.errors[1].0, 2);
+            assert_eq!(stream.errors[1].0, 1);
             assert_eq!(stream.errors[1].1.message, "late error");
             assert_eq!(
                 live.world()
@@ -1780,9 +1777,7 @@ fn cancelled_record_is_immutable_when_an_active_worker_poll_returns() {
                 returned = true;
                 entered.send(()).unwrap();
                 release.recv_timeout(bus_support::GUARD).unwrap();
-                std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Final(
-                    StreamFinal::new("mock", Usage::default(), serde_json::json!({})),
-                ))))
+                std::task::Poll::Ready(Some(bus_support::done("mock")))
             })))
         }
     }
@@ -1849,8 +1844,10 @@ fn implicit_cancelled_prefix_rerecord_does_not_invent_an_error_item() {
         .await
         .unwrap()
     });
-    for event in &prefix {
-        original.event(id, event);
+    for item in &prefix {
+        if let rig_core::streaming::Relayed::Item(item) = item {
+            original.event(id, item);
+        }
     }
     original.delivery(Delivery {
         batch: 1,

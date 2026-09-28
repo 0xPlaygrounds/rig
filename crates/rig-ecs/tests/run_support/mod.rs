@@ -293,7 +293,11 @@ impl Serve for Scripted {
 
 /// A tool call the model makes, as the script's assistant part.
 pub fn call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
-    AssistantContent::tool_call(id, name, arguments)
+    AssistantContent::tool_call(
+        id,
+        rig_core::message::ToolName::new(name).expect("tool name"),
+        arguments,
+    )
 }
 
 /// A tool that adds `x` and `y`, counting how many calls were in flight

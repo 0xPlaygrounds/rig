@@ -2,72 +2,48 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 6
         }
       },
       {
         "batch": 13,
         "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 18,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 19,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -75,7 +51,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -83,7 +59,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -91,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 1
         }
       },
       {
@@ -107,7 +83,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -115,7 +91,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -123,19 +99,11 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 8
         }
       },
       {
-        "batch": 29,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 29,
+        "batch": 26,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -260,11 +228,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_7ae078410b5249eea6b86568"
-              },
-              "provider": {
-                "call_id": "call_7ae078410b5249eea6b86568"
+                "provider": {
+                  "call_id": "call_7ae078410b5249eea6b86568"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -276,11 +242,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_d519a11aefe343b786a0157d"
-              },
-              "provider": {
-                "call_id": "call_d519a11aefe343b786a0157d"
+                "provider": {
+                  "call_id": "call_d519a11aefe343b786a0157d"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -335,128 +299,76 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_7ae078410b5249eea6b86568",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_harbor_label"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_7ae078410b5249eea6b86568",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_d519a11aefe343b786a0157d",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_orchard_label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_d519a11aefe343b786a0157d",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_7ae078410b5249eea6b86568",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_7ae078410b5249eea6b86568",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_7ae078410b5249eea6b86568"
-            },
-            "provider": {
-              "call_id": "call_7ae078410b5249eea6b86568"
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_d519a11aefe343b786a0157d",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_d519a11aefe343b786a0157d",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_d519a11aefe343b786a0157d"
-            },
-            "provider": {
-              "call_id": "call_d519a11aefe343b786a0157d"
-            },
-            "function": {
-              "name": "lookup_orchard_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 425,
-            "output_tokens": 36,
-            "total_tokens": 461,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "gen-1790145982-A767sEQ2L1iLRO7gJswt",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 425,
-              "completion_tokens": 36,
-              "total_tokens": 461,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_7ae078410b5249eea6b86568"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_d519a11aefe343b786a0157d"
+                }
               },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790145982-A767sEQ2L1iLRO7gJswt",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -550,11 +462,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_7ae078410b5249eea6b86568"
-                  },
-                  "provider": {
-                    "call_id": "call_7ae078410b5249eea6b86568"
+                    "provider": {
+                      "call_id": "call_7ae078410b5249eea6b86568"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -566,11 +476,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_d519a11aefe343b786a0157d"
-                  },
-                  "provider": {
-                    "call_id": "call_d519a11aefe343b786a0157d"
+                    "provider": {
+                      "call_id": "call_d519a11aefe343b786a0157d"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -587,11 +495,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_7ae078410b5249eea6b86568"
-                  },
-                  "provider": {
-                    "call_id": "call_7ae078410b5249eea6b86568"
+                    "provider": {
+                      "call_id": "call_7ae078410b5249eea6b86568"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -604,11 +510,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_d519a11aefe343b786a0157d"
-                  },
-                  "provider": {
-                    "call_id": "call_d519a11aefe343b786a0157d"
+                    "provider": {
+                      "call_id": "call_d519a11aefe343b786a0157d"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -706,232 +610,189 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " harbor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " label"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " crimson"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-h"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "bor and the orch"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " tool"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " reported"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " error"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ":"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " orch"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " lookup"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " broken"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The harbor label is crimson-harbor and the orchard tool reported the error: the orchard lookup is broken."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 494,
-            "output_tokens": 25,
-            "total_tokens": 519,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "gen-1790145983-bSCz8j3SG1SZsyhBGnGz",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 494,
-              "completion_tokens": 25,
-              "total_tokens": 519,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790145983-bSCz8j3SG1SZsyhBGnGz",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The harbor label is crimson-harbor and the orchard tool reported the error: the orchard lookup is broken."
             }
           }
         }

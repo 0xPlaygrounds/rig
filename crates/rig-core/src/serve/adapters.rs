@@ -96,7 +96,7 @@ impl Serve for ModelAdapter<Completion> {
                     None => model.stream(request),
                 };
                 match opened {
-                    Ok(stream) => Reply::Stream(Box::pin(stream)),
+                    Ok(stream) => Reply::Stream(stream.into_relay()),
                     Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
                 }
             }

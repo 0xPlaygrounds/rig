@@ -12,7 +12,6 @@ use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::completion::PromptError;
 use rig::effect::EffectFamily;
-use rig::error::ErrorKind;
 use rig::run::{OutputMode, UnhandledInvalidToolCall};
 use rig::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_cassette::agent::AgentReplayExt;
@@ -20,8 +19,8 @@ use serde_json::json;
 
 use super::golden_recovery::Add;
 use crate::goldens::{
-    RepairToAdd, RetryUnknownTool, STOP_ON_TOOL_ARGUMENTS_DELTA, STOP_ON_TOOL_NAME_DELTA,
-    SkipUnknown, StopOnToolArgumentsDelta, StopOnToolNameDelta, event_schema, families,
+    RepairToAdd, RetryUnknownTool, STOP_ON_TOOL_ARGUMENTS_DELTA, SkipUnknown,
+    StopOnToolArgumentsDelta, event_schema, families,
 };
 
 const PREAMBLE: &str = "Use the add tool.";
@@ -368,34 +367,6 @@ async fn delta_output_tool_effect_log_is_the_golden_fixture() {
     let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_delta_output_tool", &log);
-}
-
-/// A stop on the delta that names the tool.
-#[tokio::test]
-async fn delta_stop_on_name_effect_log_is_the_golden_fixture() {
-    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([stream_turn(
-        delta_call("call-1", "add"),
-    )]))
-    .name("golden")
-    .preamble(PREAMBLE)
-    .tool(Add)
-    .add_hook(StopOnToolNameDelta)
-    .record_to(recorder.clone())
-    .build();
-    let error = streamed(&agent, 3, UnhandledInvalidToolCall::Fail, 0)
-        .await
-        .expect_err("the hook stops the run");
-    assert_eq!(cancelled_reason(&error), STOP_ON_TOOL_NAME_DELTA);
-    let log = agent.stamp(recorder.take());
-    assert_eq!(families(&log), [EffectFamily::Completion]);
-    assert!(
-        log.records[0].outcome.is_ok()
-            || matches!(&log.records[0].outcome, Err(report) if report.kind == ErrorKind::Cancelled),
-        "{:?}",
-        log.records[0].outcome
-    );
-    crate::goldens::golden_effects("mock_delta_stop_on_name", &log);
 }
 
 /// A stop on the first arguments delta, after the name validated.

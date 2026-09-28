@@ -143,11 +143,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
-              },
-              "provider": {
-                "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                "provider": {
+                  "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                }
               },
               "function": {
                 "name": "add",
@@ -265,11 +263,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
-                  },
-                  "provider": {
-                    "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                    "provider": {
+                      "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -289,11 +285,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
-                  },
-                  "provider": {
-                    "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                    "provider": {
+                      "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -417,11 +411,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
-                  },
-                  "provider": {
-                    "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                    "provider": {
+                      "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -441,11 +433,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
-                  },
-                  "provider": {
-                    "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                    "provider": {
+                      "call_id": "toolu_017g1nkHcuHFDcpWubRJHEXe"
+                    }
                   },
                   "name": "add",
                   "content": [

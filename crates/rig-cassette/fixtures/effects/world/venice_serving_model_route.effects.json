@@ -151,11 +151,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "c2F5iramm"
-              },
-              "provider": {
-                "call_id": "c2F5iramm"
+                "provider": {
+                  "call_id": "c2F5iramm"
+                }
               },
               "function": {
                 "name": "add",
@@ -288,11 +286,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "c2F5iramm"
-                  },
-                  "provider": {
-                    "call_id": "c2F5iramm"
+                    "provider": {
+                      "call_id": "c2F5iramm"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -312,11 +308,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "c2F5iramm"
-                  },
-                  "provider": {
-                    "call_id": "c2F5iramm"
+                    "provider": {
+                      "call_id": "c2F5iramm"
+                    }
                   },
                   "name": "add",
                   "content": [

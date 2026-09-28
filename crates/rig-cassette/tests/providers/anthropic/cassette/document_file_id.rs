@@ -153,12 +153,12 @@ fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
 
 fn document_question(content: RigUserContent, page_number: u8) -> Message {
     Message::User {
-        content: vec![
+        content: rig_core::NonEmpty::with_rest(
             content,
-            RigUserContent::Text(Text::new(format!(
+            [RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
-            ))),
-        ],
+            )))],
+        ),
     }
 }
 

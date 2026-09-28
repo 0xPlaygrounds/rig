@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 4
         }
       },
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -110,60 +110,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "I'm sorry"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ", I can't help."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "I'm sorry, I can't help."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 10,
-            "output_tokens": 8,
-            "total_tokens": 18
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-1",
-          "provider": "openai",
-          "model": "gpt-4o",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 10,
-              "completion_tokens": 8,
-              "total_tokens": 18
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-1",
-            "model": "gpt-4o"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'm sorry, I can't help."
+            }
           }
         }
       ],

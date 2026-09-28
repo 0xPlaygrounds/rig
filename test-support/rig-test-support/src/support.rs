@@ -15,9 +15,9 @@ use rig_agent::completion::ToolDefinition;
 
 use rig_core::embeddings::Embedding;
 
-use rig_core::streaming::Delta;
+use rig_core::completion::CompletionResponse;
 
-use rig_core::streaming::StreamEvent;
+use rig_core::streaming::{Item, StreamEvent};
 
 use rig_core::streaming::StreamedUserContent;
 
@@ -755,17 +755,18 @@ pub async fn collect_stream_final_response(
     Ok(final_response.expect("stream should yield a final response"))
 }
 
-/// Drain the stream, propagating errors and requiring agent and provider final responses.
+/// Drain the stream, propagating errors and requiring the agent's final
+/// response and a recorded provider completion call.
 pub async fn collect_stream_final_response_and_provider_final(
     stream: &mut StreamingResult,
-) -> Result<(String, rig_core::streaming::StreamFinal), StreamingError> {
+) -> Result<(String, rig_agent::run::response::CompletionCall), StreamingError> {
     let mut final_response = None;
     let mut provider_final = None;
 
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_)) => {
-                provider_final = Some(final_);
+            MultiTurnStreamItem::CompletionCall(call) => {
+                provider_final = Some(call);
             }
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_response = Some(response.output().to_owned());
@@ -776,7 +777,7 @@ pub async fn collect_stream_final_response_and_provider_final(
 
     Ok((
         final_response.expect("stream should yield a final response"),
-        provider_final.expect("stream should yield a typed provider final"),
+        provider_final.expect("stream should yield a provider completion call"),
     ))
 }
 
@@ -786,22 +787,20 @@ pub async fn assert_stream_contains_zero_arg_tool_call_named(
     expected_name: &str,
     expect_final_response: bool,
 ) {
-    let mut saw_final = false;
     let mut saw_matching_tool_call = false;
 
     while let Some(chunk) = stream.next().await {
-        match chunk.expect("stream item should be ok") {
-            StreamEvent::Final(_) => saw_final = true,
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
-                ..
-            } if tool_call.function.name == expected_name => {
-                assert_eq!(tool_call.function.arguments, json!({}));
-                saw_matching_tool_call = true;
-            }
-            _ => {}
+        if let Item::Event(StreamEvent::End {
+            content: AssistantContent::ToolCall(tool_call),
+            ..
+        }) = chunk.expect("stream item should be ok")
+            && tool_call.function.name == expected_name
+        {
+            assert_eq!(tool_call.function.arguments, json!({}));
+            saw_matching_tool_call = true;
         }
     }
+    let saw_final = stream.finish().await.is_ok();
 
     if expect_final_response {
         assert!(saw_final, "stream should still yield a final response");
@@ -896,52 +895,40 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(event)) => match event {
-                StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                } => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(item)) => match item {
+                Item::Event(StreamEvent::Text { text, .. }) => {
                     observation.all_streamed_text.push_str(&text);
                     observation.final_turn_text.push_str(&text);
                     observation.events.push("text");
                 }
-                StreamEvent::BlockDelta {
-                    delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                    ..
-                } => {
+                Item::Event(StreamEvent::Arguments { .. }) => {
                     observation.events.push("tool_call_delta");
                 }
-                StreamEvent::BlockEnd {
-                    block: Some(AssistantContent::Reasoning(_)),
+                Item::Event(StreamEvent::End {
+                    content: AssistantContent::Reasoning(_),
                     ..
-                } => {
+                }) => {
                     observation.events.push("reasoning");
                 }
-                StreamEvent::BlockDelta {
-                    delta: Delta::Reasoning { .. },
-                    ..
-                } => {
+                Item::Event(StreamEvent::Reasoning { .. }) => {
                     observation.events.push("reasoning_delta");
                 }
-                StreamEvent::Final(_) => {
-                    observation.events.push("stream_final");
-                }
-                StreamEvent::Unknown(_) => {
+                Item::Unknown(_) => {
                     observation.events.push("unknown");
                 }
-                StreamEvent::BlockStart { .. }
-                | StreamEvent::BlockDelta {
-                    delta: Delta::TextMeta { .. },
-                    ..
-                }
-                | StreamEvent::BlockEnd { .. } => {}
+                Item::Event(StreamEvent::Start { .. } | StreamEvent::End { .. }) => {}
             },
+            Ok(MultiTurnStreamItem::CompletionCall(_)) => {
+                observation.events.push("completion_call");
+            }
             // The engine reports the model's completed calls itself once the
-            // turn commits; the provider-level `BlockEnd` is not forwarded.
+            // turn commits.
             Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
-                observation.tool_calls.push(tool_call.function.name.clone());
+                observation
+                    .tool_calls
+                    .push(tool_call.function.name.clone().into());
                 observation.tool_call_records.push(ToolCallRecord {
-                    name: tool_call.function.name,
+                    name: tool_call.function.name.into(),
                     signature: tool_call.signature,
                     additional_params: tool_call.additional_params,
                 });
@@ -969,83 +956,26 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
 }
 
 /// Drive a raw provider stream to exhaustion, keeping both the visible text
-/// and the terminal record.
-///
-/// The observation helpers above drop the terminal record; matrices that are
-/// about what the terminal *carries* (a finish reason, usage) need it.
+/// and the response it finished with (`None` when it did not finish).
 pub async fn collect_text_and_terminal(
     mut stream: CompletionStream,
-) -> (String, Option<rig_core::streaming::StreamFinal>) {
+) -> (String, Option<CompletionResponse>) {
     let mut text = String::new();
-    let mut terminal = None;
-
     while let Some(item) = stream.next().await {
-        match item.expect("stream item should not be an error") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: chunk },
-                ..
-            } => text.push_str(&chunk),
-            StreamEvent::Final(final_record) => terminal = Some(final_record),
-            _ => {}
+        if let Item::Event(StreamEvent::Text { text: chunk, .. }) =
+            item.expect("stream item should not be an error")
+        {
+            text.push_str(&chunk);
         }
     }
-
-    (text, terminal)
+    (text, stream.finish().await.ok())
 }
 
-/// Drive a raw provider stream to exhaustion and return the terminal record
-/// it must have ended with, discarding the visible text.
-///
-/// Providers that repeat their accounting across closing frames emit more
-/// than one terminal event; this keeps the last, exactly as
-/// [`collect_text_and_terminal`] reports it.
-pub async fn collect_required_terminal(
-    stream: CompletionStream,
-) -> rig_core::streaming::StreamFinal {
+/// Drive a raw provider stream to exhaustion and return the response it
+/// must have finished with, discarding the visible text.
+pub async fn collect_required_terminal(stream: CompletionStream) -> CompletionResponse {
     let (_, terminal) = collect_text_and_terminal(stream).await;
-    terminal.expect("stream should end with a terminal record")
-}
-
-/// Drive a raw provider stream to exhaustion, keeping the visible text and
-/// requiring that it ended with exactly one terminal record.
-///
-/// The two claims belong together for the dialects whose contract is one
-/// terminal record *and* whose cells are about what the stream said:
-/// [`collect_sole_terminal`] drops the text, [`collect_text_and_terminal`]
-/// keeps the last of several records.
-pub async fn collect_text_and_sole_terminal(
-    mut stream: CompletionStream,
-) -> (String, rig_core::streaming::StreamFinal) {
-    let mut text = String::new();
-    let mut finals = Vec::new();
-
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be ok") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: chunk },
-                ..
-            } => text.push_str(&chunk),
-            StreamEvent::Final(record) => finals.push(record),
-            _ => {}
-        }
-    }
-
-    assert_eq!(
-        finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
-    (text, finals.remove(0))
-}
-
-/// Drive a raw provider stream to exhaustion and return its one terminal
-/// record.
-///
-/// Exactly one terminal record per stream is the contract, so a stream that
-/// emitted none — or more than one — fails here instead of silently handing
-/// back the last.
-pub async fn collect_sole_terminal(stream: CompletionStream) -> rig_core::streaming::StreamFinal {
-    collect_text_and_sole_terminal(stream).await.1
+    terminal.expect("stream should finish with a response")
 }
 
 /// Where a matrix cell parks the observation its recorded turn produced.
@@ -1328,61 +1258,55 @@ where
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => {
                 observation.text.push_str(&text);
                 observation.events.push("text");
             }
-            Ok(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
+            Ok(Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
                 ..
-            }) => {
+            })) => {
                 observation.tool_calls.push(tool_call.clone());
                 observation.tool_call_records.push(ToolCallRecord {
-                    name: tool_call.function.name,
+                    name: tool_call.function.name.into(),
                     signature: tool_call.signature,
                     additional_params: tool_call.additional_params,
                 });
                 observation.events.push("tool_call");
             }
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::Arguments { .. })) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(_)),
+            Ok(Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(_),
                 ..
-            }) => {
+            })) => {
                 observation.events.push("reasoning");
             }
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { .. },
-                ..
-            }) => {
+            Ok(Item::Event(StreamEvent::Reasoning { .. })) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(StreamEvent::Final(_)) => {
-                observation.got_final = true;
-                observation.events.push("final");
-            }
-            Ok(StreamEvent::Unknown(_)) => {
+            Ok(Item::Unknown(_)) => {
                 observation.events.push("unknown");
             }
-            Ok(StreamEvent::BlockStart { .. })
-            | Ok(StreamEvent::BlockDelta {
-                delta: Delta::TextMeta { .. },
-                ..
-            })
-            | Ok(StreamEvent::BlockEnd { .. }) => {}
+            Ok(Item::Event(StreamEvent::Start { .. } | StreamEvent::End { .. })) => {}
             Err(error) => {
                 observation.errors.push(error.to_string());
                 observation.events.push("error");
             }
         }
+    }
+    match stream.finish().await {
+        Ok(_) => {
+            observation.got_final = true;
+            observation.events.push("final");
+        }
+        // The error the stream already yielded is not reported twice.
+        Err(error) if observation.errors.is_empty() => {
+            observation.errors.push(error.to_string());
+            observation.events.push("error");
+        }
+        Err(_) => {}
     }
 
     observation
@@ -1626,7 +1550,7 @@ pub fn assert_raw_stream_contains_distinct_tool_calls_before_text(
     let tool_call_names = observation
         .tool_calls
         .iter()
-        .map(|tool_call| tool_call.function.name.clone())
+        .map(|tool_call| tool_call.function.name.to_string())
         .collect::<Vec<_>>();
 
     for expected_tool in expected_tools {

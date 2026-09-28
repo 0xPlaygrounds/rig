@@ -2,46 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 5
-        }
-      },
-      {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
         "batch": 18,
         "id": 0,
         "kind": {
@@ -54,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 1
         }
       },
       {
@@ -74,7 +34,55 @@
         }
       },
       {
+        "batch": 22,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 23,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -82,7 +90,103 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 30,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 34,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 35,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 36,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 37,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 40,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -172,6 +276,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Be precise and concise.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 28,
               "input_tokens_details": {
@@ -183,304 +301,280 @@
               },
               "total_tokens": 57
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " next"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " solar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " eclipse"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " a"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " partial"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " solar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " eclipse"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " on"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " October"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "14"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ","
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " "
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "202"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "3"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " It"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " will"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " be"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " visible"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " in"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " parts"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " of"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " Americas"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 28,
-            "output_tokens": 29,
-            "total_tokens": 57,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
-          "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 28,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 29,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 57
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
-            "model": "gpt-4o-2024-08-06"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
+            }
           }
         }
       ],

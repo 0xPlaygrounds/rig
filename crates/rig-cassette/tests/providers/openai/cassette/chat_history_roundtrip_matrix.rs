@@ -29,6 +29,7 @@
 //! |---|---|
 //! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
 
+use rig::streaming::Item;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -36,7 +37,7 @@ use futures::StreamExt as _;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_history_roundtrip_cassette_result};
@@ -105,57 +106,61 @@ fn history(shape: Shape) -> Vec<Message> {
     match shape {
         Shape::Text => vec![
             Message::User {
-                content: vec![UserContent::text(
+                content: rig_core::NonEmpty::new(UserContent::text(
                     "Unicode context: café 東京. The marker is exactly: lantern-42.",
-                )],
+                )),
             },
             Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::text("lantern-42")],
+                content: rig_core::NonEmpty::new(AssistantContent::text("lantern-42")),
             },
         ],
         Shape::SingleTool => vec![
             Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::tool_call(
+                content: rig_core::NonEmpty::new(AssistantContent::tool_call(
                     "call_history_single",
-                    "lookup_marker",
+                    rig_core::message::ToolName::new("lookup_marker").expect("tool name"),
                     json!({ "key": "harbor" }),
-                )],
+                )),
             },
             Message::User {
-                content: vec![UserContent::tool_result(
-                    "call_history_single",
-                    "lookup_marker",
-                    vec![ToolResultContent::text("azimuth-47")],
-                )],
+                content: rig_core::NonEmpty::new(UserContent::tool_result(
+                    rig_core::message::CallId::from_wire("call_history_single"),
+                    rig_core::message::ToolName::new("lookup_marker").expect("tool name"),
+                    rig_core::NonEmpty::new(ToolResultContent::text("azimuth-47")),
+                )),
             },
         ],
         Shape::ParallelTool => vec![
             Message::Assistant {
                 id: None,
-                content: vec![
+                content: rig_core::NonEmpty::with_rest(
                     AssistantContent::tool_call(
                         "call_history_alpha",
-                        "alpha",
+                        rig_core::message::ToolName::new("alpha").expect("tool name"),
                         json!({ "slot": 1 }),
                     ),
-                    AssistantContent::tool_call("call_history_beta", "beta", json!({ "slot": 2 })),
-                ],
+                    [AssistantContent::tool_call(
+                        "call_history_beta",
+                        rig_core::message::ToolName::new("beta").expect("tool name"),
+                        json!({ "slot": 2 }),
+                    )],
+                ),
             },
             Message::User {
-                content: vec![
+                content: rig_core::NonEmpty::with_rest(
                     UserContent::tool_result(
-                        "call_history_alpha",
-                        "alpha",
-                        vec![ToolResultContent::text("red")],
+                        rig_core::message::CallId::from_wire("call_history_alpha"),
+                        rig_core::message::ToolName::new("alpha").expect("tool name"),
+                        rig_core::NonEmpty::new(ToolResultContent::text("red")),
                     ),
-                    UserContent::tool_result(
-                        "call_history_beta",
-                        "beta",
-                        vec![ToolResultContent::text("blue")],
-                    ),
-                ],
+                    [UserContent::tool_result(
+                        rig_core::message::CallId::from_wire("call_history_beta"),
+                        rig_core::message::ToolName::new("beta").expect("tool name"),
+                        rig_core::NonEmpty::new(ToolResultContent::text("blue")),
+                    )],
+                ),
             },
         ],
     }
@@ -229,47 +234,38 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
         }
         (Transport::Streaming, Surface::Raw) => {
             // The raw surface is the same event stream; the native terminal
-            // record rides on `StreamFinal::raw`, so the raw cell asserts the
+            // record rides on the response's `raw`, so the raw cell asserts the
             // terminal decodes back to the chat-completions native type.
             let mut stream = model.stream(request(cell))?;
-            let mut observation = Observation {
-                text: String::new(),
-                saw_terminal: false,
-            };
+            let mut text = String::new();
             while let Some(item) = stream.next().await {
-                match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::Final(record) => {
-                        serde_json::from_value::<
-                            openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
-                        >(record.raw.clone())?;
-                        observation.saw_terminal = true;
-                    }
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
+                    text.push_str(&delta);
                 }
             }
-            observation
+            let record = stream.finish().await?;
+            serde_json::from_value::<
+                openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
+            >(record.raw)?;
+            Observation {
+                text,
+                saw_terminal: true,
+            }
         }
         (Transport::Streaming, Surface::Normalized) => {
             let mut stream = model.stream(request(cell))?;
-            let mut observation = Observation {
-                text: String::new(),
-                saw_terminal: false,
-            };
+            let mut text = String::new();
             while let Some(item) = stream.next().await {
-                match item? {
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    } => observation.text.push_str(&text),
-                    StreamEvent::Final(_) => observation.saw_terminal = true,
-                    _ => {}
+                if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
+                    text.push_str(&delta);
                 }
             }
-            observation
+            // `finish` succeeds only once the provider ended the reply.
+            stream.finish().await?;
+            Observation {
+                text,
+                saw_terminal: true,
+            }
         }
     };
 

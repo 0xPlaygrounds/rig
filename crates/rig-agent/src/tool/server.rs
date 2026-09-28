@@ -711,7 +711,7 @@ impl ToolServerHandle {
 
             futures::future::try_join_all(search_futures)
                 .await
-                .map_err(|e| ToolServerError::DefinitionError(ProviderError::Request(Box::new(e))))?
+                .map_err(|e| ToolServerError::DefinitionError(ProviderError::request(e)))?
                 .into_iter()
                 .flatten()
                 .collect::<Vec<String>>()

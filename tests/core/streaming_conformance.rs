@@ -337,7 +337,7 @@ mod grammar_guards {
             .as_ref()
             .expect("a genuine response.incomplete terminal must produce a terminal record");
         assert_eq!(
-            response.finish_reason,
+            response.finish_reason(),
             Some(FinishReason::Length),
             "max_output_tokens incompletion must normalize to a Length finish"
         );
@@ -428,10 +428,10 @@ mod grammar_guards {
         // provider did not issue, and never leaves the id empty.
         for call in &calls {
             assert!(
-                call.id.is_generated(),
+                call.id.is_local(),
                 "id-less calls surface a minted durable id"
             );
-            assert!(call.provider.is_none(), "no provider id was issued");
+            assert!(call.id.provider().is_none(), "no provider id was issued");
         }
         assert_ne!(
             calls[0].id, calls[1].id,
@@ -570,7 +570,12 @@ async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
     );
     let occurrences = reasoning
         .iter()
-        .flat_map(|item| item.content.iter())
+        .flat_map(|item| {
+            item.open(item.issuer())
+                .expect("reasoning opens")
+                .content
+                .iter()
+        })
         .filter(|content| match content {
             ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
                 text.contains(summary)
@@ -689,35 +694,25 @@ mod interleaved_constant_id_reasoning {
             .await
             .expect("stream should drive");
         assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
-
-        let mut internal_ids = Vec::new();
         let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
-            if let StreamEvent::BlockEnd {
-                id: block_id,
-                block: Some(AssistantContent::ToolCall(tool_call)),
+            if let rig::streaming::Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
                 ..
-            } = item
+            }) = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert!(
-                    tool_call.id.is_generated(),
+                    tool_call.id.is_local(),
                     "id-less calls surface a minted durable id"
                 );
-                assert_eq!(tool_call.provider, None, "no fabricated provider id");
-                internal_ids.push(block_id.clone());
+                assert_eq!(tool_call.id.provider(), None, "no fabricated provider id");
                 minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }
         }
         assert_eq!(cities, vec![json!("Tokyo"), json!("Paris")]);
-        internal_ids.dedup();
-        assert_eq!(
-            internal_ids.len(),
-            2,
-            "same-name calls must stay correlatable via distinct block ids"
-        );
         minted_ids.dedup();
         assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
         assert_eq!(
@@ -825,34 +820,29 @@ mod interleaved_constant_id_reasoning {
             .await
             .expect("stream should drive");
         assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
-
-        let mut internal_ids = Vec::new();
         let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
-            if let StreamEvent::BlockEnd {
-                id: block_id,
-                block: Some(AssistantContent::ToolCall(tool_call)),
+            if let rig::streaming::Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
                 ..
-            } = item
+            }) = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert!(
-                    tool_call.id.is_generated(),
+                    tool_call.id.is_local(),
                     "id-less calls surface with a minted durable id"
                 );
                 assert_eq!(
-                    tool_call.provider, None,
+                    tool_call.id.provider(),
+                    None,
                     "no name-as-id provider-id fallback"
                 );
-                internal_ids.push(block_id.clone());
                 minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }
         }
         assert_eq!(cities, vec![json!("Tokyo"), json!("Paris")]);
-        internal_ids.dedup();
-        assert_eq!(internal_ids.len(), 2, "distinct internal correlation ids");
         minted_ids.dedup();
         assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
         assert_eq!(

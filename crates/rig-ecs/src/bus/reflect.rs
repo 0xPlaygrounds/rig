@@ -12,7 +12,7 @@ use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    streaming::StreamEvent,
+    streaming::Transcript,
     tool::ToolContext,
 };
 
@@ -31,8 +31,8 @@ crate::reflect::opaque_reflect! {
     enum OutcomeReflect(Result<Outcome, ErrorReport>):;
     /// A stream's answer so far, `Option<Result<Outcome, ErrorReport>>`, reflected.
     enum StreamedOutcomeReflect(Option<Result<Outcome, ErrorReport>>): Default;
-    /// A stream's events, `Vec<StreamEvent>`, reflected.
-    struct StreamEventsReflect(Vec<StreamEvent>): Default, PartialEq;
+    /// A stream's events, [`Transcript`], reflected.
+    struct StreamEventsReflect(Transcript): Default, PartialEq;
     /// Stream error reports with their item positions, reflected.
     struct StreamErrorsReflect(Vec<(usize, ErrorReport)>): Default, PartialEq;
 }

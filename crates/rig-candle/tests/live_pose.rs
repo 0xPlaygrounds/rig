@@ -49,8 +49,10 @@ async fn the_riders_are_found_with_upright_skeletons() {
         .stream(PoseRequest::from(vec![photo.clone(), photo]))
         .expect("the stream opens");
     let mut frames = Vec::new();
-    while let Some(frame) = stream.next().await {
-        frames.push(frame.expect("a frame's poses"));
+    while let Some(item) = stream.next().await {
+        if let rig_core::streaming::Item::Event(frame) = item.expect("a frame's poses") {
+            frames.push(frame);
+        }
     }
     assert_eq!(frames.len(), 2);
     let people = &frames[0].people;

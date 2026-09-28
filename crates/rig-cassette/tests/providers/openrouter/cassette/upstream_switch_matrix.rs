@@ -40,7 +40,7 @@ fn lookup() -> ToolDefinition {
 fn request(route: Route, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
         documents: vec![],
         tools: vec![lookup()],
         temperature: None,
@@ -98,7 +98,12 @@ where
     while let Some(item) = stream.next().await {
         item.expect("a stream item");
     }
-    stream.finish().expect("a terminal record").choice.to_vec()
+    stream
+        .finish()
+        .await
+        .expect("a terminal record")
+        .choice
+        .to_vec()
 }
 
 fn text(choice: &[AssistantContent]) -> String {
@@ -126,19 +131,24 @@ async fn claude_tool_turn(client: &OpenAiModels, route: Route, streamed: bool) -
         prompt,
         Message::Assistant {
             id: None,
-            content: first.into_iter().collect(),
+            content: first
+                .into_iter()
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("non-empty"),
         },
         Message::User {
-            content: vec![UserContent::tool_result_for(
+            content: vec![UserContent::tool_result(
                 call.id.clone(),
-                call.provider.clone(),
                 call.function.name.clone(),
-                vec![ToolResultContent::text(format!(
+                rig_core::NonEmpty::new(ToolResultContent::text(format!(
                     "record alpha: code {CODE}"
-                ))],
+                ))),
             )]
             .into_iter()
-            .collect(),
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("non-empty"),
         },
     ]
 }
@@ -152,7 +162,11 @@ async fn switch(client: OpenAiModels, route: Route, streamed: bool) {
     assert!(text(&on_gemini).contains(CODE), "{on_gemini:?}");
     history.push(Message::Assistant {
         id: None,
-        content: on_gemini.into_iter().collect(),
+        content: on_gemini
+            .into_iter()
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("non-empty"),
     });
     history.push(Message::user(
         "Without calling any tool, say the code once more, in uppercase.",

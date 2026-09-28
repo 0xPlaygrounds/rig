@@ -121,11 +121,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "Lp35FBx56"
-              },
-              "provider": {
-                "call_id": "Lp35FBx56"
+                "provider": {
+                  "call_id": "Lp35FBx56"
+                }
               },
               "function": {
                 "name": "add",
@@ -256,11 +254,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "Lp35FBx56"
-                  },
-                  "provider": {
-                    "call_id": "Lp35FBx56"
+                    "provider": {
+                      "call_id": "Lp35FBx56"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -280,11 +276,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "Lp35FBx56"
-                  },
-                  "provider": {
-                    "call_id": "Lp35FBx56"
+                    "provider": {
+                      "call_id": "Lp35FBx56"
+                    }
                   },
                   "name": "add",
                   "content": [

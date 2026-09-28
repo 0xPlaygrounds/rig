@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,15 +10,15 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 10,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -140,76 +140,38 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The first number is 12193263"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "1112635269.\nThe second number is 63."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The first number is 121932631112635269.\nThe second number is 63."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 91,
-            "output_tokens": 93,
-            "total_tokens": 969,
-            "tool_use_prompt_tokens": 574,
-            "reasoning_tokens": 211
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "o3izaofSCeqb6dkP9J27sQk",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
-          "raw": {
-            "usage_metadata": {
-              "promptTokenCount": 91,
-              "candidatesTokenCount": 93,
-              "totalTokenCount": 969,
-              "thoughtsTokenCount": 211,
-              "promptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 91
-                }
-              ],
-              "toolUsePromptTokenCount": 574,
-              "toolUsePromptTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 574
-                }
-              ]
-            },
-            "finish_reason": "STOP",
-            "model_version": "gemini-2.5-flash",
-            "response_id": "o3izaofSCeqb6dkP9J27sQk"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The first number is 121932631112635269.\nThe second number is 63."
+            }
           }
         }
       ],

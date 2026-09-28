@@ -49,7 +49,6 @@
 //! | `mock_delta_ignore_beside_valid` | `delta_ignore_beside_valid_…` | `[Completion, Tool, Completion]`; the ignored block swallowed, `add` runs | answer |
 //! | `mock_delta_fail` | `delta_fail_…` | `[Completion]` | `UnknownToolCall` |
 //! | `mock_delta_output_tool` | `delta_output_tool_…` | `[Completion]`; the output tool assembled from deltas, no dispatch | answer |
-//! | `mock_delta_stop_on_name` | `delta_stop_on_name_…` | `[Completion]` | `Cancelled` |
 //! | `mock_delta_stop_on_arguments` | `delta_stop_on_arguments_…` | `[Completion]` | `Cancelled` |
 //! | `openai_delta_chat_baseline` | openai `corpus_delta.rs` `chat_baseline_…` | `[Completion, Tool, Completion]`, the chat-completions wire's deltas | answer |
 //! | `gemini_delta_interactions_baseline` | gemini `corpus_delta.rs` `interactions_baseline_…` | the same on the interactions wire | answer |
@@ -76,9 +75,7 @@
 
 use crate::corpus;
 
-use corpus::{
-    Ending, Hook, Output, Program, STOP_ON_TOOL_ARGUMENTS_DELTA, STOP_ON_TOOL_NAME_DELTA, Unhandled,
-};
+use corpus::{Ending, Hook, Output, Program, STOP_ON_TOOL_ARGUMENTS_DELTA, Unhandled};
 
 const PREAMBLE: &str = "Use the add tool.";
 const PROMPT: &str = "What is 2 + 3?";
@@ -153,12 +150,6 @@ const OUTPUT_TOOL: Program = Program {
     output_mode: Some(Output::Tool),
     ..MOCK
 };
-const STOP_ON_NAME: Program = Program {
-    fixture: "mock_delta_stop_on_name",
-    hooks: &[Hook::StopOnToolNameDelta],
-    ending: Ending::Cancelled(STOP_ON_TOOL_NAME_DELTA),
-    ..MOCK
-};
 const STOP_ON_ARGUMENTS: Program = Program {
     fixture: "mock_delta_stop_on_arguments",
     hooks: &[Hook::StopOnToolArgumentsDelta],
@@ -190,16 +181,15 @@ both_interpreters! {
     ignore_beside_valid: IGNORE_BESIDE_VALID,
     fail: FAIL,
     output_tool: OUTPUT_TOOL,
-    stop_on_name: STOP_ON_NAME,
     stop_on_arguments: STOP_ON_ARGUMENTS,
     openai_baseline: OPENAI_BASELINE,
     gemini_baseline: GEMINI_BASELINE,
 }
 
 /// The medium is in the record: every cell's first completion keeps a
-/// tool-name delta among its events.
+/// tool call's arguments among its events.
 #[test]
-fn every_cell_streams_the_tool_name_as_a_delta() {
+fn every_cell_streams_the_tool_call_arguments() {
     for fixture in [
         BASELINE.fixture,
         RETRY.fixture,
@@ -210,7 +200,6 @@ fn every_cell_streams_the_tool_name_as_a_delta() {
         IGNORE_BESIDE_VALID.fixture,
         FAIL.fixture,
         OUTPUT_TOOL.fixture,
-        STOP_ON_NAME.fixture,
         STOP_ON_ARGUMENTS.fixture,
         OPENAI_BASELINE.fixture,
         GEMINI_BASELINE.fixture,
@@ -221,14 +210,10 @@ fn every_cell_streams_the_tool_name_as_a_delta() {
             .as_ref()
             .unwrap_or_else(|| panic!("{fixture}: events are kept"));
         assert!(
-            events.iter().any(|event| matches!(
-                event,
-                rig_core::streaming::StreamEvent::BlockDelta {
-                    delta: rig_core::streaming::Delta::ToolName { .. },
-                    ..
-                }
-            )),
-            "{fixture}: a tool name delta is in the record"
+            events
+                .events()
+                .any(|event| matches!(event, rig_core::streaming::StreamEvent::Arguments { .. })),
+            "{fixture}: a tool call's arguments are in the record"
         );
     }
 }

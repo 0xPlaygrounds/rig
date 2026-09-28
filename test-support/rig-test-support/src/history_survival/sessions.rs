@@ -51,7 +51,7 @@ fn tool() -> ToolDefinition {
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
         documents: vec![],
         tools: vec![tool()],
         temperature: None,
@@ -209,7 +209,7 @@ async fn turn_one(
     assert!(
         reasoning
             .iter()
-            .all(|reasoning| reasoning.provider.is_some()),
+            .all(|reasoning| !reasoning.issuer().as_str().is_empty()),
         "[{}] decoded reasoning records its issuer",
         cell.provider
     );
@@ -217,17 +217,26 @@ async fn turn_one(
     // id) or, on Gemini, the function call itself (its thought signature).
     let replayable = call.signature.is_some()
         || reasoning.iter().any(|reasoning| {
-            reasoning.id.is_some()
-                || reasoning.content.iter().any(|block| {
-                    matches!(
-                        block,
-                        ReasoningContent::Text {
-                            signature: Some(_),
-                            ..
-                        } | ReasoningContent::Encrypted(_)
-                            | ReasoningContent::Redacted { .. }
-                    )
-                })
+            reasoning
+                .open(reasoning.issuer())
+                .expect("sealed reasoning")
+                .id
+                .is_some()
+                || reasoning
+                    .open(reasoning.issuer())
+                    .expect("sealed reasoning")
+                    .content
+                    .iter()
+                    .any(|block| {
+                        matches!(
+                            block,
+                            ReasoningContent::Text {
+                                signature: Some(_),
+                                ..
+                            } | ReasoningContent::Encrypted(_)
+                                | ReasoningContent::Redacted { .. }
+                        )
+                    })
         });
     assert!(
         cell.expect.is_empty() || replayable,
@@ -239,17 +248,16 @@ async fn turn_one(
         prompt,
         Message::Assistant {
             id: reply.message_id.clone(),
-            content: reply.choice.clone(),
+            content: rig_core::NonEmpty::from_vec(reply.choice.clone()).expect("non-empty"),
         },
         Message::User {
-            content: vec![UserContent::tool_result_for(
+            content: rig_core::NonEmpty::new(UserContent::tool_result(
                 call.id.clone(),
-                call.provider.clone(),
                 call.function.name.clone(),
-                vec![ToolResultContent::text(format!(
+                rig_core::NonEmpty::new(ToolResultContent::text(format!(
                     "record alpha: code {CODE}"
-                ))],
-            )],
+                ))),
+            )),
         },
     ];
     let persisted = serde_json::to_string(&history).expect("history serializes");

@@ -135,6 +135,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "venice",
               "id": null,
               "content": [
                 {
@@ -143,17 +144,14 @@
                     "text": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
                   }
                 }
-              ],
-              "provider": "venice"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "chatcmpl-tool-a9818439d95dcc14"
-              },
-              "provider": {
-                "call_id": "chatcmpl-tool-a9818439d95dcc14"
+                "provider": {
+                  "call_id": "chatcmpl-tool-a9818439d95dcc14"
+                }
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -167,11 +165,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "chatcmpl-tool-b8c6dc5573232886"
-              },
-              "provider": {
-                "call_id": "chatcmpl-tool-b8c6dc5573232886"
+                "provider": {
+                  "call_id": "chatcmpl-tool-b8c6dc5573232886"
+                }
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -355,6 +351,7 @@
               "content": [
                 {
                   "type": "reasoning",
+                  "issuer": "venice",
                   "id": null,
                   "content": [
                     {
@@ -363,17 +360,14 @@
                         "text": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
                       }
                     }
-                  ],
-                  "provider": "venice"
+                  ]
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "chatcmpl-tool-a9818439d95dcc14"
-                  },
-                  "provider": {
-                    "call_id": "chatcmpl-tool-a9818439d95dcc14"
+                    "provider": {
+                      "call_id": "chatcmpl-tool-a9818439d95dcc14"
+                    }
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -387,11 +381,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "chatcmpl-tool-b8c6dc5573232886"
-                  },
-                  "provider": {
-                    "call_id": "chatcmpl-tool-b8c6dc5573232886"
+                    "provider": {
+                      "call_id": "chatcmpl-tool-b8c6dc5573232886"
+                    }
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -410,11 +402,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "chatcmpl-tool-a9818439d95dcc14"
-                  },
-                  "provider": {
-                    "call_id": "chatcmpl-tool-a9818439d95dcc14"
+                    "provider": {
+                      "call_id": "chatcmpl-tool-a9818439d95dcc14"
+                    }
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -427,11 +417,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "chatcmpl-tool-b8c6dc5573232886"
-                  },
-                  "provider": {
-                    "call_id": "chatcmpl-tool-b8c6dc5573232886"
+                    "provider": {
+                      "call_id": "chatcmpl-tool-b8c6dc5573232886"
+                    }
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -477,6 +465,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "venice",
               "id": null,
               "content": [
                 {
@@ -485,8 +474,7 @@
                     "text": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n"
                   }
                 }
-              ],
-              "provider": "venice"
+              ]
             },
             {
               "type": "text",

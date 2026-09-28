@@ -10,14 +10,14 @@
 //! `streamGenerateContent` response. Any mid-stream disruption skips that chunk,
 //! so the exact server-side token count is unrecoverable. There is also no
 //! "cancel" flag to send Gemini — killing a stream is purely a client-side
-//! connection close: dropping the `CompletionStream`.
+//! connection close: dropping the stream.
 //!
 //! ## The approach — one accounting path for every disruption
 //!
 //! Disruptions reach a consumer in four different shapes:
-//!   1. Manual kill / drop          -> stream ends with `None`, no `Final`
+//!   1. Manual kill / drop          -> stream ends with `None`, no `Done`
 //!   2. Transport/server error      -> stream yields `Some(Err(..))`
-//!   3. Premature clean close       -> stream ends with no `Final`
+//!   3. Premature clean close       -> stream ends with no `Done`
 //!      (absence of a terminal record = truncation)
 //!   4. Stall / half-open socket    -> `next()` never returns
 //!
@@ -53,12 +53,12 @@ use rig::completion::CompletionRequest;
 use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
-use rig::message::AssistantContent;
+use rig::message::{AssistantContent, Reasoning};
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
 };
-use rig::streaming::{BlockClose, CompletionStream, Delta, StreamEvent};
+use rig::streaming::{Item, Relayed, StreamEvent, StreamEvents};
 
 const MODEL: &str = "gemini-2.5-flash";
 /// Inject the disruption once this many output chars have streamed, so there is
@@ -81,12 +81,12 @@ enum Disruption {
     Stall,
 }
 
-/// Wraps a live `CompletionStream` and injects a disruption after
+/// Wraps a live relayed completion stream and injects a disruption after
 /// `after_chars` of output has been forwarded. This lets us exercise every
 /// disruption shape against a genuine Gemini stream's partial output.
 struct Disrupt {
     /// The live stream, until a manual kill drops it.
-    inner: Option<CompletionStream>,
+    inner: Option<StreamEvents>,
     mode: Disruption,
     after_chars: usize,
     seen_chars: usize,
@@ -94,7 +94,7 @@ struct Disrupt {
 }
 
 impl Disrupt {
-    fn new(inner: CompletionStream, mode: Disruption, after_chars: usize) -> Self {
+    fn new(inner: StreamEvents, mode: Disruption, after_chars: usize) -> Self {
         // For `None`, make the trigger unreachable so it never fires.
         let after_chars = match mode {
             Disruption::None => usize::MAX,
@@ -111,7 +111,7 @@ impl Disrupt {
 }
 
 impl Stream for Disrupt {
-    type Item = Result<StreamEvent, ErrorReport>;
+    type Item = Result<Relayed, ErrorReport>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -163,21 +163,19 @@ impl Stream for Disrupt {
 }
 
 /// Length of human-visible text in a stream item (text + reasoning deltas).
-fn visible_len(item: &StreamEvent) -> usize {
+fn visible_len(item: &Relayed) -> usize {
+    let Relayed::Item(Item::Event(item)) = item else {
+        return 0;
+    };
     match item {
-        StreamEvent::BlockDelta {
-            delta: Delta::Text { text },
+        StreamEvent::Text { text, .. } => text.chars().count(),
+        StreamEvent::Reasoning { text, .. } => text.chars().count(),
+        StreamEvent::End {
+            content: AssistantContent::Reasoning(r),
             ..
-        } => text.chars().count(),
-        StreamEvent::BlockDelta {
-            delta: Delta::Reasoning { text },
-            ..
-        } => text.chars().count(),
-        StreamEvent::BlockEnd {
-            end: BlockClose::Reasoning { .. },
-            block: Some(AssistantContent::Reasoning(r)),
-            ..
-        } => r.display_text().chars().count(),
+        } => r
+            .open(r.issuer())
+            .map_or(0, |r| r.display_text().chars().count()),
         _ => 0,
     }
 }
@@ -200,7 +198,7 @@ struct Report {
 ///
 /// Accumulates output incrementally, watches for authoritative usage, and bounds
 /// each read with a timeout. If the stream ends — by `None`, `Err`, a zeroed
-/// `Final`, or a stall — without authoritative usage, it estimates tokens from
+/// `Done`, or a stall — without authoritative usage, it estimates tokens from
 /// the partial output via `countTokens`.
 async fn drain_with_accounting<S>(
     label: &'static str,
@@ -210,7 +208,7 @@ async fn drain_with_accounting<S>(
     prompt_text: &str,
 ) -> anyhow::Result<Report>
 where
-    S: Stream<Item = Result<StreamEvent, ErrorReport>> + Unpin,
+    S: Stream<Item = Result<Relayed, ErrorReport>> + Unpin,
 {
     let mut output = String::new();
     let mut authoritative: Option<Usage> = None;
@@ -237,37 +235,36 @@ where
                 reason = Some(format!("stream error: {err}"));
                 break;
             }
-            Ok(Some(Ok(item))) => match item {
-                StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                } => output.push_str(&text),
-                StreamEvent::BlockDelta {
-                    delta: Delta::Reasoning { text },
-                    ..
-                } => {
+            Ok(Some(Ok(Relayed::Item(Item::Event(item))))) => match item {
+                StreamEvent::Text { text, .. } => output.push_str(&text),
+                StreamEvent::Reasoning { text, .. } => {
                     output.push_str(&text);
                 }
-                StreamEvent::BlockEnd {
-                    end: BlockClose::Reasoning { .. },
-                    block: Some(AssistantContent::Reasoning(r)),
+                StreamEvent::End {
+                    content: AssistantContent::Reasoning(r),
                     ..
                 } => {
-                    output.push_str(&r.display_text());
-                }
-                StreamEvent::Final(resp) => {
-                    // Authoritative usage. A premature clean close (shape #3)
-                    // never emits a Final at all — the absence of a terminal
-                    // record is itself the truncation signal — so reaching this
-                    // arm means the stream completed. Still guard on reported
-                    // usage in case the provider sent none.
-                    let usage = resp.usage;
-                    if usage.is_reported() {
-                        authoritative = Some(usage);
-                    }
+                    output.push_str(
+                        &r.open(r.issuer())
+                            .map(Reasoning::display_text)
+                            .unwrap_or_default(),
+                    );
                 }
                 _ => {}
             },
+            Ok(Some(Ok(Relayed::Done(resp)))) => {
+                // Authoritative usage. A premature clean close (shape #3)
+                // never emits a Done at all — the absence of a terminal
+                // record is itself the truncation signal — so reaching this
+                // arm means the stream completed. Still guard on reported
+                // usage in case the provider sent none.
+                let usage = resp.usage;
+                if usage.is_reported() {
+                    authoritative = Some(usage);
+                }
+            }
+            // An unmodeled provider event carries no visible text.
+            Ok(Some(Ok(Relayed::Item(Item::Unknown(_))))) => {}
         }
     }
 
@@ -361,7 +358,7 @@ async fn run_scenario(
             .additional_params(no_thinking_params()?),
     )?;
 
-    let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);
+    let disrupted = Disrupt::new(stream.into_relay(), mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await
 }
 

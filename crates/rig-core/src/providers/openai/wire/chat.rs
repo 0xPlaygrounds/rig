@@ -1,5 +1,5 @@
-//! Chat Completions request encoding and unary or streaming response decoding.
-//! Whole replies and streamed chunks emit events through the same lifecycle helpers.
+//! Chat Completions request encoding, and one decoder for a whole reply and
+//! a stream of chunks.
 //!
 //! ```
 //! use rig_core::providers::openai::OpenAI;
@@ -12,21 +12,18 @@ use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::observe::ObservedError;
-use crate::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use crate::providers::internal::openai_chat_completions_compatible::{
     drop_tool_calls_cut_by_budget, map_native_finish_reason, map_openai_finish_reason,
     provider_error_envelope,
 };
-use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::openai::completion::{
     self as unary, AssistantContent, Message, ToolChoice, assistant_refusal_fallback,
     is_openai_reasoning_model, request_body,
 };
-use crate::streaming::{BlockId, Delta, MintKind, StreamEvent, ToolCallEnd, UnparseableToolInput};
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Body, Capabilities, Decoder, Descriptor, Encoded,
-    End, Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
+    Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
 
 use super::dto::{
@@ -56,7 +53,7 @@ pub struct Chat {
 impl Chat {
     pub(crate) fn encode_with_headers(
         &self,
-        mut request: CompletionRequest,
+        request: CompletionRequest,
         mode: Mode,
         headers: impl FnOnce(
             &OpenAIConfig,
@@ -64,7 +61,8 @@ impl Chat {
             http::request::Builder,
         ) -> http::request::Builder,
     ) -> Result<Encoded, EncodeError> {
-        super::scope_reasoning(&self.provider.dialect, &self.model, &mut request);
+        let (request, issuers) =
+            super::scope_reasoning(&self.provider.dialect, &self.model, request)?;
         let quirks = &self.provider.dialect.quirks;
         // Azure's deployment URL remains pinned to the handle, not a request override.
         let uri = self.provider.uri(
@@ -89,6 +87,7 @@ impl Chat {
             supports_tools: quirks.supports_tools,
             supports_image_tool_results: quirks.supports_image_tool_results,
             reasoning_details: quirks.reasoning_details,
+            issuers,
         })?;
         self.prepare(&mut typed)?;
 
@@ -756,7 +755,7 @@ impl Wire for Chat {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ChatDecoder;
+    type Decoder<'id> = ChatDecoder<'id>;
 
     /// Format deferral permits tool composition; dialects without schema
     /// support require the agent's tool-mode enforcement instead.
@@ -774,12 +773,8 @@ impl Wire for Chat {
         self.encode_with_headers(request, mode, OpenAIConfig::completion_headers)
     }
 
-    fn decoder(&self, mode: Mode) -> ChatDecoder {
-        ChatDecoder::new(
-            self.provider.dialect.name,
-            self.provider.dialect.quirks,
-            mode,
-        )
+    fn decoder<'id>(&self) -> ChatDecoder<'id> {
+        ChatDecoder::new(self.provider.dialect.name, self.provider.dialect.quirks)
     }
 }
 
@@ -789,7 +784,7 @@ pub enum ChatEvent {
     Chunk(ChatFrame),
     /// A `chat.completion`: the whole turn in one frame.
     Whole(ChatFrame),
-    /// The `[DONE]` sentinel authorizing deferred terminal emission.
+    /// The `[DONE]` sentinel: the provider ended the stream.
     Done,
     /// The wire's in-band error envelope, delivered with a 200 status.
     Failure(ProviderError),
@@ -798,18 +793,17 @@ pub enum ChatEvent {
     BareText(String),
 }
 
-/// The chat-completions decoder: one state machine for both replies.
-pub struct ChatDecoder {
+/// The chat-completions decoder: one state machine for a whole reply and a
+/// stream of chunks.
+pub struct ChatDecoder<'id> {
     /// Descriptor name the reply is attributed to.
     provider: &'static str,
     quirks: super::Quirks,
-    /// Owns the constant-key `reasoning_content` lifecycle: those deltas
-    /// carry no wire id or block boundaries, so the shared derivation
-    /// synthesizes the end this wire never announces.
-    reasoning: MintedReasoningLifecycle,
-    /// Index-to-identity bridge only: this wire keys tool-call fragments by
-    /// chunk index, so the decoder must correlate.
-    open_tool_calls: ToolCallBridge<usize>,
+    /// The text part bare text extends; a reasoning fragment or a tool call
+    /// closes it.
+    text: Option<TextPart<'id>>,
+    /// `reasoning_content` carries no ids or boundaries.
+    thoughts: Thoughts<'id>,
     final_usage: Option<ChatUsage>,
     final_finish_reason: Option<FinishReason>,
     response_id: Option<String>,
@@ -819,25 +813,21 @@ pub struct ChatDecoder {
     logprobs: Option<crate::message::AdditionalParams>,
     /// Accumulated provider-specific top-level chunk metadata.
     additional_params: Option<crate::message::AdditionalParams>,
-    /// Whether a whole reply, `[DONE]`, or a finish reason established completion.
+    /// Whether a finish reason established the turn complete.
     saw_terminal: bool,
     /// Whether any frame decoded successfully. A bare `[DONE]` after only
     /// parse failures must not dress the failure up as a default-usage
     /// success.
     saw_any_valid_frame: bool,
-    /// Whether the wire's own in-band failure was consumed.
-    failed: bool,
-    /// Whether this decoder was constructed for unary mode.
-    whole: bool,
 }
 
-impl ChatDecoder {
-    fn new(provider: &'static str, quirks: super::Quirks, mode: Mode) -> Self {
+impl<'id> ChatDecoder<'id> {
+    fn new(provider: &'static str, quirks: super::Quirks) -> Self {
         Self {
             provider,
             quirks,
-            reasoning: MintedReasoningLifecycle::new(MintKind::Reasoning),
-            open_tool_calls: ToolCallBridge::new(),
+            text: None,
+            thoughts: Thoughts::new(),
             final_usage: None,
             final_finish_reason: None,
             response_id: None,
@@ -846,8 +836,6 @@ impl ChatDecoder {
             additional_params: None,
             saw_terminal: false,
             saw_any_valid_frame: false,
-            failed: false,
-            whole: mode == Mode::Unary,
         }
     }
 
@@ -898,12 +886,50 @@ impl ChatDecoder {
         }
     }
 
+    fn close_text(&mut self, out: &mut Out<'id, Completion>) {
+        if let Some(part) = self.text.take() {
+            out.close_text(part);
+        }
+    }
+
+    /// One chunk's parts, in the order the wire implies: reasoning, its
+    /// signature or the boundary that stops it, text, then tool calls.
+    fn emit_parts(
+        &mut self,
+        out: &mut Out<'id, Completion>,
+        reasoning: Option<String>,
+        signature: Option<String>,
+        text: Option<String>,
+        calls: bool,
+    ) {
+        if let Some(reasoning) = reasoning.filter(|reasoning| !reasoning.is_empty()) {
+            self.close_text(out);
+            self.thoughts.fragment(out, &reasoning);
+        }
+        if let Some(signature) = signature {
+            self.thoughts.signature(out, signature);
+        }
+        let text = text.filter(|text| !text.is_empty());
+        if text.is_some() || calls {
+            // These wires omit the boundary before interleaving output.
+            self.thoughts.boundary();
+        }
+        if let Some(text) = text {
+            let part = self.text.get_or_insert_with(|| out.text());
+            out.push_text(part, &text);
+        }
+    }
+
     /// One `chat.completion.chunk`.
-    fn interpret_chunk(&mut self, mut frame: ChatFrame, out: &mut AdapterOutput) {
+    fn interpret_chunk(
+        &mut self,
+        mut frame: ChatFrame,
+        out: &mut Out<'id, Completion>,
+    ) -> Result<(), ProviderError> {
         self.saw_any_valid_frame = true;
         self.absorb_metadata(&mut frame);
         let Some(choice) = frame.into_primary() else {
-            return;
+            return Ok(());
         };
         let finish_reason = self.finish_reason(&choice);
         let text = delta_text(&choice.delta);
@@ -933,64 +959,10 @@ impl ChatDecoder {
         // Replayable reasoning must precede the tool calls it accompanies.
         if self.quirks.reasoning_details {
             for detail in &details {
-                if let Some((id, provider_id, content)) = detail_reasoning(detail) {
-                    out.reasoning_block(id, provider_id, content);
+                if let Some(reasoning) = detail_reasoning(detail) {
+                    self.close_text(out);
+                    out.reasoning_block(reasoning);
                 }
-            }
-        }
-
-        // Buffer tool events so reasoning closes and text emits before them.
-        let mut tool_events = Vec::new();
-        for incoming in tool_calls {
-            if let Some(evicted) = self
-                .open_tool_calls
-                .evict_if(incoming.index, |existing| incoming.evicts(existing))
-            {
-                // The wire reused this call's slot: the evicted call is
-                // delivered even when its arguments never parse.
-                tool_events.push(evicted.end_event(UnparseableToolInput::EmptyObject));
-            }
-
-            // Later provider metadata must not change an open call's assembly key.
-            let slot = self.open_tool_calls.open(
-                incoming.index,
-                incoming.id.as_deref(),
-                incoming.function.name.as_deref(),
-            );
-
-            if let Some(name) = incoming
-                .function
-                .name
-                .as_ref()
-                .filter(|name| !name.is_empty())
-            {
-                tool_events.push(StreamEvent::BlockDelta {
-                    id: slot.key().clone(),
-                    delta: Delta::ToolName { name: name.clone() },
-                });
-            }
-
-            if let Some(arguments) = incoming
-                .function
-                .arguments
-                .as_ref()
-                .filter(|arguments| !arguments.is_empty())
-            {
-                slot.observe_arguments_delta(arguments);
-                tool_events.push(StreamEvent::BlockDelta {
-                    id: slot.key().clone(),
-                    delta: Delta::ToolArguments {
-                        arguments: arguments.clone(),
-                    },
-                });
-            }
-
-            if self.quirks.emits_complete_single_chunk_tool_calls
-                && incoming.is_complete_single_chunk()
-            {
-                // Completion probe: the accumulator finalizes the call only
-                // if its input parses, and keeps it open otherwise (`Keep`).
-                tool_events.push(slot.end_event(UnparseableToolInput::Keep));
             }
         }
 
@@ -1000,24 +972,50 @@ impl ChatDecoder {
             .then(|| details.iter().find_map(reasoning_signature))
             .flatten();
 
-        self.reasoning.emit_chunk(
-            ChunkParts {
-                reasoning,
-                reasoning_signature,
-                text,
-                text_meta: None,
-                tool_events,
-            },
+        self.emit_parts(
             out,
+            reasoning,
+            reasoning_signature,
+            text,
+            !tool_calls.is_empty(),
         );
 
-        if matches!(finish_reason, Some(FinishReason::ToolCalls)) {
-            for slot in self.open_tool_calls.drain_ordered() {
-                // Completed calls with malformed arguments must fail, not disappear.
-                // Empty arguments remain valid for zero-argument tools.
-                out.push(Ok(slot.end_event(UnparseableToolInput::Error)));
+        for incoming in tool_calls {
+            self.close_text(out);
+            if let Some(existing) = out.pending_id(incoming.index)
+                && incoming.evicts(&existing, &out.pending_name(incoming.index))
+            {
+                // The wire reused this call's index: the call it held is
+                // delivered even when its arguments never parse.
+                out.close_pending(incoming.index, IfMalformed::EmptyObject)?;
+            }
+            out.call_fragment(
+                incoming.index,
+                CallFragment {
+                    id: incoming.id.as_deref(),
+                    name: incoming.function.name.as_deref(),
+                    arguments: incoming.function.arguments.as_deref(),
+                    ..CallFragment::default()
+                },
+            )?;
+            if self.quirks.emits_complete_single_chunk_tool_calls
+                && incoming.is_complete_single_chunk()
+            {
+                // A probe: the call closes if its input parses, and stays
+                // open for more fragments otherwise.
+                out.close_pending(incoming.index, IfMalformed::KeepOpen)?;
             }
         }
+
+        if matches!(finish_reason, Some(FinishReason::ToolCalls)) {
+            for index in out.pending_calls() {
+                // Completed calls with malformed arguments must fail, not
+                // disappear. Empty arguments remain valid for zero-argument
+                // tools.
+                out.close_pending(index, IfMalformed::Fail)?;
+            }
+        }
+        Ok(())
     }
 
     /// Whether a length-truncated unary choice contains tool calls needing raw inspection.
@@ -1077,16 +1075,18 @@ impl ChatDecoder {
         Some(frame)
     }
 
-    /// The unary `chat.completion` body: synthesize the events a stream of
-    /// the same turn would have pushed.
-    fn interpret_whole(&mut self, mut frame: ChatFrame, out: &mut AdapterOutput) {
+    /// The `chat.completion` body: the parts a stream of the same turn
+    /// would have written, then the end.
+    fn interpret_whole(
+        &mut self,
+        mut frame: ChatFrame,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         self.saw_any_valid_frame = true;
         let Some(choice) = frame.primary() else {
-            out.error(ProviderError::Response(
+            return Err(ProviderError::Response(
                 "Response contained no choices".to_owned(),
             ));
-            self.failed = true;
-            return;
         };
         let finish_reason = self.finish_reason(choice);
         let Some(Message::Assistant {
@@ -1098,11 +1098,9 @@ impl ChatDecoder {
             ..
         }) = choice.message.clone()
         else {
-            out.error(ProviderError::Response(
+            return Err(ProviderError::Response(
                 "Response did not contain a valid message or tool call".to_owned(),
             ));
-            self.failed = true;
-            return;
         };
         let logprobs = choice.logprobs.clone();
         self.absorb_metadata(&mut frame);
@@ -1112,9 +1110,9 @@ impl ChatDecoder {
 
         // Response IDs are not replayable message IDs; retain them only as terminal metadata.
         let text = {
-            // The streamed path concatenates a turn's text deltas into one
-            // block, so the unary body's parts join the same way rather than
-            // producing a different number of blocks for the same turn.
+            // The streamed path concatenates a turn's text fragments into one
+            // part, so the unary body's parts join the same way rather than
+            // producing a different number of parts for the same turn.
             let mut text = String::new();
             for part in &content {
                 let part = match part {
@@ -1132,21 +1130,6 @@ impl ChatDecoder {
             text
         };
 
-        let mut tool_events = Vec::with_capacity(tool_calls.len());
-        for call in &tool_calls {
-            // Distinct minted keys prevent separate id-less calls from replacing each other.
-            let key = crate::streaming::non_empty_id(call.id.clone())
-                .map_or_else(|| self.open_tool_calls.minted_ids().mint(), BlockId::wire);
-            tool_events.push(StreamEvent::BlockEnd {
-                id: key,
-                end: crate::streaming::BlockClose::ToolCall(
-                    ToolCallEnd::whole(&call.function.name, call.function.arguments.clone())
-                        .with_tool_id(call.id.clone()),
-                ),
-                block: None,
-            });
-        }
-
         let reasoning = reasoning.filter(|reasoning| !reasoning.is_empty());
         // Structured details retain signatures needed to replay reasoning.
         let details: Vec<&unary::ReasoningDetails> = if self.quirks.reasoning_details {
@@ -1157,8 +1140,7 @@ impl ChatDecoder {
         let blocks: Vec<_> = details
             .iter()
             .copied()
-            .enumerate()
-            .filter_map(|(position, detail)| whole_detail_reasoning(position as u64, detail))
+            .filter_map(whole_detail_reasoning)
             .collect();
         // Prefer replayable structured blocks to avoid duplicating their plaintext display.
         // Without those blocks, preserve plaintext and any signature-only detail.
@@ -1177,82 +1159,126 @@ impl ChatDecoder {
             .as_ref()
             .is_some_and(FinishReason::truncated_output);
         if text.is_empty()
-            && tool_events.is_empty()
+            && tool_calls.is_empty()
             && reasoning.is_none()
             && blocks.is_empty()
             && !cut_short
         {
-            out.error(ProviderError::Response(
+            return Err(ProviderError::Response(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
-            self.failed = true;
-            return;
         }
 
-        // Reasoning details are the turn's own output, so they are emitted
-        // before the chunk's text and tool calls, exactly as the streamed
-        // path orders them.
-        for (id, provider_id, content) in blocks {
-            out.reasoning_block(id, provider_id, content);
+        // Reasoning details are the turn's own output, so they are written
+        // before the text and tool calls, exactly as the streamed path orders
+        // them.
+        for reasoning in blocks {
+            out.reasoning_block(reasoning);
         }
 
-        self.reasoning.emit_chunk(
-            ChunkParts {
-                reasoning,
-                reasoning_signature,
-                text: (!text.is_empty()).then_some(text),
-                text_meta: None,
-                tool_events,
-            },
-            out,
+        self.emit_parts(
+            &mut out,
+            reasoning,
+            reasoning_signature,
+            (!text.is_empty()).then_some(text),
+            !tool_calls.is_empty(),
         );
+        self.close_text(&mut out);
 
-        out.close_active_blocks();
-        self.emit_terminal(out);
+        // Each call is buffered at its own position, so separate id-less
+        // calls stay distinct.
+        for (index, call) in tool_calls.iter().enumerate() {
+            out.call_fragment(
+                index,
+                CallFragment {
+                    id: Some(call.id.as_str()),
+                    name: Some(call.function.name.as_str()),
+                    ..CallFragment::default()
+                },
+            )?;
+            out.announce_pending(index, call.function.arguments.clone());
+            out.close_pending(index, IfMalformed::Fail)?;
+        }
+
+        self.end(out, false)
     }
 
-    /// Build and push the provider's terminal record.
-    fn emit_terminal(&mut self, out: &mut AdapterOutput) {
+    /// Write the provider's end of the reply. A stream's `raw` is the
+    /// native terminal record the chunks built; a whole body's is the body
+    /// itself, which the transport keeps.
+    fn end(
+        &mut self,
+        mut out: Out<'id, Completion>,
+        streamed: bool,
+    ) -> Result<Flow, ProviderError> {
+        self.close_text(&mut out);
+        self.thoughts.close(&mut out, None);
         // A gateway's reasoning belongs to the upstream model that produced it.
-        let issuer = self
-            .quirks
-            .upstream_reasoning_issuer
-            .then_some(self.response_model.as_deref())
-            .flatten()
-            .map(|model| super::upstream_reasoning_issuer(self.provider, model));
+        if self.quirks.upstream_reasoning_issuer
+            && let Some(model) = self.response_model.as_deref()
+        {
+            out.issued_by(super::upstream_reasoning_issuer(self.provider, model));
+        }
         let native = StreamingCompletionResponse {
             usage: self.final_usage.take(),
             finish_reason: self.final_finish_reason.take(),
             response_id: self.response_id.take(),
             model: self.response_model.take(),
-            // Stamped by the driver; the decoder never sees connection
+            // The transport's request id; the decoder never sees connection
             // headers.
             provider_request_id: None,
             logprobs: self.logprobs.take().map(Into::into),
             additional_params: self.additional_params.take(),
         };
-        match serde_json::to_value(&native) {
-            Ok(raw) => {
-                let terminal = native.into_stream_final(self.provider, raw);
-                out.final_record(match issuer {
-                    Some(issuer) => terminal.with_reasoning_issuer(issuer),
-                    None => terminal,
-                })
-            }
-            Err(error) => out.error(ProviderError::from(error)),
+        if streamed {
+            out.raw(serde_json::to_value(&native)?);
         }
+        Ok(out.end(native.into_finish()))
+    }
+
+    /// The stream ended: flush the calls the provider delivered, then end
+    /// the reply. Tool calls the provider fully delivered are content, so
+    /// a length cut still flushes them.
+    fn finish(&mut self, mut out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        let output_length_truncation = matches!(
+            self.final_finish_reason.as_ref(),
+            Some(FinishReason::Length)
+        );
+        for index in out.pending_calls() {
+            if output_length_truncation && !out.pending_has_arguments(index) {
+                tracing::debug!(
+                    "dropping streamed tool call cut off before its first argument token"
+                );
+                out.drop_pending(index);
+                continue;
+            }
+            // Only an explicit length finish permits dropping malformed arguments.
+            let if_malformed = if output_length_truncation {
+                IfMalformed::Drop
+            } else {
+                IfMalformed::Fail
+            };
+            out.close_pending(index, if_malformed)?;
+        }
+        // A bare terminator without valid content cannot establish success.
+        if !self.saw_any_valid_frame {
+            return Err(ProviderError::Truncated);
+        }
+        self.end(out, true)
     }
 }
 
-use crate::operation::{AdapterOutput, Completion};
+use crate::operation::{CallFragment, Completion, IfMalformed, TextPart};
+use crate::providers::internal::thoughts::Thoughts;
+use crate::wire::Flow;
 
-impl Decoder<Completion> for ChatDecoder {
+impl<'id> Decoder<'id, Completion> for ChatDecoder<'id> {
     type Event = ChatEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<ChatEvent> {
         let data = frame.as_str();
         // `[DONE]` is the wire's terminal sentinel, not JSON; it is Known by
-        // definition and its `interpret` emits the deferred terminal.
+        // definition and its decode ends the reply.
         if data == "[DONE]" {
             return WireEvent::Known(ChatEvent::Done);
         }
@@ -1288,92 +1314,49 @@ impl Decoder<Completion> for ChatDecoder {
         })
     }
 
-    fn interpret(&mut self, event: ChatEvent, out: &mut Out<'_, Completion>) {
+    fn decode(
+        &mut self,
+        event: ChatEvent,
+        mut out: Out<'id, Completion>,
+    ) -> Result<Flow, ProviderError> {
         match event {
-            ChatEvent::Chunk(frame) => self.interpret_chunk(frame, out),
+            ChatEvent::Chunk(frame) => {
+                self.interpret_chunk(frame, &mut out)?;
+                Ok(Flow::More)
+            }
             ChatEvent::Whole(frame) => self.interpret_whole(frame, out),
-            ChatEvent::Done => self.saw_terminal = true,
+            ChatEvent::Done => {
+                if !self.saw_terminal {
+                    // `[DONE]` without a finish reason still ends the turn.
+                    self.saw_terminal = true;
+                }
+                self.finish(out)
+            }
             ChatEvent::BareText(text) => {
                 self.saw_any_valid_frame = true;
                 self.saw_terminal = true;
                 if !text.is_empty() {
-                    out.text(text);
+                    let part = out.text();
+                    out.push_text(&part, &text);
+                    out.close_text(part);
                 }
-                out.close_active_blocks();
-                self.emit_terminal(out);
+                self.end(out, false)
             }
-            ChatEvent::Failure(error) => {
-                // Content the provider fully delivered reaches the consumer
-                // before the failure, and no terminal record follows.
-                self.flush_before_terminal_error(out);
-                out.error(error);
-                self.failed = true;
-            }
-        }
-        // A failed turn ends the reply: later frames cannot report it
-        // complete.
-        if self.failed {
-            out.end_reply();
+            ChatEvent::Failure(error) => Err(error),
         }
     }
 
-    fn end(&mut self, out: &mut Out<'_, Completion>, end: End) {
-        match end {
-            End::Eof => self.finish(out),
-            End::Failed => self.flush_before_terminal_error(out),
+    /// A stream that stops after a finish reason without `[DONE]` still
+    /// ended: some dialects (Perplexity) never send the sentinel.
+    fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
+        if !self.saw_terminal {
+            return Err(ProviderError::Truncated);
         }
+        self.finish(out)
     }
 }
 
-impl ChatDecoder {
-    fn finish(&mut self, out: &mut AdapterOutput) {
-        // Tool calls the provider fully delivered are content, so a truncated
-        // reply still flushes them. Partial calls drop in the accumulator.
-        let output_length_truncation = matches!(
-            self.final_finish_reason.as_ref(),
-            Some(FinishReason::Length)
-        );
-        for slot in self.open_tool_calls.drain_ordered() {
-            if output_length_truncation && !slot.has_substantive_arguments() {
-                tracing::debug!(
-                    tool = %slot.name,
-                    "dropping streamed tool call cut off before its first argument token"
-                );
-                continue;
-            }
-            // Only an explicit length finish permits dropping malformed arguments.
-            let on_unparseable = if output_length_truncation {
-                UnparseableToolInput::Drop
-            } else {
-                UnparseableToolInput::Error
-            };
-            out.push(Ok(slot.end_event(on_unparseable)));
-        }
-
-        // Unrecognized unary replies must fail rather than appear empty and successful.
-        // Streams express this condition through a missing terminal record.
-        if self.whole && !self.saw_any_valid_frame && !self.saw_terminal {
-            out.error(ProviderError::Response(
-                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
-            ));
-            return;
-        }
-
-        // EOF alone or a bare terminator without valid content cannot establish success.
-        if !self.saw_terminal || !self.saw_any_valid_frame {
-            return;
-        }
-        self.emit_terminal(out);
-    }
-
-    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
-        // Fully-delivered tool calls flush before the terminal error reaches
-        // the consumer, so a first-`Err`-stop consumer sees them too.
-        for slot in self.open_tool_calls.drain_ordered() {
-            out.push(Ok(slot.end_event(UnparseableToolInput::Drop)));
-        }
-    }
-
+impl ChatDecoder<'_> {
     /// Verdict, model, response id, usage and error envelope, read off a raw
     /// payload before normalization discards them. The driver calls it for
     /// the unary reply and for every stream frame without anyone having to
@@ -1464,35 +1447,21 @@ struct ObservedChoice {
 /// Encrypted reasoning (`{"type":"reasoning.encrypted"}`) is the turn's own
 /// output, not tool-call metadata: it arrives with `reasoning: null` and an
 /// `rs_*` id of its own, which never matches a `call_*` tool-call id, and it
-/// arrives before any tool call opens. Emitting it as a reasoning block is
+/// arrives before any tool call opens. Writing it as a reasoning part is
 /// what lets the blob reach the aggregated choice and be replayed next turn.
-fn detail_reasoning(
-    detail: &unary::ReasoningDetails,
-) -> Option<(BlockId, Option<String>, crate::message::ReasoningContent)> {
+fn detail_reasoning(detail: &unary::ReasoningDetails) -> Option<crate::message::Reasoning> {
     let unary::ReasoningDetails::Encrypted { id, data, .. } = detail else {
         return None;
     };
-    // Id-less details must not claim provider identity or share plaintext assembly keys.
-    let provider_id = id.clone().and_then(crate::streaming::non_empty_id);
-    let key = provider_id
-        .as_ref()
-        .map_or(BlockId::minted(MintKind::EncryptedReasoning, 0), |id| {
-            BlockId::wire(id.as_str())
-        });
-    Some((
-        key,
-        provider_id,
-        crate::message::ReasoningContent::Encrypted(data.clone()),
-    ))
+    Some(crate::message::Reasoning {
+        id: id.clone().filter(|id| !id.is_empty()),
+        content: vec![crate::message::ReasoningContent::Encrypted(data.clone())],
+    })
 }
 
-/// Convert a nonempty unary reasoning detail into one replayable block.
-/// Preserve wire IDs or mint a position-based key. Empty and signature-only
-/// entries return `None`.
-fn whole_detail_reasoning(
-    position: u64,
-    detail: &unary::ReasoningDetails,
-) -> Option<(BlockId, Option<String>, crate::message::ReasoningContent)> {
+/// A nonempty unary reasoning detail as one replayable part. Empty and
+/// signature-only entries return `None`.
+fn whole_detail_reasoning(detail: &unary::ReasoningDetails) -> Option<crate::message::Reasoning> {
     let (id, content) = match detail {
         unary::ReasoningDetails::Summary { id, summary, .. } if !summary.is_empty() => (
             id,
@@ -1517,13 +1486,10 @@ fn whole_detail_reasoning(
         // Signature-only details attach to separately supplied plaintext.
         _ => return None,
     };
-    let provider_id = id.clone().and_then(crate::streaming::non_empty_id);
-    // Positional keys keep id-less entries distinct and separate from plaintext reasoning.
-    let key = provider_id.as_ref().map_or_else(
-        || BlockId::minted(MintKind::EncryptedReasoning, position),
-        |id| BlockId::wire(id.as_str()),
-    );
-    Some((key, provider_id, content))
+    Some(crate::message::Reasoning {
+        id: id.clone().filter(|id| !id.is_empty()),
+        content: vec![content],
+    })
 }
 
 /// Return a nonempty signature from a text reasoning detail.
@@ -1545,3 +1511,6 @@ fn typed_detail(detail: &serde_json::Value) -> Option<unary::ReasoningDetails> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod hard_case_tests;

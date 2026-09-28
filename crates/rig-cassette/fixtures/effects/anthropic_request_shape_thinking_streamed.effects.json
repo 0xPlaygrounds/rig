@@ -71,6 +71,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "anthropic",
               "id": null,
               "content": [
                 {
@@ -80,8 +81,7 @@
                     "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ=="
                   }
                 }
-              ],
-              "provider": "anthropic"
+              ]
             },
             {
               "type": "text",
@@ -124,101 +124,67 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "reasoning"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "reasoning",
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "144"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "reasoning",
-            "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ==",
-            "wire_sent": true
-          },
-          "block": {
-            "type": "reasoning",
-            "id": null,
-            "content": [
-              {
-                "type": "text",
-                "content": {
-                  "text": "144",
-                  "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ=="
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "issuer": "anthropic",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "144",
+                    "signature": "EvgBCpIBCBIYAipAKnhWKgywsbqL0MYDI+1O3EbQArywSbA2RBMYp2bC5iEBOECZAZED/MotYTqfAhV1bAXeNOJkfATZBc9LzD0LqzIRY2xhdWRlLXNvbm5ldC00LTY4AEIIdGhpbmtpbmdaJDcyOGRjYWE5LThhZjYtNDNhMi05Mzk3LTI1ZGEzN2I5YzM5ZKgB1+rK1QYSDLQye0zlfY1zHIj2rhoMXsXWz4lKsMp1KptTIjDYWvLD3YfvGTvI+A3P7t/o4HG2ajW8tjIUc+KHM68Gf+ITg0mEHs17o0JrVewaifUqE0l40tnm9uIMyloMbMr3BQykVdEYAQ=="
+                  }
                 }
-              }
-            ]
+              ]
+            }
           }
         },
         {
-          "event": "block_start",
-          "id": "minted:block:1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:1",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
             "text": "144"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:1",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "144"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 68,
-            "output_tokens": 13,
-            "total_tokens": 81,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 7
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfJqoK5Fq18pRo7CBRERV",
-          "response_id": null,
-          "provider_request_id": "req_011CfJqoJXWGhTJZASriFRN5",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
-          "raw": {
-            "usage": {
-              "output_tokens": 13,
-              "input_tokens": 68,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0,
-              "output_tokens_details": {
-                "thinking_tokens": 7
-              }
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfJqoK5Fq18pRo7CBRERV",
-            "model": "claude-sonnet-4-6"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "text",
+              "text": "144"
+            }
           }
         }
       ]

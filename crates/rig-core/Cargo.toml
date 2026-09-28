@@ -42,6 +42,7 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
 http = { workspace = true }
 fastrand = { workspace = true }
 mime = { workspace = true }
@@ -63,6 +64,8 @@ rig-tungstenite = { path = "../rig-tungstenite", version = "0.42.0", optional = 
 # cannot select a randomness backend from the target triple alone, so opt in to
 # lopdf's Web Crypto backend only for Rig's supported browser target.
 lopdf = { workspace = true, optional = true, features = ["wasm_js"] }
+# Rig-issued tool-call ids are v4 UUIDs; the same applies to their randomness.
+uuid = { workspace = true, features = ["js"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }

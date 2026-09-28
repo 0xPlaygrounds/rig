@@ -120,6 +120,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -128,17 +129,14 @@
                     "text": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701"
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_RxiGOALqiQeYFOmWght70756"
-              },
-              "provider": {
-                "call_id": "call_00_RxiGOALqiQeYFOmWght70756"
+                "provider": {
+                  "call_id": "call_00_RxiGOALqiQeYFOmWght70756"
+                }
               },
               "function": {
                 "name": "submit",

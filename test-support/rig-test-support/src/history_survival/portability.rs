@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use rig_agent::agent::AgentBuilder;
 use rig_core::completion::CompletionResponse;
-use rig_core::driver::WireDriver;
+use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, ToolResult, ToolResultContent, UserContent};
 use rig_core::operation::Completion;
@@ -23,7 +23,7 @@ use rig_core::providers::anthropic::wire::AnthropicConfig;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
-use rig_core::wire::{Call, Fold, Mode, Operation, Reply, Wire, WireFrame};
+use rig_core::wire::{Encoded, Wire, WireFrame};
 
 use super::{Dialect, response_tokens, string_values, unpaired_tool_calls};
 use crate::reasoning::{TOOL_SYSTEM_PROMPT, TOOL_USER_PROMPT, WeatherTool};
@@ -35,27 +35,29 @@ pub const SOURCE_SCENARIO: &str = "reasoning_tool_roundtrip/nonstreaming";
 pub const FOLLOW_UP: &str = "Using the weather you already retrieved, should I pack an umbrella \
     or sunscreen? Answer in one sentence and do not call any tool.";
 
+/// A transport that answers with one recorded whole body.
+#[derive(Clone)]
+struct Recorded(String);
+
+impl<W: Wire<Payload = Encoded, Frame = WireFrame>> Transport<W> for Recorded {
+    fn send(&self, payload: Encoded, _exchange: Exchange) -> Opening<WireFrame> {
+        let frames = payload.framing.split(self.0.as_bytes());
+        let mut opened = Opened::new(futures::stream::iter(frames.into_iter().map(Ok)));
+        if let Ok(document) = serde_json::from_str::<Value>(&self.0) {
+            opened = opened.with_document(document);
+        }
+        Opening::ready(opened)
+    }
+}
+
 /// Decode one whole recorded reply through the wire's own decoder and fold,
 /// without I/O: the exact normalization a live call would perform.
 pub fn decode_whole_reply<W>(wire: &W, body: &str) -> Result<CompletionResponse, ProviderError>
 where
-    W: Wire<Op = Completion, Frame = WireFrame>,
+    W: Wire<Op = Completion, Payload = Encoded, Frame = WireFrame>,
 {
-    let mut driver = WireDriver::new(wire.decoder(Mode::Unary));
-    driver.push(WireFrame::Text(body.to_owned()));
-    driver.finish();
-    let request = rig_core::completion::CompletionRequest::new("");
-    let mut fold = Completion::fold(&request, &mut Call::new(&wire.describe(), Mode::Unary));
-    for item in driver.drain() {
-        fold.absorb(&item?)?;
-    }
-    let raw = serde_json::from_str::<Value>(body)
-        .map_err(|error| ProviderError::Response(error.to_string()))?;
-    fold.finish(Reply {
-        provider: wire.describe().name.to_owned(),
-        raw,
-        provider_request_id: None,
-    })
+    let model = Model::new(wire.clone(), Recorded(body.to_owned()));
+    futures::executor::block_on(model.call(""))
 }
 
 /// The wire whose recording supplies the ported turn.
@@ -157,9 +159,10 @@ impl Source {
                     .to_owned();
                 UserContent::ToolResult(ToolResult {
                     call: call.id.clone(),
-                    provider: call.provider.clone(),
                     name: call.function.name.clone(),
-                    content: vec![ToolResultContent::text(weather_report(&city))],
+                    content: rig_core::NonEmpty::new(ToolResultContent::text(weather_report(
+                        &city,
+                    ))),
                 })
             })
             .collect();
@@ -172,9 +175,11 @@ impl Source {
             Message::user(TOOL_USER_PROMPT),
             Message::Assistant {
                 id: reply.message_id,
-                content: reply.choice,
+                content: rig_core::NonEmpty::from_vec(reply.choice).expect("non-empty"),
             },
-            Message::User { content: results },
+            Message::User {
+                content: rig_core::NonEmpty::from_vec(results).expect("non-empty"),
+            },
         ]
     }
 }

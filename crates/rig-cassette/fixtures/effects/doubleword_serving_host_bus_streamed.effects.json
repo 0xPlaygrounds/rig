@@ -113,11 +113,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_4b2d0abaa8dc4dbeb51b2e50"
-              },
-              "provider": {
-                "call_id": "call_4b2d0abaa8dc4dbeb51b2e50"
+                "provider": {
+                  "call_id": "call_4b2d0abaa8dc4dbeb51b2e50"
+                }
               },
               "function": {
                 "name": "add",
@@ -175,90 +173,42 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_4b2d0abaa8dc4dbeb51b2e50",
-          "delta": {
-            "delta": "tool_name",
-            "name": "add"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_4b2d0abaa8dc4dbeb51b2e50",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"x\": 17, \"y\": 25}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"x\": 17, \"y\": 25}"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call_4b2d0abaa8dc4dbeb51b2e50",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_4b2d0abaa8dc4dbeb51b2e50",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_4b2d0abaa8dc4dbeb51b2e50"
-            },
-            "provider": {
-              "call_id": "call_4b2d0abaa8dc4dbeb51b2e50"
-            },
-            "function": {
-              "name": "add",
-              "arguments": {
-                "x": 17,
-                "y": 25
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 346,
-            "output_tokens": 37,
-            "total_tokens": 383,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "gen-1790146073-QE90KysGjn8cbVwW1uT5",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 346,
-              "completion_tokens": 37,
-              "total_tokens": 383,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_4b2d0abaa8dc4dbeb51b2e50"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
               },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "gen-1790146073-QE90KysGjn8cbVwW1uT5",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -317,11 +267,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_4b2d0abaa8dc4dbeb51b2e50"
-                  },
-                  "provider": {
-                    "call_id": "call_4b2d0abaa8dc4dbeb51b2e50"
+                    "provider": {
+                      "call_id": "call_4b2d0abaa8dc4dbeb51b2e50"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -341,11 +289,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_4b2d0abaa8dc4dbeb51b2e50"
-                  },
-                  "provider": {
-                    "call_id": "call_4b2d0abaa8dc4dbeb51b2e50"
+                    "provider": {
+                      "call_id": "call_4b2d0abaa8dc4dbeb51b2e50"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -446,80 +392,37 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "4"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "2"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "42"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 402,
-            "output_tokens": 3,
-            "total_tokens": 405,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "gen-1790146074-u1Rt9r65Ydj3sU35kHLe",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 402,
-              "completion_tokens": 3,
-              "total_tokens": 405,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "cache_creation": {
-                "ephemeral_1h_input_tokens": 0,
-                "ephemeral_24h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 0
-              },
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
-            },
-            "finish_reason": "stop",
-            "response_id": "gen-1790146074-u1Rt9r65Ydj3sU35kHLe",
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "42"
             }
           }
         }

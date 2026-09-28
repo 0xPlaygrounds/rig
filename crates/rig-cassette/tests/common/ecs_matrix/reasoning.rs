@@ -4,6 +4,7 @@
 //! explicit HostAction extension. AdapterEnding describes HTTP closure
 //! (`Decoded`/`Terminal`); the run's Ended observation carries `settled`.
 
+use rig_core::streaming::PartKind;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
@@ -38,9 +39,7 @@ use rig_core::observe::ObservationLog;
 
 use rig_core::observe::Stage;
 
-use rig_core::streaming::Delta;
-
-use rig_core::streaming::StreamEvent;
+use rig_core::streaming::{Item, StreamEvent};
 
 use rig_ecs::agent::Utterance;
 use rig_ecs::bus::{StreamItemsDelivered, Subjects, Witnessing};
@@ -85,25 +84,21 @@ impl rig_agent::agent::AgentHook for RecordSettled {
 /// A host's observation of a real collected reasoning delta. It is not
 /// synthesized from the final answer or from a cassette's frame bytes.
 #[derive(Serialize, Deserialize)]
-struct ReasoningDelta(Delta);
+struct ReasoningDelta(String);
 
 impl HostAction for ReasoningDelta {
     const KIND: &'static str = "ecs-reasoning/delta";
 }
 
 #[derive(Resource, Default)]
-pub(crate) struct PendingReasoning(Vec<(Entity, Delta)>);
+pub(crate) struct PendingReasoning(Vec<(Entity, String)>);
 
 pub(crate) fn install_delivery_observer(app: &mut bevy_app::App) {
     app.init_resource::<PendingReasoning>().add_observer(
         |delivered: On<StreamItemsDelivered>, mut pending: ResMut<PendingReasoning>| {
             for item in &delivered.items {
-                if let Ok(StreamEvent::BlockDelta {
-                    delta: delta @ Delta::Reasoning { .. },
-                    ..
-                }) = item
-                {
-                    pending.0.push((delivered.effect, delta.clone()));
+                if let Ok(Item::Event(StreamEvent::Reasoning { text, .. })) = item {
+                    pending.0.push((delivered.effect, text.clone()));
                 }
             }
         },
@@ -164,11 +159,11 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
             assert!(
                 log.records
                     .iter()
-                    .flat_map(|record| record.events.iter().flatten())
+                    .flat_map(|record| record.events.iter().flat_map(|events| events.events()))
                     .any(|event| matches!(
                         event,
-                        StreamEvent::BlockStart {
-                            kind: rig_core::streaming::BlockKind::Reasoning { .. },
+                        StreamEvent::Start {
+                            kind: PartKind::Reasoning,
                             ..
                         }
                     )),
@@ -227,9 +222,15 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
             ));
             match wire {
                 ThinkingWire::OpenAiResponses => {
-                    assert!(reasoning.iter().any(|block| block.id.is_some()));
                     assert!(reasoning.iter().any(|block| {
-                        block.content.iter().any(|content|
+                        block
+                            .open(block.issuer())
+                            .expect("sealed reasoning")
+                            .id
+                            .is_some()
+                    }));
+                    assert!(reasoning.iter().any(|block| {
+                        block.open(block.issuer()).expect("sealed reasoning").content.iter().any(|content|
                         matches!(content, ReasoningContent::Encrypted(value) if !value.is_empty()))
                     }));
                 }
@@ -238,9 +239,11 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
                     // on ToolCall.signature, a thought's on its reasoning
                     // block, an answer's on its text.
                     assert!(
-                        reasoning
-                            .iter()
-                            .any(|block| block.first_signature().is_some())
+                        reasoning.iter().any(|block| block
+                            .open(block.issuer())
+                            .expect("sealed reasoning")
+                            .first_signature()
+                            .is_some())
                             || parts.iter().any(|part| match part {
                                 AssistantContent::ToolCall(call) => call.signature.is_some(),
                                 AssistantContent::Text(text) => {
@@ -396,11 +399,12 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
                     .cloned()
                     .collect();
                 parts.push(AssistantContent::text(call.function.arguments.to_string()));
-                parts
+                rig_core::NonEmpty::from_vec(parts).expect("non-empty")
             } else if cell.program.streamed {
-                canonical_streamed_choice(response.choice.clone())
+                rig_core::NonEmpty::from_vec(canonical_streamed_choice(response.choice.clone()))
+                    .expect("non-empty")
             } else {
-                response.choice.clone()
+                rig_core::NonEmpty::from_vec(response.choice.clone()).expect("non-empty")
             },
         })
         .collect();
@@ -461,12 +465,9 @@ pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLo
     let recorded: Vec<_> = log
         .records
         .iter()
-        .flat_map(|record| record.events.iter().flatten())
+        .flat_map(|record| record.events.iter().flat_map(|events| events.events()))
         .filter_map(|event| match event {
-            StreamEvent::BlockDelta {
-                delta: delta @ Delta::Reasoning { .. },
-                ..
-            } => Some(delta.clone()),
+            StreamEvent::Reasoning { text, .. } => Some(text.clone()),
             _ => None,
         })
         .collect();
@@ -483,7 +484,7 @@ pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLo
         && completions(log).iter().any(|response| {
             response.choice.iter().any(|part| {
                 matches!(part,
-            AssistantContent::Reasoning(block) if !block.display_text().is_empty())
+            AssistantContent::Reasoning(block) if !block.open(block.issuer()).expect("sealed reasoning").display_text().is_empty())
             })
         })
     {

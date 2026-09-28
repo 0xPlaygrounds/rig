@@ -42,9 +42,7 @@ use rig_core::observe::AdapterEvent;
 
 use rig_core::observe::ObservationLog;
 
-use rig_core::streaming::Delta;
-
-use rig_core::streaming::StreamEvent;
+use rig_core::streaming::{Item, StreamEvent};
 
 use rig_agent::test_utils::SequencedStreamingHttpClient;
 
@@ -519,13 +517,11 @@ pub async fn drain(stream: &mut StreamingResult) -> Drained {
     let mut drained = Drained::default();
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
                 ..
-            })) => drained.text.push_str(&text),
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
-                drained.terminals += 1;
-            }
+            }))) => drained.text.push_str(&text),
+            Ok(MultiTurnStreamItem::CompletionCall(_)) => drained.terminals += 1,
             Ok(MultiTurnStreamItem::ToolCall { .. }) => drained.tool_calls += 1,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => drained.finals += 1,
             Ok(_) => {}

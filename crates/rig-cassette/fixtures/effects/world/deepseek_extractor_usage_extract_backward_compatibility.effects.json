@@ -108,6 +108,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "deepseek",
               "id": null,
               "content": [
                 {
@@ -116,17 +117,14 @@
                     "text": "We need to extract data from the text: \"John Doe is a 30 year old software engineer.\"\n\nName: John Doe\nAge: 30\nProfession: software engineer\n\nCall submit."
                   }
                 }
-              ],
-              "provider": "deepseek"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_00_SgewdJKcqwzsfe6l5NSP9539"
-              },
-              "provider": {
-                "call_id": "call_00_SgewdJKcqwzsfe6l5NSP9539"
+                "provider": {
+                  "call_id": "call_00_SgewdJKcqwzsfe6l5NSP9539"
+                }
               },
               "function": {
                 "name": "submit",

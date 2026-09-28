@@ -1,0 +1,73 @@
+[package]
+name = "frozen_api"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "The Frozen API programs of docs/design/0001-archimpro.md, verbatim."
+autoexamples = false
+
+# The workspace's lints, less `panic_in_result_fn`: the programs are kept
+# verbatim, and P8's `main` asserts what it replays while returning `Result`.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rig_loom)'] }
+
+[lints.clippy]
+dbg_macro = "forbid"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+expect_used = "deny"
+expect_fun_call = "deny"
+indexing_slicing = "deny"
+panic = "deny"
+todo = "forbid"
+unimplemented = "forbid"
+unreachable = "deny"
+unwrap_used = "deny"
+large_enum_variant = "allow"
+result_large_err = "allow"
+type_complexity = "allow"
+too_many_arguments = "allow"
+should_implement_trait = "allow"
+
+[dependencies]
+rig.workspace = true
+rig-reqwest.workspace = true
+bytes = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+# P5 and P8 need no network and run to success; the others need credentials.
+[[example]]
+name = "p1_one_prompt"
+path = "p1_one_prompt.rs"
+
+[[example]]
+name = "p2_stream"
+path = "p2_stream.rs"
+
+[[example]]
+name = "p3_erased_model"
+path = "p3_erased_model.rs"
+
+[[example]]
+name = "p4_tools"
+path = "p4_tools.rs"
+
+[[example]]
+name = "p5_local_operation"
+path = "p5_local_operation.rs"
+
+[[example]]
+name = "p6_http_operation"
+path = "p6_http_operation.rs"
+
+[[example]]
+name = "p7_openai_compatible_vendor"
+path = "p7_openai_compatible_vendor.rs"
+
+[[example]]
+name = "p8_custom_transport"
+path = "p8_custom_transport.rs"

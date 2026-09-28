@@ -113,11 +113,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-1"
-              },
-              "provider": {
-                "call_id": "call-1"
+                "provider": {
+                  "call_id": "call-1"
+                }
               },
               "function": {
                 "name": "multiply",
@@ -141,11 +139,9 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "origin": "explicit",
-                  "id": "call-1"
-                },
-                "provider": {
-                  "call_id": "call-1"
+                  "provider": {
+                    "call_id": "call-1"
+                  }
                 },
                 "function": {
                   "name": "multiply",
@@ -196,11 +192,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call-1"
-                  },
-                  "provider": {
-                    "call_id": "call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "function": {
                     "name": "multiply",
@@ -220,11 +214,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call-1"
-                  },
-                  "provider": {
-                    "call_id": "call-1"
+                    "provider": {
+                      "call_id": "call-1"
+                    }
                   },
                   "name": "multiply",
                   "content": [

@@ -28,7 +28,7 @@ fn wire() -> Chat {
 fn prompt(text: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user(text)],
+        chat_history: crate::NonEmpty::new(crate::message::Message::user(text)),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: Some(0.0),
@@ -71,6 +71,7 @@ async fn fold_both(
         buffered,
         response
             .finish()
+            .await
             .expect("the stream produced a terminal record"),
     )
 }
@@ -131,10 +132,10 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
     assert_eq!(call.function, streamed_call.function);
     assert_eq!(call.signature, streamed_call.signature);
     assert_eq!(
-        call.provider.as_ref().map(|provider| &provider.item_id),
+        call.id.provider().map(|provider| &provider.item_id),
         streamed_call
-            .provider
-            .as_ref()
+            .id
+            .provider()
             .map(|provider| &provider.item_id)
     );
     assert_eq!(call.additional_params, streamed_call.additional_params);
@@ -150,16 +151,15 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
     ] {
         let id = call
             .id
-            .explicit()
+            .provider()
+            .map(|provider| provider.call_id.as_str())
             .expect("the call keeps the provider's id");
         assert!(
             recorded("then", cassette).contains(&format!("\"id\":\"{id}\"")),
             "{cassette}: the call id {id} is the recorded one"
         );
         assert_eq!(
-            call.provider
-                .as_ref()
-                .map(|provider| provider.call_id.as_str()),
+            call.id.provider().map(|provider| provider.call_id.as_str()),
             Some(id)
         );
     }
@@ -177,9 +177,7 @@ fn the_mode_decides_whether_the_body_asks_for_a_stream() {
         let encoded = wire()
             .encode(prompt("Reply with exactly the single word: pong"), mode)
             .expect("the request encodes");
-        let [request] = encoded.requests.as_slice() else {
-            panic!("a chat turn is one request");
-        };
+        let request = &encoded.request;
         let Body::Bytes(bytes) = request.body() else {
             panic!("a chat request body is bytes");
         };
@@ -252,6 +250,7 @@ async fn the_done_sentinel_emits_the_deferred_terminal() {
     while response.next().await.is_some() {}
     let folded = response
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     assert_eq!(folded.choice.first(), Some(&AssistantContent::text("hi")));
@@ -277,14 +276,11 @@ async fn a_truncated_stream_yields_no_terminal_record() {
     );
     let mut response = bound.stream(prompt("hi")).expect("the stream opens");
     while response.next().await.is_some() {}
-    assert!(
-        response.folded().terminal().cloned().is_none(),
-        "no terminal record is synthesized"
-    );
     let error = response
         .finish()
+        .await
         .expect_err("a stream without a terminal record has no response to fold");
-    assert!(error.to_string().contains("truncated"), "{error}");
+    assert!(matches!(error, ProviderError::Truncated), "{error:?}");
 }
 
 /// The wire's in-band error envelope arrives with a 200 status, so only the
@@ -311,9 +307,8 @@ async fn an_in_band_error_envelope_fails_the_turn() {
         errors[0].contains("rate limited"),
         "the provider's message survives: {errors:?}"
     );
-    // A failed turn commits no terminal record, so there is nothing to fold.
-    assert!(response.folded().terminal().cloned().is_none());
-    assert!(response.finish().is_err());
+    // A failed turn has nothing to fold.
+    assert!(response.finish().await.is_err());
 }
 
 /// A dialect that spells the cap `max_completion_tokens` does so only for
@@ -326,9 +321,7 @@ fn the_output_cap_spelling_follows_the_model_family() {
             .chat(model)
             .encode(prompt("hi"), Mode::Unary)
             .expect("encodes");
-        let [request] = encoded.requests.as_slice() else {
-            panic!("a chat turn is one request");
-        };
+        let request = &encoded.request;
         let Body::Bytes(bytes) = request.body() else {
             panic!("a chat request body is bytes");
         };
@@ -353,9 +346,7 @@ fn the_output_cap_spelling_follows_the_model_family() {
         .chat("gpt-5.2")
         .encode(prompt("hi"), Mode::Unary)
         .expect("encodes");
-    let [groq_request] = groq.requests.as_slice() else {
-        panic!("a chat turn is one request");
-    };
+    let groq_request = &groq.request;
     let Body::Bytes(bytes) = groq_request.body() else {
         panic!("a chat request body is bytes");
     };
@@ -374,13 +365,13 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
 
     let with_file_id = || {
         let mut request = prompt("read this");
-        request.chat_history = vec![Message::User {
-            content: vec![UserContent::Document(Document {
+        request.chat_history = crate::NonEmpty::new(Message::User {
+            content: crate::NonEmpty::new(UserContent::Document(Document {
                 data: DocumentSourceKind::FileId("file-abc".to_owned()),
                 media_type: None,
                 additional_params: None,
-            })],
-        }];
+            })),
+        });
         request
     };
 
@@ -427,6 +418,7 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
     while response.next().await.is_some() {}
     let folded = response
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     // `serde_json::from_value`, not `Type::deserialize` — the latter needs
@@ -472,8 +464,6 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
 /// shared emitter.
 #[tokio::test]
 async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
-    use crate::message::Reasoning;
-
     const UNARY: &str = concat!(
         r#"{"object":"chat.completion","id":"chatcmpl-1","model":"m","#,
         r#""choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","#,
@@ -508,12 +498,13 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
     while response.next().await.is_some() {}
     let streamed = response
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     // Reasoning first, then the visible text — one emitter, one order.
     let reasoning_text = |choice: &[AssistantContent]| match choice.first() {
-        Some(AssistantContent::Reasoning(Reasoning { content, .. })) => {
-            Some(format!("{content:?}"))
+        Some(AssistantContent::Reasoning(reasoning)) => {
+            Some(format!("{:?}", reasoning.value().content))
         }
         _ => None,
     };
@@ -557,6 +548,7 @@ async fn the_streamed_terminal_keeps_every_envelope_field() {
     while response.next().await.is_some() {}
     let folded = response
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     let record: StreamingCompletionResponse<ChatUsage> =
@@ -617,6 +609,7 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
     while response.next().await.is_some() {}
     let folded = response
         .finish()
+        .await
         .expect("the stream produced a terminal record");
 
     // The whole turn, not just its first frame.
@@ -688,7 +681,10 @@ async fn a_tool_call_cut_mid_arguments_drops_only_itself() {
             folded.choice
         );
     };
-    assert_eq!(call.id.explicit(), Some("call_whole"));
+    assert_eq!(
+        call.id.provider().map(|provider| provider.call_id.as_str()),
+        Some("call_whole")
+    );
     assert_eq!(call.function.name, "record");
     assert_eq!(
         call.function.arguments,
@@ -763,7 +759,10 @@ async fn valid_arguments_survive_a_length_truncated_turn() {
             folded.choice
         );
     };
-    assert_eq!(call.id.explicit(), Some("call_odd"));
+    assert_eq!(
+        call.id.provider().map(|provider| provider.call_id.as_str()),
+        Some("call_odd")
+    );
     assert_eq!(
         call.function.arguments,
         serde_json::json!({"unexpected": 1})
@@ -798,17 +797,16 @@ async fn a_gateway_may_answer_with_a_bare_string() {
 
     // Only the dialects measured to do it are tolerant; elsewhere a bare
     // string is still an unmodeled frame, which the classifier warn-skips
-    // — so the reply delivered nothing and reported nothing, and that is
-    // the shared empty-response rejection rather than a silent, empty
-    // success.
+    // — so the provider never ended the reply, and that is truncation
+    // rather than a silent, empty success.
     let strict =
         crate::driver::Model::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
             .call(prompt("ask"))
             .await;
-    let Err(ProviderError::Response(message)) = &strict else {
-        panic!("openai does not answer with a bare string: {strict:?}");
-    };
-    assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR);
+    assert!(
+        matches!(strict, Err(ProviderError::Truncated)),
+        "openai does not answer with a bare string: {strict:?}"
+    );
 }
 
 /// One unary `chat.completion` body whose single choice is empty, ending
@@ -914,15 +912,15 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     let encode = |content: Vec<UserContent>| {
         let mut request = prompt("look at this");
-        request.chat_history = vec![Message::User { content }];
+        request.chat_history = crate::NonEmpty::new(Message::User {
+            content: crate::NonEmpty::from_vec(content).expect("non-empty"),
+        });
         OpenAIConfig::new("k")
             .with_dialect(&MISTRAL)
             .chat("mistral-small-latest")
             .encode(request, Mode::Unary)
             .map(|encoded| {
-                let [http_request] = encoded.requests.as_slice() else {
-                    panic!("one request")
-                };
+                let http_request = &encoded.request;
                 let Body::Bytes(bytes) = http_request.body() else {
                     panic!("bytes")
                 };
@@ -987,18 +985,16 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
 
     // And no other dialect rebuilds content this way.
     let mut request = prompt("describe");
-    request.chat_history = vec![Message::User {
-        content: vec![UserContent::Image(Image {
+    request.chat_history = crate::NonEmpty::new(Message::User {
+        content: crate::NonEmpty::new(UserContent::Image(Image {
             data: crate::message::DocumentSourceKind::Url("https://x.invalid/a.png".to_owned()),
             media_type: None,
             detail: None,
             additional_params: None,
-        })],
-    }];
+        })),
+    });
     let openai = wire().encode(request, Mode::Unary).expect("encodes");
-    let [http_request] = openai.requests.as_slice() else {
-        panic!("one request")
-    };
+    let http_request = &openai.request;
     let Body::Bytes(bytes) = http_request.body() else {
         panic!("bytes")
     };
@@ -1019,30 +1015,30 @@ fn groq_replays_reasoning_turns_without_reasoning_content() {
     use crate::message::{Message, Reasoning};
     use crate::providers::openai::wire::DEEPSEEK;
 
-    let history = || {
+    let history = |issuer: &'static str| {
         let mut request = prompt("and then?");
-        request.chat_history = vec![
+        request.chat_history = crate::NonEmpty::with_rest(
             Message::user("think first"),
-            Message::Assistant {
-                id: None,
-                content: vec![
-                    AssistantContent::Reasoning(Reasoning::new("private chain")),
-                    AssistantContent::text("visible answer"),
-                ],
-            },
-            Message::user("and then?"),
-        ];
+            [
+                Message::Assistant {
+                    id: None,
+                    content: crate::NonEmpty::with_rest(
+                        AssistantContent::Reasoning(Reasoning::new("private chain").sealed(issuer)),
+                        [AssistantContent::text("visible answer")],
+                    ),
+                },
+                Message::user("and then?"),
+            ],
+        );
         request
     };
     let assistant = |dialect: &Dialect| {
         let encoded = OpenAIConfig::new("k")
             .with_dialect(dialect)
             .chat("m")
-            .encode(history(), Mode::Unary)
+            .encode(history(dialect.name), Mode::Unary)
             .expect("encodes");
-        let [request] = encoded.requests.as_slice() else {
-            panic!("a chat turn is one request");
-        };
+        let request = &encoded.request;
         let Body::Bytes(bytes) = request.body() else {
             panic!("a chat request body is bytes");
         };

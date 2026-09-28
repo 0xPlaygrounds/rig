@@ -8,8 +8,9 @@
 use bevy_ecs::prelude::*;
 use rig_core::{
     effect::EffectId,
+    error::{ErrorKind, ErrorReport},
     serve::{Reply, stream_truncated},
-    streaming::{Delta, StreamEvent},
+    streaming::{Item, Relayed, StreamEvent},
 };
 use std::task::Poll;
 
@@ -147,25 +148,39 @@ pub fn collect_streams(
                 Poll::Ready(Some(item)) => {
                     streaming.delivered += 1;
                     if let Some(streamed) = &mut streamed {
-                        items.push(item.clone());
-                        if let Err(error) = &item {
-                            let position = streamed.events.len() + streamed.errors.len();
-                            streamed.errors.push((position, error.clone()));
-                        }
                         if streamed.outcome.is_none()
                             && let Some(outcome) = streaming.fold.observe(&item)
                         {
-                            streamed.outcome = Some(outcome);
-                        }
-                        if let Ok(event) = item {
-                            if let StreamEvent::BlockDelta {
-                                delta: Delta::Text { text },
-                                ..
-                            } = &event
-                            {
-                                streamed.text.push_str(text);
+                            // The response is the stream's end, not a
+                            // delivery: observers see it as the outcome.
+                            if matches!(item, Ok(Relayed::Done(_))) {
+                                streamed.bypass_change_detection().outcome = Some(outcome);
+                            } else {
+                                streamed.outcome = Some(outcome);
                             }
-                            streamed.events.push(event);
+                        }
+                        let position = streamed.events.len() + streamed.errors.len();
+                        match item {
+                            // The response is the outcome, not an item.
+                            Ok(Relayed::Done(_)) => continue,
+                            Ok(Relayed::Item(item)) => {
+                                if let Item::Event(StreamEvent::Text { text, .. }) = &item {
+                                    streamed.text.push_str(text);
+                                }
+                                items.push(Ok(item.clone()));
+                                if let Err(error) = streamed.events.push(item) {
+                                    // A handler's stream out of the writer's
+                                    // order: the item stands as the defect.
+                                    streamed.errors.push((
+                                        position,
+                                        ErrorReport::new(ErrorKind::Response, error.to_string()),
+                                    ));
+                                }
+                            }
+                            Err(error) => {
+                                items.push(Err(error.clone()));
+                                streamed.errors.push((position, error));
+                            }
                         }
                         delivered += 1;
                         continue;
@@ -192,7 +207,16 @@ pub fn collect_streams(
                                     let skip =
                                         streamed.events.len().saturating_sub(TRUNCATION_TAIL);
                                     (
-                                        streamed.events.iter().skip(skip).cloned().collect(),
+                                        streamed
+                                            .events
+                                            .items()
+                                            .iter()
+                                            .skip(skip)
+                                            .map(|item| match item {
+                                                Item::Event(event) => event.name().to_owned(),
+                                                Item::Unknown(_) => "Unknown".to_owned(),
+                                            })
+                                            .collect(),
                                         streamed
                                             .errors
                                             .iter()

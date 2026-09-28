@@ -2,77 +2,29 @@
   "header": {
     "deliveries": [
       {
-        "batch": 12,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 28,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 30,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 31,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 32,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 33,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 35,
+        "batch": 46,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -80,7 +32,103 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 47,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 48,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 49,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 50,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 52,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 53,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 57,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 68,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -179,12 +227,10 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_UOd3iZBf85wctp3vi9EP1wci"
-              },
-              "provider": {
-                "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                "provider": {
+                  "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                  "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -208,6 +254,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 108,
               "input_tokens_details": {
@@ -219,105 +279,82 @@
               },
               "total_tokens": 122
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
+                "arguments": "{}",
+                "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                "name": "lookup_harbor_label",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "lookup_harbor_label",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Return the alpha signal marker.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "response_id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_harbor_label"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
-            "name": "lookup_harbor_label",
-            "arguments": {},
-            "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-            "on_unparseable": "drop"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_UOd3iZBf85wctp3vi9EP1wci"
-            },
-            "provider": {
-              "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-              "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 108,
-            "output_tokens": 14,
-            "total_tokens": 122,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
-          "provider_request_id": "req_d100600fe26947fca8e5b372b931ec8f",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 108,
-              "input_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                  "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                }
               },
-              "output_tokens": 14,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
               },
-              "total_tokens": 122
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "response_id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
-            "model": "gpt-4o-2024-08-06"
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -377,12 +414,10 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_UOd3iZBf85wctp3vi9EP1wci"
-                  },
-                  "provider": {
-                    "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                    "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                    "provider": {
+                      "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                      "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -399,12 +434,10 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_UOd3iZBf85wctp3vi9EP1wci"
-                  },
-                  "provider": {
-                    "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                    "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                    "provider": {
+                      "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                      "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -460,6 +493,20 @@
           "provider": "openai",
           "model": "gpt-4o-2024-08-06",
           "raw": {
+            "id": "resp_063e4e0521f2bc83006ab396a0b15087d09164939d2061c15c",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
             "usage": {
               "input_tokens": 138,
               "input_tokens_details": {
@@ -471,176 +518,165 @@
               },
               "total_tokens": 152
             },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
+            "output": [
+              {
+                "id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "The alpha signal marker is \"crimson-harbor.\"",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "lookup_harbor_label",
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "description": "Return the alpha signal marker.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
             },
-            "status": "completed",
-            "message_id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-            "response_id": "resp_063e4e0521f2bc83006ab396a0b15087d09164939d2061c15c",
-            "model": "gpt-4o-2024-08-06"
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " alpha"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " signal"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " marker"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "cr"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "imson"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-h"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "bor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": ".\""
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "kind": {
-            "kind": "message"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The alpha signal marker is \"crimson-harbor.\""
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 138,
-            "output_tokens": 14,
-            "total_tokens": 152,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "response_id": "resp_063e4e0521f2bc83006ab396a0b15087d09164939d2061c15c",
-          "provider_request_id": "req_6fdd31b6e2174192a5bee7bdae53e9fb",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
-          "raw": {
-            "usage": {
-              "input_tokens": 138,
-              "input_tokens_details": {
-                "cached_tokens": 0
-              },
-              "output_tokens": 14,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 152
-            },
-            "reasoning_metadata": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "status": "completed",
-            "message_id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-            "response_id": "resp_063e4e0521f2bc83006ab396a0b15087d09164939d2061c15c",
-            "model": "gpt-4o-2024-08-06"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The alpha signal marker is \"crimson-harbor.\""
+            }
           }
         }
       ],

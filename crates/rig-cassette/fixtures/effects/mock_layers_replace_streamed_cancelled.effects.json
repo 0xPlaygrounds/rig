@@ -81,73 +81,46 @@
             "usage": {
               "total_tokens": 2
             },
-            "finish_reason": null,
             "message_id": null,
             "response_id": null,
-            "provider": "mock",
             "model": null,
-            "raw": {
-              "provider": "mock"
-            }
+            "provider_request_id": null
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "stre"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "amed"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "streamed"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "total_tokens": 2
-          },
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
-          "provider": "mock",
-          "model": null,
-          "raw": {
-            "usage": {
-              "total_tokens": 2
-            },
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "streamed"
             }
           }
         }

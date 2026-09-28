@@ -18,7 +18,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
             AdapterErrorBoundary::Unknown,
         ),
     ] {
-        let error = ProviderError::Http(native);
+        let error = ProviderError::Http(native.into());
         let report = crate::error::ErrorReport::from(&error);
         assert_eq!(report.kind, crate::error::ErrorKind::Http);
         let log = Arc::new(ObservationLog::default());
@@ -70,7 +70,7 @@ async fn streamed_body_failure_preserves_boundary_through_provider_error_convers
             }
         };
         drop(stream);
-        let report = error;
+        let report = crate::error::ErrorReport::from(&error);
         if enabled {
             assert_eq!(baseline.as_ref(), Some(&report));
             let trace = log.trace();
@@ -541,12 +541,11 @@ async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe:
     let mut plain_stream = model.stream(request.clone()).unwrap();
     let mut plain_items = Vec::new();
     while let Some(item) = plain_stream.next().await {
-        let terminal = matches!(&item, Ok(crate::streaming::StreamEvent::Final(_)));
         plain_items.push(
             item.map(|event| serde_json::to_value(event).unwrap())
                 .map_err(|e| e.to_string()),
         );
-        if stop_after_first || terminal {
+        if stop_after_first {
             break;
         }
     }
@@ -559,14 +558,11 @@ async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe:
     );
     let mut observed_items = Vec::new();
     while let Some(item) = stream.next().await {
-        let terminal = matches!(&item, Ok(crate::streaming::StreamEvent::Final(_)));
         observed_items.push(
             item.map(|event| serde_json::to_value(event).unwrap())
                 .map_err(|e| e.to_string()),
         );
-        // Consumers may drop immediately on Final instead of polling None.
-        // EOF already seen by the driver must survive that drop.
-        if stop_after_first || terminal {
+        if stop_after_first {
             break;
         }
     }
@@ -647,10 +643,16 @@ async fn stream_terminal_eof_error_and_drop_have_distinct_closures() {
 async fn corrupt_frame_is_evidence_separate_from_recovery_or_consumer_drop() {
     let corrupt = "data: {\n\n";
     let terminal = "data: {\"candidates\":[{\"finishReason\":\"STOP\",\"index\":0}]}\n\n";
-    for (stop, ending) in [
-        (false, AdapterEnding::Terminal),
-        (true, AdapterEnding::Dropped),
-    ] {
+    // The corrupt frame ends the reply as its first item, so a consumer
+    // that stops there saw the error: the terminal after it is never read.
+    let ending = AdapterEnding::Error {
+        boundary: AdapterErrorBoundary::Decode,
+        kind: "json".into(),
+        status: None,
+        retryable: false,
+    };
+    for stop in [false, true] {
+        let ending = ending.clone();
         let trace = observed_stream(&format!("{corrupt}{terminal}"), stop).await;
         let events: Vec<_> = trace
             .observations
@@ -664,7 +666,7 @@ async fn corrupt_frame_is_evidence_separate_from_recovery_or_consumer_drop() {
             .collect();
         assert_eq!(events[2], &AdapterEvent::Corrupt { frame: 1 });
         assert_eq!(events.last().unwrap(), &&AdapterEvent::Finished { ending });
-        assert_eq!(events.len(), if stop { 4 } else { 6 });
+        assert_eq!(events.len(), 4, "{events:?}");
         assert!(!serde_json::to_string(&trace).unwrap().contains("data:"));
     }
 }
@@ -673,7 +675,7 @@ async fn corrupt_frame_is_evidence_separate_from_recovery_or_consumer_drop() {
 async fn provider_terminal_does_not_hide_partial_transport_eof() {
     let trace = observed_stream(
         concat!(
-            "data: {\"candidates\":[{\"finishReason\":\"STOP\",\"index\":0}]}\n\n",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}]}\n\n",
             "data: {",
         ),
         false,
@@ -755,8 +757,10 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
             })
             .collect();
         assert_eq!(usage, expected.into_iter().collect::<Vec<_>>());
+        // The body named no finish reason: its frames ran out before the
+        // provider ended the reply.
         assert!(matches!(&trace.observations.last().unwrap().action,
-            Action::Adapter { observation } if observation.event == AdapterEvent::Finished { ending: AdapterEnding::Error { boundary: AdapterErrorBoundary::Decode, kind: "response".into(), status: None, retryable: false } }
+            Action::Adapter { observation } if observation.event == AdapterEvent::Finished { ending: AdapterEnding::Eof { after: 1 } }
         ));
     }
 }

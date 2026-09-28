@@ -6,8 +6,8 @@
 //! `tool_calls[].function.arguments` cut off partway through the JSON object.
 //! `deepseek::Function` parsed that strictly, so the *whole* `CompletionResponse`
 //! failed to decode and the text, usage, id, model and finish reason went with
-//! it — while the streaming path kept the turn and dropped the unusable call
-//! ([`UnparseableToolInput::Drop`]). The two transports disagreed about
+//! it — while the streaming path kept the turn and dropped the unusable
+//! call. The two transports disagreed about
 //! identical wire bytes.
 //!
 //! Live budget sweep against `deepseek-v4-flash` (thinking disabled), one tool

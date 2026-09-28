@@ -2,8 +2,7 @@ use super::*;
 use rig_core::Model;
 use rig_core::streaming::CompletionStream;
 
-/// Answers every request with scripted protobuf replies: the first for a
-/// unary call, all of them as chunks for a streamed one.
+/// Answers every request with scripted protobuf replies, one per frame.
 #[derive(Clone)]
 pub(crate) struct Scripted(
     std::sync::Arc<std::sync::Mutex<Vec<Result<GenerateContentResponse, ProviderError>>>>,
@@ -13,20 +12,10 @@ impl Transport<GenerateContent> for Scripted {
     fn send(
         &self,
         _request: GenerateContentRequest,
-        exchange: Exchange,
-    ) -> Result<Sending<GrpcFrame>, ProviderError> {
-        let mode = exchange.mode;
+        _exchange: Exchange,
+    ) -> Opening<GenerateContentResponse> {
         let replies = std::mem::take(&mut *self.0.lock().expect("script lock"));
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter(replies.into_iter().map(
-                move |reply| {
-                    reply.map(|reply| match mode {
-                        Mode::Unary => GrpcFrame::Whole(Box::new(reply)),
-                        Mode::Streaming => GrpcFrame::Chunk(reply),
-                    })
-                },
-            )))
-        }))
+        Opening::ready(Opened::new(futures::stream::iter(replies)))
     }
 }
 
@@ -290,43 +279,42 @@ fn tool_params_array_without_items_defaults_to_string_items() {
 #[test]
 fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     use rig_core::message::{
-        AssistantContent, ProviderCallId, ToolCall, ToolCallId, ToolFunction, ToolResult,
-        ToolResultContent,
+        AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent,
     };
 
     let call = |wire_id: &str, name: &str| message::Message::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
+        content: rig_core::NonEmpty::new(AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
             ToolFunction {
-                name: name.to_owned(),
+                name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
                 arguments: serde_json::json!({}),
             },
-        ))],
+        ))),
     };
     let result = |wire_id: &str, name: &str| message::Message::User {
-        content: vec![message::UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new_or_minted(wire_id, 0),
-            provider: ProviderCallId::new(wire_id),
-            name: name.to_owned(),
-            content: vec![ToolResultContent::text("out")],
-        })],
+        content: rig_core::NonEmpty::new(message::UserContent::ToolResult(ToolResult {
+            call: rig_core::message::CallId::from_wire(wire_id),
+            name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
+            content: rig_core::NonEmpty::new(ToolResultContent::text("out")),
+        })),
     };
 
     let req = create_grpc_request(
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: vec![
+            chat_history: rig_core::NonEmpty::with_rest(
                 // Driver-built: the executed name travels as data (a
                 // repair hook renamed the call: `sum` ran, not `add`).
                 call("call_1", "add"),
-                result("call_1", "sum"),
-                // Cross-provider history with an OpenAI-shaped id —
-                // `call_abc` must never travel as the name.
-                call("call_abc", "get_weather"),
-                result("call_abc", "get_weather"),
-            ],
+                [
+                    result("call_1", "sum"), // Cross-provider history with an OpenAI-shaped id —
+                    // `call_abc` must never travel as the name.
+                    call("call_abc", "get_weather"),
+                    result("call_abc", "get_weather"),
+                ],
+            ),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -378,7 +366,7 @@ fn create_grpc_request_populates_tool_parameters() {
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: vec![message::Message::user("forecast in Berlin?")],
+            chat_history: rig_core::NonEmpty::new(message::Message::user("forecast in Berlin?")),
             documents: Vec::new(),
             tools: vec![tool],
             temperature: None,
@@ -433,6 +421,7 @@ fn a_signature_on_answer_text_stays_on_that_text() {
                 ],
                 ..Default::default()
             }),
+            finish_reason: proto::candidate::FinishReason::Stop as i32,
             ..Default::default()
         }],
         ..Default::default()
@@ -444,7 +433,7 @@ fn a_signature_on_answer_text_stays_on_that_text() {
         matches!(
             normalized.choice.first(),
             Some(completion::AssistantContent::Reasoning(reasoning))
-                if reasoning.first_signature().is_none()
+                if reasoning.open(reasoning.issuer()).expect("sealed reasoning").first_signature().is_none()
         ),
         "the reasoning stays unsigned: {:?}",
         normalized.choice
@@ -462,14 +451,17 @@ fn a_signature_on_answer_text_stays_on_that_text() {
         "gemini-3-flash-preview",
         CompletionRequest {
             model: None,
-            chat_history: vec![
+            chat_history: rig_core::NonEmpty::with_rest(
                 message::Message::user("q"),
-                message::Message::Assistant {
-                    id: None,
-                    content: normalized.choice.clone(),
-                },
-                message::Message::user("again"),
-            ],
+                [
+                    message::Message::Assistant {
+                        id: None,
+                        content: rig_core::NonEmpty::from_vec(normalized.choice.clone())
+                            .expect("non-empty"),
+                    },
+                    message::Message::user("again"),
+                ],
+            ),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -592,12 +584,12 @@ fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
                     .collect(),
                 ..Default::default()
             }),
+            finish_reason: proto::candidate::FinishReason::Stop as i32,
             ..Default::default()
         }],
         ..Default::default()
     };
-    let first = complete(wire.clone()).unwrap();
-    assert_eq!(first.choice, complete(wire).unwrap().choice);
+    let first = complete(wire).unwrap();
     let calls: Vec<_> = first
         .choice
         .iter()
@@ -607,21 +599,27 @@ fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
         })
         .collect();
     assert_eq!(calls.len(), 3);
-    // Minted at the call's own position, not renumbered after the fact.
-    assert_eq!(
-        calls.iter().map(|call| call.id.clone()).collect::<Vec<_>>(),
-        [
-            message::ToolCallId::minted(0),
-            message::ToolCallId::new("tool-0").unwrap(),
-            message::ToolCallId::minted(2),
-        ]
+    let (first, second, third) = (
+        calls.first().unwrap(),
+        calls.get(1).unwrap(),
+        calls.get(2).unwrap(),
     );
-    assert!(calls.first().unwrap().provider.is_none());
+    assert!(first.id.is_local() && third.id.is_local());
+    assert_ne!(first.id, third.id);
+    assert_eq!(second.id, rig_core::message::CallId::from_wire("tool-0"));
+    assert!(calls.first().unwrap().id.provider().is_none());
     assert_eq!(
-        calls.get(1).unwrap().provider.as_ref().unwrap().call_id,
+        calls
+            .get(1)
+            .unwrap()
+            .id
+            .provider()
+            .as_ref()
+            .unwrap()
+            .call_id,
         "tool-0"
     );
-    assert!(calls.get(2).unwrap().provider.is_none());
+    assert!(calls.get(2).unwrap().id.provider().is_none());
 }
 
 /// gRPC replies carry no HTTP status; the status code is the provider's
@@ -676,30 +674,34 @@ fn only_gemini_reasoning_is_replayed() {
     let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
     let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
         AssistantContent::Reasoning(
-            Reasoning::new_with_signature(text, Some(signature(bytes))).with_provider(issuer),
+            Reasoning::new_with_signature(text, Some(signature(bytes))).sealed(issuer.to_owned()),
         )
     };
     let req = create_grpc_request(
         "gemini-2.5-flash",
         CompletionRequest {
             model: None,
-            chat_history: vec![
+            chat_history: rig_core::NonEmpty::with_rest(
                 message::Message::user("What is 2 + 2?"),
-                message::Message::Assistant {
-                    id: None,
-                    content: vec![
-                        reasoning("grpc thought", b"grpc", REASONING_ISSUER),
-                        reasoning(
-                            "rest thought",
-                            b"rest",
-                            rig_core::providers::gemini::completion::PROVIDER_NAME,
+                [
+                    message::Message::Assistant {
+                        id: None,
+                        content: rig_core::NonEmpty::with_rest(
+                            reasoning("grpc thought", b"grpc", REASONING_ISSUER),
+                            [
+                                reasoning(
+                                    "rest thought",
+                                    b"rest",
+                                    rig_core::providers::gemini::completion::PROVIDER_NAME,
+                                ),
+                                reasoning("anthropic thought", b"anthropic", "anthropic"),
+                                AssistantContent::text("4"),
+                            ],
                         ),
-                        reasoning("anthropic thought", b"anthropic", "anthropic"),
-                        AssistantContent::text("4"),
-                    ],
-                },
-                message::Message::user("And 3 + 3?"),
-            ],
+                    },
+                    message::Message::user("And 3 + 3?"),
+                ],
+            ),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -732,7 +734,7 @@ impl Transport<GenerateContent> for Recording {
         &self,
         request: GenerateContentRequest,
         _exchange: Exchange,
-    ) -> Result<Sending<GrpcFrame>, ProviderError> {
+    ) -> Opening<GenerateContentResponse> {
         self.0.lock().expect("recording lock").push(request);
         let reply = GenerateContentResponse {
             candidates: vec![crate::proto::Candidate {
@@ -745,11 +747,7 @@ impl Transport<GenerateContent> for Recording {
             }],
             ..Default::default()
         };
-        Ok(Sending::later(async move {
-            Opened::new(futures::stream::iter([Ok(GrpcFrame::Whole(Box::new(
-                reply,
-            )))]))
-        }))
+        Opening::ready(Opened::new(futures::stream::iter([Ok(reply)])))
     }
 }
 
@@ -763,22 +761,26 @@ fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
     let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
     let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
         AssistantContent::Reasoning(
-            Reasoning::new_with_signature(text, Some(signature(bytes))).with_provider(issuer),
+            Reasoning::new_with_signature(text, Some(signature(bytes))).sealed(issuer.to_owned()),
         )
     };
     let mut request = hello();
-    request.chat_history = vec![
+    request.chat_history = rig_core::NonEmpty::with_rest(
         message::Message::user("What is 2 + 2?"),
-        message::Message::Assistant {
-            id: None,
-            content: vec![
-                reasoning("gemini thought", b"gemini", REASONING_ISSUER),
-                reasoning("anthropic thought", b"anthropic", "anthropic"),
-                AssistantContent::text("4"),
-            ],
-        },
-        message::Message::user("And 3 + 3?"),
-    ];
+        [
+            message::Message::Assistant {
+                id: None,
+                content: rig_core::NonEmpty::with_rest(
+                    reasoning("gemini thought", b"gemini", REASONING_ISSUER),
+                    [
+                        reasoning("anthropic thought", b"anthropic", "anthropic"),
+                        AssistantContent::text("4"),
+                    ],
+                ),
+            },
+            message::Message::user("And 3 + 3?"),
+        ],
+    );
     let recording = Recording::default();
     futures::executor::block_on(
         Model::new(GenerateContent::new(GEMINI_2_5_FLASH), recording.clone()).call(request),

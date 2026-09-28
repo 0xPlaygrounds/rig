@@ -121,11 +121,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_12658de495544f39b1343880"
-              },
-              "provider": {
-                "call_id": "call_12658de495544f39b1343880"
+                "provider": {
+                  "call_id": "call_12658de495544f39b1343880"
+                }
               },
               "function": {
                 "name": "add",

@@ -9,7 +9,7 @@ use super::*;
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("hi")],
+        chat_history: rig_core::NonEmpty::new(Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -669,17 +669,23 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
 #[tokio::test]
 async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     use rig_core::{
-        message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent, UserContent},
+        message::{CallId, ToolCall, ToolFunction, ToolResultContent, UserContent},
         serve::{Dispatch, Serve},
-        streaming::{BlockClose, StreamEvent, SyntheticIds, ToolCallEnd},
+        streaming::Transcript,
     };
     let generated = ToolCall::new(
-        ToolCallId::minted(0),
-        ToolFunction::new("add".into(), serde_json::json!({"x": 1})),
+        CallId::from_wire(""),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("add").expect("tool name"),
+            serde_json::json!({"x": 1}),
+        ),
     );
     let explicit = ToolCall::from_wire(
         "tool-0",
-        ToolFunction::new("add".into(), serde_json::json!({"x": 2})),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("add").expect("tool name"),
+            serde_json::json!({"x": 2}),
+        ),
     );
     assert_ne!(generated.id, explicit.id);
     let calls = [generated, explicit];
@@ -688,43 +694,49 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         .cloned()
         .map(AssistantContent::ToolCall)
         .collect();
-    // This format-level fixture needs explicit durable identities and provider
-    // metadata; allocate its assembly keys with the shared stream minter.
-    let mut ids = SyntheticIds::tool();
-    let events: Vec<_> = calls
-        .iter()
-        .map(|call| {
-            let mut end =
-                ToolCallEnd::whole(call.function.name.clone(), call.function.arguments.clone())
-                    .with_durable_id(call.id.clone());
-            if let Some(provider) = &call.provider {
-                end = end.with_tool_id(provider.call_id.clone());
-            }
-            StreamEvent::BlockEnd {
-                id: ids.mint(),
-                end: BlockClose::ToolCall(end),
-                block: Some(AssistantContent::ToolCall(call.clone())),
-            }
-        })
-        .collect();
+    // Each call as a stream carries it: its start, its arguments, its end.
+    let events = Transcript::parse(serde_json::Value::Array(
+        calls
+            .iter()
+            .enumerate()
+            .flat_map(|(part, call)| {
+                [
+                    serde_json::json!({"event": "start", "part": part, "kind": "tool_call"}),
+                    serde_json::json!({
+                        "event": "arguments",
+                        "part": part,
+                        "json": call.function.arguments.to_string(),
+                    }),
+                    serde_json::json!({
+                        "event": "end",
+                        "part": part,
+                        "content": AssistantContent::ToolCall(call.clone()),
+                    }),
+                ]
+            })
+            .map(|event| serde_json::json!({"item": "event", "value": event}))
+            .collect(),
+    ))
+    .expect("a transcript");
     let mut next = request();
     next.chat_history.push(Message::Assistant {
         id: None,
-        content: choice.clone(),
+        content: rig_core::NonEmpty::from_vec(choice.clone()).expect("non-empty"),
     });
     next.chat_history.push(Message::User {
         content: calls
             .iter()
             .rev()
             .map(|call| {
-                UserContent::tool_result_for(
+                UserContent::tool_result(
                     call.id.clone(),
-                    call.provider.clone(),
-                    "add",
-                    vec![ToolResultContent::text("ok")],
+                    rig_core::message::ToolName::new("add").expect("tool name"),
+                    rig_core::NonEmpty::new(ToolResultContent::text("ok")),
                 )
             })
-            .collect(),
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("non-empty"),
     });
     let mut records = two_records().records;
     records[0].kind = EffectKind::Completion {
@@ -778,13 +790,13 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         let EffectKind::Completion { request, .. } = &mut changed else {
             unreachable!()
         };
-        let Message::User { content } = request.chat_history.last_mut().unwrap() else {
+        let Message::User { content } = request.chat_history.last_mut() else {
             unreachable!()
         };
-        let UserContent::ToolResult(result) = content.last_mut().unwrap() else {
+        let UserContent::ToolResult(result) = content.last_mut() else {
             unreachable!()
         };
-        assert!(result.call.is_generated());
+        assert!(result.call.is_local());
         result.call = calls[1].id.clone();
         let error = replay
             .serve(changed, Dispatch::new(log.records[1].id, false))
@@ -797,7 +809,16 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     // Replace every nested identity, including events and next-turn history,
     // with the old ambiguous spelling: the persisted payload must be refused.
     fn erase_tags(value: &mut serde_json::Value) -> usize {
-        if value.get("origin").is_some() && value.get("id").is_some() {
+        let is_call_id = value.as_object().is_some_and(|object| {
+            object.len() == 1
+                && (object
+                    .get("local")
+                    .is_some_and(serde_json::Value::is_string)
+                    || object
+                        .get("provider")
+                        .is_some_and(|provider| provider.get("call_id").is_some()))
+        });
+        if is_call_id {
             *value = serde_json::json!("tool-0");
             return 1;
         }
@@ -808,6 +829,6 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         }
     }
     let mut legacy = json;
-    assert_eq!(erase_tags(&mut legacy), 10);
+    assert_eq!(erase_tags(&mut legacy), 8);
     assert!(serde_json::from_value::<EffectLog>(legacy).is_err());
 }

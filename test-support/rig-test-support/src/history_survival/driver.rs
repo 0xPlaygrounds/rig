@@ -370,7 +370,12 @@ fn reasoning_blocks(history: &[Message]) -> Vec<&ReasoningContent> {
         })
         .flatten()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(&reasoning.content),
+            AssistantContent::Reasoning(reasoning) => Some(
+                &reasoning
+                    .open(reasoning.issuer())
+                    .expect("sealed reasoning")
+                    .content,
+            ),
             _ => None,
         })
         .flatten()

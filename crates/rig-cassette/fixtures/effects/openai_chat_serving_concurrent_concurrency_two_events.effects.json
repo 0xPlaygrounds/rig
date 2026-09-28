@@ -116,11 +116,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-              },
-              "provider": {
-                "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
+                "provider": {
+                  "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -132,11 +130,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-              },
-              "provider": {
-                "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
+                "provider": {
+                  "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
+                }
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -186,123 +182,76 @@
       },
       "events": [
         {
-          "event": "block_delta",
-          "id": "wire:call_7oUqlO9yVQJWH4uBgZQ2HJtb",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_harbor_label"
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_7oUqlO9yVQJWH4uBgZQ2HJtb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call_XT898kyUaBL7XJJVXR1khJ3z",
-          "delta": {
-            "delta": "tool_name",
-            "name": "lookup_orchard_label"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call_XT898kyUaBL7XJJVXR1khJ3z",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_7oUqlO9yVQJWH4uBgZQ2HJtb",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-            },
-            "provider": {
-              "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call_XT898kyUaBL7XJJVXR1khJ3z",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call_XT898kyUaBL7XJJVXR1khJ3z",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-            },
-            "provider": {
-              "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-            },
-            "function": {
-              "name": "lookup_orchard_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 241,
-            "output_tokens": 374,
-            "total_tokens": 615,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 320
-          },
-          "finish_reason": "tool_calls",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCeqyCiHzbcSyukrorqgYS6eRBf",
-          "provider_request_id": "req_0ecfa3ac0808479ead14fb6282af08f9",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 241,
-              "completion_tokens": 374,
-              "total_tokens": 615,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
+                }
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 320
-              }
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDCeqyCiHzbcSyukrorqgYS6eRBf",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "K",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
+                }
+              },
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -385,11 +334,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-                  },
-                  "provider": {
-                    "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
+                    "provider": {
+                      "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -401,11 +348,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-                  },
-                  "provider": {
-                    "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
+                    "provider": {
+                      "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
+                    }
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -422,11 +367,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-                  },
-                  "provider": {
-                    "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
+                    "provider": {
+                      "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -439,11 +382,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-                  },
-                  "provider": {
-                    "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
+                    "provider": {
+                      "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
+                    }
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -534,163 +475,125 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " results"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " are"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " crimson"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-h"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ar"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "bor"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " silver"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-or"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ch"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "ard"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "."
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The results are crimson-harbor and silver-orchard."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 315,
-            "output_tokens": 16,
-            "total_tokens": 331,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCkIG3JMAWsI5CSVAmvGioeGow5",
-          "provider_request_id": "req_56d0be001a8346f28df1ba8eaa127398",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 315,
-              "completion_tokens": 16,
-              "total_tokens": 331,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDCkIG3JMAWsI5CSVAmvGioeGow5",
-            "model": "gpt-5-mini-2025-08-07",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "N9Yf",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": null
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The results are crimson-harbor and silver-orchard."
             }
           }
         }

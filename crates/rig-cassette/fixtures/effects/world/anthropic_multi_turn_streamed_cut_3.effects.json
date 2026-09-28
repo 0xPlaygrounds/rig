@@ -2,61 +2,45 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 9
         }
       },
       {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 10,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 18,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 2
         }
       },
       {
-        "batch": 19,
+        "batch": 14,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -64,137 +48,65 @@
         }
       },
       {
-        "batch": 20,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 20,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 26,
+        "batch": 23,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 9
         }
       },
       {
-        "batch": 27,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 10
-        }
-      },
-      {
-        "batch": 27,
+        "batch": 23,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 24,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 37,
+        "batch": 32,
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 8
         }
       },
       {
-        "batch": 38,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 39,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 40,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 40,
+        "batch": 33,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 41,
+        "batch": 34,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 47,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 48,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 49,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 50,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 51,
+        "batch": 39,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -202,7 +114,31 @@
         }
       },
       {
-        "batch": 51,
+        "batch": 40,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 41,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 42,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 43,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -319,11 +255,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-              },
-              "provider": {
-                "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                "provider": {
+                  "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -367,157 +301,93 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "I'll start"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " by calling checkpoint_step with token"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "="
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "start."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'll start by calling checkpoint_step with token=start."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"token\": \"start\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\": \"sta"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "rt\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01AiN7DdKdwtWCabD6ULdR9g",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-            },
-            "provider": {
-              "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "start"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "I'll start by calling checkpoint_step with token=start."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 667,
-            "output_tokens": 67,
-            "total_tokens": 734,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZChcvqFFEZLMRXoHx",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 67,
-              "input_tokens": 667,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZDAef683Wen3WuBgK",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "start"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -585,11 +455,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    "provider": {
+                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -608,11 +476,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    "provider": {
+                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -667,11 +533,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-              },
-              "provider": {
-                "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                "provider": {
+                  "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -715,157 +579,93 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " I'll call checkpoint_step with the"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " next_token \""
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "cobalt-17\"."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"token\": \"cobalt-17\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\": \"cob"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "alt-17\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01H22SxTAbgsAyKCb3eMBYr2",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-            },
-            "provider": {
-              "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "cobalt-17"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\"."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 763,
-            "output_tokens": 75,
-            "total_tokens": 838,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZGAUbCzPqHHzXyCRY",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 75,
-              "input_tokens": 763,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZGekvH9gqdrpiv31s",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "cobalt-17"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -933,11 +733,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    "provider": {
+                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -956,11 +754,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    "provider": {
+                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -987,11 +783,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    "provider": {
+                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1010,11 +804,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    "provider": {
+                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1069,11 +861,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-              },
-              "provider": {
-                "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                "provider": {
+                  "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1117,165 +907,93 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " I'll call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " checkpoint_step with the next_token"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " \"orchard-29\"."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\"."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"token\": \"orchard-29\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\": \"orc"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "hard-29"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01DY5FicrpihRneDHwuAoLvb",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-            },
-            "provider": {
-              "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "orchard-29"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\"."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 867,
-            "output_tokens": 75,
-            "total_tokens": 942,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZKrUenoN2QCMXaq1C",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 75,
-              "input_tokens": 867,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZLHn4hMopUP2c4fru",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "orchard-29"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -1343,11 +1061,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    "provider": {
+                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1366,11 +1082,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    "provider": {
+                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1397,11 +1111,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    "provider": {
+                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1420,11 +1132,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    "provider": {
+                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1451,11 +1161,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                    "provider": {
+                      "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1474,11 +1182,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                    "provider": {
+                      "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1533,11 +1239,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-              },
-              "provider": {
-                "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
+                "provider": {
+                  "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
+                }
               },
               "function": {
                 "name": "checkpoint_step",
@@ -1581,149 +1285,85 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "Now I'll call checkpoint_step with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " the next_token \"harbor-43"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "\"."
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\"."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
-          "delta": {
-            "delta": "tool_name",
-            "name": "checkpoint_step"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"token\": \"harbor-43\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": ""
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"token"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\": \"har"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "bor-43\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:toolu_01EfZqgSpZvPywVe1a5UJJQ3",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-            },
-            "provider": {
-              "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-            },
-            "function": {
-              "name": "checkpoint_step",
-              "arguments": {
-                "token": "harbor-43"
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\"."
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 970,
-            "output_tokens": 73,
-            "total_tokens": 1043,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "tool_calls",
-          "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZPU2BCayaoTU13rxd",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 73,
-              "input_tokens": 970,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
+                }
               },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcZPwZ7tKpyegz75vjQ",
-            "model": "claude-haiku-4-5-20251001"
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "harbor-43"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
           }
         }
       ],
@@ -1791,11 +1431,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    "provider": {
+                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1814,11 +1452,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    "provider": {
+                      "call_id": "toolu_01AiN7DdKdwtWCabD6ULdR9g"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1845,11 +1481,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    "provider": {
+                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1868,11 +1502,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    "provider": {
+                      "call_id": "toolu_01H22SxTAbgsAyKCb3eMBYr2"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1899,11 +1531,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                    "provider": {
+                      "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1922,11 +1552,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01DY5FicrpihRneDHwuAoLvb"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                    "provider": {
+                      "call_id": "toolu_01DY5FicrpihRneDHwuAoLvb"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1953,11 +1581,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
+                    "provider": {
+                      "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
+                    }
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1976,11 +1602,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
-                  },
-                  "provider": {
-                    "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
+                    "provider": {
+                      "call_id": "toolu_01EfZqgSpZvPywVe1a5UJJQ3"
+                    }
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -2065,140 +1689,110 @@
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:block:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " checkpoint"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " sequence"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " is complete."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " The"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " result"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " shows done"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "=true with"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " no next_token."
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "\n\ncheckpoint"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:block:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "-complete"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:block:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {
-            "input_tokens": 1069,
-            "output_tokens": 25,
-            "total_tokens": 1094,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
-          },
-          "finish_reason": "stop",
-          "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZSZoMTaNWAYKxQsYu",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
-          "raw": {
-            "usage": {
-              "output_tokens": 25,
-              "input_tokens": 1069,
-              "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcZSyrSAixQCPKYsmA7",
-            "model": "claude-haiku-4-5-20251001"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete"
+            }
           }
         }
       ],

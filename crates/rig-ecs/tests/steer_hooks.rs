@@ -450,7 +450,7 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
     first.world_mut().entity_mut(turn).insert(patch.clone());
     first.world_mut().spawn((
         InvalidCall {
-            id: rig_core::message::ToolCallId::new("c1").unwrap(),
+            id: rig_core::message::CallId::from_wire("c1"),
             name: "multiply".to_owned(),
             arguments: serde_json::json!({"x": 2, "y": 3}),
             prefix: Vec::new(),
@@ -483,9 +483,9 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
 
 #[test]
 fn a_checkpoint_preserves_invalid_call_identity_namespaces() {
-    use rig_core::message::ToolCallId;
-    let generated = ToolCallId::minted(0);
-    let explicit = ToolCallId::new(generated.wire_hint()).unwrap();
+    use rig_core::message::CallId;
+    let generated = CallId::from_wire("");
+    let explicit = CallId::from_wire(generated.wire());
     let (mut first, _, turn) = open_run();
     for id in [&generated, &explicit] {
         first.world_mut().spawn((

@@ -142,14 +142,13 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                         assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
                     }
                     AgentRunStep::CallTools { calls } => {
-                        assert_eq!(calls.iter().map(|call| &call.block_id).collect::<std::collections::HashSet<_>>().len(), calls.len(), "assembly keys are unique within the buffered turn");
+                        assert_eq!(calls.iter().map(|call| &call.tool_call.id).collect::<std::collections::HashSet<_>>().len(), calls.len(), "call ids are unique within the turn");
                         for call in &calls {
                             assert!(
                                 call.preresolved_result.is_none(),
                                 "no recovery happened, so no call should be preresolved"
                             );
-                            assert!(matches!(call.block_id, rig::streaming::BlockId::Minted { kind: rig::streaming::MintKind::Tool, .. }), "buffered calls use independent assembly keys");
-                            executed_tools.push(call.tool_call.function.name.clone());
+                            executed_tools.push(call.tool_call.function.name.clone().into());
                         }
                         run.tool_results(execute_pending_calls(&calls))
                             .expect("tool results should be accepted");
@@ -225,7 +224,7 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
                                 calls
                                     .iter()
                                     .map(|call| call.tool_call.function.name.clone())
-                                    .collect(),
+                                    .map(String::from).collect(),
                             );
                         }
                         // Deliver results in reverse emission order: the

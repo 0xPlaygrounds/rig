@@ -231,16 +231,11 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
                 .expect("raw completions api stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
+                content: rig_core::NonEmpty::new(AssistantContent::ToolCall(tool_call.clone())),
             };
             let tool_result_message =
                 Message::User {
-        content: vec![UserContent::tool_result_for(
-            tool_call.id.clone(),
-            tool_call.provider.clone(),
-            tool_call.function.name.clone(),
-            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
-        )],
+        content: rig_core::NonEmpty::new(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), rig_core::NonEmpty::new(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)))),
     };
             let followup_request = CompletionRequest::new(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
@@ -285,8 +280,8 @@ async fn completions_api_updates_keep_parallel_tool_calls_in_place() {
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal));
-            let mut stream = model.stream(request).expect("the stream should start");
-            let updates = rig_test_support::updates::collect_updates(&mut stream).await;
+            let stream = model.stream(request).expect("the stream should start");
+            let updates = rig_test_support::updates::collect_updates(stream).await;
             let (_, parts) = rig_test_support::updates::assert_update_contract(&updates);
 
             let frames = crate::cassettes::recorded_sse_json_frames(
@@ -317,9 +312,9 @@ async fn completions_api_updates_keep_parallel_tool_calls_in_place() {
 
             let delivered: Vec<(String, serde_json::Value)> = parts
                 .iter()
-                .filter_map(|part| match &part.kind {
-                    rig::streaming::PartKind::ToolCall { name } => Some((
-                        name.clone(),
+                .filter_map(|part| match &part.part {
+                    rig::message::AssistantContent::ToolCall(call) => Some((
+                        call.function.name.to_string(),
                         serde_json::from_str(&part.text).expect("argument JSON"),
                     )),
                     _ => None,

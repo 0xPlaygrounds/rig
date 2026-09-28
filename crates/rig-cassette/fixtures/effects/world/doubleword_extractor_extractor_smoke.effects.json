@@ -101,6 +101,7 @@
           "choice": [
             {
               "type": "reasoning",
+              "issuer": "doubleword",
               "id": null,
               "content": [
                 {
@@ -109,17 +110,14 @@
                     "text": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n"
                   }
                 }
-              ],
-              "provider": "doubleword"
+              ]
             },
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "chatcmpl-tool-b75d96f17fafb479"
-              },
-              "provider": {
-                "call_id": "chatcmpl-tool-b75d96f17fafb479"
+                "provider": {
+                  "call_id": "chatcmpl-tool-b75d96f17fafb479"
+                }
               },
               "function": {
                 "name": "submit",

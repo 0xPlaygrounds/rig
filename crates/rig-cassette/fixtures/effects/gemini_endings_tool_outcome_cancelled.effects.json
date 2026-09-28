@@ -119,11 +119,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_197859"
-              },
-              "provider": {
-                "call_id": "call_197859"
+                "provider": {
+                  "call_id": "call_197859"
+                }
               },
               "function": {
                 "name": "add",

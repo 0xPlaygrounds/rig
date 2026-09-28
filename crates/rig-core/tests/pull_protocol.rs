@@ -9,8 +9,9 @@ use rig_core::{
     },
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, DocumentSourceKind, Image},
+    operation::Finish,
     serve::{Decision, Dispatch, ErasedHandler, Intercept, Observe, Reply, Serve, Verdict},
-    streaming::{StreamEvent, StreamFinal},
+    streaming::{Item, Relayed, StreamEvent},
 };
 use serde_json::{Value, json};
 use std::{
@@ -44,7 +45,7 @@ impl Observe for Observer {
     fn keep_events(&self) -> bool {
         true
     }
-    fn event(&mut self, event: &StreamEvent) {
+    fn event(&mut self, event: &Item<StreamEvent>) {
         self.0
             .lock()
             .unwrap()
@@ -94,13 +95,7 @@ impl Serve for Answer {
         if self.streaming {
             Reply::written(|mut out| async move {
                 out.text("original").await.unwrap();
-                out.finish(StreamFinal::new(
-                    "proof",
-                    Usage::default(),
-                    serde_json::json!({}),
-                ))
-                .await
-                .unwrap();
+                out.finish("proof", Finish::default()).await.unwrap();
             })
         } else {
             let EffectKind::Custom { payload, .. } = kind else {
@@ -286,11 +281,13 @@ fn unary_image_recording_survives_stream_projection_and_replacement() {
             .into_stream()
             .collect::<Vec<_>>(),
     );
-    assert!(
-        items
-            .iter()
-            .any(|item| matches!(item, Ok(StreamEvent::Unknown(_))))
-    );
+    assert!(items.iter().any(|item| matches!(
+        item,
+        Ok(Relayed::Item(Item::Event(StreamEvent::End {
+            content: AssistantContent::Image(_),
+            ..
+        })))
+    )));
     assert!(items.last().unwrap().is_err());
     let expected = block_on(
         block_on(ImageAnswer.serve(
@@ -303,14 +300,11 @@ fn unary_image_recording_survives_stream_projection_and_replacement() {
         seen.lock().unwrap().outcomes,
         vec![serde_json::to_value(expected).unwrap()]
     );
+    // The recorded projection ends with the image part the answer carried.
+    let last = seen.lock().unwrap().events.last().unwrap().to_string();
     assert!(
-        seen.lock()
-            .unwrap()
-            .events
-            .last()
-            .unwrap()
-            .to_string()
-            .contains("final")
+        last.contains(r#""event":"end""#) && last.contains("image"),
+        "{last}"
     );
 }
 
@@ -363,7 +357,7 @@ fn a_layer_does_not_repoll_an_exhausted_non_fused_stream() {
         }
         async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
             Reply::Stream(Box::pin(futures::stream::unfold((), |_| async {
-                None::<(Result<StreamEvent, ErrorReport>, ())>
+                None::<(Result<Relayed, ErrorReport>, ())>
             })))
         }
     }

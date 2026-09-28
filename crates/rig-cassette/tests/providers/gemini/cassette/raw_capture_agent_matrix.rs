@@ -4,8 +4,8 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. The provider populates `CompletionResponse::raw` /
-//! `StreamFinal::raw` on every response, and the agent exposes that payload —
+//! Capture is always on. The provider populates `CompletionResponse::raw`
+//! on every response, and the agent exposes that payload —
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse` and `ModelTurnFinished` hook events, on each
 //! `CompletionCall` the run records, and on the streamed
@@ -20,7 +20,7 @@
 //! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `responseId` matches fixture | recorded |
 //! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `response_id` matches fixture | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["responseId"]`s equal to the interactions' ids in order; the first carries the `functionCall` | recorded |
-//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["response_id"]`s equal to the interactions' ids in order; the forwarded last `Final.raw` is the final turn's | recorded |
+//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["response_id"]`s equal to the interactions' ids in order; the final response's `raw` is the final turn's | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
 //! `CompletionResponse` — after the unary call returns on the blocking
@@ -54,7 +54,6 @@ use rig::agent::{
 };
 use rig::completion::Message;
 use rig::message::AssistantContent;
-use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde_json::Value;
 
@@ -157,7 +156,6 @@ impl AgentHook for RawProbe {
 #[derive(Default)]
 struct StreamedRun {
     completion_calls: Vec<rig::agent::CompletionCall>,
-    finals: Vec<rig::streaming::StreamFinal>,
     output: Option<String>,
 }
 
@@ -166,9 +164,6 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
             MultiTurnStreamItem::CompletionCall(call) => run.completion_calls.push(call),
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_)) => {
-                run.finals.push(final_);
-            }
             MultiTurnStreamItem::FinalResponse(response) => {
                 run.output = Some(response.output().to_owned());
             }
@@ -395,11 +390,6 @@ async fn hooks_observe_raw_streamed() {
                 .build();
             let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
             assert!(run.output.is_some(), "the run finished");
-            assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
-            assert!(
-                !run.finals[0].raw.is_null(),
-                "the streamed terminal carries raw"
-            );
         },
     )
     .await;
@@ -543,12 +533,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
                 2,
                 "a tool turn then a text turn"
             );
-            assert!(!run.finals.is_empty(), "the stream yields terminal records");
-            // The last forwarded terminal record is the final turn's, and its
-            // payload is the one the final call recorded.
-            let last = run.finals.last().expect("terminal");
-            assert_eq!(last.raw, run.completion_calls[1].raw);
-            *final_sink.lock().expect("sink") = Some(last.raw.clone());
+            *final_sink.lock().expect("sink") = Some(run.completion_calls[1].raw.clone());
             *sink.lock().expect("sink") = run
                 .completion_calls
                 .iter()

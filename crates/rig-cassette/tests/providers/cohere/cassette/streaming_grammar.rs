@@ -1,12 +1,14 @@
 //! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
 //! through the *normalized* path: the aggregated
-//! [`CompletionStream::folded`] snapshot, the terminal [`StreamFinal`]
+//! [`Streamed::finish`](rig::streaming::Streamed::finish) response, the terminal `CompletionResponse`
 //! record, usage, and finish reason.
 
 use futures::StreamExt;
+use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 
 use super::super::{
     CASSETTE_MODEL,
@@ -23,9 +25,8 @@ struct StreamRun {
     reasoning_delta: String,
     reasoning_blocks: Vec<Reasoning>,
     tool_calls: Vec<ToolCall>,
-    finals: Vec<StreamFinal>,
     choice: Vec<AssistantContent>,
-    response: Option<StreamFinal>,
+    response: Option<CompletionResponse>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun {
@@ -34,7 +35,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         reasoning_delta: String::new(),
         reasoning_blocks: Vec::new(),
         tool_calls: Vec::new(),
-        finals: Vec::new(),
         choice: vec![AssistantContent::text("")],
         response: None,
     };
@@ -44,39 +44,38 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
         let item = item.expect("stream item should be ok");
         raw_items.push(Ok(item.clone()));
         match item {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
+            Item::Event(StreamEvent::Text { text, .. }) => run.text.push_str(&text),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
                 ..
-            } => run.text.push_str(&text),
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::Reasoning(reasoning)),
-                ..
-            } => {
-                run.reasoning_blocks.push(reasoning);
+            }) => {
+                run.reasoning_blocks.push(
+                    reasoning
+                        .open(reasoning.issuer())
+                        .cloned()
+                        .expect("reasoning opens"),
+                );
             }
-            StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text },
-                ..
-            } => {
+            Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
             }
-            StreamEvent::BlockEnd {
-                block: Some(AssistantContent::ToolCall(tool_call)),
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(tool_call),
                 ..
-            } => run.tool_calls.push(tool_call),
-            StreamEvent::Final(response) => run.finals.push(response),
-            StreamEvent::BlockStart { .. }
-            | StreamEvent::BlockDelta { .. }
-            | StreamEvent::BlockEnd { .. }
-            | StreamEvent::Unknown(_) => {}
+            }) => run.tool_calls.push(tool_call),
+            Item::Event(StreamEvent::Start { .. })
+            | Item::Event(StreamEvent::Arguments { .. })
+            | Item::Event(StreamEvent::End { .. })
+            | Item::Unknown(_) => {}
         }
     }
+    let response = stream.finish().await.expect("the stream ends");
 
-    run.choice = stream.folded().snapshot();
+    run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
-    run.response = stream.folded().terminal().cloned();
+    run.response = Some(response.clone());
     run
 }
 
@@ -94,18 +93,13 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
         let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
         assert!(!run.text.trim().is_empty(), "turn should produce text");
-        assert_eq!(
-            run.finals.len(),
-            1,
-            "stream should yield exactly one terminal record"
-        );
         let terminal = run
             .response
             .as_ref()
             .expect("aggregated stream should retain the terminal record");
         assert_eq!(
-            terminal.finish_reason.as_ref(),
-            Some(&FinishReason::Stop),
+            terminal.finish_reason(),
+            Some(FinishReason::Stop),
             "unexpected finish reason"
         );
         assert!(
@@ -124,7 +118,13 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
             .choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+                AssistantContent::Reasoning(reasoning) => Some(
+                    reasoning
+                        .open(reasoning.issuer())
+                        .expect("sealed reasoning")
+                        .content
+                        .iter(),
+                ),
                 _ => None,
             })
             .flatten()
@@ -172,19 +172,13 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
             .max_tokens(1024)
             .tool(rig::tool::tool_definition(&IntegerSubtract));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
-
-            assert_eq!(
-                run.finals.len(),
-                1,
-                "stream should yield exactly one terminal record"
-            );
             let terminal = run
                 .response
                 .as_ref()
                 .expect("aggregated stream should retain the terminal record");
             assert_eq!(
-                terminal.finish_reason.as_ref(),
-                Some(&FinishReason::ToolCalls),
+                terminal.finish_reason(),
+                Some(FinishReason::ToolCalls),
                 "unexpected finish reason"
             );
             assert!(
@@ -242,8 +236,8 @@ async fn required_tool_choice_streams_tool_call() {
             assert_eq!(
                 run.response
                     .as_ref()
-                    .and_then(|response| response.finish_reason.as_ref()),
-                Some(&FinishReason::ToolCalls)
+                    .and_then(|response| response.finish_reason()),
+                Some(FinishReason::ToolCalls)
             );
         },
     )
@@ -268,8 +262,8 @@ async fn none_tool_choice_streams_text() {
             assert_eq!(
                 run.response
                     .as_ref()
-                    .and_then(|response| response.finish_reason.as_ref()),
-                Some(&FinishReason::Stop)
+                    .and_then(|response| response.finish_reason()),
+                Some(FinishReason::Stop)
             );
         },
     )

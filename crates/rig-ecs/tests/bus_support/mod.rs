@@ -21,7 +21,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
     serve::{Dispatch, Reply, Serve, ServingPolicy},
-    streaming::StreamFinal,
+    streaming::{Item, Relayed, StreamEvent, Transcript},
 };
 use rig_ecs::{
     bus::{BusPlugin, EffectOutcome, PendingEffect},
@@ -174,12 +174,9 @@ impl Serve for MockModel {
                         }
                         let sent = counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
                         if sent >= cap {
+                            out.raw(serde_json::json!({ "provider": "mock" }));
                             guard.finished = out
-                                .finish(StreamFinal::new(
-                                    "mock",
-                                    Usage::default(),
-                                    serde_json::json!({ "provider": "mock" }),
-                                ))
+                                .finish("mock", rig_core::operation::Finish::new(Usage::default()))
                                 .await
                                 .is_ok();
                             return;
@@ -213,7 +210,7 @@ impl Drop for StreamGuard {
 pub fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("hi")],
+        chat_history: rig_core::NonEmpty::new(Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -333,4 +330,79 @@ pub fn answered(app: &mut App, what: &str) -> Entity {
         world.get::<EffectOutcome>(effect).is_some()
     });
     effect
+}
+
+/// A relayed stream item, as a handler's stream carries it.
+pub type Relay = Result<Relayed, ErrorReport>;
+
+/// The items of a stream whose events are `events`, in order. A stream's
+/// parts are the driver's to number, so a scripted one is read back from
+/// its transcript.
+pub fn relayed(events: serde_json::Value) -> Vec<Relay> {
+    Transcript::parse_prefix(events)
+        .expect("a stream in order")
+        .into_items()
+        .into_iter()
+        .map(|item| Ok(Relayed::Item(item)))
+        .collect()
+}
+
+/// A stream event of part `part`, as its JSON.
+pub fn event(value: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"item": "event", "value": value})
+}
+
+/// The opening of a text part at `part`.
+pub fn start_text(part: u32) -> serde_json::Value {
+    event(serde_json::json!({"event": "start", "part": part, "kind": "text"}))
+}
+
+/// A text fragment of part `part`.
+pub fn text_event(part: u32, text: &str) -> serde_json::Value {
+    event(serde_json::json!({"event": "text", "part": part, "text": text}))
+}
+
+/// The one text part `text`: its start, its fragment, its end.
+pub fn text_part(part: u32, text: &str) -> Vec<serde_json::Value> {
+    vec![
+        start_text(part),
+        text_event(part, text),
+        event(serde_json::json!({
+            "event": "end",
+            "part": part,
+            "content": AssistantContent::text(text),
+        })),
+    ]
+}
+
+/// The text fragment `text` of part 0, cut from a stream that opened it.
+pub fn text_item(text: &str) -> Relay {
+    relayed(serde_json::json!([start_text(0), text_event(0, text)]))
+        .pop()
+        .expect("the fragment")
+}
+
+/// The opening of text part 0.
+pub fn text_start_item() -> Relay {
+    relayed(serde_json::json!([start_text(0)]))
+        .pop()
+        .expect("the start")
+}
+
+/// The provider's end of a reply from `provider`, carrying no content.
+pub fn done(provider: &str) -> Relay {
+    Ok(Relayed::Done(Box::new(CompletionResponse::new(
+        Vec::new(),
+        Usage::default(),
+        provider,
+        serde_json::json!({}),
+    ))))
+}
+
+/// Whether `item` is a text fragment.
+pub fn is_text(item: &Relay) -> Option<&str> {
+    match item {
+        Ok(Relayed::Item(Item::Event(StreamEvent::Text { text, .. }))) => Some(text),
+        _ => None,
+    }
 }

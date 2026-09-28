@@ -6,7 +6,7 @@ use futures::StreamExt;
 use rig::{
     effect::{EffectKind, HandlerDescriptor},
     serve::{Dispatch, Reply, Serve},
-    streaming::{Delta, StreamEvent, StreamEvents},
+    streaming::{Item, Relayed, StreamEvent, StreamEvents},
 };
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -71,11 +71,11 @@ fn gate_events(
     Box::pin(async_stream::stream! {
         let mut crossed = false;
         while let Some(item) = events.next().await {
-            let at_boundary = !crossed && item.as_ref().is_ok_and(|event| match event {
-                StreamEvent::BlockDelta {
-                    delta: Delta::ToolName { .. } | Delta::ToolArguments { .. }, ..
-                } => matches!(boundary, DeltaBoundary::Tool),
-                StreamEvent::BlockDelta { delta: Delta::Text { .. }, .. } => {
+            let at_boundary = !crossed && item.as_ref().is_ok_and(|relayed| match relayed {
+                Relayed::Item(Item::Event(StreamEvent::Arguments { .. })) => {
+                    matches!(boundary, DeltaBoundary::Tool)
+                }
+                Relayed::Item(Item::Event(StreamEvent::Text { .. })) => {
                     matches!(boundary, DeltaBoundary::Text)
                 }
                 _ => false,

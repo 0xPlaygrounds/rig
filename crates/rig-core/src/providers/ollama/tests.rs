@@ -208,16 +208,13 @@ fn streaming_terminal_record_is_normalized() {
         eval_duration: None,
     };
 
-    let raw = serde_json::to_value(&terminal).expect("serialize terminal");
-    let final_record = stream_final(terminal, raw.clone());
-    assert_eq!(final_record.raw, raw);
-    assert_eq!(final_record.provider, PROVIDER_NAME);
-    assert_eq!(final_record.model.as_deref(), Some("llama3.2"));
+    let finish = finish_of(terminal);
+    assert_eq!(finish.model.as_deref(), Some("llama3.2"));
     assert_eq!(
-        final_record.finish_reason,
+        finish.reason,
         Some(completion::FinishReason::Other("dragons".to_owned()))
     );
-    assert_eq!(final_record.usage.total_tokens, Some(12));
+    assert_eq!(finish.usage.total_tokens, Some(12));
 }
 
 #[test]
@@ -225,15 +222,17 @@ fn mixed_user_content_preserves_message_order() {
     use crate::message::{Message as RigMessage, ToolResultContent, UserContent};
 
     let message = RigMessage::User {
-        content: vec![
+        content: crate::NonEmpty::with_rest(
             UserContent::text("before"),
-            UserContent::tool_result(
-                "call-not-the-tool-name",
-                "lookup",
-                vec![ToolResultContent::json(json!({ "ok": true }))],
-            ),
-            UserContent::text("after"),
-        ],
+            [
+                UserContent::tool_result(
+                    crate::message::CallId::from_wire("call-not-the-tool-name"),
+                    crate::message::ToolName::new("lookup").expect("tool name"),
+                    crate::NonEmpty::new(ToolResultContent::json(json!({ "ok": true }))),
+                ),
+                UserContent::text("after"),
+            ],
+        ),
     };
 
     let messages = Vec::<Message>::try_from(message).expect("mixed content should convert");
@@ -258,11 +257,11 @@ fn unsupported_user_content_returns_a_conversion_error() {
     use crate::message::{ImageMediaType, Message as RigMessage, UserContent};
 
     let message = RigMessage::User {
-        content: vec![UserContent::image_url(
+        content: crate::NonEmpty::new(UserContent::image_url(
             "https://example.com/image.png",
             Some(ImageMediaType::PNG),
             None,
-        )],
+        )),
     };
 
     let error = Vec::<Message>::try_from(message).expect_err("URL image should be rejected");
@@ -419,12 +418,12 @@ fn test_message_conversion_with_thinking() {
 
     let internal_msg = crate::message::Message::Assistant {
         id: None,
-        content: vec![
-            crate::message::AssistantContent::Reasoning(reasoning_content),
-            crate::message::AssistantContent::Text(crate::message::Text::new(
-                "The answer is X".to_string(),
-            )),
-        ],
+        content: crate::NonEmpty::with_rest(
+            crate::message::AssistantContent::Reasoning(reasoning_content.sealed("ollama")),
+            [crate::message::AssistantContent::Text(
+                crate::message::Text::new("The answer is X".to_string()),
+            )],
+        ),
     };
 
     // Convert to provider Message
@@ -490,7 +489,7 @@ async fn nonstreaming_response_preserves_thinking_as_reasoning() {
         "non-streaming response must surface `thinking` as AssistantContent::Reasoning (issue #1926)",
     );
     assert_eq!(
-        reasoning.display_text(),
+        reasoning.value().display_text(),
         "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
     );
 }
@@ -595,12 +594,14 @@ fn test_completion_request_with_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -661,12 +662,14 @@ fn test_completion_request_with_level_low_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -727,12 +730,14 @@ fn test_completion_request_with_level_medium_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -793,12 +798,14 @@ fn test_completion_request_with_level_high_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -859,12 +866,14 @@ fn test_completion_request_with_level_invalid_think_param() {
     // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new(
+                    "What is 2 + 2?".to_string(),
+                ))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -895,12 +904,12 @@ fn test_completion_request_with_think_omitted_by_default() {
     // Create a CompletionRequest WITHOUT "think" in additional_params
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             CompletionMessage::system("You are a helpful assistant."),
-            CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            },
-        ],
+            [CompletionMessage::User {
+                content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+            }],
+        ),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.5),
@@ -951,9 +960,9 @@ fn test_completion_request_num_predict_from_additional_params_wins() {
 
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -983,9 +992,9 @@ fn test_completion_request_num_predict_without_additional_params() {
 
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: Some(0.7),
@@ -1019,9 +1028,9 @@ fn test_completion_request_options_omit_unset_parameters() {
 
     let completion_request = CompletionRequest {
         model: None,
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1056,11 +1065,11 @@ fn test_completion_request_with_output_schema() {
 
     let completion_request = CompletionRequest {
         model: Some("llama3.1".to_string()),
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new(
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new(
                 "How old is Ollama?".to_string(),
-            ))],
-        }],
+            ))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1099,9 +1108,9 @@ fn test_completion_request_without_output_schema() {
 
     let completion_request = CompletionRequest {
         model: Some("llama3.1".to_string()),
-        chat_history: vec![CompletionMessage::User {
-            content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-        }],
+        chat_history: crate::NonEmpty::new(CompletionMessage::User {
+            content: crate::NonEmpty::new(UserContent::Text(Text::new("Hello!".to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -1128,14 +1137,35 @@ fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Model<Chat, H> {
     crate::driver::Model::new(OllamaConfig::new().completion(LLAMA3_2), http_client)
 }
 
-// Proves a truncated NDJSON stream — content chunks then EOF without a
-// `done: true` record — delivers its content but never a synthesized
-// terminal record.
-#[tokio::test]
-async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::streaming::{Delta, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
+/// Every text fragment of `stream`, the first error, and what it finished
+/// with.
+async fn drained(
+    mut stream: crate::streaming::CompletionStream,
+) -> (
+    Vec<String>,
+    Option<crate::error::ProviderError>,
+    Result<completion::CompletionResponse, crate::error::ProviderError>,
+) {
+    use crate::streaming::{Item, StreamEvent};
     use futures::StreamExt;
+
+    let mut texts = Vec::new();
+    let mut error = None;
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(Item::Event(StreamEvent::Text { text, .. })) => texts.push(text),
+            Ok(_) => {}
+            Err(failure) => error = Some(failure),
+        }
+    }
+    (texts, error, stream.finish().await)
+}
+
+// Proves a truncated NDJSON stream — content chunks then EOF without a
+// `done: true` record — delivers its content, then is truncated.
+#[tokio::test]
+async fn truncated_stream_does_not_synthesize_an_end() {
+    use crate::test_utils::MockStreamingClient;
 
     let ndjson = concat!(
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
@@ -1144,39 +1174,21 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut saw_terminal = false;
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => texts.push(text),
-            StreamEvent::Final(_) => saw_terminal = true,
-            _ => {}
-        }
-    }
-
+    let stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
+    let (texts, _, finished) = drained(stream).await;
     assert_eq!(texts, ["hi"]);
     assert!(
-        !saw_terminal,
-        "EOF without a done record must not synthesize a terminal record"
+        matches!(finished, Err(crate::error::ProviderError::Truncated)),
+        "EOF without a done record is truncation: {finished:?}"
     );
-    assert!(stream.folded().terminal().is_none());
 }
 
-// Proves a malformed NDJSON line between valid lines surfaces as an
-// `Err` item while the stream keeps consuming: the following content and
-// the `done: true` record still arrive.
+// Proves a malformed NDJSON line ends the reply with its error.
 #[tokio::test]
-async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
-    use crate::streaming::{Delta, StreamEvent};
+async fn a_malformed_line_ends_the_reply() {
     use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
 
     let ndjson = concat!(
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
@@ -1184,48 +1196,27 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
         "{not json\n",
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:46.499127Z","message":{"role":"assistant","content":" there"},"done":false}"#,
         "\n",
-        r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}"#,
-        "\n",
     );
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut saw_error = false;
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            }) => texts.push(text),
-            Ok(StreamEvent::Final(final_response)) => {
-                terminal = Some(final_response);
-            }
-            Ok(_) => {}
-            Err(_) => saw_error = true,
-        }
-    }
-
-    assert_eq!(texts, ["hi", " there"]);
-    assert!(saw_error, "the malformed line must reach the consumer");
-    let terminal = terminal.expect("the genuine done record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    let stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
+    let (texts, error, finished) = drained(stream).await;
+    assert_eq!(texts, ["hi"]);
+    assert!(
+        error.is_some(),
+        "the malformed line must reach the consumer"
+    );
+    assert!(finished.is_err(), "the reply ended with the error");
 }
 
 // Proves the `done: true` record ends the stream: a content line that
-// arrives after it is never yielded — only the pre-done content and the
-// terminal record reach the consumer.
+// arrives after it is never yielded.
 #[tokio::test]
 async fn content_after_the_done_record_is_not_yielded() {
-    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
 
     let ndjson = concat!(
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
@@ -1238,39 +1229,19 @@ async fn content_after_the_done_record_is_not_yielded() {
     let model = ollama_model(MockStreamingClient {
         sse_bytes: bytes::Bytes::from(ndjson),
     });
-    let request = CompletionRequest::new("hello");
-
-    let mut stream = model.stream(request).expect("stream should open");
-
-    let mut texts = Vec::new();
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should be Ok") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
-                ..
-            } => texts.push(text),
-            StreamEvent::Final(final_response) => {
-                assert!(
-                    terminal.is_none(),
-                    "the terminal record must be yielded exactly once"
-                );
-                terminal = Some(final_response);
-            }
-            // The text block's minted start/end bracket the deltas.
-            StreamEvent::BlockStart { .. } | StreamEvent::BlockEnd { .. } => {}
-            other => panic!("unexpected stream item: {other:?}"),
-        }
-    }
-
+    let stream = model
+        .stream(CompletionRequest::new("hello"))
+        .expect("stream should open");
+    let (texts, error, finished) = drained(stream).await;
     assert_eq!(
         texts,
         ["hi"],
         "content after the done record must not be yielded"
     );
-    let terminal = terminal.expect("the done record must yield the terminal record");
-    assert_eq!(terminal.usage.input_tokens, Some(10));
-    assert_eq!(terminal.usage.output_tokens, Some(4));
+    assert!(error.is_none(), "{error:?}");
+    let response = finished.expect("the done record ends the reply");
+    assert_eq!(response.usage.input_tokens, Some(10));
+    assert_eq!(response.usage.output_tokens, Some(4));
 }
 
 // Proves a non-success HTTP response from `/api/chat` preserves the
@@ -1418,10 +1389,10 @@ mod raw_capture {
     }
 }
 
-/// Synthetic wire values test absent-ID and explicit-ID collisions deterministically;
-/// recordings cannot reliably force a provider to emit these boundary combinations.
+/// Synthetic wire values test absent-ID and explicit-ID collisions; recordings
+/// cannot reliably force a provider to emit these boundary combinations.
 #[tokio::test]
-async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
+async fn missing_tool_ids_are_distinct_and_collision_free_in_responses() {
     let wire = json!({
         "model": "test", "created_at": "2024-01-01T00:00:00Z", "done": true,
         "message": {"role":"assistant", "content":"", "tool_calls":[
@@ -1430,12 +1401,7 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
             {"function":{"name":"same","arguments":{"value":3}}}
         ]}
     });
-    let normalize = || async { unary(wire.clone()).await.unwrap() };
-    let first = normalize().await;
-    assert_eq!(
-        serde_json::to_value(&first.choice).unwrap(),
-        serde_json::to_value(normalize().await.choice).unwrap()
-    );
+    let first = unary(wire.clone()).await.unwrap();
     let calls: Vec<_> = first
         .choice
         .iter()
@@ -1452,9 +1418,15 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
             .len(),
         3
     );
-    assert!(calls[0].provider.is_none());
-    assert_eq!(calls[1].id.explicit(), Some("tool-0"));
-    assert!(calls[2].provider.is_none());
+    assert!(calls[0].id.provider().is_none());
+    assert_eq!(
+        calls[1]
+            .id
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("tool-0")
+    );
+    assert!(calls[2].id.provider().is_none());
 }
 
 /// A provider-issued call id is replayed on both legs; a locally minted
@@ -1463,33 +1435,31 @@ async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() 
 #[test]
 fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
     use crate::message::{
-        AssistantContent, Message as RigMessage, ProviderCallId, ToolCall, ToolCallId,
-        ToolFunction, ToolResult, ToolResultContent, UserContent,
+        AssistantContent, CallId, Message as RigMessage, ToolCall, ToolFunction, ToolResult,
+        ToolResultContent, UserContent,
     };
 
-    let call = |provider: Option<ProviderCallId>| RigMessage::Assistant {
+    let call = |id: CallId| RigMessage::Assistant {
         id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall {
-            id: ToolCallId::new("handle").expect("non-empty"),
-            provider,
+        content: crate::NonEmpty::new(AssistantContent::ToolCall(ToolCall {
+            id,
             function: ToolFunction {
-                name: "add".to_owned(),
+                name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),
                 arguments: serde_json::json!({"x": 1}),
             },
             signature: None,
             additional_params: None,
-        })],
+        })),
     };
-    let result = |provider: Option<ProviderCallId>| RigMessage::User {
-        content: vec![UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new("handle").expect("non-empty"),
-            provider,
-            name: "add".to_owned(),
-            content: vec![ToolResultContent::text("2")],
-        })],
+    let result = |call: CallId| RigMessage::User {
+        content: crate::NonEmpty::new(UserContent::ToolResult(ToolResult {
+            call,
+            name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),
+            content: crate::NonEmpty::new(ToolResultContent::text("2")),
+        })),
     };
 
-    let issued = ProviderCallId::new("call_daemon_1");
+    let issued = CallId::from_wire("call_daemon_1");
     let assistant = Vec::<Message>::try_from(call(issued.clone())).expect("converts");
     let tool = Vec::<Message>::try_from(result(issued)).expect("converts");
     let assistant = serde_json::to_value(&assistant[0]).expect("serializes");
@@ -1498,8 +1468,9 @@ fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
     assert_eq!(tool["tool_call_id"], "call_daemon_1");
     assert_eq!(tool["tool_name"], "add");
 
-    let assistant = Vec::<Message>::try_from(call(None)).expect("converts");
-    let tool = Vec::<Message>::try_from(result(None)).expect("converts");
+    let local = CallId::from_wire("");
+    let assistant = Vec::<Message>::try_from(call(local.clone())).expect("converts");
+    let tool = Vec::<Message>::try_from(result(local)).expect("converts");
     let assistant = serde_json::to_value(&assistant[0]).expect("serializes");
     let tool = serde_json::to_value(&tool[0]).expect("serializes");
     assert!(assistant["tool_calls"][0].get("id").is_none());

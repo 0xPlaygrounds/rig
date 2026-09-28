@@ -17,13 +17,12 @@ async fn streaming_smoke() {
                 .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-        let (response, provider_final): (_, rig::streaming::StreamFinal) =
+        let (response, provider_final) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-        assert_eq!(provider_final.provider, "anthropic");
         assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
     })
     .await;
@@ -68,12 +67,11 @@ async fn gateway_reports_input_tokens_on_message_delta() {
                 .build();
 
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (_response, provider_final) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("streaming prompt should succeed");
 
-            assert_eq!(provider_final.provider, "anthropic");
             assert_eq!(
                 provider_final.finish_reason,
                 Some(rig::completion::FinishReason::Length),
@@ -129,7 +127,7 @@ async fn anthropic_proper_agrees_on_input_tokens_across_both_frames() {
                     .build();
 
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+            let (_response, provider_final) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
                     .expect("streaming prompt should succeed");

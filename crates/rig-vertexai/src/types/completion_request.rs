@@ -11,16 +11,7 @@ pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
 impl VertexCompletionRequest {
     pub fn contents(self) -> Result<Vec<vertexai::model::Content>, ProviderError> {
-        // Function responses require names rather than call identifiers.
-        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history;
-        // Cross-provider ingested results arrive with an empty name and
-        // their paired call carries it.
-        rig_core::providers::internal::resolve_empty_tool_result_names(&mut history);
-        rig_core::message::retain_replayable_reasoning(
-            &mut history,
-            &[crate::types::completion_response::PROVIDER_NAME],
-        );
-
+        let history = self.0.chat_history;
         let mut contents = Vec::new();
         for message in history {
             if matches!(message, rig_core::completion::Message::System { .. }) {
@@ -144,16 +135,15 @@ impl VertexCompletionRequest {
 }
 
 fn vertex_max_output_tokens(max_output_tokens: u64) -> Result<i32, ProviderError> {
-    i32::try_from(max_output_tokens).map_err(|_| {
-        ProviderError::Request("max_output_tokens exceeds Vertex AI's i32 range".into())
-    })
+    i32::try_from(max_output_tokens)
+        .map_err(|_| ProviderError::request("max_output_tokens exceeds Vertex AI's i32 range"))
 }
 
 fn vertex_f32(value: f64, field: &str) -> Result<f32, ProviderError> {
     if !value.is_finite() || value < f64::from(f32::MIN) || value > f64::from(f32::MAX) {
-        return Err(ProviderError::Request(
-            format!("{field} must be finite and within Vertex AI's f32 range").into(),
-        ));
+        return Err(ProviderError::request(format!(
+            "{field} must be finite and within Vertex AI's f32 range"
+        )));
     }
 
     Ok(value as f32)
@@ -165,14 +155,13 @@ fn vertex_generation_config(
     if config.response_schema.is_some()
         && (config.response_json_schema.is_some() || config._response_json_schema.is_some())
     {
-        return Err(ProviderError::Request(
-            "responseSchema cannot be combined with responseJsonSchema or _responseJsonSchema"
-                .into(),
+        return Err(ProviderError::request(
+            "responseSchema cannot be combined with responseJsonSchema or _responseJsonSchema",
         ));
     }
     if config.response_json_schema.is_some() && config._response_json_schema.is_some() {
-        return Err(ProviderError::Request(
-            "responseJsonSchema cannot be combined with _responseJsonSchema".into(),
+        return Err(ProviderError::request(
+            "responseJsonSchema cannot be combined with _responseJsonSchema",
         ));
     }
 
@@ -241,8 +230,8 @@ fn vertex_thinking_config(
     config: GeminiThinkingConfig,
 ) -> Result<vertexai::model::generation_config::ThinkingConfig, ProviderError> {
     if config.thinking_budget.is_some() && config.thinking_level.is_some() {
-        return Err(ProviderError::Request(
-            "thinking_budget and thinking_level cannot both be set".into(),
+        return Err(ProviderError::request(
+            "thinking_budget and thinking_level cannot both be set",
         ));
     }
 
@@ -251,9 +240,8 @@ fn vertex_thinking_config(
         vertex_config = vertex_config.set_include_thoughts(include_thoughts);
     }
     if let Some(thinking_budget) = config.thinking_budget {
-        let thinking_budget = i32::try_from(thinking_budget).map_err(|_| {
-            ProviderError::Request("thinking_budget exceeds Vertex AI's i32 range".into())
-        })?;
+        let thinking_budget = i32::try_from(thinking_budget)
+            .map_err(|_| ProviderError::request("thinking_budget exceeds Vertex AI's i32 range"))?;
         vertex_config = vertex_config.set_thinking_budget(thinking_budget);
     }
     if let Some(thinking_level) = config.thinking_level {
@@ -282,9 +270,8 @@ fn vertex_response_modality(
     match modality {
         ResponseModality::Text => Ok(vertexai::model::generation_config::Modality::Text),
         ResponseModality::Image => Ok(vertexai::model::generation_config::Modality::Image),
-        ResponseModality::Audio => Err(ProviderError::Request(
-            "responseModalities AUDIO is unsupported because Rig cannot represent assistant audio responses"
-                .into(),
+        ResponseModality::Audio => Err(ProviderError::request(
+            "responseModalities AUDIO is unsupported because Rig cannot represent assistant audio responses",
         )),
     }
 }

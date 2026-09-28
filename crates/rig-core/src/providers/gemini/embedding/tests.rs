@@ -1,7 +1,5 @@
 use super::*;
-use crate::driver::WireDriver;
 use crate::providers::gemini::{GeminiConfig, PROVIDER_NAME};
-use crate::wire::{Fold, Reply};
 
 #[test]
 fn test_embedding_values_deserializes_without_empty_values_field() {
@@ -65,7 +63,7 @@ fn the_batch_request_is_the_recorded_one() {
         )
         .expect("the batch encodes");
 
-    let request = encoded.requests.first().expect("one request");
+    let request = &encoded.request;
     assert_eq!(request.method(), http::Method::POST);
     assert_eq!(
         request.uri().path(),
@@ -90,27 +88,15 @@ fn the_batch_request_is_the_recorded_one() {
 #[test]
 fn a_recorded_reply_folds_into_the_batchs_vectors_in_input_order() {
     let wire = GeminiConfig::new("test-key").embedding(EMBEDDING_001, Some(256));
-    let mut driver =
-        WireDriver::<crate::operation::Embedding, _>::new(wire.decoder(crate::wire::Mode::Unary));
-    driver.push(WireFrame::Text(RECORDED_REPLY.to_owned()));
-    driver.finish();
-
     let documents = recorded_documents();
-    let mut fold = crate::test_utils::fold_for(&documents, &wire, crate::wire::Mode::Unary);
-    for item in driver.drain() {
-        let event = item.expect("the recorded reply decodes without an in-band error");
-        Fold::<crate::operation::Embedding>::absorb(&mut fold, &event)
-            .expect("the fold accepts the reply");
-    }
-    let response = Fold::<crate::operation::Embedding>::finish(
-        fold,
-        Reply {
-            provider: PROVIDER_NAME.to_owned(),
-            raw: serde_json::Value::Null,
-            provider_request_id: None,
-        },
+    let response = crate::test_utils::decode_reply(
+        &wire,
+        &documents,
+        crate::wire::Mode::Unary,
+        [WireFrame::Text(RECORDED_REPLY.to_owned())],
+        serde_json::Value::Null,
     )
-    .expect("the fold produces a response");
+    .expect("the recorded reply folds");
 
     assert_eq!(response.provider, PROVIDER_NAME);
     assert_eq!(

@@ -6,7 +6,7 @@
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Exchange, Opened, Sending, Transport};
+use super::{Exchange, Opened, Opening, Transport};
 use crate::error::ProviderError;
 use crate::http_client::framing::{Framing, NdjsonFramer, SseFramer};
 use crate::http_client::{self, HttpClientExt};
@@ -19,13 +19,9 @@ where
     W: Wire<Payload = Encoded, Frame = WireFrame>,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn send(
-        &self,
-        payload: Encoded,
-        exchange: Exchange,
-    ) -> Result<Sending<WireFrame>, ProviderError> {
+    fn send(&self, payload: Encoded, exchange: Exchange) -> Opening<WireFrame> {
         let Encoded {
-            requests,
+            mut request,
             framing,
             request_id_header,
             relaxed_content_type,
@@ -37,69 +33,41 @@ where
         // A whole reply has nothing to stream: it is read as a unary one is,
         // so its document is a fact of the reply in both modes.
         let streamed = mode == Mode::Streaming && framing != Framing::Whole;
-        if mode == Mode::Streaming {
-            // A stream is one exchange: a payload that carries a batch (a
-            // provider taking a bounded number of items per request) is
-            // called whole instead.
-            if requests.len() != 1 {
-                return Err(ProviderError::Request(
-                    format!(
-                        "a streamed reply takes exactly one request, not {}",
-                        requests.len()
-                    )
-                    .into(),
-                ));
-            }
-            if streamed
-                && let Some(request) = requests.first()
-                && matches!(request.body(), Body::Multipart(_))
-            {
-                return Err(ProviderError::Request(
-                    "a multipart request cannot open a streamed reply".into(),
-                ));
-            }
+        if streamed && matches!(request.body(), Body::Multipart(_)) {
+            return Opening::failed(ProviderError::request(
+                "a multipart request cannot open a streamed reply",
+            ));
         }
-        if requests.is_empty() {
-            // An empty batch sends nothing and folds to an empty answer.
-            return Ok(Sending::opened(Opened::new(futures::stream::empty())));
-        }
+        accept_header(&mut request, framing);
+        // Errors need the actual path; observations use the declared
+        // template to group attempts independently of concrete URLs.
+        let path = request.uri().path().to_owned();
+        let declared = route.map_or_else(|| path.clone(), str::to_owned);
+        let exchange = HttpExchange {
+            framing,
+            request_id_header,
+            relaxed_content_type,
+            path,
+            observation: observation.map(|context| (context, AdapterSlot::default())),
+            project,
+        };
         let http = self.clone();
-        Ok(Sending::each(futures::stream::iter(requests).then(
-            move |mut request| {
-                accept_header(&mut request, framing);
-                // Errors need the actual path; observations use the declared
-                // template to group attempts independently of concrete URLs.
-                let path = request.uri().path().to_owned();
-                let declared = route.map_or_else(|| path.clone(), str::to_owned);
-                let exchange = HttpExchange {
-                    framing,
-                    request_id_header,
-                    relaxed_content_type,
-                    path,
-                    observation: observation
-                        .clone()
-                        .map(|context| (context, AdapterSlot::default())),
-                    project,
-                };
-                let http = http.clone();
-                async move {
-                    // Unpolled replies must not report transport attempts.
-                    exchange.install(&request, &declared);
-                    let slot = exchange.slot().cloned();
-                    let mut opened = if streamed {
-                        match byte_request(request) {
-                            Ok(request) => exchange.streaming(&http, request).await,
-                            Err(error) => Opened::failed(error),
-                        }
-                    } else {
-                        exchange.unary(&http, request).await
-                    };
-                    opened.slot = slot;
-                    opened.analysis_only = analysis_only;
-                    opened
+        Opening::new(async move {
+            // Unpolled replies must not report transport attempts.
+            exchange.install(&request, &declared);
+            let slot = exchange.slot().cloned();
+            let mut opened = if streamed {
+                match byte_request(request) {
+                    Ok(request) => exchange.streaming(&http, request).await,
+                    Err(error) => Opened::failed(error),
                 }
-            },
-        )))
+            } else {
+                exchange.unary(&http, request).await
+            };
+            opened.slot = slot;
+            opened.analysis_only = analysis_only;
+            Ok(opened)
+        })
     }
 }
 
@@ -438,8 +406,8 @@ fn byte_request(request: http::Request<Body>) -> Result<http::Request<Vec<u8>>, 
     let (parts, body) = request.into_parts();
     match body {
         Body::Bytes(bytes) => Ok(http::Request::from_parts(parts, bytes)),
-        Body::Multipart(_) => Err(ProviderError::Request(
-            "a multipart request cannot open a streamed reply".into(),
+        Body::Multipart(_) => Err(ProviderError::request(
+            "a multipart request cannot open a streamed reply",
         )),
     }
 }

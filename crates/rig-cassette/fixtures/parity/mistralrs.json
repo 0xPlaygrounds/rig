@@ -1,0 +1,324 @@
+{
+  "chat_completions/chat_completions_agent_prompt_completes.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "openai",
+          "content": [
+            {
+              "text": "\n\n",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "\n\nA local OpenAI-compatible server should return token usage to help users manage costs, optimize model performance, and track resource consumption. Knowing token usage allows users to:\n\n- **Monitor expenses**: Track usage to stay within budget or predict future costs.\n- **Optimize prompts**: Adjust prompt length or complexity to reduce token counts.\n- **Improve efficiency**: Fine-tune models or workflows for better performance per token.\n- **Compliance**: Meet usage limits or reporting requirements for internal systems.\n\nReturning token usage also supports better user experience by providing transparency and enabling smarter usage patterns.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 42,
+      "output_tokens": 119,
+      "total_tokens": 161
+    },
+    "message_id": null,
+    "response_id": "1",
+    "finish_reason": "stop",
+    "model": "Qwen/Qwen3-4B",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "\n\nA local OpenAI-compatible server should return token usage to help users manage costs, optimize model performance, and track resource consumption. Knowing token usage allows users to:\n\n- **Monitor expenses**: Track usage to stay within budget or predict future costs.\n- **Optimize prompts**: Adjust prompt length or complexity to reduce token counts.\n- **Improve efficiency**: Fine-tune models or workflows for better performance per token.\n- **Compliance**: Meet usage limits or reporting requirements for internal systems.\n\nReturning token usage also supports better user experience by providing transparency and enabling smarter usage patterns.",
+            "reasoning_content": "\n\n",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "1",
+      "model": "Qwen/Qwen3-4B",
+      "object": "chat.completion",
+      "system_fingerprint": "local",
+      "usage": {
+        "avg_compl_tok_per_sec": 4.2814994,
+        "avg_prompt_tok_per_sec": 29.871979,
+        "avg_tok_per_sec": 5.5127544,
+        "completion_tokens": 119,
+        "prompt_tokens": 42,
+        "total_completion_time_sec": 27.794,
+        "total_prompt_time_sec": 1.406,
+        "total_time_sec": 29.205,
+        "total_tokens": 161
+      }
+    }
+  },
+  "chat_completions/raw_chat_completion_surfaces_reasoning_or_text.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "openai",
+          "content": [
+            {
+              "text": "\nOkay, the user is asking why token usage should be reported. They want a concise answer, just one sentence. Let me start by recalling what token usage is. Tokens are the basic units of text in models, used for processing. Reporting them is important for managing costs because each token consumed incurs a cost. If you don't track it, you might exceed budget limits or face unexpected charges. Also, it helps in optimizing model usage by understanding which parts of the input are using more tokens. Maybe mention cost efficiency and resource allocation. Need to make sure it's a single sentence without being too wordy. Let me combine these points: reporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits. That should cover it.\n",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "\n\nReporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 41,
+      "output_tokens": 173,
+      "total_tokens": 214
+    },
+    "message_id": null,
+    "response_id": "2",
+    "finish_reason": "stop",
+    "model": "Qwen/Qwen3-4B",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "\n\nReporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits.",
+            "reasoning_content": "\nOkay, the user is asking why token usage should be reported. They want a concise answer, just one sentence. Let me start by recalling what token usage is. Tokens are the basic units of text in models, used for processing. Reporting them is important for managing costs because each token consumed incurs a cost. If you don't track it, you might exceed budget limits or face unexpected charges. Also, it helps in optimizing model usage by understanding which parts of the input are using more tokens. Maybe mention cost efficiency and resource allocation. Need to make sure it's a single sentence without being too wordy. Let me combine these points: reporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits. That should cover it.\n",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "2",
+      "model": "Qwen/Qwen3-4B",
+      "object": "chat.completion",
+      "system_fingerprint": "local",
+      "usage": {
+        "avg_compl_tok_per_sec": 4.8935027,
+        "avg_prompt_tok_per_sec": 53.040104,
+        "avg_tok_per_sec": 5.9230556,
+        "completion_tokens": 173,
+        "prompt_tokens": 41,
+        "total_completion_time_sec": 35.353,
+        "total_prompt_time_sec": 0.773,
+        "total_time_sec": 36.13,
+        "total_tokens": 214
+      }
+    }
+  },
+  "streaming/chat_completions_stream_emits_reasoning_and_text_incrementally.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "openai",
+          "content": [
+            {
+              "text": "\nOkay, the user wants three short bullet points about token usage reporting. Let me start by recalling what token usage reporting is. It's about tracking how many tokens (like words or characters) are used in AI interactions. The user specified to be concise and include details for streaming visibility.\n\nFirst, I should mention the key aspects of token usage reporting. Maybe start with monitoring input and output tokens. That's fundamental. Then, the second point could be about optimizing costs, since token usage directly affects pricing. Third, maybe something about real-time insights for performance or efficiency. Let me check if those points are accurate and concise. Yes, each bullet is a short point with a detail. That should meet the user's request.\n",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "\n\n- Tracks input/output token counts for model interactions.  \n- Highlights cost optimization by aligning usage with budget constraints.  \n- Provides real-time insights for tuning prompts or workflows.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 41,
+      "output_tokens": 185,
+      "total_tokens": 226
+    },
+    "message_id": null,
+    "response_id": "6",
+    "finish_reason": "stop",
+    "model": "Qwen/Qwen3-4B",
+    "provider_request_id": null,
+    "raw": {
+      "usage": {
+        "prompt_tokens": 41,
+        "completion_tokens": 185,
+        "total_tokens": 226,
+        "avg_compl_tok_per_sec": 4.9165516,
+        "avg_prompt_tok_per_sec": 56.786705,
+        "avg_tok_per_sec": 5.8920145,
+        "total_completion_time_sec": 37.628,
+        "total_prompt_time_sec": 0.722,
+        "total_time_sec": 38.357
+      },
+      "finish_reason": "stop",
+      "response_id": "6",
+      "model": "Qwen/Qwen3-4B",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "local"
+      }
+    }
+  },
+  "tools/raw_chat_completion_emits_requested_tool_call.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "openai",
+          "content": [
+            {
+              "text": "\n\n",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "\n\n<tool_call>\n{\"name\": \"report_usage\", \"arguments\": {\"reason\": \"cost_tracking\"}}\n</tool_call>",
+        "additional_params": null
+      },
+      {
+        "tool_call": {
+          "id": "call-a12175c2-8979-4850-8618-8a12f5026dc4",
+          "item_id": null,
+          "name": "report_usage",
+          "arguments": {
+            "reason": "cost_tracking"
+          },
+          "signature": null,
+          "additional_params": null
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 159,
+      "output_tokens": 24,
+      "total_tokens": 183
+    },
+    "message_id": null,
+    "response_id": "7",
+    "finish_reason": "tool_calls",
+    "model": "Qwen/Qwen3-4B",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "\n\n<tool_call>\n{\"name\": \"report_usage\", \"arguments\": {\"reason\": \"cost_tracking\"}}\n</tool_call>",
+            "reasoning_content": "\n\n",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"reason\":\"cost_tracking\"}",
+                  "name": "report_usage"
+                },
+                "id": "call-a12175c2-8979-4850-8618-8a12f5026dc4",
+                "index": 0,
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "7",
+      "model": "Qwen/Qwen3-4B",
+      "object": "chat.completion",
+      "system_fingerprint": "local",
+      "usage": {
+        "avg_compl_tok_per_sec": 5.042017,
+        "avg_prompt_tok_per_sec": 69.31125,
+        "avg_tok_per_sec": 25.9317,
+        "completion_tokens": 24,
+        "prompt_tokens": 159,
+        "total_completion_time_sec": 4.76,
+        "total_prompt_time_sec": 2.294,
+        "total_time_sec": 7.057,
+        "total_tokens": 183
+      }
+    }
+  },
+  "usage/chat_completion_usage_without_output_tokens_details_deserializes.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "id": null,
+          "issuer": "openai",
+          "content": [
+            {
+              "text": "\n\n",
+              "signature": null
+            }
+          ]
+        }
+      },
+      {
+        "text": "\n\nUsage accounting is a method of tracking and billing based on actual resource consumption by users or services.",
+        "additional_params": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 36,
+      "output_tokens": 24,
+      "total_tokens": 60
+    },
+    "message_id": null,
+    "response_id": "8",
+    "finish_reason": "stop",
+    "model": "Qwen/Qwen3-4B",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "\n\nUsage accounting is a method of tracking and billing based on actual resource consumption by users or services.",
+            "reasoning_content": "\n\n",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "8",
+      "model": "Qwen/Qwen3-4B",
+      "object": "chat.completion",
+      "system_fingerprint": "local",
+      "usage": {
+        "avg_compl_tok_per_sec": 5.251641,
+        "avg_prompt_tok_per_sec": 56.074764,
+        "avg_tok_per_sec": 11.505273,
+        "completion_tokens": 24,
+        "prompt_tokens": 36,
+        "total_completion_time_sec": 4.57,
+        "total_prompt_time_sec": 0.642,
+        "total_time_sec": 5.215,
+        "total_tokens": 60
+      }
+    }
+  }
+}

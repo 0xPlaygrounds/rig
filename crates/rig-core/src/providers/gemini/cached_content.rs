@@ -16,6 +16,7 @@
 //!     .expiry(CacheExpiry::ttl(Duration::from_secs(600)));
 //! ```
 
+use crate::wire::Flow;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -369,7 +370,7 @@ impl Wire for CachedContents {
     type Op = operation::ContextCache;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = CachedContentsDecoder;
+    type Decoder<'id> = CachedContentsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
@@ -405,7 +406,7 @@ impl Wire for CachedContents {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         CachedContentsDecoder
     }
 }
@@ -413,7 +414,7 @@ impl Wire for CachedContents {
 /// Decodes one `cachedContents` reply.
 pub struct CachedContentsDecoder;
 
-impl Decoder<operation::ContextCache> for CachedContentsDecoder {
+impl<'id> Decoder<'id, operation::ContextCache> for CachedContentsDecoder {
     type Event = CachedContentReply;
 
     /// Classify a page, empty acknowledgement, or resource.
@@ -425,8 +426,18 @@ impl Decoder<operation::ContextCache> for CachedContentsDecoder {
         })
     }
 
-    fn interpret(&mut self, reply: Self::Event, out: &mut Out<'_, operation::ContextCache>) {
-        out.push(Ok(reply));
+    fn decode(
+        &mut self,
+        reply: Self::Event,
+        out: Out<'id, operation::ContextCache>,
+    ) -> Result<Flow, ProviderError> {
+        Ok(out.end(reply))
+    }
+
+    /// A reply with no body at all is an acknowledgement: the status
+    /// already answered.
+    fn eof(&mut self, out: Out<'id, operation::ContextCache>) -> Result<Flow, ProviderError> {
+        Ok(out.end(CachedContentReply::Acknowledged))
     }
 }
 

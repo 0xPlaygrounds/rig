@@ -94,9 +94,7 @@ fn an_unstated_width_resolves_from_the_model_table() {
             .embedding(model, ndims)
             .encode(documents(), Mode::Unary)
             .expect("the request encodes");
-        let [request] = encoded.requests.as_slice() else {
-            panic!("one request")
-        };
+        let request = &encoded.request;
         let Body::Bytes(bytes) = request.body() else {
             panic!("bytes")
         };
@@ -139,9 +137,7 @@ fn a_requested_width_matches_the_recorded_request() {
         .embedding("text-embedding-3-small", Some(512))
         .encode(documents(), Mode::Unary)
         .expect("the request encodes");
-    let [request] = encoded.requests.as_slice() else {
-        panic!("an embedding batch on this wire is one request");
-    };
+    let request = &encoded.request;
     let Body::Bytes(bytes) = request.body() else {
         panic!("an embedding request body is bytes");
     };
@@ -162,9 +158,7 @@ fn the_dialect_decides_the_width_field() {
             .embedding(model, Some(256))
             .encode(documents(), Mode::Unary)
             .expect("the request encodes");
-        let [request] = encoded.requests.as_slice() else {
-            panic!("one request")
-        };
+        let request = &encoded.request;
         let Body::Bytes(bytes) = request.body() else {
             panic!("bytes")
         };
@@ -202,9 +196,7 @@ fn azure_sends_no_model_field() {
         .embedding("my-deployment", None)
         .encode(documents(), Mode::Unary)
         .expect("the request encodes");
-    let [request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let request = &encoded.request;
     assert_eq!(
         request.uri().to_string(),
         "https://example.openai.azure.com/openai/deployments/my-deployment/embeddings?api-version=2024-10-21"
@@ -300,9 +292,7 @@ fn a_transcription_request_is_multipart() {
         .transcription("whisper-1")
         .encode(request, Mode::Unary)
         .expect("the request encodes");
-    let [http_request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let http_request = &encoded.request;
     let Body::Multipart(form) = http_request.body() else {
         panic!("a transcription body is multipart");
     };
@@ -321,9 +311,7 @@ fn a_transcription_request_is_multipart() {
 // ── the dialect-specific modality bodies ────────────────────────────────
 
 fn json_body(encoded: &Encoded) -> serde_json::Value {
-    let [request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let request = &encoded.request;
     let Body::Bytes(bytes) = request.body() else {
         panic!("a JSON body is bytes")
     };
@@ -347,9 +335,7 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
         .image_generation("grok-imagine-image-pro")
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
-    let [http_request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let http_request = &encoded.request;
     assert_eq!(
         http_request.uri().to_string(),
         "https://api.x.ai/v1/images/generations"
@@ -401,9 +387,7 @@ fn the_xai_speech_body_differs_from_openais() {
         .audio_generation("tts-1")
         .encode(request("nova"), Mode::Unary)
         .expect("encodes");
-    let [http_request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let http_request = &encoded.request;
     assert_eq!(http_request.uri().to_string(), "https://api.x.ai/v1/tts");
     let body = json_body(&encoded);
     assert_eq!(body["voice_id"], "nova");
@@ -450,9 +434,7 @@ fn azure_speech_carries_its_own_api_version() {
             Mode::Unary,
         )
         .expect("encodes");
-    let [request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let request = &encoded.request;
     assert_eq!(
         request.uri().to_string(),
         "https://example.openai.azure.com/openai/deployments/my-tts/audio/speech?api-version=2025-04-01-preview"
@@ -465,9 +447,7 @@ fn azure_speech_carries_its_own_api_version() {
         .embedding("my-embed", None)
         .encode(vec!["a".to_owned()], Mode::Unary)
         .expect("encodes");
-    let [request] = embeddings.requests.as_slice() else {
-        panic!("one request")
-    };
+    let request = &embeddings.request;
     assert!(
         request
             .uri()
@@ -554,9 +534,7 @@ fn a_rerank_request_is_the_jina_shape() {
             Mode::Unary,
         )
         .expect("encodes");
-    let [request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let request = &encoded.request;
     assert_eq!(request.uri().to_string(), "http://localhost:8080/v1/rerank");
     let body = json_body(&encoded);
     assert_eq!(
@@ -597,9 +575,7 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
         .image_generation("SDXL1.0-base")
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
-    let [http_request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let http_request = &encoded.request;
     assert_eq!(
         http_request.uri().to_string(),
         "https://api.hyperbolic.xyz/v1/image/generation"
@@ -646,9 +622,7 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
             Mode::Unary,
         )
         .expect("the request encodes");
-    let [http_request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let http_request = &encoded.request;
     // The model is the path, at the router root rather than under `/v1`.
     assert_eq!(
         http_request.uri().to_string(),
@@ -715,9 +689,7 @@ async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
         .audio_generation("EN")
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
-    let [http_request] = encoded.requests.as_slice() else {
-        panic!("one request")
-    };
+    let http_request = &encoded.request;
     assert_eq!(
         http_request.uri().to_string(),
         "https://api.hyperbolic.xyz/v1/audio/generation"

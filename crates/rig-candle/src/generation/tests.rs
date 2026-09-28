@@ -1,12 +1,12 @@
 use super::*;
-use rig_core::{message::Message, operation::AdapterOutput};
+use rig_core::message::Message;
 
 /// Pure parse/emission regression: no model artifact or provider call is needed.
 #[test]
 fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission() {
     let request = CompletionRequest {
         model: None,
-        chat_history: vec![Message::user("tools")],
+        chat_history: rig_core::NonEmpty::new(Message::user("tools")),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -20,33 +20,37 @@ fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission
     let parsed = crate::protocol::parse_assistant(raw, &request, ConversationProtocol::Qwen3)
         .expect("valid parsed tool event");
     let expected = parsed.items.clone();
-    let mut sink = AdapterOutput::new();
-    let mut count = 0;
+    let mut emitted = Vec::new();
     emit_parsed_items(parsed.items, |event| {
-        let GenerationEvent::ToolCall { id, end } = event else {
+        let GenerationEvent::ToolCall(call) = event else {
             return Err(CandleError::Inference("expected only tool calls".into()));
         };
-        if count == 1 {
-            assert_eq!(id.wire_str(), Some("tool-0"));
-            assert_eq!(end.tool_id.as_deref(), Some("tool-0"));
-        } else {
-            assert!(id.is_minted());
-            assert!(end.tool_id.is_none());
-            assert!(end.call_id.is_none());
-        }
-        sink.tool_end(id, end);
-        count += 1;
+        emitted.push(rig_core::message::AssistantContent::ToolCall(call));
         Ok(())
     })
     .expect("valid parsed tool event");
-    assert_eq!(count, 3);
-    let mut fold = rig_core::operation::CompletionFold::default();
-    for item in sink.drain() {
-        rig_core::wire::Fold::absorb(&mut fold, &item.expect("valid parsed tool event"))
-            .expect("valid parsed tool event");
-    }
+    assert_eq!(emitted.len(), 3);
+    // The call that named its id keeps it; the others keep the ids rig
+    // issued when parsing.
+    let ids: Vec<_> = emitted
+        .iter()
+        .filter_map(|content| match content {
+            rig_core::message::AssistantContent::ToolCall(call) => Some(call.id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ids.len(), 3, "{ids:?}");
     assert_eq!(
-        serde_json::to_value(fold.snapshot()).expect("valid parsed tool event"),
+        ids.get(1).map(ToString::to_string).as_deref(),
+        Some("tool-0")
+    );
+    assert!(
+        [ids.first(), ids.get(2)]
+            .iter()
+            .all(|id| id.is_some_and(|id| id.provider().is_none()))
+    );
+    assert_eq!(
+        serde_json::to_value(emitted).expect("valid parsed tool event"),
         serde_json::to_value(expected).expect("valid parsed tool event")
     );
 }

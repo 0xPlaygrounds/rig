@@ -67,7 +67,8 @@ use futures::StreamExt;
 use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::GeminiModels;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -159,18 +160,20 @@ async fn drain(
     mut stream: rig::streaming::CompletionStream,
 ) -> (String, Vec<AssistantContent>, bool) {
     let mut text = String::new();
-    let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
-        match item.expect("no stream item should be an error") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: chunk },
-                ..
-            } => text.push_str(&chunk),
-            StreamEvent::Final(_) => saw_terminal = true,
-            _ => {}
+        if let Item::Event(StreamEvent::Text { text: chunk, .. }) =
+            item.expect("no stream item should be an error")
+        {
+            text.push_str(&chunk)
         }
     }
-    (text, stream.folded().snapshot(), saw_terminal)
+    let response = stream.finish().await;
+    let saw_terminal = response.is_ok();
+    (
+        text,
+        response.map(|response| response.choice).unwrap_or_default(),
+        saw_terminal,
+    )
 }
 
 /// One blocking cell: run the prompt with code execution enabled and assert
@@ -336,10 +339,7 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamEvent::BlockDelta {
-                        delta: Delta::Text { text },
-                        ..
-                    },
+                    Item::Event(StreamEvent::Text { text, .. }),
                 ) = item.expect("no stream item should be an error")
                 {
                     answer.push_str(&text);

@@ -23,7 +23,7 @@ use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
     serve::{Dispatch, Observe, Origin, Recorder},
-    streaming::StreamEvent,
+    streaming::{Item, StreamEvent},
     wasm_compat::WasmBoxedFuture,
 };
 
@@ -70,8 +70,8 @@ impl Observe for Recorded {
         self.recorder.keep_events()
     }
 
-    fn event(&mut self, event: &StreamEvent) {
-        self.recorder.event(self.id, event);
+    fn event(&mut self, item: &Item<StreamEvent>) {
+        self.recorder.event(self.id, item);
     }
     fn stream_error(&mut self, error: &ErrorReport) {
         self.recorder.stream_error(self.id, error);

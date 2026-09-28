@@ -62,8 +62,8 @@ fn a_rejected_verification_keeps_its_reply() {
 fn other_verification_failures_are_unchanged() {
     let json = serde_json::from_str::<serde_json::Value>("{").expect_err("malformed");
     for error in [
-        ProviderError::Http(http_client::Error::StreamEnded),
-        ProviderError::Json(json),
+        ProviderError::Http(http_client::Error::StreamEnded.into()),
+        ProviderError::Json(json.into()),
         ProviderError::Response("verify reply carried no payload".into()),
     ] {
         let kind = error.kind();

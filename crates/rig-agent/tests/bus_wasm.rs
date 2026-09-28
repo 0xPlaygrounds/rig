@@ -186,7 +186,7 @@ async fn a_stream_dropped_mid_flight_is_observed_by_the_handler() {
     );
     let request = rig_core::completion::CompletionRequest {
         model: None,
-        chat_history: vec![rig_core::completion::Message::user("hi")],
+        chat_history: rig_core::NonEmpty::new(rig_core::completion::Message::user("hi")),
         documents: vec![],
         tools: vec![],
         temperature: None,

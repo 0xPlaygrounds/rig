@@ -6,15 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 2,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
+          "items": 6
         }
       },
       {
@@ -32,15 +24,15 @@
         }
       },
       {
-        "batch": 4,
+        "batch": 5,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
-        "batch": 4,
+        "batch": 5,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -143,11 +135,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call"
-              },
-              "provider": {
-                "call_id": "call"
+                "provider": {
+                  "call_id": "call"
+                }
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -165,95 +155,75 @@
           "model": null,
           "raw": {
             "usage": {},
-            "finish_reason": null,
             "message_id": null,
             "response_id": null,
-            "provider": "mock",
             "model": null,
-            "raw": {
-              "provider": "mock"
-            }
+            "provider_request_id": null
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "premature text"
           }
         },
         {
-          "event": "block_start",
-          "id": "wire:call",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "premature text"
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_end",
-          "id": "wire:call",
-          "end": {
-            "close": "tool_call",
-            "tool_id": "call",
-            "name": "lookup_harbor_label",
-            "arguments": {},
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call"
-            },
-            "provider": {
-              "call_id": "call"
-            },
-            "function": {
-              "name": "lookup_harbor_label",
-              "arguments": {}
-            },
-            "signature": null,
-            "additional_params": null
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{}"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "premature text"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
-          "provider": "mock",
-          "model": null,
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call"
+                }
+              },
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
@@ -318,11 +288,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call"
-                  },
-                  "provider": {
-                    "call_id": "call"
+                    "provider": {
+                      "call_id": "call"
+                    }
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -339,11 +307,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call"
-                  },
-                  "provider": {
-                    "call_id": "call"
+                    "provider": {
+                      "call_id": "call"
+                    }
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -393,61 +359,38 @@
           "model": null,
           "raw": {
             "usage": {},
-            "finish_reason": null,
             "message_id": null,
             "response_id": null,
-            "provider": "mock",
             "model": null,
-            "raw": {
-              "provider": "mock"
-            }
+            "provider_request_id": null
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "text"
           }
         },
         {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": "crimson-harbor"
           }
         },
         {
-          "event": "block_end",
-          "id": "minted:text:0",
-          "end": {
-            "close": "text"
-          },
-          "block": {
-            "type": "text",
-            "text": "crimson-harbor"
-          }
-        },
-        {
-          "event": "final",
-          "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
-          "provider": "mock",
-          "model": null,
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "crimson-harbor"
             }
           }
         }

@@ -36,7 +36,7 @@ pub enum PrepareError {
 
 impl From<PrepareError> for ProviderError {
     fn from(error: PrepareError) -> Self {
-        ProviderError::Request(error.to_string().into())
+        ProviderError::request(error.to_string())
     }
 }
 

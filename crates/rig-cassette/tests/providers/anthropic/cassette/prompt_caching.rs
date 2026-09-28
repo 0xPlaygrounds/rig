@@ -10,7 +10,8 @@ use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
 use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::providers::anthropic::wire::Messages;
-use rig::streaming::{Delta, StreamEvent};
+use rig::streaming::Item;
+use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::AnthropicModels;
 use rig_test_support::cassette_models::MapWire;
 use serde::Deserialize;
@@ -351,24 +352,21 @@ async fn send_matrix_streaming_probe(
         .stream(builder)
         .expect("streaming matrix Anthropic request should start");
     let mut text = String::new();
-    let mut usage = None;
-
     while let Some(item) = stream.next().await {
-        match item.expect("streaming matrix Anthropic item should succeed") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: delta },
-                ..
-            } => text.push_str(&delta),
-            StreamEvent::Final(response) => {
-                usage = Some(response.usage);
-            }
-            _ => {}
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+            item.expect("streaming matrix Anthropic item should succeed")
+        {
+            text.push_str(&delta)
         }
     }
+    let response = stream
+        .finish()
+        .await
+        .expect("matrix stream should yield final token usage");
 
     StreamingCacheProbeResponse {
         text,
-        usage: usage.expect("matrix stream should yield final token usage"),
+        usage: response.usage,
     }
 }
 
@@ -1404,24 +1402,21 @@ async fn send_streaming_cache_probe(
         )
         .expect("streaming prompt-cached Anthropic request should start");
     let mut text = String::new();
-    let mut usage = None;
-
     while let Some(item) = stream.next().await {
-        match item.expect("streaming prompt-cached Anthropic item should succeed") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: delta },
-                ..
-            } => text.push_str(&delta),
-            StreamEvent::Final(response) => {
-                usage = Some(response.usage);
-            }
-            _ => {}
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+            item.expect("streaming prompt-cached Anthropic item should succeed")
+        {
+            text.push_str(&delta)
         }
     }
+    let response = stream
+        .finish()
+        .await
+        .expect("stream should yield final token usage");
 
     StreamingCacheProbeResponse {
         text,
-        usage: usage.expect("stream should yield final token usage"),
+        usage: response.usage,
     }
 }
 

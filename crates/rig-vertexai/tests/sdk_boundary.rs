@@ -60,9 +60,9 @@ async fn hosted_model(
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![Message::User {
-            content: vec![UserContent::Text(Text::new(prompt.to_string()))],
-        }],
+        chat_history: rig_core::NonEmpty::new(Message::User {
+            content: rig_core::NonEmpty::new(UserContent::Text(Text::new(prompt.to_string()))),
+        }),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -323,23 +323,15 @@ async fn a_streamed_call_re_emits_the_unary_reply() {
         .stream(request("stream please"))
         .expect("the stream opens");
     let mut text = String::new();
-    let mut terminals = 0;
     while let Some(item) = stream.next().await {
-        match item.expect("stream item") {
-            StreamEvent::BlockDelta {
-                delta: rig_core::streaming::Delta::Text { text: fragment },
-                ..
-            } => text.push_str(&fragment),
-            StreamEvent::Final(_) => terminals += 1,
-            _ => {}
+        if let rig_core::streaming::Item::Event(StreamEvent::Text { text: fragment, .. }) =
+            item.expect("stream item")
+        {
+            text.push_str(&fragment);
         }
     }
     assert_eq!(text, "streamed");
-    assert_eq!(
-        terminals, 1,
-        "the re-emitted reply ends with one terminal record"
-    );
-    let response = stream.finish().expect("a terminal record");
+    let response = stream.finish().await.expect("the reply ended");
     assert!(
         matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "streamed")
     );

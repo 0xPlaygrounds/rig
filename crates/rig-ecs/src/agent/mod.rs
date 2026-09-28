@@ -17,9 +17,10 @@ pub mod reflect;
 use bevy_ecs::prelude::*;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
 use rig_core::{
+    NonEmpty,
     completion::{
         Usage as WireUsage,
-        message::{AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, UserContent},
+        message::{AssistantContent, CallId, Message, ToolChoice, ToolName, UserContent},
     },
     error::ErrorReport,
     tool::ToolContext,
@@ -436,18 +437,41 @@ pub enum MessageParts {
     /// A user message's parts.
     User {
         /// The parts.
-        content: Vec<UserContent>,
+        content: NonEmpty<UserContent>,
     },
     /// An assistant message's parts and provider id.
     Assistant {
         /// The provider-assigned message id, when the wire had one.
         id: Option<String>,
         /// The parts.
-        content: Vec<AssistantContent>,
+        content: NonEmpty<AssistantContent>,
     },
 }
 
 impl MessageParts {
+    /// A user message of `content`, or [`ContentError::Shape`] when it has
+    /// no parts.
+    ///
+    /// [`ContentError::Shape`]: content::parts::ContentError::Shape
+    pub fn user(content: Vec<UserContent>) -> Result<Self, content::parts::ContentError> {
+        NonEmpty::from_vec(content)
+            .map(|content| Self::User { content })
+            .map_err(|_| content::parts::ContentError::Shape)
+    }
+
+    /// An assistant message of `content` under `id`, or
+    /// [`ContentError::Shape`] when it has no parts.
+    ///
+    /// [`ContentError::Shape`]: content::parts::ContentError::Shape
+    pub fn assistant(
+        id: Option<String>,
+        content: Vec<AssistantContent>,
+    ) -> Result<Self, content::parts::ContentError> {
+        NonEmpty::from_vec(content)
+            .map(|content| Self::Assistant { id, content })
+            .map_err(|_| content::parts::ContentError::Shape)
+    }
+
     /// The message, verbatim.
     pub fn to_message(&self) -> Message {
         match self {
@@ -670,12 +694,10 @@ pub struct ToolCallSlot {
     pub index: usize,
     /// The call's id, as the model gave it.
     #[reflect(remote = crate::agent::reflect::ToolCallIdReflect)]
-    pub id: ToolCallId,
-    /// The provider's ids for the call, when the wire had them.
-    #[reflect(remote = crate::agent::reflect::ProviderCallIdReflect)]
-    pub provider: Option<ProviderCallId>,
+    pub id: CallId,
     /// The tool's name, as dispatched (a repaired call carries its repair).
-    pub name: String,
+    #[reflect(remote = crate::agent::reflect::ToolNameReflect)]
+    pub name: ToolName,
 }
 
 /// The run ended with an answer.
@@ -909,7 +931,7 @@ pub struct Reprompt(#[reflect(remote = crate::agent::reflect::MessageReflect)] p
 pub struct InvalidCall {
     /// The completion-local correlation identity of the rejected call.
     #[reflect(remote = crate::agent::reflect::ToolCallIdReflect)]
-    pub id: ToolCallId,
+    pub id: CallId,
     /// The tool's name.
     pub name: String,
     /// The arguments, verbatim.

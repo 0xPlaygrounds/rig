@@ -102,11 +102,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_6cc40b408bab44cd911a20d3"
-              },
-              "provider": {
-                "call_id": "call_6cc40b408bab44cd911a20d3"
+                "provider": {
+                  "call_id": "call_6cc40b408bab44cd911a20d3"
+                }
               },
               "function": {
                 "name": "final_result",

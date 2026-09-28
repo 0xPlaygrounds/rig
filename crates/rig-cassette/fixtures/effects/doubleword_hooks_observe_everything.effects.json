@@ -147,11 +147,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_88087036eabe44e3a002aa5f"
-              },
-              "provider": {
-                "call_id": "call_88087036eabe44e3a002aa5f"
+                "provider": {
+                  "call_id": "call_88087036eabe44e3a002aa5f"
+                }
               },
               "function": {
                 "name": "add",
@@ -282,11 +280,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_88087036eabe44e3a002aa5f"
-                  },
-                  "provider": {
-                    "call_id": "call_88087036eabe44e3a002aa5f"
+                    "provider": {
+                      "call_id": "call_88087036eabe44e3a002aa5f"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -306,11 +302,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_88087036eabe44e3a002aa5f"
-                  },
-                  "provider": {
-                    "call_id": "call_88087036eabe44e3a002aa5f"
+                    "provider": {
+                      "call_id": "call_88087036eabe44e3a002aa5f"
+                    }
                   },
                   "name": "add",
                   "content": [
@@ -448,11 +442,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_88087036eabe44e3a002aa5f"
-                  },
-                  "provider": {
-                    "call_id": "call_88087036eabe44e3a002aa5f"
+                    "provider": {
+                      "call_id": "call_88087036eabe44e3a002aa5f"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -472,11 +464,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_88087036eabe44e3a002aa5f"
-                  },
-                  "provider": {
-                    "call_id": "call_88087036eabe44e3a002aa5f"
+                    "provider": {
+                      "call_id": "call_88087036eabe44e3a002aa5f"
+                    }
                   },
                   "name": "add",
                   "content": [

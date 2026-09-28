@@ -6,7 +6,7 @@ use futures::StreamExt;
 use rig_candle::{CandleCompletionResponse, CandleModel, Generation, ModelData};
 use rig_core::Model;
 use rig_core::completion::CompletionRequest;
-use rig_core::streaming::{Delta, StreamEvent};
+use rig_core::streaming::{Item, StreamEvent};
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires RIG_CANDLE_MODEL_DIR with local Llama 3 safetensors or SmolLM2 GGUF artifacts"]
@@ -60,22 +60,12 @@ async fn loads_and_generates_with_a_real_local_model()
     let mut stream = model.stream(request.clone())?;
     let mut streamed_text = String::new();
     while let Some(item) = stream.next().await {
-        if let StreamEvent::BlockDelta {
-            delta: Delta::Text { text },
-            ..
-        } = item?
-        {
+        if let Item::Event(StreamEvent::Text { text, .. }) = item? {
             streamed_text.push_str(&text);
         }
     }
-    let final_response: CandleCompletionResponse = serde_json::from_value(
-        stream
-            .folded()
-            .terminal()
-            .cloned()
-            .ok_or_else(|| std::io::Error::other("real model stream omitted final metadata"))?
-            .raw,
-    )?;
+    let final_response: CandleCompletionResponse =
+        serde_json::from_value(stream.finish().await?.raw)?;
     if streamed_text != response.text || final_response.text != streamed_text {
         return Err(std::io::Error::other("buffered and streamed output differed").into());
     }
@@ -108,19 +98,14 @@ async fn loads_and_generates_with_a_real_local_model()
     let mut normalized_stream = model.stream(request)?;
     let mut normalized_streamed = String::new();
     while let Some(item) = normalized_stream.next().await {
-        if let StreamEvent::BlockDelta {
-            delta: Delta::Text { text },
-            ..
-        } = item?
-        {
+        if let Item::Event(StreamEvent::Text { text, .. }) = item? {
             normalized_streamed.push_str(&text);
         }
     }
     if normalized_streamed.is_empty() {
         return Err(std::io::Error::other("normalized stream produced no text").into());
     }
-    if normalized_stream.folded().terminal().is_none() {
-        return Err(std::io::Error::other("normalized stream omitted its terminal record").into());
-    }
+    // The stream's end: its absence would signal truncation.
+    normalized_stream.finish().await?;
     Ok(())
 }

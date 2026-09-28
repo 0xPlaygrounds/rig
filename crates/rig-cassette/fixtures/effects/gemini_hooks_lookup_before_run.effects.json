@@ -142,11 +142,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call_198208"
-              },
-              "provider": {
-                "call_id": "call_198208"
+                "provider": {
+                  "call_id": "call_198208"
+                }
               },
               "function": {
                 "name": "add",
@@ -266,11 +264,9 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "origin": "explicit",
-                    "id": "call_198208"
-                  },
-                  "provider": {
-                    "call_id": "call_198208"
+                    "provider": {
+                      "call_id": "call_198208"
+                    }
                   },
                   "function": {
                     "name": "add",
@@ -290,11 +286,9 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "origin": "explicit",
-                    "id": "call_198208"
-                  },
-                  "provider": {
-                    "call_id": "call_198208"
+                    "provider": {
+                      "call_id": "call_198208"
+                    }
                   },
                   "name": "add",
                   "content": [

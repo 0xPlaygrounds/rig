@@ -44,7 +44,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
                         message_index,
-                        name: tool_call.function.name.clone(),
+                        name: tool_call.function.name.clone().into(),
                         call_id: tool_call.id.to_string(),
                     });
                 }
@@ -62,7 +62,7 @@ fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
                 if let UserContent::ToolResult(tool_result) = item {
                     results.push(ToolEvent {
                         message_index,
-                        name: tool_result.name.clone(),
+                        name: tool_result.name.clone().into(),
                         call_id: tool_result.call.to_string(),
                     });
                 }
@@ -215,17 +215,23 @@ async fn long_history_replay_nonstreaming() {
             .message(Message::user("Now look up the harbor label with the tool."))
             .message(Message::Assistant {
                 id: None,
-                content: vec![
+                content: rig_core::NonEmpty::with_rest(
                     AssistantContent::text("Checking the harbor label now."),
-                    // Gemini issues no functionCall ids: an empty wire id
-                    // records no provider id and mints the correlation
-                    // handle, which never reaches the wire.
-                    AssistantContent::tool_call("", AlphaSignal::NAME, serde_json::json!({})),
-                ],
+                    [
+                        // Gemini issues no functionCall ids: an empty wire id
+                        // records no provider id and mints the correlation
+                        // handle, which never reaches the wire.
+                        AssistantContent::tool_call(
+                            "",
+                            rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
+                            serde_json::json!({}),
+                        ),
+                    ],
+                ),
             })
             .message(Message::tool_result(
-                "",
-                AlphaSignal::NAME,
+                rig_core::message::CallId::from_wire(""),
+                rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                 ALPHA_SIGNAL_OUTPUT,
             ))
             .message(Message::assistant("The harbor label is crimson-harbor."))

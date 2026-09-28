@@ -287,7 +287,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
         http_client::Error::Instance("connection reset by peer".into()),
     ];
     for error in transient {
-        let error = ProviderError::Http(error);
+        let error = ProviderError::Http(error.into());
         assert!(error.is_retryable(), "{error}");
         let report = error.report();
         assert_eq!(report.kind, ErrorKind::Http);
@@ -302,7 +302,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
         ),
     ];
     for error in permanent {
-        let error = ProviderError::Http(error);
+        let error = ProviderError::Http(error.into());
         assert!(!error.is_retryable(), "{error}");
         assert!(!error.report().retryable, "{error}");
     }
@@ -539,7 +539,7 @@ fn provider_reports_retain_structured_provider_metadata() {
 /// one has no provider response.
 #[test]
 fn http_reports_retain_body_and_headers() {
-    let report = ErrorReport::from(ProviderError::Http(http_client::Error::StreamEnded));
+    let report = ErrorReport::from(ProviderError::Http(http_client::Error::StreamEnded.into()));
     assert_eq!(report.kind, ErrorKind::Http);
     assert_eq!(report.http_status, None);
     assert!(report.provider_response.is_none());
@@ -588,9 +588,7 @@ fn wrapped_memory_error_retains_nested_sources() {
 
 #[test]
 fn wrapped_document_error_retains_nested_sources() {
-    let error = ProviderError::Request(Box::new(NestedBackendError(std::io::Error::other(
-        "document",
-    ))));
+    let error = ProviderError::request(NestedBackendError(std::io::Error::other("document")));
     assert!(
         std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
     );
@@ -610,25 +608,25 @@ fn reports_match_the_replaced_error_enums() {
     let cases: Vec<(&str, ProviderError, &str, AdapterErrorBoundary)> = vec![
         (
             "*::HttpError(StreamEnded)",
-            ProviderError::Http(H::StreamEnded),
+            ProviderError::Http(H::StreamEnded.into()),
             r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Stream ended","refusal":false,"retryable":true,"source_chain":[]}"#,
             AdapterErrorBoundary::Transport,
         ),
         (
             "*::HttpError(Instance)",
-            ProviderError::Http(H::instance(std::io::Error::other("conn reset"))),
+            ProviderError::Http(H::instance(std::io::Error::other("conn reset")).into()),
             r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Http client error: conn reset","refusal":false,"retryable":true,"source_chain":[]}"#,
             AdapterErrorBoundary::Unknown,
         ),
         (
             "*::HttpError(NoHeaders)",
-            ProviderError::Http(H::NoHeaders),
+            ProviderError::Http(H::NoHeaders.into()),
             r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Request in error state, cannot access headers","refusal":false,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::Request,
         ),
         (
             "*::JsonError",
-            ProviderError::Json(json_error()),
+            ProviderError::Json(json_error().into()),
             r#"{"code":null,"http_status":null,"kind":"json","message":"JsonError: EOF while parsing an object at line 1 column 1","refusal":false,"retryable":false,"source_chain":["EOF while parsing an object at line 1 column 1"]}"#,
             AdapterErrorBoundary::Decode,
         ),
@@ -691,7 +689,7 @@ fn reports_match_the_replaced_error_enums() {
         ),
         (
             "Completion/Transcription/ImageGeneration/AudioGeneration::RequestError",
-            ProviderError::Request(boxed()),
+            ProviderError::Request(boxed().into()),
             r#"{"code":null,"http_status":null,"kind":"request","message":"RequestError: io broke","refusal":false,"retryable":false,"source_chain":["io broke"]}"#,
             AdapterErrorBoundary::Request,
         ),
@@ -789,8 +787,8 @@ fn verdicts_on_a_handle_or_credential_keep_the_reply() {
 /// text, whatever the replaced enum called them.
 #[test]
 fn request_building_failures_share_one_shape() {
-    let document = ProviderError::Request(boxed());
-    let invalid = ProviderError::Request("bad name".into());
+    let document = ProviderError::Request(boxed().into());
+    let invalid = ProviderError::request("bad name");
     let http = ProviderError::from(
         http::Request::builder()
             .method("bad method")

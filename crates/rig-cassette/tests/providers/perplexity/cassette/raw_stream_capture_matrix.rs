@@ -2,7 +2,7 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own terminal
 //! record — for Perplexity the shared chat-completions
 //! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture is
 //! always on: there is no flag to request it, nothing about it reaches the
@@ -43,9 +43,10 @@ use serde_json::{Value, json};
 use super::super::support::with_perplexity_cassette;
 use crate::raw_capture::{
     assert_no_request_id, assert_normalized_lacks, capture_terminal, capture_text_and_terminal,
-    chat, stream_normalized_without_raw,
+    chat,
 };
 use crate::support::Observed;
+use crate::support::normalized_without_raw;
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;
@@ -152,7 +153,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     // contrast, is the dialect's own: `ChatUsage` keeps the fields no
     // OpenAI-compatible shape models, so Perplexity's `cost` reaches a caller
     // through `raw` rather than being lost at the type boundary.
-    let normalized = stream_normalized_without_raw(&terminal);
+    let normalized = normalized_without_raw(terminal.clone());
     assert_normalized_lacks(&normalized, &["object", "additional_params"]);
     assert!(
         recorded_usage.get("cost").is_some(),

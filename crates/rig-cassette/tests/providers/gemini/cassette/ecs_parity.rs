@@ -72,11 +72,10 @@ async fn streaming_smoke() {
                     .single(ecs.app.world())
                     .expect("one completion stream");
                 let final_event = stream
-                    .events
-                    .iter()
-                    .rev()
-                    .find_map(|event| match event {
-                        rig::streaming::StreamEvent::Final(final_event) => Some(final_event),
+                    .outcome
+                    .as_ref()
+                    .and_then(|outcome| match outcome {
+                        Ok(rig::effect::Outcome::Completion(final_event)) => Some(final_event),
                         _ => None,
                     })
                     .expect("provider terminal stream record");

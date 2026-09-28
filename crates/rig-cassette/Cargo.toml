@@ -12,12 +12,13 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # runtimes, replays the committed corpora, and is meaningless outside this
 # workspace, so every dev-dependency below is a version-less path entry.
 # The corpora are replay fixtures the binaries read at runtime, never embedded
-# with `include_*!`: 2,841 provider cassettes (50 MiB) and 842 effect goldens
-# (17 MiB). Sweeping either into the tarball would put the upload over the
-# crates.io 10 MiB limit, which is enforced server-side and so never surfaces
-# in `cargo publish --dry-run`. Cargo drops every `[[test]]` target below from
-# the normalized manifest because their sources are excluded; the engine's own
-# unit tests live in `src/` and stay published.
+# with `include_*!`: 2,841 provider cassettes (50 MiB), 842 effect goldens
+# (17 MiB) and the chat parity snapshot (5 MiB). Sweeping any of them into the
+# tarball would put the upload over the crates.io 10 MiB limit, which is
+# enforced server-side and so never surfaces in `cargo publish --dry-run`.
+# Cargo drops every `[[test]]` target below from the normalized manifest
+# because their sources are excluded; the engine's own unit tests live in
+# `src/` and stay published.
 exclude = [
     "fixtures/**",
     "tests/**",
@@ -107,6 +108,7 @@ bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_tasks = { workspace = true }
 bytes = { workspace = true }
+http = { workspace = true }
 proptest = "1"
 reqwest = { workspace = true, features = ["json", "stream"] }
 schemars = { workspace = true }
@@ -220,4 +222,8 @@ required-features = ["http"]
 
 [[test]]
 name = "cassette_history_survival"
+required-features = ["http"]
+
+[[test]]
+name = "chat_parity"
 required-features = ["http"]

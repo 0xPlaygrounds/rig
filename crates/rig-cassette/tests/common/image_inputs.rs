@@ -44,7 +44,7 @@ fn request(
 ) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: history,
+        chat_history: rig_core::NonEmpty::from_vec(history).expect("non-empty"),
         documents: vec![],
         tools,
         temperature: None,
@@ -91,10 +91,10 @@ pub async fn as_user_content<W, T>(
     T: rig::driver::Transport<W>,
 {
     let message = Message::User {
-        content: vec![
+        content: rig_core::NonEmpty::with_rest(
             UserContent::image_base64(BASE64_STANDARD.encode(bytes), Some(media_type(bytes)), None),
-            UserContent::text(QUESTION),
-        ],
+            [UserContent::text(QUESTION)],
+        ),
     };
     let reply = vision
         .call(request(vec![message], vec![], params))
@@ -138,19 +138,18 @@ pub async fn as_tool_result<W, T>(
         prompt,
         Message::Assistant {
             id: first.message_id.clone(),
-            content: first.choice.clone(),
+            content: rig_core::NonEmpty::from_vec(first.choice.clone()).expect("non-empty"),
         },
         Message::User {
-            content: vec![UserContent::tool_result_for(
+            content: rig_core::NonEmpty::new(UserContent::tool_result(
                 call.id.clone(),
-                call.provider.clone(),
                 call.function.name.clone(),
-                vec![ToolResultContent::image_base64(
+                rig_core::NonEmpty::new(ToolResultContent::image_base64(
                     BASE64_STANDARD.encode(bytes),
                     Some(media_type(bytes)),
                     None,
-                )],
-            )],
+                )),
+            )),
         },
     ];
     let reply = model

@@ -9,16 +9,11 @@
 //! JSON websocket message per SSE `data:` line — the wire events are identical
 //! across the two transports, only the framing differs. The driver runs the
 //! REAL session pipeline (`ResponsesWebSocketSession::next_event` over a local
-//! ws server) and replays the observed events through the shared
-//! `RawChoiceAccumulator` + normalization via
-//! `drain_openai_responses_websocket_events`.
+//! ws server) and replays the observed events through the Responses wire's
+//! decoder via `drain_openai_responses_websocket_events`.
 //!
-//! The websocket turn is request/response: a corrupt frame fails the whole
-//! session (`fail_session`) instead of surfacing an in-band `Err` item beside
-//! a still-completing terminal, so the two defective-frame scenarios are
-//! sanctioned `xfail`s rather than capability gaps — the wire CAN spell the
-//! frames; the pipeline's policy differs by design (documented in
-//! MIGRATING.md, #2258).
+//! A corrupt frame fails the websocket session (`fail_session`) and ends the
+//! turn, as a corrupt frame ends every reply.
 
 #![cfg(not(target_family = "wasm"))]
 use futures::{SinkExt, StreamExt};
@@ -26,10 +21,10 @@ use rig_core::completion::CompletionRequest;
 use rig_core::error::ProviderError;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
-use rig_core::test_utils::RecordingHttpClient;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance, fixtures::openai_responses,
 };
+use rig_core::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
 
 use rig_tungstenite::tokio_tungstenite::{accept_async, tungstenite::Message};
 use tokio::net::TcpListener;
@@ -91,88 +86,39 @@ fn spawn_server(listener: TcpListener, messages: Vec<String>, abort: bool) {
 }
 
 /// Drain one OpenAI Responses *websocket* turn's server events into
-/// everything a streaming consumer would observe, through the SAME decode
-/// state machine the production session drives
-/// (`RawChoiceAccumulator` + `normalize_responses_stream`).
-///
-/// The websocket pipeline is request/response: `next_event` has no in-band
-/// `Err` channel, so the caller collects events (stopping at the first
-/// terminal or session error) and this helper replays them. One policy the
-/// helper supplies that the buffered session cannot: tool calls the provider
-/// fully delivered flush before a session error, mirroring the SSE loop's
-/// flush-before-terminal-error contract (`RawChoiceAccumulator::flush_tool_calls`).
+/// everything a streaming consumer would observe: each event the session
+/// read, re-serialized as the frame it arrived as, through the SAME
+/// Responses decoder and fold the session's `completion` runs. A session
+/// failure ends the frames, as a transport failure ends a stream.
 async fn drain_openai_responses_websocket_events(
-    provider: &'static str,
     events: Vec<Result<ResponsesWebSocketEvent, ProviderError>>,
-) -> conformance::DrainedStream {
-    use ResponsesWebSocketEvent;
-    use rig_core::operation::AdapterOutput;
-    use rig_core::providers::openai::responses_api::streaming::{
-        RawChoiceAccumulator, ResponseChunkKind, ResponsesStreamOptions,
-    };
-
-    let mut accumulator = RawChoiceAccumulator::new(provider, None);
-    let mut out = AdapterOutput::new();
-    let mut errored = false;
+) -> Result<conformance::DrainedStream, ProviderError> {
+    let mut body = String::new();
+    let mut failed = false;
     for event in events {
-        match event {
-            Ok(ResponsesWebSocketEvent::Item(chunk)) => {
-                accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict(), &mut out);
-            }
-            Ok(ResponsesWebSocketEvent::Response(chunk)) => {
-                let terminal = matches!(
-                    chunk.kind,
-                    ResponseChunkKind::ResponseCompleted
-                        | ResponseChunkKind::ResponseFailed
-                        | ResponseChunkKind::ResponseIncomplete
-                );
-                if let Err(error) =
-                    accumulator.record_response_chunk(chunk.kind, chunk.response, "", &mut out)
-                {
-                    accumulator.flush_tool_calls(&mut out);
-                    out.error(error);
-                    errored = true;
-                    break;
-                }
-                if terminal {
-                    break;
-                }
-            }
-            // Semantic skip, raw passthrough: an unknown frame never reaches
-            // the accumulator but is still yielded verbatim.
-            Ok(ResponsesWebSocketEvent::Unknown(value)) => out.unknown(value),
-            // `response.done` / `error` envelopes are websocket-only shapes the
-            // fixtures never script; the production session maps them to a
-            // terminal or a provider error before this replay runs.
-            Ok(ResponsesWebSocketEvent::Done(_)) => {}
-            Ok(ResponsesWebSocketEvent::Error(error)) => {
-                accumulator.flush_tool_calls(&mut out);
-                out.error(ProviderError::Provider(error.to_string()));
-                errored = true;
+        let frame = match event {
+            Ok(ResponsesWebSocketEvent::Item(chunk)) => serde_json::to_string(&chunk)?,
+            Ok(ResponsesWebSocketEvent::Response(chunk)) => serde_json::to_string(&chunk)?,
+            Ok(ResponsesWebSocketEvent::Unknown(value)) => value.value().to_string(),
+            // `response.done` is a websocket-only trailer the fixtures never
+            // script.
+            Ok(ResponsesWebSocketEvent::Done(_)) => continue,
+            Ok(ResponsesWebSocketEvent::Error(_)) | Err(_) => {
+                failed = true;
                 break;
             }
-            Err(error) => {
-                accumulator.flush_tool_calls(&mut out);
-                out.error(error);
-                errored = true;
-                break;
-            }
-        }
+        };
+        body.push_str(&format!("data: {frame}\n\n"));
     }
-    if !errored {
-        accumulator.finish(&mut out);
+    let mut chunks = vec![Ok(bytes::Bytes::from(body))];
+    if failed {
+        chunks.push(Err(rig_core::http_client::Error::StreamEnded));
     }
-    // The reply ended, as the driver ends one: the sink closes what is still
-    // open, ahead of a terminal failure.
-    out.finish();
-
-    let stream = rig_core::streaming::CompletionStream::relay(
-        provider,
-        Box::pin(futures::stream::iter(out.into_items().into_iter().map(
-            |item| item.map_err(|error| rig_core::error::ErrorReport::from(&error)),
-        ))),
-    );
-    conformance::fixtures::drain(stream).await
+    let model = OpenAIConfig::new("test-key")
+        .connect(SequencedStreamingHttpClient::new(chunks))
+        .responses("gpt-5.4");
+    let stream = model.stream(CompletionRequest::new("hello"))?;
+    Ok(conformance::fixtures::drain(stream).await)
 }
 
 fn driver() -> conformance::WireDriver {
@@ -215,7 +161,7 @@ fn driver() -> conformance::WireDriver {
                 }
             }
 
-            Ok(drain_openai_responses_websocket_events("openai-responses-websocket", events).await)
+            drain_openai_responses_websocket_events(events).await
         })
     })
 }
@@ -234,10 +180,6 @@ pub mod openai_responses_websocket_suite {
         provider: "openai_responses_websocket",
         fixture: fixture(),
         manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
-        xfail: [
-            "malformed_frame_surfaces_err_and_terminal_still_completes: the websocket turn is request/response — a corrupt frame fails the whole session, there is no in-band Err channel beside a completing terminal (#2258 unification review)",
-            "defective_known_event_surfaces_err: the websocket turn is request/response — a schema-defective known frame fails the whole session instead of surfacing an in-band Err (#2258 unification review)",
-        ],
     }
 }
 

@@ -12,11 +12,10 @@
 //! - Model listing dropped `description` and `max_context_length`, both of
 //!   which `Model` has slots for.
 
-use rig::streaming::Delta;
-
 use anyhow::Result;
 use futures::StreamExt;
 use rig::providers::mistral;
+use rig::streaming::Item;
 
 use super::support::with_mistral_capability_cassette;
 use rig::completion::CompletionRequest;
@@ -138,11 +137,7 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
 
             let mut text = String::new();
             while let Some(item) = stream.next().await {
-                if let rig::streaming::StreamEvent::BlockDelta {
-                    delta: Delta::Text { text: chunk },
-                    ..
-                } = item?
-                {
+                if let Item::Event(rig::streaming::StreamEvent::Text { text: chunk, .. }) = item? {
                     text.push_str(&chunk);
                 }
             }
@@ -261,18 +256,18 @@ fn turn_one_history() -> Vec<rig::completion::Message> {
     vec![
         rig::completion::Message::Assistant {
             id: None,
-            content: vec![rig::message::AssistantContent::tool_call(
+            content: rig_core::NonEmpty::new(rig::message::AssistantContent::tool_call(
                 "call_REDACTED_1",
-                "add",
+                rig_core::message::ToolName::new("add").expect("tool name"),
                 serde_json::json!({"x": 2, "y": 3}),
-            )],
+            )),
         },
         rig::completion::Message::User {
-            content: vec![rig::message::UserContent::tool_result(
-                "call_REDACTED_1",
-                "add",
-                vec![rig::message::ToolResultContent::text("5")],
-            )],
+            content: rig_core::NonEmpty::new(rig::message::UserContent::tool_result(
+                rig_core::message::CallId::from_wire("call_REDACTED_1"),
+                rig_core::message::ToolName::new("add").expect("tool name"),
+                rig_core::NonEmpty::new(rig::message::ToolResultContent::text("5")),
+            )),
         },
     ]
 }

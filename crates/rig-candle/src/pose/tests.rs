@@ -230,10 +230,9 @@ fn a_reply_that_skips_or_stops_before_a_frame_is_refused() {
         people: Vec::new(),
         elapsed_ms: 0,
     };
-    let fold = || {
-        let descriptor = rig_core::wire::Descriptor::new("candle");
-        let mut call = Call::new(&descriptor, rig_core::wire::Mode::Streaming);
-        PoseEstimation::fold(&request, &mut call)
+    let fold = || PoseFold {
+        expected: request.frames.len(),
+        track: PoseTrack::default(),
     };
     let reply = || Reply {
         provider: "candle".into(),
@@ -246,15 +245,13 @@ fn a_reply_that_skips_or_stops_before_a_frame_is_refused() {
 
     let mut truncated = fold();
     truncated.absorb(&event(0)).expect("the first frame");
-    assert!(!PoseEstimation::is_terminal(&event(0)));
-    assert!(truncated.finish(reply()).is_err());
+    assert!(truncated.finish((), reply()).is_err());
 
     let mut whole = fold();
     whole.absorb(&event(0)).expect("the first frame");
     whole.absorb(&event(1)).expect("the second frame");
-    assert!(PoseEstimation::is_terminal(&event(1)));
     assert_eq!(
-        whole.finish(reply()).expect("every frame").frames,
+        whole.finish((), reply()).expect("every frame").frames,
         vec![event(0), event(1)]
     );
 }
@@ -276,8 +273,10 @@ async fn a_loaded_checkpoint_streams_one_event_per_frame_in_order() {
     let video = PoseRequest::from(vec![frame(48, 32), frame(20, 40), frame(64, 64)]);
     let mut stream = model.stream(video.clone()).expect("the stream opens");
     let mut events = Vec::new();
-    while let Some(event) = stream.next().await {
-        events.push(event.expect("a frame's poses"));
+    while let Some(item) = stream.next().await {
+        if let rig_core::streaming::Item::Event(event) = item.expect("a frame's poses") {
+            events.push(event);
+        }
     }
     assert_eq!(
         events
@@ -304,6 +303,11 @@ async fn a_request_without_frames_is_refused_before_anything_runs() {
         .build()
         .expect("the checkpoint loads")
         .pose();
-    assert!(model.stream(PoseRequest::default()).is_err());
+    // The refusal is the stream's only item.
+    let mut stream = model
+        .stream(PoseRequest::default())
+        .expect("the stream opens");
+    assert!(matches!(stream.next().await, Some(Err(_))));
+    assert!(stream.next().await.is_none());
     assert!(model.call(PoseRequest::default()).await.is_err());
 }

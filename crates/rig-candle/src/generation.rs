@@ -232,8 +232,7 @@ use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::utils::apply_repeat_penalty;
 use rig_core::completion::AssistantContent;
-use rig_core::message::ReasoningContent;
-use rig_core::streaming::{BlockId, MintKind, ToolCallEnd, non_empty_id};
+use rig_core::message::{Reasoning, ToolCall};
 use tokenizers::tokenizer::DecodeStream;
 use tokenizers::{
     DecoderWrapper, ModelWrapper, NormalizerWrapper, PostProcessorWrapper, PreTokenizerWrapper,
@@ -591,24 +590,11 @@ pub struct InferredCompletion {
 pub enum GenerationEvent {
     /// A fragment of visible text.
     Text(String),
-    /// A whole tool call parsed out of the buffered turn, keyed by its
-    /// wire-issued id; arguments never stream.
-    ToolCall {
-        /// The call's block identity for the life of the stream.
-        id: BlockId,
-        /// The authoritative call: name, parsed arguments, and decorations.
-        end: ToolCallEnd,
-    },
+    /// A whole tool call parsed out of the buffered turn; arguments never
+    /// stream.
+    ToolCall(ToolCall),
     /// A whole reasoning block parsed out of the buffered turn.
-    Reasoning {
-        /// The block identity: the wire id when the parse carried one, else
-        /// a per-stream constant minted identity.
-        id: BlockId,
-        /// The provider-issued reasoning id, when the parse carried one.
-        provider_id: Option<String>,
-        /// The block's content.
-        content: ReasoningContent,
-    },
+    Reasoning(Reasoning),
     /// The terminal record: generation finished.
     Final(CandleCompletionResponse),
 }
@@ -646,39 +632,10 @@ fn emit_parsed_items(
     for item in items {
         match item {
             AssistantContent::Text(text) => emit(GenerationEvent::Text(text.text))?,
-            AssistantContent::ToolCall(call) => {
-                let id = if let Some(provider) = &call.provider {
-                    BlockId::wire(provider.call_id.clone())
-                } else {
-                    call.id.generated().cloned().ok_or_else(|| {
-                        CandleError::Inference(
-                            "id-less parsed call has no normalized block identity".into(),
-                        )
-                    })?
-                };
-                let mut end = ToolCallEnd::whole(call.function.name, call.function.arguments)
-                    .with_durable_id(call.id)
-                    .with_signature(call.signature)
-                    .with_additional_params(call.additional_params);
-                if let Some(provider) = call.provider {
-                    end = end.with_tool_id(provider.call_id);
-                }
-                emit(GenerationEvent::ToolCall { id, end })?;
-            }
+            AssistantContent::ToolCall(call) => emit(GenerationEvent::ToolCall(call))?,
             AssistantContent::Reasoning(reasoning) => {
-                // Whole reasoning blocks share an identity without replacing
-                // accumulated deltas because local generation emits no reasoning deltas.
-                for content in reasoning.content {
-                    emit(GenerationEvent::Reasoning {
-                        // Local generation has no wire id; fall back to a
-                        // per-stream constant minted identity.
-                        id: reasoning
-                            .id
-                            .clone()
-                            .map_or(BlockId::minted(MintKind::Reasoning, 0), BlockId::wire),
-                        provider_id: reasoning.id.clone().and_then(non_empty_id),
-                        content,
-                    })?;
+                if let Some(reasoning) = reasoning.open(reasoning.issuer()).cloned() {
+                    emit(GenerationEvent::Reasoning(reasoning))?;
                 }
             }
             AssistantContent::Image(_) => {

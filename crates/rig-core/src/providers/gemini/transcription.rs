@@ -1,3 +1,4 @@
+use crate::wire::Flow;
 use std::path::Path;
 
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -106,7 +107,7 @@ impl Wire for Transcriptions {
     type Op = Transcription;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = TranscriptionsDecoder;
+    type Decoder<'id> = TranscriptionsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME).model(self.model.as_str())
@@ -130,7 +131,7 @@ impl Wire for Transcriptions {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         TranscriptionsDecoder
     }
 }
@@ -140,7 +141,7 @@ impl Wire for Transcriptions {
 #[derive(Default)]
 pub struct TranscriptionsDecoder;
 
-impl Decoder<Transcription> for TranscriptionsDecoder {
+impl<'id> Decoder<'id, Transcription> for TranscriptionsDecoder {
     type Event = GenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -150,8 +151,12 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
         )
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut Out<'_, Transcription>) {
-        out.push(event.normalize(super::PROVIDER_NAME));
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, Transcription>,
+    ) -> Result<Flow, ProviderError> {
+        Ok(out.end(event.normalize(super::PROVIDER_NAME)?))
     }
 }
 

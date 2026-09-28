@@ -24,8 +24,8 @@ fn model_with_malformed_call() -> MockCompletionModel {
         vec![
             MockStreamEvent::tool_call_name_delta("tool_call_1", "add"),
             MockStreamEvent::tool_call_arguments_delta("tool_call_1", RAW),
-            // Closes under `UnparseableToolInput::Error`: the wire promised
-            // a complete block.
+            // The wire promised a complete call: arguments that do not parse
+            // are the call's error.
             MockStreamEvent::tool_call_end("tool_call_1"),
             MockStreamEvent::final_response_with_total_tokens(4),
         ],
@@ -190,7 +190,13 @@ async fn malformed_arguments_skip_feeds_the_parse_failure_back() {
             _ => None,
         })
         .expect("skip must emit a synthetic tool result");
-    assert_eq!(skipped.call.explicit(), Some("tool_call_1"));
+    assert_eq!(
+        skipped
+            .call
+            .provider()
+            .map(|provider| provider.call_id.as_str()),
+        Some("tool_call_1")
+    );
     assert!(skipped.content.iter().any(|content| matches!(
         content,
         ToolResultContent::Text(text) if text.text.contains("not valid JSON") && !text.text.contains(RAW)
@@ -201,7 +207,7 @@ async fn malformed_arguments_skip_feeds_the_parse_failure_back() {
     assert!(requests[1].chat_history.iter().any(|message| {
         matches!(message, Message::User { content } if content.iter().any(|item| matches!(
             item,
-            UserContent::ToolResult(result) if result.call.explicit() == Some("tool_call_1")
+            UserContent::ToolResult(result) if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("tool_call_1")
         )))
     }));
 }

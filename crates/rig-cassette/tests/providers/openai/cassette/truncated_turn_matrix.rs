@@ -346,7 +346,7 @@ async fn chat_streaming_reasoning_budget_exhausted() {
 
             assert!(text.is_empty());
             assert_eq!(
-                terminal.expect("terminal record").finish_reason,
+                terminal.expect("terminal record").finish_reason(),
                 Some(FinishReason::Length)
             );
         },
@@ -371,7 +371,7 @@ async fn chat_streaming_partial_text_truncation() {
 
             assert!(!text.is_empty());
             assert_eq!(
-                terminal.expect("terminal record").finish_reason,
+                terminal.expect("terminal record").finish_reason(),
                 Some(FinishReason::Length)
             );
         },
@@ -404,7 +404,7 @@ async fn chat_transports_agree_on_truncation() {
 
             assert_eq!(
                 blocking.finish_reason(),
-                terminal.and_then(|terminal| terminal.finish_reason)
+                terminal.and_then(|terminal| terminal.finish_reason())
             );
             assert_eq!(
                 assistant_text_response(&blocking.choice).unwrap_or_default(),
@@ -478,7 +478,7 @@ async fn responses_streaming_reasoning_budget_exhausted() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
 
             assert_eq!(
-                terminal.expect("terminal record").finish_reason,
+                terminal.expect("terminal record").finish_reason(),
                 Some(FinishReason::Length)
             );
         },

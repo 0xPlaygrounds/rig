@@ -5,10 +5,11 @@ use futures::{StreamExt, executor::block_on, task::noop_waker_ref};
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::completion::CompletionResponse;
-use crate::streaming::StreamFinal;
+use crate::operation::Finish;
+use crate::streaming::{Item, Part, Relayed, StreamEvent, UnknownPayload};
 
-/// The events a completion outcome re-emits when a stream consumer asks for it.
-fn re_emitted_events(response: &CompletionResponse) -> Vec<Result<StreamEvent, ErrorReport>> {
+/// The items a completion outcome re-emits when a stream consumer asks for it.
+fn re_emitted_events(response: &CompletionResponse) -> Vec<Result<Relayed, ErrorReport>> {
     block_on(
         Reply::Outcome(Ok(Outcome::Completion(response.clone())))
             .into_stream()
@@ -34,7 +35,7 @@ impl Observe for Observer {
         !self.0.lock().expect("seen").discard_events
     }
 
-    fn event(&mut self, _: &StreamEvent) {
+    fn event(&mut self, _: &Item<StreamEvent>) {
         self.0.lock().expect("seen").events += 1;
     }
 
@@ -77,11 +78,13 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             None,
         );
         let delivered = block_on(reply.into_stream().collect::<Vec<_>>());
-        assert!(
-            delivered
-                .iter()
-                .any(|item| matches!(item, Ok(StreamEvent::Unknown(_))))
-        );
+        assert!(delivered.iter().any(|item| matches!(
+            item,
+            Ok(Relayed::Item(Item::Event(StreamEvent::End {
+                content: AssistantContent::Image(_),
+                ..
+            })))
+        )));
         let seen = seen.lock().expect("seen");
         assert_eq!(seen.outcomes.len(), 1);
         let Ok(Outcome::Completion(recorded)) = &seen.outcomes[0] else {
@@ -92,11 +95,15 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             expected
         );
         assert_eq!(
-            serde_json::to_value(re_emitted_events(recorded)).expect("replay events"),
-            serde_json::to_value(&delivered).expect("delivered events"),
+            re_emitted_events(recorded),
+            delivered,
             "outcome-only replay must reconstruct the same image-bearing stream"
         );
-        assert_eq!(seen.events, if keep_events { delivered.len() } else { 0 });
+        // Every delivered item but the response is an event.
+        assert_eq!(
+            seen.events,
+            if keep_events { delivered.len() - 1 } else { 0 }
+        );
     }
 }
 
@@ -161,11 +168,7 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
     let reply = Reply::written(move |mut writer| async move {
         writer.text("prefix").await.expect("consumer present");
         writer
-            .finish(StreamFinal::new(
-                "test",
-                Default::default(),
-                serde_json::json!({}),
-            ))
+            .finish("test", Finish::default())
             .await
             .expect("consumer present");
         finished_in_writer.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -210,22 +213,26 @@ fn dropping_the_writer_without_finishing_is_truncation() {
 
 #[test]
 fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
-    use crate::message::{AssistantContent, ToolCall, ToolCallId, ToolFunction};
-    let mut calls = ["local-call", "tool-00", "tool-0", "wire-call"]
+    use crate::message::{AssistantContent, CallId, ToolCall, ToolFunction, ToolName};
+    let mut calls = [0, 1, 2]
         .into_iter()
         .map(|id| {
             AssistantContent::ToolCall(ToolCall::new(
-                ToolCallId::new(id).expect("nonempty local id"),
-                ToolFunction::new("local".into(), serde_json::json!({"id": id})),
+                CallId::from_wire(""),
+                ToolFunction::new(
+                    ToolName::new("local").expect("tool name"),
+                    serde_json::json!({"id": id}),
+                ),
             ))
         })
         .collect::<Vec<_>>();
     let mut provider_call = ToolCall::new(
-        ToolCallId::new("local-provider").expect("local provider call id"),
-        ToolFunction::new("provider".into(), serde_json::json!({"x": 1})),
+        CallId::from_dual_wire("wire-item", "wire-call"),
+        ToolFunction::new(
+            ToolName::new("provider").expect("tool name"),
+            serde_json::json!({"x": 1}),
+        ),
     );
-    provider_call.provider = crate::message::ProviderCallId::new("wire-call")
-        .map(|provider| provider.with_item_id("wire-item"));
     provider_call.signature = Some("signature".into());
     provider_call.additional_params = Some(serde_json::json!({"metadata": true}));
     calls.push(AssistantContent::ToolCall(provider_call));
@@ -235,30 +242,25 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
         "local",
         serde_json::json!({}),
     );
-    let mut fold = crate::operation::CompletionFold::default();
-    let mut published = Vec::new();
-    let events: Vec<Result<StreamEvent, ErrorReport>> = serde_json::from_value(
-        serde_json::to_value(re_emitted_events(&response)).expect("serialize events"),
-    )
-    .expect("deserialize events");
-    for event in events {
-        let event = event.expect("response reemits");
-        crate::wire::Fold::absorb(&mut fold, &event).expect("event folds");
-        if let StreamEvent::BlockEnd {
-            block: Some(content),
-            ..
-        } = event
-        {
-            published.push(content);
-        }
-    }
+    let items = re_emitted_events(&response);
+    let published: Vec<AssistantContent> = items
+        .iter()
+        .filter_map(|item| match item {
+            Ok(Relayed::Item(Item::Event(StreamEvent::End { content, .. }))) => {
+                Some(content.clone())
+            }
+            _ => None,
+        })
+        .collect();
     assert_eq!(
         published, calls,
         "completed events preserve local identities"
     );
+    let Some(Ok(Relayed::Done(done))) = items.last() else {
+        panic!("the response ends the stream: {items:?}");
+    };
     assert_eq!(
-        fold.snapshot(),
-        calls,
+        done.choice, calls,
         "final response preserves local identities"
     );
 }
@@ -270,11 +272,7 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
     let finished = completed.clone();
     let mut stream = Reply::written(move |writer| async move {
         writer
-            .finish(StreamFinal::new(
-                "writer",
-                Default::default(),
-                serde_json::json!({}),
-            ))
+            .finish("writer", Finish::default())
             .await
             .expect("open");
         wait.await.expect("released");
@@ -284,11 +282,11 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
     let mut cx = Context::from_waker(noop_waker_ref());
     assert!(matches!(
         stream.as_mut().poll_next(&mut cx),
-        std::task::Poll::Ready(Some(Ok(StreamEvent::Final(_))))
+        std::task::Poll::Ready(Some(Ok(Relayed::Done(_))))
     ));
     assert!(
         stream.as_mut().poll_next(&mut cx).is_pending(),
-        "Final must not end the owned writing future"
+        "the response must not end the owned writing future"
     );
     assert!(!completed.load(std::sync::atomic::Ordering::SeqCst));
     release.send(()).expect("writer remains alive");
@@ -303,7 +301,7 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
 fn terminal_items_carry_the_original_answer_in_one_observer_call() {
     use crate::message::{AssistantContent, DocumentSourceKind, Image};
     type Observation = (
-        Result<StreamEvent, ErrorReport>,
+        Result<Relayed, ErrorReport>,
         Option<Result<Outcome, ErrorReport>>,
     );
     struct AtomicObserver(Arc<Mutex<Vec<Observation>>>);
@@ -314,7 +312,7 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
         fn keep_events(&self) -> bool {
             true
         }
-        fn event(&mut self, _: &StreamEvent) {
+        fn event(&mut self, _: &Item<StreamEvent>) {
             panic!("separate event callback");
         }
         fn stream_error(&mut self, _: &ErrorReport) {
@@ -322,7 +320,7 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
         }
         fn stream_item(
             &mut self,
-            item: &Result<StreamEvent, ErrorReport>,
+            item: &Result<Relayed, ErrorReport>,
             outcome: Option<&Result<Outcome, ErrorReport>>,
         ) {
             self.0
@@ -342,16 +340,12 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
         "image-provider",
         serde_json::json!({}),
     );
-    let original = Ok(Outcome::Completion(response));
+    let original = Ok(Outcome::Completion(response.clone()));
     let error = ErrorReport::new(ErrorKind::Response, "first error");
-    let final_event = Ok(StreamEvent::Final(StreamFinal::new(
-        "test",
-        Default::default(),
-        serde_json::json!({}),
-    )));
-    let after = Ok(StreamEvent::Unknown(crate::streaming::UnknownPayload::new(
+    let final_event = Ok(Relayed::Done(Box::new(response)));
+    let after = Ok(Relayed::Item(Item::Unknown(UnknownPayload::new(
         serde_json::json!({"after": true}),
-    )));
+    ))));
     let terminal_answer = StreamTap::new()
         .observe(&final_event)
         .expect("terminal folds");
@@ -392,7 +386,7 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
             .filter_map(|(item, answer)| answer.as_ref().map(|answer| (item, answer)))
             .collect();
         assert_eq!(answers.len(), 1);
-        assert!(matches!(answers[0].0, Ok(StreamEvent::Final(_)) | Err(_)));
+        assert!(matches!(answers[0].0, Ok(Relayed::Done(_)) | Err(_)));
         assert_eq!(
             serde_json::to_value(answers[0].1).expect("answer"),
             serde_json::to_value(expected).expect("expected")
@@ -471,7 +465,7 @@ impl Observe for ProviderObserver {
     fn keep_events(&self) -> bool {
         false
     }
-    fn event(&mut self, _: &StreamEvent) {}
+    fn event(&mut self, _: &Item<StreamEvent>) {}
     fn discard(&mut self, _: &str) {}
     fn patch(&mut self, _: &EffectKind) {}
 }
@@ -565,23 +559,21 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
 /// the observer is told exactly one outcome.
 #[test]
 fn an_observer_never_changes_what_the_consumer_receives() {
-    use crate::{
-        message::{AssistantContent, DocumentSourceKind, Image},
-        streaming::{BlockId, StreamFinal, UnknownPayload},
-    };
+    use crate::message::{AssistantContent, DocumentSourceKind, Image};
 
     type Shape = fn() -> Reply;
-    fn terminal() -> Result<StreamEvent, ErrorReport> {
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "test",
+    fn terminal() -> Result<Relayed, ErrorReport> {
+        Ok(Relayed::Done(Box::new(CompletionResponse::new(
+            vec![AssistantContent::text("body")],
             Default::default(),
+            "test",
             serde_json::json!({}),
-        )))
+        ))))
     }
-    fn text(fragment: &str) -> Result<StreamEvent, ErrorReport> {
-        Ok(StreamEvent::text(BlockId::wire("text-0"), fragment))
+    fn text(fragment: &str) -> Result<Relayed, ErrorReport> {
+        Ok(text_item(fragment))
     }
-    fn items(items: Vec<Result<StreamEvent, ErrorReport>>) -> Reply {
+    fn items(items: Vec<Result<Relayed, ErrorReport>>) -> Reply {
         Reply::Stream(Box::pin(futures::stream::iter(items)))
     }
     let shapes: [(&str, Shape); 6] = [
@@ -616,11 +608,11 @@ fn an_observer_never_changes_what_the_consumer_receives() {
             items(vec![
                 text("body"),
                 terminal(),
-                Ok(StreamEvent::Unknown(UnknownPayload::new(
+                Ok(Relayed::Item(Item::Unknown(UnknownPayload::new(
                     serde_json::json!({
                         "late": true
                     }),
-                ))),
+                )))),
             ])
         }),
         ("a stream that ends at once", || items(Vec::new())),
@@ -632,36 +624,35 @@ fn an_observer_never_changes_what_the_consumer_receives() {
                 observer: Box::new(Observer(seen.clone())),
                 told: false,
             };
-            let (bare, watched) = if streaming {
-                (
-                    serde_json::to_value(block_on(
+            if streaming {
+                assert_eq!(
+                    block_on(
                         shape()
                             .observed(true, None, None)
                             .into_stream()
                             .collect::<Vec<_>>(),
-                    )),
-                    serde_json::to_value(block_on(
+                    ),
+                    block_on(
                         shape()
                             .observed(true, Some(observed), None)
                             .into_stream()
                             .collect::<Vec<_>>(),
-                    )),
-                )
+                    ),
+                    "{name}, streaming"
+                );
             } else {
-                (
+                assert_eq!(
                     serde_json::to_value(block_on(
                         shape().observed(false, None, None).into_outcome(),
-                    )),
+                    ))
+                    .expect("serde"),
                     serde_json::to_value(block_on(
                         shape().observed(false, Some(observed), None).into_outcome(),
-                    )),
-                )
-            };
-            assert_eq!(
-                bare.expect("serde"),
-                watched.expect("serde"),
-                "{name}, streaming: {streaming}"
-            );
+                    ))
+                    .expect("serde"),
+                    "{name}, unary"
+                );
+            }
             assert_eq!(
                 seen.lock().expect("seen").outcomes.len(),
                 1,
@@ -671,84 +662,32 @@ fn an_observer_never_changes_what_the_consumer_receives() {
     }
 }
 
-#[test]
-fn a_streamed_reply_folded_to_an_outcome_records_its_reasoning_issuer() {
-    use crate::message::{AssistantContent, Reasoning};
-    use crate::streaming::StreamEvent;
-
-    let mut tap = StreamTap::new();
-    for event in re_emitted_events(&CompletionResponse::new(
-        vec![AssistantContent::Reasoning(Reasoning::new_with_signature(
-            "thinking",
-            Some("sig".to_owned()),
-        ))],
-        Default::default(),
-        "aws_bedrock",
-        serde_json::Value::Null,
-    )) {
-        if let Ok(event) = &event
-            && !matches!(event, StreamEvent::Final(_))
-        {
-            assert!(tap.observe(&Ok(event.clone())).is_none(), "a valid event");
-        }
-    }
-    let terminal = StreamFinal::new("aws_bedrock", Default::default(), serde_json::Value::Null)
-        .with_reasoning_issuer("anthropic");
-    let Some(Ok(Outcome::Completion(response))) = tap.observe(&Ok(StreamEvent::Final(terminal)))
-    else {
-        panic!("a completion outcome");
-    };
-    let issuers: Vec<_> = response
-        .choice
-        .iter()
-        .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => reasoning.provider.as_deref(),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(issuers, ["anthropic"]);
+/// A text fragment of the reply's first part.
+fn text_item(fragment: &str) -> Relayed {
+    Relayed::Item(Item::Event(StreamEvent::Text {
+        part: Part::new(0),
+        text: fragment.to_owned(),
+    }))
 }
 
-/// A handler that writes raw events, text left open at the terminal, folds to
-/// the same outcome as one that writes through the completion sink.
-#[test]
-fn the_tap_folds_a_raw_handler_stream_like_a_canonical_one() {
-    let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
-    let raw: Vec<Result<StreamEvent, ErrorReport>> = vec![
-        Ok(StreamEvent::text(text, "hello")),
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "local",
-            Default::default(),
-            serde_json::Value::Null,
-        ))),
-    ];
-    let mut tap = StreamTap::new();
-    let outcome = raw
-        .iter()
-        .find_map(|item| tap.observe(item))
-        .expect("the terminal yields an outcome");
-    let Ok(Outcome::Completion(response)) = outcome else {
-        panic!("expected a completion, got {outcome:?}");
-    };
-    assert_eq!(
-        response.choice,
-        vec![crate::message::AssistantContent::text("hello")]
-    );
+/// A response the origin folded, carrying `text`.
+fn done(text: &str) -> Result<Relayed, ErrorReport> {
+    Ok(Relayed::Done(Box::new(CompletionResponse::new(
+        vec![crate::message::AssistantContent::text(text)],
+        Default::default(),
+        "local",
+        serde_json::Value::Null,
+    ))))
 }
 
 /// A tap yields one outcome, the first: an error item is the outcome, and
 /// nothing observed after it yields another.
 #[test]
 fn the_tap_yields_only_its_first_outcome() {
-    let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
-    let items: Vec<Result<StreamEvent, ErrorReport>> = vec![
+    let items: Vec<Result<Relayed, ErrorReport>> = vec![
         Err(ErrorReport::new(ErrorKind::Provider, "reset")),
-        Ok(StreamEvent::text(text, "late")),
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "local",
-            Default::default(),
-            serde_json::Value::Null,
-        ))),
+        Ok(text_item("late")),
+        done("late"),
     ];
     let mut tap = StreamTap::new();
     let outcomes: Vec<_> = items.iter().filter_map(|item| tap.observe(item)).collect();
@@ -760,19 +699,11 @@ fn the_tap_yields_only_its_first_outcome() {
 /// item after it yield nothing more.
 #[test]
 fn the_tap_yields_nothing_after_its_terminal() {
-    let text = crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0);
-    let terminal = || {
-        Ok(StreamEvent::Final(StreamFinal::new(
-            "local",
-            Default::default(),
-            serde_json::Value::Null,
-        )))
-    };
-    let items: Vec<Result<StreamEvent, ErrorReport>> = vec![
-        Ok(StreamEvent::text(text, "first")),
-        terminal(),
+    let items: Vec<Result<Relayed, ErrorReport>> = vec![
+        Ok(text_item("first")),
+        done("first"),
         Err(ErrorReport::new(ErrorKind::Provider, "late")),
-        terminal(),
+        done("second"),
     ];
     let mut tap = StreamTap::new();
     let outcomes: Vec<_> = items.iter().filter_map(|item| tap.observe(item)).collect();

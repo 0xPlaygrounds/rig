@@ -1,11 +1,8 @@
 use super::*;
-use crate::driver::WireDriver;
 use crate::error::ProviderError;
 use crate::message::EMPTY_RESPONSE_ERROR;
-use crate::operation::Completion;
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::wire::WireFrame;
-use crate::wire::{Fold, Wire};
 use serde_json::json;
 use serde_path_to_error::deserialize;
 
@@ -30,20 +27,12 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
         map.entry("type").or_insert_with(|| json!("message"));
     }
     let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
-    driver.push(WireFrame::Text(body.to_string()));
-    driver.finish();
-    let mut fold = crate::test_utils::fold_for(&hello_request(), &wire, crate::wire::Mode::Unary);
-    for item in driver.drain() {
-        fold.absorb(&item?)?;
-    }
-    Fold::<Completion>::finish(
-        fold,
-        crate::wire::Reply {
-            provider: "anthropic".to_owned(),
-            raw: body,
-            provider_request_id: None,
-        },
+    crate::test_utils::decode_reply(
+        &wire,
+        &hello_request(),
+        crate::wire::Mode::Unary,
+        [WireFrame::Text(body.to_string())],
+        body,
     )
 }
 
@@ -326,10 +315,10 @@ fn completion_request_with_tools(
 ) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![
+        chat_history: crate::NonEmpty::with_rest(
             message::Message::system("System prompt"),
-            message::Message::from("Hello"),
-        ],
+            [message::Message::from("Hello")],
+        ),
         documents: Vec::new(),
         tools,
         temperature: None,
@@ -347,11 +336,14 @@ fn completion_request_with_history(
 ) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: preamble
-            .map(message::Message::system)
-            .into_iter()
-            .chain(chat_history)
-            .collect(),
+        chat_history: crate::NonEmpty::from_vec(
+            preamble
+                .map(message::Message::system)
+                .into_iter()
+                .chain(chat_history)
+                .collect::<Vec<_>>(),
+        )
+        .expect("non-empty"),
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -367,6 +359,7 @@ fn completion_request_with_history(
 fn rig_tools_are_non_strict_by_default() {
     let request = completion_request_with_tools(vec![generic_tool("lookup")], None);
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_SONNET_4_6,
         request,
         prompt_caching: false,
@@ -402,8 +395,7 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     .with_strict_tools()
     .encode(request, Mode::Unary)
     .expect("the request encodes");
-    let crate::wire::Body::Bytes(body) = encoded.requests.first().expect("one request").body()
-    else {
+    let crate::wire::Body::Bytes(body) = &encoded.request.body() else {
         panic!("the Messages endpoint takes JSON")
     };
     let value: serde_json::Value =
@@ -472,6 +464,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
     );
     let request = AnthropicCompletionRequest::try_from_params(
         AnthropicRequestParams {
+            issuers: &[crate::message::Issuer::from_static("anthropic")],
             model: CLAUDE_SONNET_4_6,
             request,
             prompt_caching: false,
@@ -580,6 +573,7 @@ fn opus_4_8_preserves_mid_conversation_system_message() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
@@ -617,6 +611,7 @@ fn opus_4_8_preserves_mid_conversation_system_message_before_assistant_turn() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
@@ -657,6 +652,7 @@ fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
     }];
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
@@ -700,7 +696,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: vec![
+                content: crate::NonEmpty::with_rest(
                     message::AssistantContent::Text(message::Text {
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
@@ -717,7 +713,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                         )
                         .expect("object params"),
                     }),
-                    message::AssistantContent::Text(message::Text {
+                    [message::AssistantContent::Text(message::Text {
                         text: String::new(),
                         additional_params: crate::message::AdditionalParams::try_from_value(
                             json!({
@@ -732,8 +728,8 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                             }),
                         )
                         .expect("object params"),
-                    }),
-                ],
+                    })],
+                ),
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -744,6 +740,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
@@ -784,7 +781,7 @@ fn foreign_annotated_empty_text_produces_no_anthropic_block() {
         .expect("object params"),
     });
     assert_eq!(
-        anthropic_content_from_assistant_content(foreign_annotated_empty.clone())
+        anthropic_content_from_assistant_content(foreign_annotated_empty.clone(), &[])
             .expect("conversion succeeds"),
         Vec::new(),
         "a foreign-annotated empty block must produce no Anthropic content"
@@ -792,10 +789,10 @@ fn foreign_annotated_empty_text_produces_no_anthropic_block() {
 
     let message = message::Message::Assistant {
         id: None,
-        content: vec![
+        content: crate::NonEmpty::with_rest(
             foreign_annotated_empty,
-            message::AssistantContent::text("real answer"),
-        ],
+            [message::AssistantContent::text("real answer")],
+        ),
     };
     let converted = Message::try_from(message).expect("message converts");
     assert_eq!(converted.content.len(), 1, "only the real block survives");
@@ -811,7 +808,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
         vec![
             message::Message::Assistant {
                 id: None,
-                content: vec![message::AssistantContent::Text(message::Text {
+                content: crate::NonEmpty::new(message::AssistantContent::Text(message::Text {
                     text: String::new(),
                     additional_params: crate::message::AdditionalParams::try_from_value(json!({
                         ANTHROPIC_RAW_CONTENT_KEY: {
@@ -824,7 +821,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
                         }
                     }))
                     .expect("object params"),
-                })],
+                })),
             },
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -835,6 +832,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
@@ -873,6 +871,7 @@ fn opus_4_8_hoists_system_message_in_invalid_mid_conversation_position() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
@@ -907,6 +906,7 @@ fn older_anthropic_models_hoist_mid_conversation_system_message() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: CLAUDE_OPUS_4_7,
         request,
         prompt_caching: false,
@@ -1002,6 +1002,7 @@ fn test_prompt_caching_skips_final_deferred_tool_in_request() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1034,6 +1035,7 @@ fn test_prompt_caching_preserves_existing_final_tool_cache_control() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1072,6 +1074,7 @@ fn test_prompt_caching_all_deferred_tools_do_not_receive_cache_control() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1109,6 +1112,7 @@ fn test_prompt_caching_preserves_earlier_tool_cache_control() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1148,6 +1152,7 @@ fn test_prompt_caching_deferred_marker_does_not_suppress_loaded_tool_marker() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1186,6 +1191,7 @@ fn test_prompt_caching_errors_when_tool_cache_control_ttl_order_is_invalid() {
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1221,6 +1227,7 @@ fn test_prompt_caching_preserves_valid_mixed_ttl_tool_cache_controls() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1254,6 +1261,7 @@ fn test_prompt_caching_preserves_deferred_tool_cache_control() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1297,6 +1305,7 @@ fn test_prompt_caching_budget_preserves_three_tool_markers_and_skips_message() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1356,6 +1365,7 @@ fn test_prompt_caching_errors_when_explicit_tool_markers_exceed_budget() {
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1408,6 +1418,7 @@ fn test_prompt_caching_errors_when_final_tool_marker_has_no_budget() {
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1435,6 +1446,7 @@ fn test_prompt_caching_replaces_null_final_tool_cache_control() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1489,6 +1501,7 @@ fn test_prompt_caching_ignores_null_tool_cache_control_when_budgeting() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1522,6 +1535,7 @@ fn test_prompt_caching_preserves_non_null_provider_tool_cache_control_escape_hat
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1565,6 +1579,7 @@ fn test_prompt_caching_automatic_mode_uses_reduced_marker_budget() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1618,6 +1633,7 @@ fn test_prompt_caching_automatic_mode_errors_when_final_tool_marker_has_no_budge
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1665,6 +1681,7 @@ fn test_automatic_caching_errors_when_explicit_tool_markers_exhaust_budget() {
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -1692,6 +1709,7 @@ fn test_automatic_caching_1h_errors_with_explicit_five_minute_tool_marker() {
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -1709,6 +1727,7 @@ fn test_prompt_and_automatic_caching_1h_uses_1h_generated_markers() {
     let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1744,6 +1763,7 @@ fn test_prompt_and_raw_top_level_automatic_caching_1h_uses_1h_generated_markers(
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1780,6 +1800,7 @@ fn test_prompt_caching_uses_raw_top_level_cache_control_ttl() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1810,6 +1831,7 @@ fn test_static_prefix_ttl_with_manual_caching_splits_prefix_and_tail() {
     let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -1847,6 +1869,7 @@ fn test_static_prefix_ttl_with_automatic_caching_marks_prefix_only() {
     let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -1878,6 +1901,7 @@ fn test_static_prefix_ttl_alone_marks_prefix_without_tail_or_top_level() {
     let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -1906,6 +1930,7 @@ fn test_static_prefix_ttl_five_minutes_with_automatic_1h_errors_client_side() {
     let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
 
     let error = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -1932,6 +1957,7 @@ fn test_static_prefix_ttl_five_minutes_matches_automatic_default_ttl() {
 
     // 5m prefix + 5m (default) top-level is uniform, not an inversion.
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -1957,6 +1983,7 @@ fn test_static_prefix_ttl_preserves_marker_budget_arithmetic() {
     let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -2049,6 +2076,7 @@ fn test_raw_top_level_automatic_caching_reduces_marker_budget() {
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -2077,6 +2105,7 @@ fn test_raw_top_level_automatic_caching_1h_errors_after_explicit_five_minute_too
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -2099,6 +2128,7 @@ fn test_typed_automatic_caching_ttl_errors_on_conflicting_raw_top_level_ttl() {
     );
 
     let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
@@ -2122,6 +2152,7 @@ fn test_prompt_caching_marks_final_tool_in_request() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -2153,6 +2184,7 @@ fn test_prompt_caching_marks_final_additional_tool_in_request() {
     );
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -2176,6 +2208,7 @@ fn test_prompt_caching_without_tools_omits_tools() {
     let request = completion_request_with_tools(Vec::new(), None);
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        issuers: &[crate::message::Issuer::from_static("anthropic")],
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
@@ -2339,11 +2372,11 @@ fn test_file_id_rig_to_anthropic_conversion() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::Document(msg::Document {
+        content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::FileId("file_abc".to_string()),
             media_type: None,
             additional_params: None,
-        })],
+        })),
     };
 
     let anthropic_message: Message = rig_message.try_into().unwrap();
@@ -2368,10 +2401,10 @@ fn test_plaintext_rig_to_anthropic_conversion() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::document(
+        content: crate::NonEmpty::new(msg::UserContent::document(
             "Some plain text content".to_string(),
             Some(msg::DocumentMediaType::TXT),
-        )],
+        )),
     };
 
     let anthropic_message: Message = rig_message.try_into().unwrap();
@@ -2397,11 +2430,11 @@ fn test_unsupported_document_type_returns_error() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::Document(msg::Document {
+        content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::String("data".into()),
             media_type: Some(msg::DocumentMediaType::HTML),
             additional_params: None,
-        })],
+        })),
     };
 
     let result: Result<Message, _> = rig_message.try_into();
@@ -2418,11 +2451,11 @@ fn test_plaintext_document_url_source_returns_error() {
     use crate::completion::message as msg;
 
     let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::Document(msg::Document {
+        content: crate::NonEmpty::new(msg::UserContent::Document(msg::Document {
             data: DocumentSourceKind::Url("https://example.com/doc.txt".into()),
             media_type: Some(msg::DocumentMediaType::TXT),
             additional_params: None,
-        })],
+        })),
     };
 
     let result: Result<Message, _> = rig_message.try_into();
@@ -2505,7 +2538,6 @@ fn test_message_with_plaintext_document_deserialization() {
 #[test]
 fn test_assistant_reasoning_multiblock_to_anthropic_content() {
     let reasoning = message::Reasoning {
-        provider: None,
         id: None,
         content: vec![
             message::ReasoningContent::Text {
@@ -2525,9 +2557,12 @@ fn test_assistant_reasoning_multiblock_to_anthropic_content() {
 
     let msg = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Reasoning(reasoning)],
+        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+            reasoning.sealed("anthropic"),
+        )),
     };
-    let converted: Message = msg.try_into().expect("convert assistant message");
+    let converted =
+        Message::from_message(msg, &["anthropic".into()]).expect("convert assistant message");
     let converted_content = converted.content.clone();
 
     assert_eq!(converted.role, Role::Assistant);
@@ -2555,7 +2590,6 @@ fn test_assistant_reasoning_multiblock_to_anthropic_content() {
 #[test]
 fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
     let reasoning = message::Reasoning {
-        provider: None,
         id: None,
         content: vec![message::ReasoningContent::Encrypted(
             "ciphertext".to_string(),
@@ -2563,10 +2597,13 @@ fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
     };
     let msg = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Reasoning(reasoning)],
+        content: crate::NonEmpty::new(message::AssistantContent::Reasoning(
+            reasoning.sealed("anthropic"),
+        )),
     };
 
-    let converted: Message = msg.try_into().expect("convert assistant message");
+    let converted =
+        Message::from_message(msg, &["anthropic".into()]).expect("convert assistant message");
     let converted_content = converted.content;
 
     assert_eq!(converted_content.len(), 1);
@@ -3044,7 +3081,7 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.message_id.clone(),
-        content: converted.choice,
+        content: crate::NonEmpty::from_vec(converted.choice).expect("non-empty"),
     }
     .try_into()
     .unwrap();
@@ -3108,7 +3145,7 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.message_id,
-        content: converted.choice,
+        content: crate::NonEmpty::from_vec(converted.choice).expect("non-empty"),
     }
     .try_into()
     .unwrap();
@@ -3211,7 +3248,7 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
 
     let round_trip: Message = message::Message::Assistant {
         id: converted.message_id,
-        content: converted.choice,
+        content: crate::NonEmpty::from_vec(converted.choice).expect("non-empty"),
     }
     .try_into()
     .unwrap();
@@ -3311,7 +3348,7 @@ fn anthropic_citations_returns_empty_when_absent() {
 fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
-        content: vec![message::AssistantContent::Text(message::Text {
+        content: crate::NonEmpty::new(message::AssistantContent::Text(message::Text {
             text: "the grass is green".into(),
             additional_params: crate::message::AdditionalParams::try_from_value(json!({
                 "citations": [{
@@ -3323,7 +3360,7 @@ fn assistant_text_citations_survive_anthropic_request_conversion() {
                 }]
             }))
             .expect("object params"),
-        })],
+        })),
     };
 
     let converted: Message = assistant.try_into().unwrap();
@@ -3360,7 +3397,7 @@ fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_con
         .expect("object params"),
     });
 
-    let result = anthropic_content_from_assistant_content(text);
+    let result = anthropic_content_from_assistant_content(text, &[]);
 
     assert!(
         result.is_err(),
@@ -3380,7 +3417,9 @@ fn document_additional_params_forward_to_anthropic_document() {
         }))
         .expect("object params"),
     });
-    let msg = message::Message::User { content: vec![doc] };
+    let msg = message::Message::User {
+        content: crate::NonEmpty::new(doc),
+    };
     let converted: Message = msg.try_into().unwrap();
     let block = converted.content.first();
     let Some(Content::Document {
@@ -3531,7 +3570,7 @@ fn url_pdf_with_or_without_media_type_converts_to_url_document_source() {
 
     for media_type in [Some(message::DocumentMediaType::PDF), None] {
         let msg = message::Message::User {
-            content: vec![message::UserContent::document_url(pdf_url, media_type)],
+            content: crate::NonEmpty::new(message::UserContent::document_url(pdf_url, media_type)),
         };
 
         let converted = Message::try_from(msg).expect("URL PDF should convert");
@@ -3630,11 +3669,10 @@ mod raw_capture {
 /// Synthetic transcript tests required-ID request correlation without a paid call.
 #[test]
 fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::tool_call_ids::tests::{
-        adapter_requests, assert_adapter_pairs,
-    };
+    use crate::providers::internal::wire_ids::tests::{adapter_requests, assert_adapter_pairs};
     for request in adapter_requests() {
         let wire = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            issuers: &[crate::message::Issuer::from_static("anthropic")],
             model: CLAUDE_SONNET_4_6,
             request: request.clone(),
             prompt_caching: false,
@@ -3645,74 +3683,4 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         .unwrap();
         assert_adapter_pairs(serde_json::to_value(wire).unwrap());
     }
-}
-
-/// The history shape a decoded server-tool block takes: an empty text block
-/// carrying the verbatim block under the wire's own key.
-fn raw_content_text(content: &Content) -> message::Text {
-    message::Text {
-        text: String::new(),
-        additional_params: crate::message::AdditionalParams::from_entries([(
-            ANTHROPIC_RAW_CONTENT_KEY,
-            serde_json::to_value(content).unwrap(),
-        )]),
-    }
-}
-
-/// Raw server tools use genuine provider handles; an application-chosen local
-/// ID can resemble one even though normal generated hints do not.
-#[test]
-fn request_reserves_raw_server_tool_handles_without_rewriting_them() {
-    let local = message::ToolCall::new(
-        message::ToolCallId::new("srvtoolu_real").unwrap(),
-        message::ToolFunction {
-            name: "local".into(),
-            arguments: json!({}),
-        },
-    );
-    let raw_call = Content::ServerToolUse {
-        id: "srvtoolu_real".into(),
-        name: "web_search".into(),
-        input: json!({"query":"test"}),
-    };
-    let raw_result = Content::WebSearchToolResult {
-        tool_use_id: "srvtoolu_real".into(),
-        content: json!([]),
-    };
-    let history = vec![
-        message::Message::Assistant {
-            id: None,
-            content: vec![
-                message::AssistantContent::ToolCall(local.clone()),
-                message::AssistantContent::Text(raw_content_text(&raw_call)),
-                message::AssistantContent::Text(raw_content_text(&raw_result)),
-            ],
-        },
-        message::Message::User {
-            content: vec![message::UserContent::tool_result_for(
-                local.id,
-                None,
-                "local",
-                vec![],
-            )],
-        },
-    ];
-    let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-        model: CLAUDE_SONNET_4_6,
-        request: completion_request_with_history(history, None),
-        prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
-        static_prefix_cache_ttl: None,
-    })
-    .unwrap();
-    let value = serde_json::to_value(request).unwrap();
-    let content = &value["messages"][0]["content"];
-    assert_ne!(content[0]["id"], "srvtoolu_real");
-    assert_eq!(
-        content[0]["id"],
-        value["messages"][1]["content"][0]["tool_use_id"]
-    );
-    assert_eq!(content[1], serde_json::to_value(raw_call).unwrap());
-    assert_eq!(content[2], serde_json::to_value(raw_result).unwrap());
 }

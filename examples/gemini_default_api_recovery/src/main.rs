@@ -9,14 +9,15 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
     PromptResponse, StreamingResult,
 };
-use rig::message::AssistantContent;
 use rig::message::ToolResultContent;
+use rig::message::{AssistantContent, Reasoning};
 use rig::prelude::*;
 use rig::providers::gemini::{
     Gemini,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
-use rig::streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent};
+use rig::streaming::Item;
+use rig::streaming::{StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -232,42 +233,45 @@ async fn consume_workspace_like_stream(
 
     while let Some(item) = stream.next().await {
         match item.map_err(|error| error.to_string())? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Text { text },
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
+                text,
                 ..
-            }) => {
+            })) => {
                 observation.events.push("text");
                 observation.streamed_text.push_str(&text);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
-                end: BlockClose::Reasoning { .. },
-                block: Some(AssistantContent::Reasoning(reasoning)),
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::Reasoning(reasoning),
                 ..
-            }) => {
+            })) => {
                 observation.events.push("reasoning");
-                observation
-                    .reasoning_text
-                    .push_str(&reasoning.display_text());
+                observation.reasoning_text.push_str(
+                    &reasoning
+                        .open(reasoning.issuer())
+                        .map(Reasoning::display_text)
+                        .unwrap_or_default(),
+                );
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::Reasoning { text: reasoning },
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
+                text: reasoning,
                 ..
-            }) => {
+            })) => {
                 observation.events.push("reasoning_delta");
                 observation.reasoning_text.push_str(&reasoning);
             }
             MultiTurnStreamItem::ToolCall { tool_call, .. } => {
                 observation.events.push("tool_call");
-                observation.tool_calls.push(tool_call.function.name.clone());
+                observation
+                    .tool_calls
+                    .push(tool_call.function.name.clone().into());
                 let execution: JavaScriptProgram =
                     serde_json::from_value(tool_call.function.arguments.clone())
                         .map_err(|error| error.to_string())?;
                 observation.executions.push(execution);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
-                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
                 ..
-            }) => {
+            })) => {
                 observation.events.push("tool_call_delta");
                 observation.tool_call_deltas += 1;
             }
@@ -277,18 +281,15 @@ async fn consume_workspace_like_stream(
             }) => {
                 observation.events.push("tool_result");
                 let value = match tool_result.content.first() {
-                    Some(ToolResultContent::Json { value }) => value.clone(),
-                    Some(ToolResultContent::Text(_)) => {
+                    ToolResultContent::Json { value } => value.clone(),
+                    ToolResultContent::Text(_) => {
                         return Err(
                             "JS Runtime returned literal text instead of structured JSON"
                                 .to_string(),
                         );
                     }
-                    Some(ToolResultContent::Image(_)) => {
+                    ToolResultContent::Image(_) => {
                         return Err("JS Runtime returned an unexpected image".to_string());
-                    }
-                    None => {
-                        return Err("JS Runtime returned an empty tool result".to_string());
                     }
                 };
                 observation.tool_results.push(value.to_string());

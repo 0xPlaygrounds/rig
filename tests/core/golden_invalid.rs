@@ -32,11 +32,17 @@ fn two_calls_turn() -> MockTurn {
     MockTurn::from_contents([
         AssistantContent::ToolCall(ToolCall::from_wire(
             "call-1",
-            ToolFunction::new("multiply".to_owned(), args()),
+            ToolFunction::new(
+                rig::message::ToolName::new("multiply").expect("tool name"),
+                args(),
+            ),
         )),
         AssistantContent::ToolCall(ToolCall::from_wire(
             "call-2",
-            ToolFunction::new("add".to_owned(), args()),
+            ToolFunction::new(
+                rig::message::ToolName::new("add").expect("tool name"),
+                args(),
+            ),
         )),
     ])
 }

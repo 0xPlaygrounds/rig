@@ -1,7 +1,7 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig_core::error::ProviderError;
-use rig_core::message::{Text, ToolResultContent, UserContent};
+use rig_core::message::{Text, UserContent};
 
 use super::{
     converse_output::ContentBlock, document::RigDocument, image::RigImage,
@@ -16,29 +16,11 @@ impl TryFrom<ContentBlock> for RigUserContent {
     fn try_from(value: ContentBlock) -> Result<Self, Self::Error> {
         match value {
             ContentBlock::Text(text) => Ok(RigUserContent(UserContent::Text(Text::new(text)))),
-            ContentBlock::ToolResult(tool_result) => {
-                let tool_result_contents = tool_result
-                    .content
-                    .into_iter()
-                    .map(std::convert::TryInto::try_into)
-                    .collect::<Result<Vec<RigToolResultContent>, _>>()?
-                    .into_iter()
-                    .map(|rt| rt.0)
-                    .collect::<Vec<ToolResultContent>>();
-
-                let tool_results =
-                    rig_core::message::require_non_empty(tool_result_contents, || {
-                        ProviderError::Provider("ToolResult returned invalid response".into())
-                    })?;
-                // Bedrock's wire correlates results by `toolUseId` only
-                // and never carries the tool name; this conversion is lossy
-                // for name-keyed wires.
-                Ok(RigUserContent(UserContent::tool_result_from_wire(
-                    tool_result.tool_use_id,
-                    "",
-                    tool_results,
-                )))
-            }
+            // Bedrock's wire correlates results by `toolUseId` only and never
+            // carries the tool name a result needs.
+            ContentBlock::ToolResult(_) => Err(ProviderError::Provider(
+                "AWS Bedrock returned a tool result, which names no tool".into(),
+            )),
             ContentBlock::Document(document) => {
                 let doc: RigDocument = document.try_into()?;
                 Ok(RigUserContent(UserContent::Document(doc.0)))
@@ -62,7 +44,7 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
             UserContent::Text(text) => Ok(vec![aws_bedrock::ContentBlock::Text(text.text)]),
             UserContent::ToolResult(tool_result) => {
                 let builder = aws_bedrock::ToolResultBlock::builder()
-                    .tool_use_id(tool_result.wire_call_id().into_owned())
+                    .tool_use_id(tool_result.call.wire().into_owned())
                     .set_content(Some(
                         tool_result
                             .content

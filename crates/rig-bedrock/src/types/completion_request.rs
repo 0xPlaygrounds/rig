@@ -11,6 +11,8 @@ use rig_core::message::{DocumentMediaType, UserContent};
 
 pub struct AwsCompletionRequest {
     pub inner: rig_core::completion::CompletionRequest,
+    /// The issuer whose reasoning the request replays.
+    pub issuer: rig_core::message::Issuer,
     pub prompt_caching: bool,
 }
 
@@ -18,15 +20,20 @@ fn cache_point_block() -> Result<CachePointBlock, ProviderError> {
     CachePointBlock::builder()
         .r#type(CachePointType::Default)
         .build()
-        .map_err(|e| ProviderError::Request(e.into()))
+        .map_err(ProviderError::request)
 }
 
 impl AwsCompletionRequest {
-    /// A Converse request over `inner`, whose history the driver already
-    /// scoped to the reasoning this model can replay.
-    pub fn new(inner: rig_core::completion::CompletionRequest, prompt_caching: bool) -> Self {
+    /// A Converse request over `inner`, replaying the reasoning `issuer`
+    /// issued.
+    pub fn new(
+        inner: rig_core::completion::CompletionRequest,
+        issuer: rig_core::message::Issuer,
+        prompt_caching: bool,
+    ) -> Self {
         Self {
             inner,
+            issuer,
             prompt_caching,
         }
     }
@@ -72,7 +79,7 @@ impl AwsCompletionRequest {
                     .set_input_schema(Some(ToolInputSchema::Json(doc.0)))
                     .build()
                     .map(Tool::ToolSpec)
-                    .map_err(|e| ProviderError::Request(e.into()))
+                    .map_err(ProviderError::request)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -98,7 +105,7 @@ impl AwsCompletionRequest {
                                 .build()
                                 .map(aws_bedrock::ToolChoice::Tool)
                                 .map(Some)
-                                .map_err(|e| ProviderError::Request(e.into()))
+                                .map_err(ProviderError::request)
                         })
                         .transpose()
                         .map(Option::flatten),
@@ -110,7 +117,7 @@ impl AwsCompletionRequest {
                 .set_tools(Some(tools))
                 .set_tool_choice(tool_choice)
                 .build()
-                .map_err(|e| ProviderError::Request(e.into()))?;
+                .map_err(ProviderError::request)?;
 
             Ok(Some(config))
         } else {
@@ -129,14 +136,14 @@ impl AwsCompletionRequest {
             .output_schema_name()
             .unwrap_or_else(|| "response_schema".to_string());
 
-        let schema_json = serde_json::to_string(schema.as_value())
-            .map_err(|e| ProviderError::Request(e.into()))?;
+        let schema_json =
+            serde_json::to_string(schema.as_value()).map_err(ProviderError::request)?;
 
         let json_schema_def = aws_bedrock::JsonSchemaDefinition::builder()
             .schema(schema_json)
             .name(schema_name)
             .build()
-            .map_err(|e| ProviderError::Request(e.into()))?;
+            .map_err(ProviderError::request)?;
 
         let text_format = aws_bedrock::OutputFormat::builder()
             .r#type(aws_bedrock::OutputFormatType::JsonSchema)
@@ -144,7 +151,7 @@ impl AwsCompletionRequest {
                 json_schema_def,
             ))
             .build()
-            .map_err(|e| ProviderError::Request(e.into()))?;
+            .map_err(ProviderError::request)?;
 
         Ok(Some(
             aws_bedrock::OutputConfig::builder()
@@ -188,10 +195,10 @@ impl AwsCompletionRequest {
                 .collect::<Vec<_>>()
                 .join(" | ");
 
-            let content = vec![UserContent::document(
+            let content = rig_core::NonEmpty::new(UserContent::document(
                 messages,
                 Some(DocumentMediaType::TXT),
-            )];
+            ));
 
             full_history.push(Message::User { content });
         }
@@ -210,12 +217,10 @@ impl AwsCompletionRequest {
                 .filter(|message| !matches!(message, Message::System { .. })),
         );
 
-        let tool_ids =
-            rig_core::providers::internal::tool_call_ids::ToolCallIds::new(&full_history)
-                .map_err(|error| ProviderError::Request(Box::new(error)))?;
+        let tool_ids = rig_core::providers::internal::wire_ids::WireIds::new(&full_history);
         let mut messages = Vec::new();
         for (position, message) in full_history.into_iter().enumerate() {
-            let mut message: aws_bedrock::Message = RigMessage(message).try_into()?;
+            let mut message = RigMessage(message).into_aws(&self.issuer)?;
             tool_ids
                 .apply(
                     position,
@@ -227,7 +232,7 @@ impl AwsCompletionRequest {
                         _ => None,
                     }),
                 )
-                .map_err(|error| ProviderError::Request(Box::new(error)))?;
+                .map_err(ProviderError::request)?;
             messages.push(message);
         }
 
@@ -245,7 +250,7 @@ impl AwsCompletionRequest {
                 .role(last_msg.role.clone())
                 .set_content(Some(content))
                 .build()
-                .map_err(|e| ProviderError::Request(e.into()))?;
+                .map_err(ProviderError::request)?;
         }
 
         Ok(messages)

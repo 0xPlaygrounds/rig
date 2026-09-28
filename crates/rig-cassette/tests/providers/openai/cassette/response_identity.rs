@@ -4,7 +4,6 @@
 
 use futures::StreamExt;
 use rig::providers::openai;
-use rig::streaming::StreamEvent;
 
 use super::super::support::{with_openai_cassette, with_openai_completions_cassette};
 use rig::completion::CompletionRequest;
@@ -57,14 +56,13 @@ async fn responses_streaming_carries_identity() {
                 ))
                 .expect("stream should open");
 
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
-            let terminal = terminal.expect("stream should yield a terminal record");
+            let terminal = stream
+                .finish()
+                .await
+                .expect("stream should yield a terminal record");
             assert_request_id(
                 terminal.provider_request_id.as_deref(),
                 "responses streaming terminal",
@@ -110,15 +108,13 @@ async fn chat_completions_streaming_carries_identity() {
                     "Reply with exactly: stream identity probe",
                 ))
                 .expect("stream should open");
-
-            let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
-                {
-                    terminal = Some(final_record);
-                }
+                item.expect("stream item should succeed");
             }
-            let terminal = terminal.expect("stream should yield a terminal record");
+            let terminal = stream
+                .finish()
+                .await
+                .expect("stream should yield a terminal record");
             assert_request_id(
                 terminal.provider_request_id.as_deref(),
                 "chat streaming terminal",

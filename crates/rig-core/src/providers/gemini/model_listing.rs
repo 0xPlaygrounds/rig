@@ -1,12 +1,11 @@
 use crate::error::EncodeError;
 use crate::error::ProviderError;
+use crate::wire::Flow;
 use crate::{
     model::{ModelInfo, ModelList, listing},
     operation::{ModelListing, ModelPage, Verify},
     providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
-    wire::{
-        Body, Decoder, Descriptor, Encoded, End, Framing, Mode, Out, Wire, WireEvent, WireFrame,
-    },
+    wire::{Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame},
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt};
@@ -178,7 +177,7 @@ impl Wire for Models {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ModelsDecoder;
+    type Decoder<'id> = ModelsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
@@ -192,7 +191,7 @@ impl Wire for Models {
         ))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ModelsDecoder
     }
 }
@@ -216,7 +215,7 @@ impl Wire for InteractionsModels {
     type Op = ModelListing;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = ModelsDecoder;
+    type Decoder<'id> = ModelsDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
@@ -230,7 +229,7 @@ impl Wire for InteractionsModels {
         ))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ModelsDecoder
     }
 }
@@ -239,7 +238,7 @@ impl Wire for InteractionsModels {
 #[derive(Default)]
 pub struct ModelsDecoder;
 
-impl Decoder<ModelListing> for ModelsDecoder {
+impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
     /// The page JSON, retained for model-entry error context.
     type Event = String;
 
@@ -250,15 +249,19 @@ impl Decoder<ModelListing> for ModelsDecoder {
         classified.map(|_| payload)
     }
 
-    fn interpret(&mut self, payload: Self::Event, out: &mut Out<'_, ModelListing>) {
+    fn decode(
+        &mut self,
+        payload: Self::Event,
+        out: Out<'id, ModelListing>,
+    ) -> Result<Flow, ProviderError> {
         // Diagnostics identify the endpoint without retaining the previous page's cursor.
         let path = list_models_path(None);
         match parse_models_page(payload.as_bytes(), &path) {
-            Ok(page) => out.push(Ok(ModelPage {
+            Ok(page) => Ok(out.end(ModelPage {
                 models: ModelList::new(page.models),
                 next: page.next_cursor,
             })),
-            Err(error) => out.push(Err(error)),
+            Err(error) => Err(error),
         }
     }
 }
@@ -281,7 +284,7 @@ impl Wire for VerifyKey {
     type Op = Verify;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder = VerifyKeyDecoder;
+    type Decoder<'id> = VerifyKeyDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
@@ -297,18 +300,16 @@ impl Wire for VerifyKey {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self, _mode: Mode) -> Self::Decoder {
-        VerifyKeyDecoder::default()
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        VerifyKeyDecoder
     }
 }
 
 /// Verify a successful response without normalizing model entries.
 #[derive(Default)]
-pub struct VerifyKeyDecoder {
-    answered: bool,
-}
+pub struct VerifyKeyDecoder;
 
-impl Decoder<Verify> for VerifyKeyDecoder {
+impl<'id> Decoder<'id, Verify> for VerifyKeyDecoder {
     type Event = ();
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
@@ -316,15 +317,16 @@ impl Decoder<Verify> for VerifyKeyDecoder {
             .map(|_| ())
     }
 
-    fn interpret(&mut self, _event: Self::Event, out: &mut Out<'_, Verify>) {
-        self.answered = true;
-        out.push(Ok(()));
+    fn decode(
+        &mut self,
+        _event: Self::Event,
+        out: Out<'id, Verify>,
+    ) -> Result<Flow, ProviderError> {
+        Ok(out.end(()))
     }
 
-    /// Emit success if no recognized page supplied an event.
-    fn end(&mut self, out: &mut Out<'_, Verify>, end: End) {
-        if end == End::Eof && !self.answered {
-            out.push(Ok(()));
-        }
+    /// A success status verifies even when no recognized page arrived.
+    fn eof(&mut self, out: Out<'id, Verify>) -> Result<Flow, ProviderError> {
+        Ok(out.end(()))
     }
 }

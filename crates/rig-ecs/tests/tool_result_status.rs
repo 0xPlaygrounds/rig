@@ -116,7 +116,7 @@ fn results(world: &mut World) -> Vec<(Entity, String, Option<ToolResultStatus>)>
             for part in parts {
                 if let Some(ContentPart::ToolResult { name, .. }) = world.get::<ContentPart>(part) {
                     let status = world.get::<ToolResultStatus>(part).copied();
-                    found.push((utterance, name.clone(), status));
+                    found.push((utterance, name.to_string(), status));
                 }
             }
         }

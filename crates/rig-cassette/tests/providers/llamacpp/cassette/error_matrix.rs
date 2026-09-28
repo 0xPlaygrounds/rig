@@ -191,7 +191,7 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
             let error = match model.stream(request) {
                 Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
-                    Some(Err(error)) => error,
+                    Some(Err(error)) => rig::ErrorReport::from(&error),
                     other => panic!("expected a preserved error, got {other:?}"),
                 },
             };

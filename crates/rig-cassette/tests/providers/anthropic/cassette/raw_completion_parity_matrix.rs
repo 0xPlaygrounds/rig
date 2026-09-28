@@ -1,5 +1,5 @@
 //! Parity matrix for the typed escape hatch: the provider-native reply rig
-//! hands back in `CompletionResponse::raw` / `StreamFinal::raw` must tell the
+//! hands back in `CompletionResponse::raw` / `CompletionResponse::raw` must tell the
 //! same story as the normalized response delivered with it, and both must be
 //! what the fixture recorded.
 //!
@@ -46,7 +46,6 @@ use rig::completion::{
 };
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
-use rig::streaming::StreamFinal;
 use rig::tool::Tool;
 use rig_test_support::cassette_models::AnthropicModels;
 use serde::Deserialize;
@@ -96,10 +95,10 @@ impl Reported {
         }
     }
 
-    fn from_terminal(terminal: &StreamFinal) -> Self {
+    fn from_terminal(terminal: &rig::completion::CompletionResponse) -> Self {
         Self {
             identity: terminal.identity(),
-            finish_reason: terminal.finish_reason.clone(),
+            finish_reason: terminal.finish_reason().clone(),
             model: terminal.model.clone(),
             usage: terminal.usage,
         }
@@ -317,7 +316,10 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
 async fn capture_terminal_pair(
     client: AnthropicModels,
     request: rig::completion::CompletionRequest,
-    sink: Observed<(StreamFinal, StreamFinal)>,
+    sink: Observed<(
+        rig::completion::CompletionResponse,
+        rig::completion::CompletionResponse,
+    )>,
 ) {
     let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
@@ -335,7 +337,10 @@ async fn capture_terminal_pair(
 /// Streamed twin of [`assert_blocking_parity`].
 fn assert_streamed_parity(
     scenario: &str,
-    (normalized, second_record): (StreamFinal, StreamFinal),
+    (normalized, second_record): (
+        rig::completion::CompletionResponse,
+        rig::completion::CompletionResponse,
+    ),
     expected: FinishReason,
     stop_reason: &str,
 ) {

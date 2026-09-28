@@ -91,11 +91,9 @@
             {
               "type": "toolcall",
               "id": {
-                "origin": "explicit",
-                "id": "call-1"
-              },
-              "provider": {
-                "call_id": "call-1"
+                "provider": {
+                  "call_id": "call-1"
+                }
               },
               "function": {
                 "name": "final_result",
@@ -117,94 +115,52 @@
           "model": null,
           "raw": {
             "usage": {},
-            "finish_reason": null,
             "message_id": null,
             "response_id": null,
-            "provider": "mock",
             "model": null,
-            "raw": {
-              "provider": "mock"
-            }
+            "provider_request_id": null
           }
         }
       },
       "events": [
         {
-          "event": "block_start",
-          "id": "wire:call-1",
-          "kind": {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
             "kind": "tool_call"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call-1",
-          "delta": {
-            "delta": "tool_name",
-            "name": "final_result"
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A meetup.\"}"
           }
         },
         {
-          "event": "block_delta",
-          "id": "wire:call-1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", "
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "wire:call-1",
-          "delta": {
-            "delta": "tool_arguments",
-            "arguments": "\"summary\": \"A meetup.\"}"
-          }
-        },
-        {
-          "event": "block_end",
-          "id": "wire:call-1",
-          "end": {
-            "close": "tool_call",
-            "on_unparseable": "error"
-          },
-          "block": {
-            "type": "toolcall",
-            "id": {
-              "origin": "explicit",
-              "id": "call-1"
-            },
-            "provider": {
-              "call_id": "call-1"
-            },
-            "function": {
-              "name": "final_result",
-              "arguments": {
-                "title": "Seattle Rust Meetup",
-                "category": "Technology",
-                "summary": "A meetup."
-              }
-            },
-            "signature": null,
-            "additional_params": null
-          }
-        },
-        {
-          "event": "final",
-          "usage": {},
-          "finish_reason": null,
-          "message_id": null,
-          "response_id": null,
-          "provider": "mock",
-          "model": null,
-          "raw": {
-            "usage": {},
-            "finish_reason": null,
-            "message_id": null,
-            "response_id": null,
-            "provider": "mock",
-            "model": null,
-            "raw": {
-              "provider": "mock"
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": {
+                  "call_id": "call-1"
+                }
+              },
+              "function": {
+                "name": "final_result",
+                "arguments": {
+                  "title": "Seattle Rust Meetup",
+                  "category": "Technology",
+                  "summary": "A meetup."
+                }
+              },
+              "signature": null,
+              "additional_params": null
             }
           }
         }
