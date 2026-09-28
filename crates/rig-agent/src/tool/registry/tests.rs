@@ -97,6 +97,62 @@ async fn toolset_dispatch_snapshot_is_canonical_and_returns_result_metadata() {
     );
 }
 
+#[tokio::test]
+async fn tool_dispatch_debug_event_omits_arguments() {
+    use std::sync::Mutex;
+    use tracing::{Subscriber, field::Visit};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+
+    struct Fields(Vec<(String, String)>);
+
+    impl Visit for Fields {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push((field.name().to_owned(), format!("{value:?}")));
+        }
+    }
+
+    struct DebugEvents(Arc<Mutex<Vec<Vec<(String, String)>>>>);
+
+    impl<S: Subscriber> tracing_subscriber::Layer<S> for DebugEvents {
+        fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+            if event.metadata().target() == "rig"
+                && *event.metadata().level() == tracing::Level::DEBUG
+            {
+                let mut fields = Fields(Vec::new());
+                event.record(&mut fields);
+                self.0.lock().expect("event buffer lock").push(fields.0);
+            }
+        }
+    }
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::registry().with(DebugEvents(events.clone()));
+    let _default = tracing::subscriber::set_default(subscriber);
+
+    let mut set = ToolSet::default();
+    set.add_tool(Echo);
+    let secret = "private-api-key-123";
+    let args = format!(r#"{{"token":"{secret}"}}"#);
+    let result = set.execute("echo", args, &mut ToolContext::new()).await;
+    assert!(result.is_success());
+
+    let events = events.lock().expect("event buffer lock");
+    assert!(
+        events
+            .iter()
+            .flatten()
+            .any(|(field, value)| field == "tool_name" && value.contains("echo")),
+        "tool dispatch should still identify the called tool: {events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .flatten()
+            .all(|(_, value)| !value.contains(secret)),
+        "tool dispatch must not log argument values: {events:?}"
+    );
+}
+
 struct PendingTool(Arc<AtomicBool>);
 
 impl Tool for PendingTool {

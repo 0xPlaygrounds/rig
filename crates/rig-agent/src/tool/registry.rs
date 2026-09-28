@@ -274,7 +274,7 @@ pub async fn execute_tool(
     let mut dispatch_context = context.for_dispatch();
     let result = match tool {
         Some(tool) => {
-            tracing::debug!(target: "rig", tool_name = name, "calling tool with args:\n{args}");
+            tracing::debug!(target: "rig", tool_name = name, "calling tool");
             tool.execute(args, &mut dispatch_context).await
         }
         None => ToolResult::failed(
