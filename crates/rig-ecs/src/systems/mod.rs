@@ -2211,12 +2211,25 @@ fn abandon_turn(
     retries: Option<InvalidRetries>,
 ) -> Result<(), ContentError> {
     commands.entity(turn).insert(Materialised);
-    let (content, diagnostic_id) =
+    let (mut content, diagnostic_id) =
         if let Some(AssistantContent::ToolCall(diagnostic)) = call.prefix.last() {
             (call.prefix.clone(), diagnostic.id.clone())
         } else {
             policy::partial_turn_at(&outs.content, events, &call.id, allowed_names)
         };
+    // Diagnostic calls carry Null arguments when none were parsed; replay them
+    // as an empty object. Streamed turns only, matching rig-agent: a buffered
+    // turn is recorded as the provider returned it.
+    let streamed = events.is_some();
+    for part in &mut content {
+        if streamed
+            && let AssistantContent::ToolCall(tool_call) = part
+            && tool_call.id == diagnostic_id
+            && tool_call.function.arguments.is_null()
+        {
+            tool_call.function.arguments = serde_json::json!({});
+        }
+    }
     let assistant = MessageParts::Assistant {
         id: outs.message_id.clone(),
         content: content.clone(),

@@ -1033,6 +1033,40 @@ fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
 }
 
 #[test]
+fn skipped_malformed_arguments_roll_back_with_object_arguments() {
+    let mut run = AgentRun::new("use the tool").max_turns(2);
+    run.next_step().expect("next_step");
+
+    let call = tool_call("tc_1", "add");
+    let mut asm = assembler();
+    let invalid = expect_invalid(asm.surface_malformed_input(
+        &rig_core::error::MalformedToolInput {
+            name: "add".to_string(),
+            id: call.id,
+            provider: call.provider,
+            raw: "{\"x\":".to_string(),
+            error: "EOF while parsing an object".to_string(),
+        },
+    ));
+    let partial = asm.partial_turn(None, Some("mock"));
+
+    run.resolve_streamed_invalid_tool_call(
+        &partial,
+        &invalid,
+        InvalidToolCallAction::skip("arguments were not valid JSON"),
+    )
+    .expect("skip should be accepted");
+
+    let Some(Message::Assistant { content, .. }) = run.messages().get(1) else {
+        panic!("expected the rolled-back assistant turn");
+    };
+    let [AssistantContent::ToolCall(rolled_back)] = content.iter().as_slice() else {
+        panic!("expected one rolled-back tool call, got {content:?}");
+    };
+    assert_eq!(rolled_back.function.arguments, json!({}));
+}
+
+#[test]
 fn streamed_invalid_name_delta_repair_replays_buffered_arguments() {
     let mut run = AgentRun::new("use the tool").max_turns(2);
     run.next_step().expect("next_step");
